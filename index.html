@@ -388,7 +388,7 @@ canvas.eval-chart{width:100%!important;display:block}
 <div id="app" style="display:none">
 <div id="app-inner">
   <div id="topbar">
-    <div class="app-logo" style="display:flex;align-items:center;gap:7px">
+    <div class="app-logo" style="display:flex;align-items:center;gap:7px;cursor:pointer" onclick="goHome()">
   <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect width="32" height="32" rx="8" fill="rgba(110,190,145,0.15)"/>
     <path d="M9 23 C9 23 10 14 16 11 C22 8 24 14 24 14" stroke="#6ebd91" stroke-width="2" stroke-linecap="round"/>
@@ -419,30 +419,7 @@ canvas.eval-chart{width:100%!important;display:block}
   <div id="main"></div>
 
   <div id="bottombar">
-    <button class="bb-btn active" id="bb-session" onclick="switchView('session')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
-      Sesión
-    </button>
-    <button class="bb-btn" id="bb-progress" onclick="switchView('progress')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      Progresión
-    </button>
-    <button class="bb-btn" id="bb-wellness" onclick="switchView('wellness')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-      Wellness
-    </button>
-    <button class="bb-btn" id="bb-stats" onclick="switchView('stats')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      Stats
-    </button>
-    <button class="bb-btn" id="bb-teams" onclick="switchView('teams')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Equipos
-    </button>
-    <button class="bb-btn" id="bb-evals" onclick="switchView('evals')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-      Evaluaciones
-    </button>
+    <!-- Filled dynamically by renderBottomBar() after login -->
   </div>
 </div><!-- /app-inner -->
 </div><!-- /app -->
@@ -845,11 +822,9 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById('avatar-btn').textContent = (S.userData.name || 'U')[0].toUpperCase();
   if (S.isAdmin) {
     document.getElementById('pm-admin').style.display = 'block';
-    document.getElementById('bb-teams').style.display = 'flex';
-  } else {
-    document.getElementById('bb-teams').style.display = 'none';
   }
 
+  renderBottomBar();
   renderAll();
 });
 
@@ -923,13 +898,49 @@ function countChecked(w) {
 // ── VIEWS ─────────────────────────────────────────────────────
 function switchView(v) {
   S.currentView=v;
-  ['session','progress','wellness','stats','teams','settings','admin','evals'].forEach(n=>{
-    const el=document.getElementById('bb-'+n);
-    if(el) el.classList.toggle('active',n===v);
-  });
+  renderBottomBar();
   renderAll();
 }
 window.switchView = switchView;
+
+function goHome() {
+  // Reset all sub-views, go to session
+  S.adminView='main';
+  S.teamView=null;
+  S.teamDayEdit=null;
+  S.teamDayIdx=0;
+  S._routineEditorPrev=null;
+  S.editingRoutine=null;
+  S.viewingAthlete=null;
+  switchView('session');
+}
+window.goHome=goHome;
+
+function renderBottomBar() {
+  const bb = document.getElementById('bottombar');
+  if(!bb) return;
+  // ATHLETE view: session, progress, wellness, stats only
+  // ADMIN view: session, progress, wellness, stats, teams, evals, admin
+  const tabs = S.isAdmin ? [
+    {id:'session',  label:'Sesión',      svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
+    {id:'progress', label:'Progresión',  svg:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'},
+    {id:'wellness', label:'Wellness',    svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
+    {id:'teams',    label:'Equipos',     svg:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'},
+    {id:'evals',    label:'Evaluar',     svg:'<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'},
+    {id:'admin',    label:'Admin',       svg:'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>'},
+  ] : [
+    {id:'session',  label:'Mi Rutina',   svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
+    {id:'progress', label:'Progresión',  svg:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'},
+    {id:'wellness', label:'Wellness',    svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
+    {id:'stats',    label:'Stats',       svg:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>'},
+  ];
+  bb.innerHTML = tabs.map(t=>`
+    <button class="bb-btn ${S.currentView===t.id?'active':''}" id="bb-${t.id}" onclick="switchView('${t.id}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${t.svg}</svg>
+      ${t.label}
+    </button>`).join('');
+}
+window.renderBottomBar=renderBottomBar;
 
 function renderAll() { renderSubnav(); renderMain(); }
 
@@ -1699,6 +1710,75 @@ function renderTeams() {
 
 
 
+function renderTeamDetail(team) {
+  if(S.teamDayEdit) return renderTeamDayEditor(team, S.teamDayEdit);
+  const days=team.trainingDays||[];
+  let html=`<div class="team-detail-header">
+    <button class="back-btn" onclick="S.teamView=null;S.teamDayEdit=null;S.teamDayIdx=0;renderMain()">‹</button>
+    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
+      <div style="width:12px;height:12px;border-radius:50%;background:${team.color||'var(--purple)'}"></div>
+      ${team.name}
+    </div>
+    <span class="team-sport-badge">${team.sport||''}</span>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <span style="font-size:11px;color:var(--text3)">Color:</span>
+    ${TEAM_COLORS.map(c=>`<div onclick="setTeamColor('${team.id}','${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${team.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
+  </div>
+  <div style="font-size:13px;color:var(--text3);margin-bottom:14px">${team.category||''}</div>`;
+
+  if(days.length) {
+    const curIdx = S.teamDayIdx||0;
+    html+=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;overflow-x:auto">
+      ${days.map((d,i)=>`<button class="snav-tab ${curIdx===i?'active':''}" onclick="S.teamDayIdx=${i};renderMain()">${d.title||'Día '+(i+1)}</button>`).join('')}
+    </div>`;
+    const day=days[Math.min(curIdx,days.length-1)];
+    const di=Math.min(curIdx,days.length-1);
+    if(day) {
+      const blocks=day.blocks||[];
+      html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:600">${day.title||'Día '+(di+1)}</div>
+        <div style="display:flex;gap:6px">
+          <button class="abtn abtn-p" onclick="openTeamDayEditor('${team.id}',${di})">✏️ Editar</button>
+          <button class="abtn abtn-d" onclick="deleteDay('${team.id}',${di})">×</button>
+        </div>
+      </div>`;
+      if(!blocks.length){
+        html+=`<div class="empty-state" style="margin-bottom:10px">Sin ejercicios aún.<br><span style="font-size:12px">Tocá "Editar" para planificar esta sesión.</span></div>`;
+      } else {
+        html+=blocks.map(b=>{
+          const exList=b.categories.flatMap(c=>c.exercises);
+          return `<div class="card" style="padding:12px;margin-bottom:8px">
+            <div style="font-size:12px;font-weight:600;color:var(--purple);margin-bottom:6px">${b.label} — ${b.title}</div>
+            ${exList.map(ex=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+              <span>${ex.name}</span>
+              <span style="color:var(--text3);font-size:11px">${[ex.series?ex.series+'s':'',ex.reps||'',ex.pct?ex.pct+'%RM':''].filter(Boolean).join(' · ')}</span>
+            </div>`).join('')}
+          </div>`;
+        }).join('');
+      }
+      html+=`<div style="font-size:11px;color:var(--text3);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.06em">Notas por jugador</div>
+        <div class="player-note"><span class="player-note-name">+ Nota</span>
+          <input style="flex:1;background:transparent;border:none;outline:none;font-size:12px;color:var(--text)" placeholder="Jugador: nota específica..." onkeydown="if(event.key==='Enter')addPlayerNote('${team.id}',${di},this)">
+        </div>
+        ${(day.playerNotes||[]).map((n,ni)=>`<div class="player-note"><span class="player-note-name">${n.player}</span><span class="player-note-text">${n.note}</span><span style="cursor:pointer;color:var(--text3);font-size:14px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span></div>`).join('')}`;
+    }
+  } else {
+    html+=`<div class="empty-state">Sin sesiones de entrenamiento aún.<br><span style="font-size:12px">Agregá una sesión para comenzar a planificar.</span></div>`;
+  }
+
+  html+=`<button class="add-block-btn" style="margin-top:10px" onclick="addTrainingDay('${team.id}')">+ Agregar sesión</button>`;
+  html+=`<div class="admin-section" style="margin-top:16px"><div class="admin-section-title">Jugadores</div>
+    ${(team.players||[]).map((p,pi)=>`<div class="admin-item"><div class="admin-item-lbl">${p}</div><button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button></div>`).join('')}
+    <div class="admin-item">
+      <input id="new-player-inp" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" placeholder="Nombre del jugador">
+      <button class="abtn abtn-p" onclick="addPlayer('${team.id}')">Agregar</button>
+    </div></div>
+  <button class="abtn abtn-d" style="width:100%;margin-top:8px;padding:10px;border-radius:var(--r)" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>`;
+  return html;
+}
+
+
 const TEAM_COLORS = ['#6ebd91','#68b4c8','#d4a843','#d97070','#a78fd4','#d4884a','#5db89a','#c478b8'];
 
 async function createTeam() {
@@ -1823,7 +1903,7 @@ window.openTeam=openTeam;
 function addTrainingDay(teamId) {
   const t=S.teams.find(x=>x.id===teamId); if(!t) return;
   if(!t.trainingDays) t.trainingDays=[];
-  t.trainingDays.push({title:`Día ${t.trainingDays.length+1}`,content:'',playerNotes:[]});
+  t.trainingDays.push({title:`Día ${t.trainingDays.length+1}`,blocks:[],playerNotes:[]});
   saveTeam(teamId); renderMain();
 }
 window.addTrainingDay=addTrainingDay;
