@@ -3,27 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#0f0f0f">
+<meta name="theme-color" content="#0a1a12">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Training">
+<meta name="apple-mobile-web-app-title" content="GG Training">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<title>Training System</title>
+<title>GG-Training</title>
 <style>
 :root {
-  /* ── NUEVA PALETA: verde agua / negro / blanco ── */
-  --bg:#080c0b; --bg2:#0e1512; --bg3:#162019; --bg4:#1c2a22;
-  --border:rgba(32,210,150,0.08); --border2:rgba(32,210,150,0.16);
-  --text:#e8f5f0; --text2:#7aada0; --text3:#3d6b60;
-  /* acento principal: verde agua */
-  --purple:#20d296; --purple-dim:rgba(32,210,150,0.13); --purple-dim2:rgba(32,210,150,0.07);
-  /* colores secundarios ajustados a la paleta */
-  --teal:#2dd4bf; --teal-dim:rgba(45,212,191,0.12);
-  --blue:#5bc8b0; --blue-dim:rgba(91,200,176,0.12);
-  --amber:#f0b429; --amber-dim:rgba(240,180,41,0.12);
-  --red:#f87171; --red-dim:rgba(248,113,113,0.12);
-  --green:#20d296; --green-dim:rgba(32,210,150,0.12);
+  /* ── GG-Training: verde pastel suave / negro profundo / blanco ── */
+  --bg:#090e0c; --bg2:#0d1510; --bg3:#121d16; --bg4:#172419;
+  --border:rgba(110,190,145,0.09); --border2:rgba(110,190,145,0.18);
+  --text:#dff0e8; --text2:#7aaa90; --text3:#3d6650;
+  /* acento: verde pastel, no eléctrico */
+  --purple:#6ebd91; --purple-dim:rgba(110,190,145,0.13); --purple-dim2:rgba(110,190,145,0.07);
+  --teal:#5db89a; --teal-dim:rgba(93,184,154,0.12);
+  --blue:#68b4c8; --blue-dim:rgba(104,180,200,0.12);
+  --amber:#d4a843; --amber-dim:rgba(212,168,67,0.12);
+  --red:#d97070; --red-dim:rgba(217,112,112,0.12);
+  --green:#6ebd91; --green-dim:rgba(110,190,145,0.12);
   --r:14px; --rsm:10px; --rxs:6px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -42,12 +41,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 .app-logo{font-size:15px;font-weight:700;letter-spacing:-0.02em;color:var(--text)}
 .app-logo span{color:var(--purple)}
 .topbar-right{display:flex;align-items:center;gap:8px}
-.week-pill{font-size:12px;background:var(--purple-dim);color:var(--purple);padding:4px 10px;border-radius:20px;border:1px solid rgba(139,124,248,0.25)}
-.avatar-btn{width:30px;height:30px;border-radius:50%;background:var(--purple-dim);border:1px solid rgba(139,124,248,0.3);color:var(--purple);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.week-pill{font-size:12px;background:var(--purple-dim);color:var(--purple);padding:4px 10px;border-radius:20px;border:1px solid rgba(110,190,145,0.25)}
+.avatar-btn{width:30px;height:30px;border-radius:50%;background:var(--purple-dim);border:1px solid rgba(110,190,145,0.3);color:var(--purple);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
 
 /* SUBNAV */
 .snav-tab{flex-shrink:0;font-size:12px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .15s}
-.snav-tab.active{background:var(--purple-dim);color:var(--purple);border-color:rgba(139,124,248,0.3)}
+.snav-tab.active{background:var(--purple-dim);color:var(--purple);border-color:rgba(110,190,145,0.3)}
 .snav-tab.done{border-color:rgba(74,222,128,0.3);color:var(--green)}
 
 /* BOTTOM BAR */
@@ -140,7 +139,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 .filter-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .filter-row::-webkit-scrollbar{display:none}
 .filter-chip{flex-shrink:0;font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s}
-.filter-chip.active{background:var(--purple-dim);color:var(--purple);border-color:rgba(139,124,248,0.3)}
+.filter-chip.active{background:var(--purple-dim);color:var(--purple);border-color:rgba(110,190,145,0.3)}
 .sheet-list{flex:1;overflow-y:auto;padding:8px 16px}
 .lib-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer}
 .lib-item:last-child{border-bottom:none}
@@ -205,7 +204,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 .body-svg-wrap{position:relative;flex:1;max-width:160px}
 .body-svg-label{font-size:11px;color:var(--text3);text-align:center;margin-top:6px;font-weight:500}
 .body-zone{cursor:pointer;transition:all .2s;fill:var(--bg3);stroke:var(--border2);stroke-width:1}
-.body-zone:hover{fill:rgba(139,124,248,0.2);stroke:var(--purple)}
+.body-zone:hover{fill:rgba(110,190,145,0.15);stroke:var(--purple)}
 .body-zone.sel-low{fill:rgba(74,222,128,0.25);stroke:var(--green)}
 .body-zone.sel-med{fill:rgba(251,191,36,0.3);stroke:var(--amber)}
 .body-zone.sel-high{fill:rgba(248,113,113,0.35);stroke:var(--red)}
@@ -293,7 +292,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 .admin-item-lbl{color:var(--text)}
 .admin-item-sub{font-size:11px;color:var(--text3);margin-top:2px}
 .abtn{padding:6px 12px;border-radius:var(--rxs);border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:12px;cursor:pointer}
-.abtn-p{background:var(--purple-dim);color:var(--purple);border-color:rgba(139,124,248,0.3)}
+.abtn-p{background:var(--purple-dim);color:var(--purple);border-color:rgba(110,190,145,0.3)}
 .abtn-d{background:var(--red-dim);color:var(--red);border-color:rgba(248,113,113,0.3)}
 
 /* PROFILE MENU */
@@ -389,7 +388,15 @@ canvas.eval-chart{width:100%!important;display:block}
 <div id="app" style="display:none">
 <div id="app-inner">
   <div id="topbar">
-    <div class="app-logo">Train<span>·</span>ing</div>
+    <div class="app-logo" style="display:flex;align-items:center;gap:7px">
+  <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="32" height="32" rx="8" fill="rgba(110,190,145,0.15)"/>
+    <path d="M9 23 C9 23 10 14 16 11 C22 8 24 14 24 14" stroke="#6ebd91" stroke-width="2" stroke-linecap="round"/>
+    <path d="M14 23 C14 23 14 17 16 11" stroke="#6ebd91" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+    <circle cx="16" cy="9" r="2" fill="#6ebd91" opacity=".7"/>
+  </svg>
+  <span style="font-size:15px;font-weight:700;letter-spacing:-0.02em">GG<span style="color:var(--purple)">-Training</span></span>
+</div>
     <div class="topbar-right">
       <span class="week-pill" id="week-pill">Semana 1</span>
       <div class="avatar-btn" id="avatar-btn" onclick="toggleProfileMenu()">?</div>
@@ -700,6 +707,8 @@ let S = {
   libTarget: null, videoTarget: null,
   activeFilter: null, selectedZone: null,
   teamView: null,
+  teamDayEdit: null,
+  teamDayIdx: 0,
   // ── EVALUATIONS ──
   evals: {},            // { athleteId: { cmj:[{date,height,tof,vel}], sj:[], abalakov:[], saltoH:[], cmj_der:[], cmj_izq:[] } }
   evalView: 'form',     // 'form' | 'progress' | 'compare'
@@ -1057,7 +1066,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   // Prescription display for athlete (read-only pill row above fields)
   const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct) ? `
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-      ${prescSeries?`<span style="font-size:11px;background:var(--purple-dim);color:var(--purple);padding:2px 8px;border-radius:20px;border:1px solid rgba(139,124,248,0.3)">${prescSeries} series</span>`:''}
+      ${prescSeries?`<span style="font-size:11px;background:var(--purple-dim);color:var(--purple);padding:2px 8px;border-radius:20px;border:1px solid rgba(110,190,145,0.3)">${prescSeries} series</span>`:''}
       ${prescReps?`<span style="font-size:11px;background:var(--blue-dim);color:var(--blue);padding:2px 8px;border-radius:20px;border:1px solid rgba(96,165,250,0.3)">${prescReps} reps</span>`:''}
       ${prescPct?`<span style="font-size:11px;background:var(--teal-dim);color:var(--teal);padding:2px 8px;border-radius:20px;border:1px solid rgba(45,212,191,0.3)">${prescPct}%RM</span>`:''}
       ${prescNote?`<span style="font-size:11px;color:var(--text3);font-style:italic">${prescNote}</span>`:''}
@@ -1293,7 +1302,14 @@ window.renderLibList=renderLibList;
 function addFromLib(libId) {
   const libEx=S.library.find(e=>e.id===libId); if(!libEx||!S.libTarget) return;
   const {blockId,catIdx,sessionName,isRoutine}=S.libTarget;
-  if(isRoutine && S.editingRoutine) {
+  if(S.libTarget.isTD) {
+    // Adding to team day editor
+    const {teamId,dayIdx}=S.libTarget;
+    const b=getTDBlock(blockId,teamId,dayIdx);
+    if(!b)return;
+    b.categories[catIdx].exercises.push({id:genId(),name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''});
+    closeLib();renderMain();
+  } else if(isRoutine && S.editingRoutine) {
     // Adding to routine editor
     const b=(S.editingRoutine.sessions[sessionName]||[]).find(x=>x.id===blockId);
     if(!b) return;
@@ -1681,73 +1697,9 @@ function renderTeams() {
   return html;
 }
 
-function renderTeamDetail(team) {
-  const days=team.trainingDays||[];
-  let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.teamView=null;renderMain()">‹</button>
-    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
-      <div style="width:12px;height:12px;border-radius:50%;background:${team.color||'var(--purple)'}"></div>
-      ${team.name}
-    </div>
-    <span class="team-sport-badge">${team.sport||''}</span>
-  </div>
-  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-    <span style="font-size:11px;color:var(--text3)">Color:</span>
-    ${TEAM_COLORS.map(c=>`<div onclick="setTeamColor('${team.id}','${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${team.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
-  </div>`;
 
-  html+=`<div style="font-size:13px;color:var(--text3);margin-bottom:14px">${team.category||''}</div>`;
 
-  // Training days
-  days.forEach((day,di)=>{
-    const isEdit=day._editing;
-    html+=`<div class="training-day-card">
-      <div class="training-day-header">
-        <div class="training-day-title" ${!isEdit?`ondblclick="editDayTitle('${team.id}',${di})"`:''}>${isEdit?`<input id="dttinp-${di}" value="${day.title||''}" style="background:var(--bg3);border:1px solid var(--purple);border-radius:3px;padding:2px 6px;color:var(--text);font-size:14px;font-weight:600;outline:none;width:100%" onblur="saveDayTitle('${team.id}',${di},this)" onkeydown="if(event.key==='Enter')this.blur()">`:day.title||`Día ${di+1}`}</div>
-        <div style="display:flex;gap:6px">
-          ${!isEdit?`<button class="icon-btn" style="padding:4px 8px;font-size:12px" onclick="toggleDayEdit('${team.id}',${di})">✏️</button>`:'<button class="icon-btn" style="padding:4px 8px;font-size:12px" onclick="toggleDayEdit(\''+team.id+'\','+di+')">✓</button>'}
-          <button class="icon-btn" style="padding:4px 8px;font-size:12px;color:var(--red)" onclick="deleteDay('${team.id}',${di})">×</button>
-        </div>
-      </div>
-      ${isEdit
-        ? `<textarea class="training-day-inp" placeholder="Planificación del día: ejercicios, series, cargas, notas..." onchange="saveDayContent('${team.id}',${di},this.value)">${day.content||''}</textarea>`
-        : `<div class="training-day-body">${day.content||'<span style="color:var(--text3);font-size:12px">Sin contenido — doble tap para editar</span>'}</div>`
-      }
-      <div style="font-size:11px;color:var(--text3);margin-top:10px;margin-bottom:4px">Notas por jugador</div>
-      <div class="player-note">
-        <span class="player-note-name">+ Agregar nota</span>
-        <input style="flex:1;background:transparent;border:none;outline:none;font-size:12px;color:var(--text)" 
-          placeholder="Jugador: nota específica..." 
-          onkeydown="if(event.key==='Enter')addPlayerNote('${team.id}',${di},this)">
-      </div>
-      ${(day.playerNotes||[]).map((n,ni)=>`
-        <div class="player-note">
-          <span class="player-note-name">${n.player}</span>
-          <span class="player-note-text">${n.note}</span>
-          <span style="cursor:pointer;color:var(--text3);font-size:14px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span>
-        </div>`).join('')}
-    </div>`;
-  });
-
-  html+=`<button class="add-block-btn" onclick="addTrainingDay('${team.id}')">+ Agregar día de entrenamiento</button>`;
-  html+=`<div class="admin-section" style="margin-top:16px">
-    <div class="admin-section-title">Jugadores</div>
-    ${(team.players||[]).map((p,pi)=>`
-      <div class="admin-item">
-        <div class="admin-item-lbl">${p}</div>
-        <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
-      </div>`).join('')}
-    <div class="admin-item">
-      <input id="new-player-inp" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" placeholder="Nombre del jugador">
-      <button class="abtn abtn-p" onclick="addPlayer('${team.id}')">Agregar</button>
-    </div>
-  </div>
-  <button class="abtn abtn-d" style="width:100%;margin-top:8px;padding:10px;border-radius:var(--r)" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>`;
-
-  return html;
-}
-
-const TEAM_COLORS = ['#20d296','#60a5fa','#f0b429','#f87171','#c084fc','#fb923c','#34d399','#e879f9'];
+const TEAM_COLORS = ['#6ebd91','#68b4c8','#d4a843','#d97070','#a78fd4','#d4884a','#5db89a','#c478b8'];
 
 async function createTeam() {
   const name=prompt('Nombre del equipo:'); if(!name) return;
@@ -1780,6 +1732,87 @@ async function setAthleteColor(uid, color) {
   } catch(e){ showToast('Error'); }
 }
 window.setAthleteColor=setAthleteColor;
+
+// ── TEAM DAY EDITOR ───────────────────────────────────────────
+function openTeamDayEditor(teamId,dayIdx){S.teamDayEdit={teamId,dayIdx};renderMain();}
+window.openTeamDayEditor=openTeamDayEditor;
+
+function getTeamDay(teamId,dayIdx){const team=S.teams.find(t=>t.id===teamId);if(!team)return null;if(!team.trainingDays[dayIdx])return null;if(!team.trainingDays[dayIdx].blocks)team.trainingDays[dayIdx].blocks=[];return team.trainingDays[dayIdx];}
+
+function renderTeamDayEditor(team,{teamId,dayIdx}){
+  const day=getTeamDay(teamId,dayIdx);
+  if(!day)return`<div class="empty-state">Error cargando sesión.</div>`;
+  const blocks=day.blocks||[];
+  const blocksHtml=blocks.map(b=>renderTeamDayBlock(b,teamId,dayIdx)).join('');
+  return`<div class="team-detail-header">
+    <button class="back-btn" onclick="S.teamDayEdit=null;renderMain()">‹</button>
+    <div class="team-detail-title">${team.name} — ${day.title||'Día '+(dayIdx+1)}</div>
+    <button class="abtn abtn-p" onclick="saveTeamDayBlocks('${teamId}',${dayIdx})">Guardar</button>
+  </div>
+  ${blocksHtml}
+  <button class="add-block-btn" onclick="addTeamDayBlock('${teamId}',${dayIdx})">+ Agregar bloque</button>`;
+}
+
+function renderTeamDayBlock(b,teamId,dayIdx){
+  const cc=b.colorKey||'bx',open=b._open!==false;
+  let inner='';
+  b.categories.forEach((cat,ci)=>{
+    inner+=`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label" ondblclick="editTDCatLabel(this,'${b.id}','${teamId}',${dayIdx},${ci})">${cat.label}</span><input class="cat-label-inp" id="tdcatinp-${b.id}-${ci}" onblur="saveTDCatLabel('${b.id}','${teamId}',${dayIdx},${ci},this)" onkeydown="if(event.key==='Enter')this.blur()"></div><span class="cat-del" onclick="deleteTDCat('${b.id}','${teamId}',${dayIdx},${ci})">− cat</span></div>`;
+    cat.exercises.forEach(ex=>{
+      inner+=`<div class="ex-row" id="tdexrow-${ex.id}"><div class="ex-main"><div class="ex-name-row"><span class="ex-name" ondblclick="editTDExName(this,'${ex.id}','${b.id}','${teamId}',${dayIdx},${ci})">${ex.name}</span><input class="ex-name-inp" id="tdexinp-${ex.id}" onblur="saveTDExName('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},this)" onkeydown="if(event.key==='Enter')this.blur()"><div class="ex-actions"><div class="ex-icon-btn del-ex" onclick="deleteTDEx('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci})">×</div></div></div>
+      <div class="ex-fields">
+        <div class="field-box"><span class="field-lbl">Series</span><input class="field-inp" type="text" placeholder="3x" value="${ex.series||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'series',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">Reps</span><input class="field-inp" type="text" placeholder="6–8" value="${ex.reps||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'reps',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">%RM</span><input class="field-inp" type="text" placeholder="—" value="${ex.pct||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'pct',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">RPE</span><input class="field-inp" type="text" placeholder="—" value="${ex.rpe||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'rpe',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">Nota</span><input class="field-inp" style="width:80px" type="text" placeholder="—" value="${ex.note||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'note',this.value)"></div>
+      </div></div></div>`;
+    });
+    inner+=`<button class="add-btn" onclick="openTDLib('${b.id}','${teamId}',${dayIdx},${ci})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar ejercicio</button>`;
+    if(ci<b.categories.length-1)inner+=`<hr class="cat-divider">`;
+  });
+  inner+=`<button class="add-btn" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px" onclick="addTDCategory('${b.id}','${teamId}',${dayIdx})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar subcategoría</button>`;
+  return`<div class="card block ${cc} ${open?'open':''}" id="tdblock-${b.id}"><div class="block-header" onclick="toggleTDBlock('${b.id}','${teamId}',${dayIdx})"><span class="block-badge">${b.label}</span><div class="block-title-wrap"><span class="block-title" ondblclick="editTDBlockTitle(event,'${b.id}','${teamId}',${dayIdx})">${b.title}</span><input class="block-title-inp" id="tdbinp-${b.id}" onblur="saveTDBlockTitle('${b.id}','${teamId}',${dayIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"></div><span class="block-time">${b.time||''}</span><span class="block-del" onclick="deleteTDBlock(event,'${b.id}','${teamId}',${dayIdx})">×</span><span class="block-chevron">›</span></div><div class="block-body">${inner}</div></div>`;
+}
+
+function getTDBlock(blockId,teamId,dayIdx){const day=getTeamDay(teamId,dayIdx);if(!day)return null;return(day.blocks||[]).find(b=>b.id===blockId)||null;}
+function addTeamDayBlock(teamId,dayIdx){const day=getTeamDay(teamId,dayIdx);if(!day)return;if(!day.blocks)day.blocks=[];const colors=['b1','b2','b3','b4','bx'],n=day.blocks.length;day.blocks.push({id:genId(),label:`Bloque ${n+1}`,title:'Nuevo bloque',time:'',colorKey:colors[n%colors.length],note:'',_open:true,categories:[{id:genId(),label:'Categoría',exercises:[]}]});renderMain();}
+window.addTeamDayBlock=addTeamDayBlock;
+function toggleTDBlock(blockId,teamId,dayIdx){const el=document.getElementById('tdblock-'+blockId);if(!el)return;el.classList.toggle('open');const b=getTDBlock(blockId,teamId,dayIdx);if(b)b._open=el.classList.contains('open');}
+window.toggleTDBlock=toggleTDBlock;
+function editTDBlockTitle(e,blockId,teamId,dayIdx){e.stopPropagation();const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;const span=e.target,inp=document.getElementById('tdbinp-'+blockId);span.style.display='none';inp.value=b.title;inp.style.display='block';inp.focus();inp.select();}
+window.editTDBlockTitle=editTDBlockTitle;
+function saveTDBlockTitle(blockId,teamId,dayIdx,inp){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;if(inp.value.trim())b.title=inp.value.trim();inp.style.display='none';const span=inp.previousElementSibling;if(span){span.textContent=b.title;span.style.display='';}}
+window.saveTDBlockTitle=saveTDBlockTitle;
+function deleteTDBlock(e,blockId,teamId,dayIdx){e.stopPropagation();if(!confirm('¿Eliminar bloque?'))return;const day=getTeamDay(teamId,dayIdx);if(!day)return;day.blocks=day.blocks.filter(b=>b.id!==blockId);renderMain();}
+window.deleteTDBlock=deleteTDBlock;
+function editTDCatLabel(el,blockId,teamId,dayIdx,ci){const inp=document.getElementById(`tdcatinp-${blockId}-${ci}`);el.style.display='none';inp.value=el.textContent;inp.style.display='inline-block';inp.focus();inp.select();}
+window.editTDCatLabel=editTDCatLabel;
+function saveTDCatLabel(blockId,teamId,dayIdx,ci,inp){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;if(inp.value.trim())b.categories[ci].label=inp.value.trim();inp.style.display='none';const span=inp.previousElementSibling;if(span){span.textContent=b.categories[ci].label;span.style.display='';}}
+window.saveTDCatLabel=saveTDCatLabel;
+function deleteTDCat(blockId,teamId,dayIdx,ci){if(!confirm('¿Eliminar categoría?'))return;const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;b.categories.splice(ci,1);renderMain();}
+window.deleteTDCat=deleteTDCat;
+function addTDCategory(blockId,teamId,dayIdx){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;b.categories.push({id:genId(),label:'Nueva categoría',exercises:[]});renderMain();}
+window.addTDCategory=addTDCategory;
+function editTDExName(el,exId,blockId,teamId,dayIdx,ci){const inp=document.getElementById('tdexinp-'+exId);el.style.display='none';inp.value=el.textContent;inp.style.display='block';inp.focus();inp.select();}
+window.editTDExName=editTDExName;
+function saveTDExName(exId,blockId,teamId,dayIdx,ci,inp){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;const ex=b.categories[ci].exercises.find(e=>e.id===exId);if(!ex)return;if(inp.value.trim())ex.name=inp.value.trim();inp.style.display='none';const span=inp.previousElementSibling;if(span){span.textContent=ex.name;span.style.display='';}}
+window.saveTDExName=saveTDExName;
+function setTDExField(exId,blockId,teamId,dayIdx,ci,field,val){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;const ex=b.categories[ci].exercises.find(e=>e.id===exId);if(!ex)return;ex[field]=val;}
+window.setTDExField=setTDExField;
+function deleteTDEx(exId,blockId,teamId,dayIdx,ci){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;b.categories[ci].exercises=b.categories[ci].exercises.filter(e=>e.id!==exId);renderMain();}
+window.deleteTDEx=deleteTDEx;
+function openTDLib(blockId,teamId,dayIdx,ci){S.libTarget={blockId,catIdx:ci,teamId,dayIdx,isTD:true};S.activeFilter=null;document.getElementById('lib-search').value='';renderLibFilters();renderLibList();document.getElementById('lib-overlay').classList.add('open');}
+window.openTDLib=openTDLib;
+async function saveTeamDayBlocks(teamId,dayIdx){
+  const team=S.teams.find(t=>t.id===teamId);if(!team)return;
+  const toSave=JSON.parse(JSON.stringify(team));
+  const clean=obj=>{if(Array.isArray(obj))obj.forEach(clean);else if(obj&&typeof obj==='object'){delete obj._open;delete obj._editing;Object.values(obj).forEach(clean);}};
+  clean(toSave);
+  try{await setDoc(doc(db,'teams',teamId),toSave);showToast('✓ Sesión guardada');S.teamDayEdit=null;renderMain();}catch(e){showToast('Error al guardar');}
+}
+window.saveTeamDayBlocks=saveTeamDayBlocks;
+
 
 
 
