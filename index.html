@@ -2843,12 +2843,6 @@ const EVAL_TESTS = [
   { id:'cmj_izq', label:'CMJ Unilateral Izq.',     unit:'cm', desc:'CMJ una pierna izquierda' },
 ];
 
-function getAthleteEvals(uid) {
-  // uid='self' means current user
-  if(uid==='self') return S.evals;
-  return S._athleteEvalsCache?.[uid] || {};
-}
-
 // ══════════════════════════════════════════════════════════════
 // ── TEST DE SALTABILIDAD ─────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
