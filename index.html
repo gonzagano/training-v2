@@ -136,7 +136,8 @@ body{background:var(--bg);color:var(--text);font-size:15px}
   .page-title{font-size:28px;font-weight:800;letter-spacing:-.02em;color:var(--text);line-height:1.2}
   .page-subtitle{font-size:14px;color:var(--text2);margin-top:4px}
   /* Desktop metric cards */
-  .metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}
+  .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+@media(min-width:900px){.metric-grid{grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}}
   .metric-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px}
   .metric-card-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
   .metric-card-value{font-size:32px;font-weight:800;color:var(--text);line-height:1}
@@ -767,7 +768,7 @@ let S = {
   teamDayIdx: 0,
   // ── EVALUATIONS ──
   evals: {},            // { athleteId: { cmj:[{date,height,tof,vel}], sj:[], abalakov:[], saltoH:[], cmj_der:[], cmj_izq:[] } }
-  evalView: 'form',     // 'form' | 'progress' | 'compare'
+  evalView: 'entry',    // 'entry' | 'history' | 'compare'
   evalAthleteId: 'self',// 'self' or uid
   evalShowSecondary: false,
   evalCompareSelected: [],
@@ -1590,19 +1591,20 @@ function renderWellness() {
 
   HOOPER_ITEMS.forEach(item=>{
     const val=w[item.key]||0;
-    const btns=Array.from({length:7},(_,i)=>{
-      const v=i+1;
-      const pct = Math.round((v/7)*100);
-      const bg = val===v ? `hsl(${120-pct},70%,45%)` : '';
-      return `<button class="hooper-btn ${val===v?'sel':''}" style="${val===v?`background:${bg};border-color:${bg}`:''}" onclick="setHooper('${wKey}','${item.key}',${v})">${v}</button>`;
-    }).join('');
+    const pct = val ? Math.round(((val-1)/6)*100) : 0;
+    const sliderColor = val ? `hsl(${Math.round((1-val/7)*120)},65%,45%)` : 'var(--border2)';
     html+=`<div class="hooper-item">
       <div class="hooper-label">
         <span>${item.label}</span>
-        <span style="color:${val?`hsl(${Math.round((1-val/7)*120)},60%,50%)`:'var(--text3)'}">${val||'—'}</span>
+        <span style="color:${val?sliderColor:'var(--text3)'};font-size:16px;font-weight:700">${val||'—'}</span>
       </div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:5px;display:flex;justify-content:space-between"><span>${item.lo}</span><span>${item.hi}</span></div>
-      <div class="hooper-scale">${btns}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin:4px 0 2px">
+        <span style="font-size:10px;color:var(--text3);white-space:nowrap">${item.lo}</span>
+        <input type="range" min="1" max="7" step="1" value="${val||1}"
+          style="flex:1;-webkit-appearance:none;height:6px;border-radius:3px;outline:none;cursor:pointer;accent-color:${sliderColor};background:linear-gradient(to right,${sliderColor} ${pct}%,var(--bg3) ${pct}%)"
+          oninput="updateHooper('${wKey}','${item.key}',this)">
+        <span style="font-size:10px;color:var(--text3);white-space:nowrap">${item.hi}</span>
+      </div>
     </div>`;
   });
 
@@ -1705,6 +1707,22 @@ function renderInjuryList() {
     </div>`;
   }).join('')}</div>`;
 }
+
+function getHooperColor(v) {
+  return `hsl(${Math.round((1-v/7)*120)},65%,45%)`;
+}
+window.getHooperColor=getHooperColor;
+
+function updateHooper(wKey,k,input) {
+  const v=+input.value;
+  const pct=Math.round(((v-1)/6)*100);
+  const color=getHooperColor(v);
+  input.style.background=`linear-gradient(to right,${color} ${pct}%,var(--bg3) ${pct}%)`;
+  const wrap=input.closest('.hooper-item');
+  if(wrap){const sp=wrap.querySelector('.hooper-label span:last-child');if(sp){sp.textContent=v;sp.style.color=color;}}
+  setHooper(wKey,k,v);
+}
+window.updateHooper=updateHooper;
 
 function setHooper(wKey,key,val) {
   if(!S.wellness[wKey]) S.wellness[wKey]={};
@@ -1814,60 +1832,111 @@ function renderStats() {
     if(sd.done) totalS++;
     Object.entries(sd.exercises).forEach(([id,d])=>{ if(d.checked){totalC++;freq[id]=(freq[id]||0)+1;} });
   });
-
   const today=new Date();
   const last7=Array.from({length:7},(_,i)=>{ const d=new Date(today); d.setDate(d.getDate()-6+i); return d.toISOString().split('T')[0]; });
   const doneDs=new Set();
   for(let w=1;w<=S.currentWeek;w++) sessionList.forEach(s=>{
     const sd=getSD(w,s); if(sd.done&&sd.date) doneDs.add(sd.date);
   });
-
   const allExById={};
   getCurrentBlocks().forEach(b=>b.categories.forEach(c=>c.exercises.forEach(e=>{allExById[e.id]=e.name;})));
   const topEx=Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxF=topEx[0]?.[1]||1;
+  const wDays=Object.entries(S.wellness).sort((a,b)=>a[0].localeCompare(b[0])).slice(-7);
+  const wScores=wDays.map(([date,w])=>{
+    const sc=HOOPER_ITEMS.reduce((acc,i)=>acc+(w[i.key]||0),0);
+    return {date,sc,ok:HOOPER_ITEMS.every(i=>w[i.key])};
+  }).filter(x=>x.ok);
+  const streak=last7.filter(d=>doneDs.has(d)).length;
+  const isDesktop=window.innerWidth>=900;
+
+  let html=`<div class="page-header">
+    <div class="page-title">Estadísticas</div>
+    <div class="page-subtitle">Semana ${S.currentWeek} · ${totalS} sesiones completadas</div>
+  </div>`;
+
+  // Metric cards grid
+  html+=`<div class="metric-grid" style="${isDesktop?'':'grid-template-columns:1fr 1fr;gap:10px;'}margin-bottom:20px">
+    <div class="metric-card">
+      <div class="metric-card-label">SEMANAS <span class="metric-card-icon">📅</span></div>
+      <div class="metric-card-value">${S.currentWeek}</div>
+      <div class="metric-card-sub">ciclo actual</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-card-label">SESIONES <span class="metric-card-icon">💪</span></div>
+      <div class="metric-card-value">${totalS}</div>
+      <div class="metric-card-sub">completadas</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-card-label">RACHA SEMANAL <span class="metric-card-icon">🔥</span></div>
+      <div class="metric-card-value" style="color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}/7</div>
+      <div class="metric-card-sub">días activos esta semana</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-card-label">EJERCICIOS/SESIÓN <span class="metric-card-icon">📊</span></div>
+      <div class="metric-card-value">${totalS>0?Math.round(totalC/totalS):0}</div>
+      <div class="metric-card-sub">promedio por sesión</div>
+    </div>
+  </div>`;
+
+  // Last 7 days activity strip
+  html+=`<div class="wellness-card" style="margin-bottom:16px">
+    <div class="wellness-title">Actividad — últimos 7 días</div>
+    <div style="display:flex;gap:6px;padding:14px 18px;justify-content:space-between">
+      ${last7.map(d=>{
+        const day=new Date(d+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short'});
+        const done=doneDs.has(d);
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+          <div style="width:36px;height:36px;border-radius:50%;background:${done?'var(--accent)':'var(--bg3)'};border:1px solid ${done?'var(--accent)':'var(--border)'};display:flex;align-items:center;justify-content:center;font-size:12px">${done?'✓':''}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:capitalize">${day.slice(0,2)}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+
+  // Two columns on desktop
+  if(isDesktop) html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">`;
+
+  // Top exercises
+  if(topEx.length) html+=`<div class="wellness-card">
+    <div class="wellness-title">Ejercicios más frecuentes</div>
+    <div style="padding:8px 18px 14px">
+      ${topEx.map(([id,f],i)=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--accent-dim);color:var(--accent);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+          <div style="flex:1;font-size:13px;font-weight:500">${allExById[id]||'—'}</div>
+          <div style="display:flex;align-items:center;gap:6px;min-width:80px">
+            <div style="flex:1;height:4px;border-radius:2px;background:var(--bg3)">
+              <div style="height:100%;border-radius:2px;background:var(--accent);width:${Math.round(f/maxF*100)}%"></div>
+            </div>
+            <span style="font-size:12px;font-weight:600;color:var(--accent);min-width:24px;text-align:right">${f}x</span>
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>`;
 
   // Wellness trend
-  const wDays=Object.entries(S.wellness).sort((a,b)=>a[0].localeCompare(b[0])).slice(-7);
-  const wScores=wDays.map(([d,w])=>{
-    const s=HOOPER_ITEMS.reduce((acc,i)=>acc+(w[i.key]||0),0);
-    return {d,s,allFilled:HOOPER_ITEMS.every(i=>w[i.key])};
-  }).filter(x=>x.allFilled);
+  if(wScores.length) html+=`<div class="wellness-card">
+    <div class="wellness-title">Tendencia Hooper</div>
+    <div style="padding:8px 18px 14px">
+      ${wScores.map(({date,sc})=>{
+        const col=sc<=16?'var(--green)':sc<=24?'var(--amber)':'var(--red)';
+        const pct=Math.round(sc/42*100);
+        return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--text3);min-width:44px">${date.slice(5)}</div>
+          <div style="flex:1;height:6px;border-radius:3px;background:var(--bg3)">
+            <div style="height:100%;border-radius:3px;background:${col};width:${pct}%;transition:width .3s"></div>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:${col};min-width:24px;text-align:right">${sc}</div>
+          <div style="font-size:10px;color:${col};min-width:36px">${sc<=16?'Bien':sc<=24?'Normal':'Fatiga'}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+  else html+=`<div class="wellness-card"><div class="wellness-title">Tendencia Hooper</div><div class="empty-state" style="padding:24px">Sin registros de wellness aún.</div></div>`;
 
-  return `
-  <div class="stat-grid">
-    <div class="stat-item"><div class="stat-val">${S.currentWeek}</div><div class="stat-lbl">Semanas</div></div>
-    <div class="stat-item"><div class="stat-val">${totalS}</div><div class="stat-lbl">Sesiones</div></div>
-    <div class="stat-item"><div class="stat-val">${totalC}</div><div class="stat-lbl">Ejercicios</div></div>
-    <div class="stat-item"><div class="stat-val">${totalS>0?Math.round(totalC/totalS):0}</div><div class="stat-lbl">Ejerc./sesión</div></div>
-  </div>
-  <div class="chart-section">
-    <div class="chart-title">Últimos 7 días</div>
-    <div class="streak-row">${last7.map(d=>{
-      const day=new Date(d+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short'}).slice(0,2);
-      return `<div class="streak-dot ${doneDs.has(d)?'done':''}">${day}</div>`;
-    }).join('')}</div>
-  </div>
-  ${topEx.length?`<div class="chart-section">
-    <div class="chart-title">Ejercicios más frecuentes</div>
-    <div class="chart-rows">${topEx.map(([id,f])=>`
-      <div class="chart-row">
-        <span class="chart-lbl">${allExById[id]||'—'}</span>
-        <div class="chart-bar-bg"><div class="chart-bar-fill" style="width:${Math.round(f/maxF*100)}%"></div></div>
-        <span class="chart-val">${f}x</span>
-      </div>`).join('')}</div>
-  </div>`:''}
-  ${wScores.length?`<div class="chart-section">
-    <div class="chart-title">Tendencia Hooper (últimos ${wScores.length} días)</div>
-    <div class="chart-rows">${wScores.map(({d,s})=>{
-      const col=s<=16?'var(--green)':s<=24?'var(--amber)':'var(--red)';
-      return `<div class="chart-row">
-        <span class="chart-lbl">${d.slice(5)}</span>
-        <div class="chart-bar-bg"><div class="chart-bar-fill" style="width:${Math.round(s/42*100)}%;background:${col}"></div></div>
-        <span class="chart-val" style="color:${col}">${s}</span>
-      </div>`;
-    }).join('')}</div>
-  </div>`:''}`;
+  if(isDesktop) html+=`</div>`;
+  return html;
 }
 
 // ── TEAMS ─────────────────────────────────────────────────────
@@ -1898,7 +1967,7 @@ function renderTeamDetail(team) {
   if(S.teamDayEdit) return renderTeamDayEditor(team, S.teamDayEdit);
   const days=team.trainingDays||[];
   let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.teamView=null;S.teamDayEdit=null;S.teamDayIdx=0;S.currentView='teams';renderBottomBar();renderMain()">‹</button>
+    <button class="back-btn" data-back="team-list">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
       <div style="width:12px;height:12px;border-radius:50%;background:${team.color||'var(--purple)'}"></div>
       ${team.name}
@@ -2009,7 +2078,7 @@ function renderTeamDayEditor(team,{teamId,dayIdx}){
   const blocks=day.blocks||[];
   const blocksHtml=blocks.map(b=>renderTeamDayBlock(b,teamId,dayIdx)).join('');
   return`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.teamDayEdit=null;S.currentView='teams';renderBottomBar();renderMain()">‹</button>
+    <button class="back-btn" data-back="team-day">‹</button>
     <div class="team-detail-title">${team.name} — ${day.title||'Día '+(dayIdx+1)}</div>
     <button class="abtn abtn-p" onclick="saveTeamDayBlocks('${teamId}',${dayIdx})">Guardar</button>
   </div>
@@ -2291,7 +2360,7 @@ window.adminGoAthletes=adminGoAthletes;
 
 function renderAdminAthletes() {
   let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView='main';S.currentView='admin';renderBottomBar();renderMain()">‹</button>
+    <button class="back-btn" data-back="admin-main">‹</button>
     <div class="team-detail-title">Alumnos</div>
   </div>`;
   if(!S.adminAthletes.length) {
@@ -2365,7 +2434,7 @@ function renderAthleteDetail() {
   </select>`;
 
   let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView='athletes';S.currentView='admin';adminGoAthletes()">‹</button>
+    <button class="back-btn" data-back="admin-athletes">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
       <div style="width:12px;height:12px;border-radius:50%;background:${userData.color||'var(--text3)'}"></div>
       ${userData.name||userData.email}
@@ -2486,7 +2555,7 @@ window.adminGoRoutines=adminGoRoutines;
 
 function renderAdminRoutines() {
   let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView='main';S.currentView='admin';renderBottomBar();renderMain()">‹</button>
+    <button class="back-btn" data-back="admin-main">‹</button>
     <div class="team-detail-title">Rutinas</div>
     <button class="abtn abtn-p" onclick="createRoutine()">+ Nueva</button>
   </div>`;
@@ -2578,7 +2647,7 @@ function renderRoutineEditor() {
 
   return `
   <div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView=(S._routineEditorPrev||'routines');S.currentView='admin';renderBottomBar();renderMain()">‹</button>
+    <button class="back-btn" data-back="routine-editor">‹</button>
     <div class="team-detail-title" style="flex:1">${r.name}</div>
     <button class="abtn abtn-p" onclick="saveRoutineToFirestore()">Guardar</button>
   </div>
@@ -3154,6 +3223,31 @@ document.addEventListener('click',e=>{
   const m=document.getElementById('profile-menu');
   const btn=document.getElementById('avatar-btn');
   if(m&&btn&&!m.contains(e.target)&&!btn.contains(e.target)) m.classList.remove('open');
+});
+
+// ── GLOBAL BACK BUTTON HANDLER ────────────────────────────────
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-back]');
+  if(!btn) return;
+  const action = btn.getAttribute('data-back');
+  switch(action) {
+    case 'team-list':
+      S.teamView=null; S.teamDayEdit=null; S.teamDayIdx=0;
+      S.currentView='teams'; renderBottomBar(); renderMain(); break;
+    case 'team-day':
+      S.teamDayEdit=null;
+      S.currentView='teams'; renderBottomBar(); renderMain(); break;
+    case 'admin-main':
+      S.adminView='main';
+      S.currentView='admin'; renderBottomBar(); renderMain(); break;
+    case 'admin-athletes':
+      S.adminView='athletes'; S.currentView='admin'; adminGoAthletes(); break;
+    case 'routine-editor':
+      S.adminView=(S._routineEditorPrev||'routines');
+      S.currentView='admin'; renderBottomBar(); renderMain(); break;
+    case 'home':
+      goHome(); break;
+  }
 });
 
 // ── ENTER KEY FOR AUTH ────────────────────────────────────────
