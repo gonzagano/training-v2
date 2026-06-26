@@ -1122,7 +1122,7 @@ function renderMain() {
     case 'teams':    m.innerHTML=renderTeams(); break;
     case 'settings': m.innerHTML=renderSettings(); break;
     case 'admin':    m.innerHTML=renderAdmin(); break;
-    case 'evals':    m.innerHTML=renderEvals(); break;
+    case 'evals':    m.innerHTML=renderEvals(); setTimeout(drawEvalCharts,80); break;
     default:         m.innerHTML='';
   }
   // re-draw charts if needed
@@ -1898,7 +1898,7 @@ function renderTeamDetail(team) {
   if(S.teamDayEdit) return renderTeamDayEditor(team, S.teamDayEdit);
   const days=team.trainingDays||[];
   let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.teamView=null;S.teamDayEdit=null;S.teamDayIdx=0;navTo('teams')">‹</button>
+    <button class="back-btn" onclick="S.teamView=null;S.teamDayEdit=null;S.teamDayIdx=0;S.currentView='teams';renderBottomBar();renderMain()">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
       <div style="width:12px;height:12px;border-radius:50%;background:${team.color||'var(--purple)'}"></div>
       ${team.name}
@@ -2009,7 +2009,7 @@ function renderTeamDayEditor(team,{teamId,dayIdx}){
   const blocks=day.blocks||[];
   const blocksHtml=blocks.map(b=>renderTeamDayBlock(b,teamId,dayIdx)).join('');
   return`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.teamDayEdit=null;navTo('teams')">‹</button>
+    <button class="back-btn" onclick="S.teamDayEdit=null;S.currentView='teams';renderBottomBar();renderMain()">‹</button>
     <div class="team-detail-title">${team.name} — ${day.title||'Día '+(dayIdx+1)}</div>
     <button class="abtn abtn-p" onclick="saveTeamDayBlocks('${teamId}',${dayIdx})">Guardar</button>
   </div>
@@ -2086,7 +2086,7 @@ window.saveTeamDayBlocks=saveTeamDayBlocks;
 
 
 
-function openTeam(id) { S.teamView=S.teams.find(t=>t.id===id)||null; renderMain(); }
+function openTeam(id) { S.teamView=S.teams.find(t=>t.id===id)||null; S.currentView='teams'; renderBottomBar(); renderMain(); }
 window.openTeam=openTeam;
 
 function addTrainingDay(teamId) {
@@ -2277,19 +2277,21 @@ window.resetBlocks=resetBlocks;
 // ── ADMIN: ATHLETES ───────────────────────────────────────────
 async function adminGoAthletes() {
   S.adminView='athletes';
+  S.currentView='admin';
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando alumnos…</div>`;
   try {
     const snap = await getDocs(collection(db,'users'));
     S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
       .filter(u=>u.email !== ADMIN_EMAIL);
   } catch(e) { S.adminAthletes=[]; }
+  renderBottomBar();
   renderMain();
 }
 window.adminGoAthletes=adminGoAthletes;
 
 function renderAdminAthletes() {
   let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView='main';navTo('admin')">‹</button>
+    <button class="back-btn" onclick="S.adminView='main';S.currentView='admin';renderBottomBar();renderMain()">‹</button>
     <div class="team-detail-title">Alumnos</div>
   </div>`;
   if(!S.adminAthletes.length) {
@@ -2316,6 +2318,7 @@ function renderAdminAthletes() {
 
 async function adminOpenAthlete(uid) {
   S.adminView='athlete_detail';
+  S.currentView='admin';
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
   try {
     const uSnap = await getDoc(doc(db,'users',uid));
@@ -2362,7 +2365,7 @@ function renderAthleteDetail() {
   </select>`;
 
   let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView='athletes';adminGoAthletes()">‹</button>
+    <button class="back-btn" onclick="S.adminView='athletes';S.currentView='admin';adminGoAthletes()">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
       <div style="width:12px;height:12px;border-radius:50%;background:${userData.color||'var(--text3)'}"></div>
       ${userData.name||userData.email}
@@ -2483,7 +2486,7 @@ window.adminGoRoutines=adminGoRoutines;
 
 function renderAdminRoutines() {
   let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView='main';navTo('admin')">‹</button>
+    <button class="back-btn" onclick="S.adminView='main';S.currentView='admin';renderBottomBar();renderMain()">‹</button>
     <div class="team-detail-title">Rutinas</div>
     <button class="abtn abtn-p" onclick="createRoutine()">+ Nueva</button>
   </div>`;
@@ -2575,7 +2578,7 @@ function renderRoutineEditor() {
 
   return `
   <div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView=(S._routineEditorPrev||'routines');navTo('admin')">‹</button>
+    <button class="back-btn" onclick="S.adminView=(S._routineEditorPrev||'routines');S.currentView='admin';renderBottomBar();renderMain()">‹</button>
     <div class="team-detail-title" style="flex:1">${r.name}</div>
     <button class="abtn abtn-p" onclick="saveRoutineToFirestore()">Guardar</button>
   </div>
@@ -2846,316 +2849,267 @@ function getAthleteEvals(uid) {
   return S._athleteEvalsCache?.[uid] || {};
 }
 
+// ══════════════════════════════════════════════════════════════
+// ── TEST DE SALTABILIDAD ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
 function renderEvals() {
-  const view = S.evalView||'form';
-  let html = `<div class="eval-header">
-    <div class="eval-title">Evaluaciones</div>
-    <div style="display:flex;gap:6px">
-      <button class="abtn ${view==='form'?'abtn-p':''}" onclick="S.evalView='form';renderMain()">Registrar</button>
-      <button class="abtn ${view==='progress'?'abtn-p':''}" onclick="S.evalView='progress';renderMain()">Progreso</button>
-      ${S.isAdmin?`<button class="abtn ${view==='compare'?'abtn-p':''}" onclick="S.evalView='compare';renderMain()">Comparar</button>`:''}
+  const isDesktop = window.innerWidth >= 900;
+  const edata = getAthleteEvals(S.evalAthleteId||'self');
+  const view = S.evalView||'entry';
+
+  // Athlete selector (admin)
+  let athleteSel = '';
+  if(S.isAdmin && S.adminAthletes.length) {
+    const opts = [`<option value="self">Yo mismo</option>`]
+      .concat(S.adminAthletes.map(a=>`<option value="${a.uid}" ${S.evalAthleteId===a.uid?'selected':''}>${a.name||a.email}</option>`));
+    athleteSel = `<select class="eval-inp" onchange="S.evalAthleteId=this.value;renderMain()" style="cursor:pointer;max-width:220px">${opts.join('')}</select>`;
+  }
+
+  // Computed indices from last records
+  const lastOf = id => { const r=(edata[id]||[]); return r.length?r[r.length-1]:null; };
+  const lCMJ=lastOf('cmj'), lSJ=lastOf('sj'), lAbal=lastOf('abalakov');
+  const lDer=lastOf('cmj_der'), lIzq=lastOf('cmj_izq');
+  const ice  = lCMJ&&lSJ   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1)   : null;
+  const coord= lCMJ&&lAbal ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
+  const asym = lDer&&lIzq  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
+
+  let html = `<div class="page-header">
+    <div class="page-title">Test de Saltabilidad</div>
+    <div class="page-subtitle" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span>Valoración neuromuscular · Índices elásticos y coordinación</span>
+      ${athleteSel}
     </div>
   </div>`;
 
-  if(view==='form')     html += renderEvalForm();
-  if(view==='progress') html += renderEvalProgress();
-  if(view==='compare')  html += renderEvalCompare();
+  // View toggle tabs
+  html += `<div style="display:flex;gap:6px;margin-bottom:20px">
+    <button class="snav-tab ${view==='entry'?'active':''}" onclick="S.evalView='entry';renderMain()">Registrar salto</button>
+    <button class="snav-tab ${view==='history'?'active':''}" onclick="S.evalView='history';renderMain()">Historial</button>
+    <button class="snav-tab ${view==='compare'?'active':''}" onclick="S.evalView='compare';renderMain()">Comparar atletas</button>
+  </div>`;
+
+  if(view==='entry') {
+    // AMS-style: form left, metrics + chart right
+    const sec = S.evalShowSecondary;
+    if(isDesktop) html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">`;
+
+    // LEFT: Entry form
+    html += `<div>
+      <div class="wellness-card">
+        <div class="wellness-title">Entrada de datos</div>
+        <div class="wellness-sub">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+        <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${EVAL_TESTS.map(t=>`
+            <div class="eval-field ${t.id==='saltoH'||t.id==='abalakov'?'full':''}">
+              <label class="eval-lbl">${t.label} (${t.unit})</label>
+              <input class="eval-inp" type="number" step="0.1" placeholder="—" id="einp-height-${t.id}" 
+                value="${lastOf(t.id)?lastOf(t.id).height:''}" 
+                style="text-align:center;font-size:18px;font-weight:700;padding:10px">
+            </div>`).join('')}
+          <div class="eval-field full" style="margin-top:4px">
+            <label class="eval-lbl">Fecha</label>
+            <input class="eval-inp" type="date" id="einp-date-all" value="${new Date().toISOString().split('T')[0]}">
+          </div>
+          <div class="eval-field full">
+            <span class="eval-toggle-secondary" onclick="toggleEvalSecondary()">
+              ${sec?'▲ Ocultar':'▼ Mostrar'} tiempo de vuelo y velocidad
+            </span>
+          </div>
+          ${sec?`
+            <div class="eval-field"><label class="eval-lbl">T. vuelo CMJ (ms)</label><input class="eval-inp" type="number" id="einp-tof-cmj" placeholder="—"></div>
+            <div class="eval-field"><label class="eval-lbl">Vel. CMJ (m/s)</label><input class="eval-inp" type="number" id="einp-vel-cmj" placeholder="—"></div>
+          `:''}
+        </div>
+        <div style="padding:0 16px 16px">
+          <button class="wellness-submit" onclick="saveAllEvals()">Procesar salto</button>
+        </div>
+      </div>
+    </div>`;
+
+    // RIGHT: Metric cards + mini chart
+    html += `<div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="metric-card">
+          <div class="metric-card-label">ÍNDICE ELÁSTICO <span class="metric-card-icon">⚡</span></div>
+          <div class="metric-card-value" style="font-size:28px;color:${ice?'var(--accent)':'var(--text3)'}">${ice!==null?ice+'%':'-- %'}</div>
+          <div class="metric-card-sub">(CMJ−SJ)/SJ · ${lCMJ&&lSJ?`CMJ ${lCMJ.height} · SJ ${lSJ.height}`:'Sin datos'}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-label">COORD. DE BRAZOS <span class="metric-card-icon">💪</span></div>
+          <div class="metric-card-value" style="font-size:28px;color:${coord?'var(--blue)':'var(--text3)'}">${coord!==null?coord+'%':'-- %'}</div>
+          <div class="metric-card-sub">(Abal−CMJ)/CMJ · ${lCMJ&&lAbal?`Abal ${lAbal.height} · CMJ ${lCMJ.height}`:'Sin datos'}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-label">ASIMETRÍA UNILAT. <span class="metric-card-icon">↔</span></div>
+          <div class="metric-card-value" style="font-size:28px;color:${asym?parseFloat(asym)>10?'var(--red)':'var(--green)':'var(--text3)'}">${asym!==null?asym+'%':'-- %'}</div>
+          <div class="metric-card-sub">${lDer&&lIzq?`Der ${lDer.height} · Izq ${lIzq.height}`:'Sin datos'}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-label">MEJOR CMJ <span class="metric-card-icon">↑</span></div>
+          <div class="metric-card-value" style="font-size:28px">${lCMJ?lCMJ.height+' cm':'--'}</div>
+          <div class="metric-card-sub">${lCMJ?'Último registro · '+lCMJ.date:'Sin datos'}</div>
+        </div>
+      </div>
+      <!-- Mini progress chart -->
+      <div class="eval-chart-wrap">
+        <div class="eval-chart-title">Progresión CMJ y SJ</div>
+        <canvas class="eval-chart" id="chart-entry-main" height="180"></canvas>
+        ${!(edata.cmj||[]).length?`<div class="eval-no-data">Sin datos suficientes para el gráfico</div>`:''}
+      </div>
+    </div>`;
+
+    if(isDesktop) html += `</div>`;
+
+  } else if(view==='history') {
+    // History: one card per test
+    html += `<div style="${isDesktop?'display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start':''}">`;
+    EVAL_TESTS.forEach(t=>{
+      const recs = (edata[t.id]||[]).slice().reverse();
+      html += `<div class="wellness-card">
+        <div class="wellness-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>${t.label}</span>
+          ${recs.length?`<span style="font-size:13px;font-weight:700;color:var(--accent)">${recs[0].height} cm</span>`:''}
+        </div>
+        <div class="wellness-sub">${t.desc}</div>
+        <div style="padding:8px 16px">
+          ${recs.length?`
+            <div class="eval-chart-wrap" style="margin:0 0 10px">
+              <canvas class="eval-chart" id="chart-hist-${t.id}" height="100"></canvas>
+            </div>
+            ${recs.slice(0,6).map((r,i)=>`
+              <div class="eval-record">
+                <div><div class="eval-record-main">${r.height} cm</div><div class="eval-record-date">${r.date}${r.tof?' · '+r.tof+'ms':''}</div></div>
+                <span class="eval-record-del" onclick="deleteEvalRecord('${t.id}',${(edata[t.id]||[]).length-1-i})">×</span>
+              </div>`).join('')}
+          `:`<div class="eval-no-data">Sin registros aún</div>`}
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+
+  } else if(view==='compare') {
+    if(!S.isAdmin) {
+      html += `<div class="empty-state">Solo disponible para el administrador.</div>`;
+    } else {
+      const testId = S.evalCompareTest||'cmj';
+      html += `<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+        ${EVAL_TESTS.map(t=>`<button class="snav-tab ${testId===t.id?'active':''}" onclick="S.evalCompareTest='${t.id}';renderMain()">${t.label}</button>`).join('')}
+      </div>`;
+      const athletes = [{uid:'self',name:'Yo (admin)',email:''},...S.adminAthletes];
+      const data = athletes.map(a=>{
+        const ed = a.uid==='self'?S.evals:(S._athleteEvalsCache?.[a.uid]||{});
+        const recs=ed[testId]||[]; const last=recs[recs.length-1];
+        return {name:a.name||a.email||'Admin',value:last?.height||null};
+      }).filter(x=>x.value!==null);
+      html += `<div class="wellness-card">
+        <div class="wellness-title">Comparación — ${EVAL_TESTS.find(t=>t.id===testId)?.label}</div>
+        <div class="wellness-sub">Último registro por atleta</div>
+        <div style="padding:16px">
+          ${data.length?`<canvas class="eval-chart" id="chart-compare-${testId}" height="220"></canvas>`
+          :`<div class="eval-no-data">Sin datos. Cargá evaluaciones primero.</div>`}
+          <button class="abtn abtn-p" style="margin-top:12px;width:100%" onclick="loadAllAthleteEvals()">↻ Actualizar datos de alumnos</button>
+        </div>
+      </div>`;
+    }
+  }
 
   return html;
 }
 window.renderEvals=renderEvals;
 
-// ── FORMULARIO DE CARGA ───────────────────────────────────────
-function renderEvalForm() {
-  // Athlete selector (admin only)
-  let athleteSel = '';
-  if(S.isAdmin && S.adminAthletes.length) {
-    const options = [`<option value="self">Yo mismo</option>`]
-      .concat(S.adminAthletes.map(a=>`<option value="${a.uid}" ${S.evalAthleteId===a.uid?'selected':''}>${a.name||a.email}</option>`));
-    athleteSel = `<div style="margin-bottom:12px">
-      <div class="eval-lbl" style="margin-bottom:4px">Atleta</div>
-      <select class="eval-inp" onchange="S.evalAthleteId=this.value" style="cursor:pointer">
-        ${options.join('')}
-      </select>
-    </div>`;
-  }
-
-  const sec = S.evalShowSecondary;
-  const tests = EVAL_TESTS.map(t=>{
-    const edata = getAthleteEvals(S.evalAthleteId||'self');
-    const recs = (edata[t.id]||[]).slice(-3).reverse();
-    const last = recs[0];
-    return `
-    <div class="eval-section${t.id==='cmj'?' open':''}" id="evalsec-${t.id}">
-      <div class="eval-section-hdr" onclick="toggleEvalSection('${t.id}')">
-        <div class="eval-section-title">
-          <span class="eval-badge">${t.unit}</span>
-          ${t.label}
-        </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          ${last?`<span style="font-size:13px;font-weight:600;color:var(--purple)">${last.height}cm</span>`:''}
-          <span class="eval-chevron">›</span>
-        </div>
-      </div>
-      <div class="eval-section-body">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${t.desc}</div>
-        <div class="eval-form">
-          <div class="eval-field">
-            <label class="eval-lbl">Fecha</label>
-            <input class="eval-inp" type="date" id="einp-date-${t.id}" value="${new Date().toISOString().split('T')[0]}">
-          </div>
-          <div class="eval-field">
-            <label class="eval-lbl">Altura (cm)</label>
-            <input class="eval-inp" type="number" step="0.1" placeholder="0.0" id="einp-height-${t.id}">
-          </div>
-          <div class="eval-secondary ${sec?'visible':''}">
-            <div class="eval-field">
-              <label class="eval-lbl">T. vuelo (ms) <span style="opacity:.5">opt.</span></label>
-              <input class="eval-inp" type="number" step="1" placeholder="—" id="einp-tof-${t.id}">
-            </div>
-            <div class="eval-field">
-              <label class="eval-lbl">Vel. despegue (m/s) <span style="opacity:.5">opt.</span></label>
-              <input class="eval-inp" type="number" step="0.01" placeholder="—" id="einp-vel-${t.id}">
-            </div>
-          </div>
-          <span class="eval-toggle-secondary" onclick="toggleEvalSecondary()">
-            ${sec?'▲ Ocultar variables secundarias':'▼ Mostrar t. vuelo y velocidad'}
-          </span>
-          <button class="eval-submit" onclick="saveEvalRecord('${t.id}')">Guardar registro</button>
-        </div>
-        ${renderEvalCalc(t.id)}
-        ${renderEvalHistory(t.id)}
-      </div>
-    </div>`;
-  }).join('');
-
-  return athleteSel + tests;
-}
-
-function renderEvalCalc(testId) {
-  const edata = getAthleteEvals(S.evalAthleteId||'self');
-  const cmjRecs  = edata['cmj']||[];
-  const sjRecs   = edata['sj']||[];
-  const abalRecs = edata['abalakov']||[];
-  const lastCmj  = cmjRecs[cmjRecs.length-1];
-  const lastSj   = sjRecs[sjRecs.length-1];
-  const lastAbal = abalRecs[abalRecs.length-1];
-
-  if(testId==='cmj' && lastCmj && lastSj) {
-    const ice = ((lastCmj.height - lastSj.height) / lastSj.height * 100).toFixed(1);
-    return `<div class="eval-calc">
-      <div class="eval-calc-item highlight">
-        <div class="eval-calc-val">${ice}%</div>
-        <div class="eval-calc-lbl">Índice Elástico</div>
-      </div>
-      <div class="eval-calc-item">
-        <div class="eval-calc-val" style="font-size:13px;color:var(--text2)">(CMJ-SJ)/SJ</div>
-        <div class="eval-calc-lbl">CMJ ${lastCmj.height}cm · SJ ${lastSj.height}cm</div>
-      </div>
-    </div>`;
-  }
-  if(testId==='abalakov' && lastAbal && lastCmj) {
-    const coord = ((lastAbal.height - lastCmj.height) / lastCmj.height * 100).toFixed(1);
-    return `<div class="eval-calc">
-      <div class="eval-calc-item highlight">
-        <div class="eval-calc-val">${coord}%</div>
-        <div class="eval-calc-lbl">% Coord. de Brazos</div>
-      </div>
-      <div class="eval-calc-item">
-        <div class="eval-calc-val" style="font-size:13px;color:var(--text2)">(Abal-CMJ)/CMJ</div>
-        <div class="eval-calc-lbl">Abal ${lastAbal.height}cm · CMJ ${lastCmj.height}cm</div>
-      </div>
-    </div>`;
-  }
-  if((testId==='cmj'||testId==='sj'||testId==='abalakov') && (!lastCmj||!lastSj)) {
-    return `<div style="font-size:11px;color:var(--text3);margin-top:8px;font-style:italic">
-      ${!lastCmj?'Registrá CMJ para ver cálculos':''}${!lastSj?' y SJ':''}.
-    </div>`;
-  }
-  // Asymmetry for unilateral
-  if(testId==='cmj_der'||testId==='cmj_izq') {
-    const derRecs = edata['cmj_der']||[];
-    const izqRecs = edata['cmj_izq']||[];
-    const lastD = derRecs[derRecs.length-1];
-    const lastI = izqRecs[izqRecs.length-1];
-    if(lastD&&lastI) {
-      const asym = (Math.abs(lastD.height-lastI.height)/Math.max(lastD.height,lastI.height)*100).toFixed(1);
-      const dominant = lastD.height>=lastI.height?'Der.':'Izq.';
-      return `<div class="eval-calc">
-        <div class="eval-calc-item highlight">
-          <div class="eval-calc-val">${asym}%</div>
-          <div class="eval-calc-lbl">Asimetría</div>
-        </div>
-        <div class="eval-calc-item">
-          <div class="eval-calc-val" style="font-size:13px;color:var(--text2)">Dom. ${dominant}</div>
-          <div class="eval-calc-lbl">Der. ${lastD.height}cm · Izq. ${lastI.height}cm</div>
-        </div>
-      </div>`;
-    }
-  }
-  return '';
-}
-
-function renderEvalHistory(testId) {
-  const edata = getAthleteEvals(S.evalAthleteId||'self');
-  const recs = (edata[testId]||[]).slice().reverse().slice(0,8);
-  if(!recs.length) return `<div class="eval-no-data">Sin registros aún</div>`;
-  return `<div class="eval-history">
-    <div class="eval-history-title">Historial</div>
-    ${recs.map((r,i)=>`
-      <div class="eval-record">
-        <div>
-          <div class="eval-record-main">${r.height} cm</div>
-          <div class="eval-record-date">${r.date}${r.tof?` · ${r.tof}ms`:''}${r.vel?` · ${r.vel}m/s`:''}</div>
-        </div>
-        <span class="eval-record-del" onclick="deleteEvalRecord('${testId}',${(edata[testId]||[]).length-1-i})">×</span>
-      </div>`).join('')}
-  </div>`;
-}
-
-// ── PROGRESS VIEW ─────────────────────────────────────────────
-function renderEvalProgress() {
-  const edata = getAthleteEvals(S.evalAthleteId||'self');
-  let html = '';
-  if(S.isAdmin && S.adminAthletes.length) {
-    const options = [`<option value="self">Yo mismo</option>`]
-      .concat(S.adminAthletes.map(a=>`<option value="${a.uid}" ${S.evalAthleteId===a.uid?'selected':''}>${a.name||a.email}</option>`));
-    html += `<div style="margin-bottom:12px">
-      <select class="eval-inp" onchange="S.evalAthleteId=this.value;renderMain()" style="cursor:pointer">
-        ${options.join('')}
-      </select>
-    </div>`;
-  }
-  EVAL_TESTS.forEach(t=>{
-    const recs = (edata[t.id]||[]);
-    if(!recs.length) return;
-    html += `<div class="eval-chart-wrap">
-      <div class="eval-chart-title">${t.label} — Progresión</div>
-      <canvas class="eval-chart" id="chart-prog-${t.id}" height="160"></canvas>
-    </div>`;
-  });
-  if(!html.includes('canvas')) html += `<div class="empty-state">Sin datos de evaluación aún.<br><span style="font-size:12px">Registrá evaluaciones para ver la progresión.</span></div>`;
-  return html;
-}
-
-// ── COMPARE VIEW ──────────────────────────────────────────────
-function renderEvalCompare() {
-  if(!S.adminAthletes.length) return `<div class="empty-state">No hay alumnos cargados.</div>`;
-  // Which test to compare
-  const testId = S.evalCompareTest || 'cmj';
-  const testSel = EVAL_TESTS.map(t=>`
-    <button class="abtn ${testId===t.id?'abtn-p':''}" onclick="S.evalCompareTest='${t.id}';renderMain()">${t.label}</button>
-  `).join('');
-
-  // Gather last value per athlete
-  const athletes = [{uid:'self',name:'Yo (admin)',email:''},...S.adminAthletes];
-  const data = athletes.map(a=>{
-    let edata;
-    if(a.uid==='self') edata=S.evals;
-    else edata=S._athleteEvalsCache?.[a.uid]||{};
-    const recs = edata[testId]||[];
-    const last = recs[recs.length-1];
-    return { name: a.name||a.email||'Admin', value: last?.height||null };
-  }).filter(x=>x.value!==null);
-
-  return `
-  <div style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap">${testSel}</div>
-  ${data.length?`<div class="eval-chart-wrap">
-    <div class="eval-chart-title">Comparación — ${EVAL_TESTS.find(t=>t.id===testId)?.label} (último registro)</div>
-    <canvas class="eval-chart" id="chart-compare-${testId}" height="200"></canvas>
-  </div>`:`<div class="empty-state">Sin datos suficientes para comparar.<br><span style="font-size:12px">Cargá evaluaciones a tus alumnos primero.</span></div>`}
-  <div style="margin-top:10px">
-    <button class="abtn abtn-p" onclick="loadAllAthleteEvals()">↻ Actualizar datos de alumnos</button>
-  </div>`;
-}
-
-// ── CHART DRAWING ─────────────────────────────────────────────
-function drawEvalCharts() {
-  if(typeof Chart==='undefined') return;
-  const edata = getAthleteEvals(S.evalAthleteId||'self');
-  const chartColor = '#20d296';
-  const gridColor = 'rgba(32,210,150,0.08)';
-  const baseOpts = {
-    responsive:true, maintainAspectRatio:false,
-    plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#0e1512', titleColor:'#e8f5f0', bodyColor:'#7aada0', borderColor:'rgba(32,210,150,0.3)', borderWidth:1 } },
-    scales:{
-      x:{ grid:{color:gridColor}, ticks:{color:'#3d6b60',font:{size:10}} },
-      y:{ grid:{color:gridColor}, ticks:{color:'#3d6b60',font:{size:10}} }
-    }
-  };
-
-  if(S.evalView==='progress') {
-    EVAL_TESTS.forEach(t=>{
-      const recs = edata[t.id]||[];
-      if(!recs.length) return;
-      const canvas = document.getElementById(`chart-prog-${t.id}`);
-      if(!canvas) return;
-      if(S.evalChartInstances[`prog-${t.id}`]) S.evalChartInstances[`prog-${t.id}`].destroy();
-      S.evalChartInstances[`prog-${t.id}`] = new Chart(canvas, {
-        type:'line',
-        data:{
-          labels: recs.map(r=>r.date),
-          datasets:[{ data: recs.map(r=>r.height), borderColor:chartColor, backgroundColor:'rgba(32,210,150,0.08)', tension:.3, pointBackgroundColor:chartColor, pointRadius:4, fill:true }]
-        },
-        options:{...JSON.parse(JSON.stringify(baseOpts)), maintainAspectRatio:false}
-      });
-    });
-  }
-
-  if(S.evalView==='compare') {
-    const testId = S.evalCompareTest||'cmj';
-    const athletes = [{uid:'self',name:'Yo (admin)',email:''},...S.adminAthletes];
-    const data = athletes.map(a=>{
-      let evdata; if(a.uid==='self') evdata=S.evals; else evdata=S._athleteEvalsCache?.[a.uid]||{};
-      const recs=evdata[testId]||[]; const last=recs[recs.length-1];
-      return {name:a.name||a.email||'Admin',value:last?.height||null};
-    }).filter(x=>x.value!==null);
-    const canvas = document.getElementById(`chart-compare-${testId}`);
-    if(!canvas||!data.length) return;
-    const colors = data.map((_,i)=>`hsl(${160+i*30},70%,55%)`);
-    if(S.evalChartInstances[`compare-${testId}`]) S.evalChartInstances[`compare-${testId}`].destroy();
-    S.evalChartInstances[`compare-${testId}`] = new Chart(canvas, {
-      type:'bar',
-      data:{
-        labels: data.map(d=>d.name),
-        datasets:[{ data: data.map(d=>d.value), backgroundColor: colors, borderRadius:6, borderWidth:0 }]
-      },
-      options:{...JSON.parse(JSON.stringify(baseOpts)), maintainAspectRatio:false}
-    });
-  }
-}
-window.drawEvalCharts=drawEvalCharts;
-
-// ── EVAL ACTIONS ──────────────────────────────────────────────
-async function saveEvalRecord(testId) {
-  const date  = document.getElementById(`einp-date-${testId}`)?.value;
-  const hVal  = document.getElementById(`einp-height-${testId}`)?.value;
-  const tof   = document.getElementById(`einp-tof-${testId}`)?.value;
-  const vel   = document.getElementById(`einp-vel-${testId}`)?.value;
-  if(!hVal||isNaN(parseFloat(hVal))) { showToast('Ingresá la altura'); return; }
-  const rec = { date:date||new Date().toISOString().split('T')[0], height:parseFloat(hVal) };
-  if(tof)  rec.tof  = parseFloat(tof);
-  if(vel)  rec.vel  = parseFloat(vel);
-
+async function saveAllEvals() {
+  const date = document.getElementById('einp-date-all')?.value || new Date().toISOString().split('T')[0];
+  const tof  = document.getElementById('einp-tof-cmj')?.value;
+  const vel  = document.getElementById('einp-vel-cmj')?.value;
+  let saved = 0;
   const uid = S.evalAthleteId||'self';
+
+  for(const t of EVAL_TESTS) {
+    const hEl = document.getElementById(`einp-height-${t.id}`);
+    if(!hEl||!hEl.value) continue;
+    const h = parseFloat(hEl.value);
+    if(isNaN(h)||h<=0) continue;
+    const rec = {date, height:h};
+    if(t.id==='cmj') { if(tof) rec.tof=parseFloat(tof); if(vel) rec.vel=parseFloat(vel); }
+
+    if(uid==='self') {
+      if(!S.evals[t.id]) S.evals[t.id]=[];
+      S.evals[t.id].push(rec);
+    } else {
+      if(!S._athleteEvalsCache) S._athleteEvalsCache={};
+      if(!S._athleteEvalsCache[uid]) S._athleteEvalsCache[uid]={};
+      if(!S._athleteEvalsCache[uid][t.id]) S._athleteEvalsCache[uid][t.id]=[];
+      S._athleteEvalsCache[uid][t.id].push(rec);
+    }
+    saved++;
+  }
+
+  if(!saved) { showToast('Ingresá al menos un valor'); return; }
+
   if(uid==='self') {
-    if(!S.evals[testId]) S.evals[testId]=[];
-    S.evals[testId].push(rec);
     scheduleSave();
   } else {
-    // Save to athlete's personal doc
-    if(!S._athleteEvalsCache) S._athleteEvalsCache={};
-    if(!S._athleteEvalsCache[uid]) S._athleteEvalsCache[uid]={};
-    if(!S._athleteEvalsCache[uid][testId]) S._athleteEvalsCache[uid][testId]=[];
-    S._athleteEvalsCache[uid][testId].push(rec);
     try {
       await setDoc(doc(db,'personal',uid),{evals:S._athleteEvalsCache[uid]},{merge:true});
     } catch(e) { showToast('Error al guardar'); return; }
   }
-  showToast(`✓ ${testId.toUpperCase()} guardado`);
-  renderMain();
+  showToast(`✓ ${saved} test${saved!==1?'s':''} guardado${saved!==1?'s':''}`);
+  setTimeout(()=>{ if(S.currentView==='evals') { renderMain(); setTimeout(drawEvalCharts,80); }},100);
 }
-window.saveEvalRecord=saveEvalRecord;
+window.saveAllEvals=saveAllEvals;
+
+function drawEvalCharts() {
+  if(typeof Chart==='undefined') return;
+  const edata = getAthleteEvals(S.evalAthleteId||'self');
+  const gridColor='rgba(255,255,255,0.05)';
+  const baseOpts = {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#161b27',titleColor:'#f0f4ff',bodyColor:'#8899bb',borderColor:'rgba(255,255,255,0.1)',borderWidth:1} },
+    scales:{ x:{grid:{color:gridColor},ticks:{color:'#4a5a7a',font:{size:10}}}, y:{grid:{color:gridColor},ticks:{color:'#4a5a7a',font:{size:10}}} }
+  };
+
+  const mk = (canvasId, labels, datasets, type='line') => {
+    const c=document.getElementById(canvasId); if(!c) return;
+    if(S.evalChartInstances[canvasId]) S.evalChartInstances[canvasId].destroy();
+    S.evalChartInstances[canvasId]=new Chart(c,{type,data:{labels,datasets},options:{...JSON.parse(JSON.stringify(baseOpts)),maintainAspectRatio:false}});
+  };
+
+  const view = S.evalView||'entry';
+  if(view==='entry') {
+    const cmjR=edata.cmj||[], sjR=edata.sj||[];
+    const allDates=[...new Set([...cmjR.map(r=>r.date),...sjR.map(r=>r.date)])].sort();
+    if(allDates.length) {
+      mk('chart-entry-main', allDates, [
+        {label:'CMJ',data:allDates.map(d=>{const r=cmjR.find(x=>x.date===d);return r?r.height:null}),borderColor:'#e03458',backgroundColor:'rgba(224,52,88,0.08)',tension:.3,pointBackgroundColor:'#e03458',pointRadius:4,spanGaps:true,fill:true},
+        {label:'SJ', data:allDates.map(d=>{const r=sjR.find(x=>x.date===d);return r?r.height:null}),borderColor:'#4a9eff',backgroundColor:'rgba(74,158,255,0.06)',tension:.3,pointBackgroundColor:'#4a9eff',pointRadius:4,spanGaps:true},
+      ]);
+      // Show legend for this one
+      const c=document.getElementById('chart-entry-main');
+      if(c&&S.evalChartInstances['chart-entry-main']) {
+        S.evalChartInstances['chart-entry-main'].options.plugins.legend.display=true;
+        S.evalChartInstances['chart-entry-main'].update();
+      }
+    }
+  } else if(view==='history') {
+    EVAL_TESTS.forEach(t=>{
+      const recs=(edata[t.id]||[]);
+      if(recs.length<2) return;
+      mk(`chart-hist-${t.id}`,recs.map(r=>r.date),[{data:recs.map(r=>r.height),borderColor:'#e03458',backgroundColor:'rgba(224,52,88,0.08)',tension:.3,pointBackgroundColor:'#e03458',pointRadius:3,fill:true}]);
+    });
+  } else if(view==='compare') {
+    const testId=S.evalCompareTest||'cmj';
+    const athletes=[{uid:'self',name:'Yo'},...S.adminAthletes];
+    const data=athletes.map(a=>{const ed=a.uid==='self'?S.evals:(S._athleteEvalsCache?.[a.uid]||{});const recs=ed[testId]||[];const last=recs[recs.length-1];return{name:a.name||a.email||'Admin',value:last?.height||null};}).filter(x=>x.value!==null);
+    if(data.length) mk(`chart-compare-${testId}`,data.map(d=>d.name),[{data:data.map(d=>d.value),backgroundColor:data.map((_,i)=>`hsl(${220+i*25},60%,55%)`),borderRadius:6,borderWidth:0}],'bar');
+  }
+}
+window.drawEvalCharts=drawEvalCharts;
+
+function getAthleteEvals(uid) {
+  if(uid==='self') return S.evals;
+  return S._athleteEvalsCache?.[uid] || {};
+}
 
 async function deleteEvalRecord(testId, idx) {
   if(!confirm('¿Eliminar este registro?')) return;
@@ -3168,20 +3122,11 @@ async function deleteEvalRecord(testId, idx) {
       try { await setDoc(doc(db,'personal',uid),{evals:S._athleteEvalsCache[uid]},{merge:true}); } catch(e){}
     }
   }
-  renderMain();
+  renderMain(); setTimeout(drawEvalCharts,80);
 }
 window.deleteEvalRecord=deleteEvalRecord;
 
-function toggleEvalSection(id) {
-  const el = document.getElementById('evalsec-'+id);
-  if(el) el.classList.toggle('open');
-}
-window.toggleEvalSection=toggleEvalSection;
-
-function toggleEvalSecondary() {
-  S.evalShowSecondary = !S.evalShowSecondary;
-  renderMain();
-}
+function toggleEvalSecondary() { S.evalShowSecondary=!S.evalShowSecondary; renderMain(); }
 window.toggleEvalSecondary=toggleEvalSecondary;
 
 async function loadAllAthleteEvals() {
@@ -3189,13 +3134,10 @@ async function loadAllAthleteEvals() {
   showToast('Cargando datos...');
   if(!S._athleteEvalsCache) S._athleteEvalsCache={};
   for(const a of S.adminAthletes) {
-    try {
-      const snap = await getDoc(doc(db,'personal',a.uid));
-      if(snap.exists()) S._athleteEvalsCache[a.uid] = snap.data().evals||{};
-    } catch(e){}
+    try { const snap=await getDoc(doc(db,'personal',a.uid)); if(snap.exists()) S._athleteEvalsCache[a.uid]=snap.data().evals||{}; } catch(e){}
   }
   showToast('✓ Datos actualizados');
-  renderMain();
+  renderMain(); setTimeout(drawEvalCharts,80);
 }
 window.loadAllAthleteEvals=loadAllAthleteEvals;
 
