@@ -318,6 +318,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 /* ── PROFILE MENU ────────────────────────────── */
 .profile-menu{position:fixed;top:54px;right:max(12px,calc(50% - 294px));max-width:240px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);width:220px;z-index:300;overflow:hidden;opacity:0;pointer-events:none;transform:scale(.96) translateY(-8px);transform-origin:top right;transition:all .15s}
 .profile-menu.open{opacity:1;pointer-events:all;transform:scale(1) translateY(0)}
+#session-feedback-modal.open{opacity:1!important;pointer-events:all!important}
 .profile-info{padding:14px 16px;border-bottom:1px solid var(--border)}
 .profile-info-name{font-size:14px;font-weight:600}
 .profile-info-email{font-size:12px;color:var(--text3);margin-top:1px}
@@ -503,6 +504,60 @@ canvas.eval-chart{width:100%!important;display:block}
   </div>
 </div><!-- /app-inner -->
 </div><!-- /app -->
+
+<!-- SESSION FEEDBACK MODAL -->
+<div id="session-feedback-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:450;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px;backdrop-filter:blur(6px)">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);width:100%;max-width:420px;overflow:hidden">
+    <div style="padding:20px 20px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">¿Cómo estuvo la sesión?</div>
+      <div style="font-size:13px;color:var(--text3);padding-bottom:16px">Registrá tu percepción para el control de carga</div>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+      <!-- RPE -->
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <label style="font-size:13px;font-weight:600;color:var(--text2)">RPE — Esfuerzo percibido</label>
+          <span id="sf-rpe-val" style="font-size:20px;font-weight:800;color:var(--accent)">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-bottom:4px">
+          <span>Muy suave</span><span>Máximo</span>
+        </div>
+        <input type="range" id="sf-rpe" min="1" max="10" step="1" value="5"
+          style="width:100%;accent-color:var(--accent);cursor:pointer"
+          oninput="document.getElementById('sf-rpe-val').textContent=this.value;document.getElementById('sf-rpe-val').style.color=getRPEColor(+this.value)">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:2px">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+        </div>
+      </div>
+      <!-- Duration -->
+      <div>
+        <label style="font-size:13px;font-weight:600;color:var(--text2);display:block;margin-bottom:8px">Duración neta de práctica (minutos)</label>
+        <input type="number" id="sf-mins" min="1" max="300" placeholder="ej: 75"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 14px;color:var(--text);font-size:16px;outline:none;font-family:inherit"
+          oninput="updateUAPreview()">
+        <div id="sf-ua-preview" style="font-size:12px;color:var(--text3);margin-top:6px;text-align:right"></div>
+      </div>
+      <!-- How did you feel -->
+      <div>
+        <label style="font-size:13px;font-weight:600;color:var(--text2);display:block;margin-bottom:8px">¿Cómo te sentiste? <span style="font-weight:400;color:var(--text3)">(opcional)</span></label>
+        <input type="text" id="sf-feel" placeholder="ej: Bien, con energía / Pesado en piernas..."
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 14px;color:var(--text);font-size:14px;outline:none;font-family:inherit">
+      </div>
+      <!-- Injury -->
+      <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg3);border-radius:var(--rsm);cursor:pointer" onclick="document.getElementById('sf-injury').click()">
+        <input type="checkbox" id="sf-injury" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
+        <div>
+          <div style="font-size:13px;font-weight:600">Tuve una molestia o dolor</div>
+          <div style="font-size:11px;color:var(--text3)">Te llevará al mapa de molestias</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:0 20px 20px;display:flex;gap:10px">
+      <button onclick="closeSessionFeedback()" style="flex:1;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text2);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Omitir</button>
+      <button onclick="submitSessionFeedback()" style="flex:2;padding:12px;background:var(--accent);border:none;border-radius:var(--rsm);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Guardar sesión</button>
+    </div>
+  </div>
+</div>
 
 <!-- Library Sheet -->
 <div class="overlay" id="lib-overlay" onclick="closeLibIfOutside(event)">
@@ -755,7 +810,7 @@ const BODY_ZONES = {
 // ── STATE ─────────────────────────────────────────────────────
 let S = {
   user: null, isAdmin: false, userData: null,
-  currentView: 'session', currentSession: 'A', currentWeek: 1,
+  currentView: 'dashboard', currentSession: 'A', currentWeek: 1,
   startDate: new Date().toISOString().split('T')[0],
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
@@ -766,6 +821,12 @@ let S = {
   teamView: null,
   teamDayEdit: null,
   teamDayIdx: 0,
+  // ── DASHBOARD ──
+  dashAthletes: [],      // cached for dashboard
+  dashLoaded: false,
+  // ── SESSION FEEDBACK ──
+  showSessionFeedback: false,
+  feedbackSession: null, // {week, session}
   // ── EVALUATIONS ──
   evals: {},            // { athleteId: { cmj:[{date,height,tof,vel}], sj:[], abalakov:[], saltoH:[], cmj_der:[], cmj_izq:[] } }
   evalView: 'entry',    // 'entry' | 'history' | 'compare'
@@ -864,6 +925,7 @@ onAuthStateChanged(auth, async (user) => {
     const d = pSnap.data();
     if (d.videos) S.videos = d.videos;
     if (d.evals) S.evals = d.evals;
+    if (d.sessionLogs) { if(!S.history) S.history={}; S.history._sessionLogs=d.sessionLogs; }
     if (d.history) S.history = d.history;
     if (d.wellness) S.wellness = d.wellness;
     if (d.injuries) S.injuries = d.injuries;
@@ -924,7 +986,7 @@ async function saveToFirestore() {
   try {
     // Athletes with assigned routines don't save blocks (read-only from routine)
     const dataToSave = {
-      videos: S.videos, history: S.history, evals: S.evals||{},
+      videos: S.videos, history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
       wellness: S.wellness, injuries: S.injuries,
       currentWeek: S.currentWeek, startDate: S.startDate,
       updatedAt: serverTimestamp()
@@ -1015,6 +1077,7 @@ window.navTo=navTo;
 function renderBottomBar() {
   const isDesktop = window.innerWidth >= 900;
   const tabs = S.isAdmin ? [
+    {id:'dashboard',label:'Dashboard',   section:null, svg:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'},
     {id:'session',  label:'Mi Sesión',   section:null, svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
     {id:'progress', label:'Progresión',  section:'Seguimiento', svg:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'},
     {id:'wellness', label:'Wellness',    section:null, svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
@@ -1116,6 +1179,7 @@ window.selectSession = selectSession;
 function renderMain() {
   const m=document.getElementById('main');
   switch(S.currentView) {
+    case 'dashboard': m.innerHTML=renderDashboard(); setTimeout(loadDashboard,50); break;
     case 'session':  m.innerHTML=renderSession(); break;
     case 'progress': m.innerHTML=renderProgress(); break;
     case 'wellness': m.innerHTML=renderWellness(); break;
@@ -1318,9 +1382,52 @@ window.setRPE=setRPE;
 function finishSession() {
   const sd=getSD(S.currentWeek,S.currentSession);
   sd.done=true; sd.date=new Date().toISOString().split('T')[0];
-  scheduleSave(); showToast(`✓ Día ${S.currentSession} completado`); renderSubnav();
+  scheduleSave();
+  // Show session feedback modal
+  S.feedbackSession={week:S.currentWeek, session:S.currentSession};
+  openSessionFeedback();
+  renderSubnav();
 }
 window.finishSession=finishSession;
+
+function openSessionFeedback() {
+  const modal = document.getElementById('session-feedback-modal');
+  if(modal) { modal.classList.add('open'); }
+}
+window.openSessionFeedback=openSessionFeedback;
+
+function closeSessionFeedback() {
+  const modal = document.getElementById('session-feedback-modal');
+  if(modal) modal.classList.remove('open');
+}
+window.closeSessionFeedback=closeSessionFeedback;
+
+async function submitSessionFeedback() {
+  const rpe    = parseInt(document.getElementById('sf-rpe')?.value||'0');
+  const mins   = parseInt(document.getElementById('sf-mins')?.value||'0');
+  const feel   = document.getElementById('sf-feel')?.value||'';
+  const injury = document.getElementById('sf-injury')?.checked||false;
+
+  if(!rpe||!mins) { showToast('Completá RPE y duración'); return; }
+
+  const ua = rpe * mins;
+  const date = new Date().toISOString().split('T')[0];
+  const log = { date, week:S.currentWeek, session:S.currentSession, rpe, mins, ua, feel, injury };
+
+  // Save to sessionLogs
+  if(!S.history) S.history={};
+  if(!S.history._sessionLogs) S.history._sessionLogs=[];
+  S.history._sessionLogs.push(log);
+  scheduleSave();
+
+  closeSessionFeedback();
+  showToast(`✓ Sesión guardada · ${ua} UA`);
+
+  if(injury) {
+    setTimeout(()=>switchView('wellness'),600);
+  }
+}
+window.submitSessionFeedback=submitSessionFeedback;
 
 // ── ADMIN EDIT ACTIONS ────────────────────────────────────────
 function editBlockTitle(e,blockId) {
@@ -1618,7 +1725,7 @@ function renderWellness() {
       <div class="hooper-state" style="color:${stateColor}">${stateLabel}</div>
     </div>
   </div>
-  ${allFilled?`<button class="wellness-submit" onclick="submitWellness('${wKey}')">Guardar registro de hoy</button>`:''}
+  ${allFilled?`<button class="wellness-submit" onclick="submitWellness('${wKey}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar registro de hoy</button>`:''}
   </div>`;
 
   if(isDesktop) {
@@ -1707,6 +1814,27 @@ function renderInjuryList() {
     </div>`;
   }).join('')}</div>`;
 }
+
+function getRPEColor(v) {
+  if(v<=3) return '#34c97a';
+  if(v<=6) return '#f0a030';
+  if(v<=8) return '#e05030';
+  return '#e03458';
+}
+window.getRPEColor=getRPEColor;
+
+function updateUAPreview() {
+  const rpe = parseInt(document.getElementById('sf-rpe')?.value||'0');
+  const mins = parseInt(document.getElementById('sf-mins')?.value||'0');
+  const preview = document.getElementById('sf-ua-preview');
+  if(preview && rpe && mins) {
+    preview.textContent = `UA estimadas: ${rpe * mins}`;
+    preview.style.color = 'var(--accent)';
+  } else if(preview) {
+    preview.textContent = '';
+  }
+}
+window.updateUAPreview=updateUAPreview;
 
 function getHooperColor(v) {
   return `hsl(${Math.round((1-v/7)*120)},65%,45%)`;
@@ -2003,9 +2131,9 @@ function renderTeamDetail(team) {
           const exList=b.categories.flatMap(c=>c.exercises);
           return `<div class="card" style="padding:12px;margin-bottom:8px">
             <div style="font-size:12px;font-weight:600;color:var(--purple);margin-bottom:6px">${b.label} — ${b.title}</div>
-            ${exList.map(ex=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
-              <span>${ex.name}</span>
-              <span style="color:var(--text3);font-size:11px">${formatExSummary(ex)}</span>
+            ${exList.map(ex=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:13px;font-weight:500">${ex.name}</span>
+              <span style="color:var(--accent);font-size:12px;font-weight:600;background:var(--accent-dim);padding:3px 8px;border-radius:20px;white-space:nowrap">${formatExSummary(ex)||'—'}</span>
             </div>`).join('')}
           </div>`;
         }).join('');
@@ -2464,6 +2592,40 @@ function renderAthleteDetail() {
       </div>
     </div>
   </div>
+
+  <!-- Load metrics from session logs -->
+  ${(()=>{
+    const logs=personal._sessionLogs||[];
+    const m=calcLoadMetrics(logs);
+    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin datos. El atleta debe completar sesiones con feedback.</div></div>';
+    const acwrSt=getACWRStatus(m.acwr);
+    const monSt=getMonotonyStatus(m.monotony);
+    return \`<div class="admin-section">
+      <div class="admin-section-title">Control de carga interna</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0">
+        <div style="padding:14px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)">
+          <div style="font-size:22px;font-weight:800;color:\${acwrSt.color}">\${m.acwr?.toFixed(2)||'—'}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
+          <div style="font-size:11px;color:\${acwrSt.color}">\${acwrSt.label}</div>
+        </div>
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+          <div style="font-size:22px;font-weight:800">\${Math.round((m.monotony||0)*10)/10}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía</div>
+          <div style="font-size:11px;color:\${monSt.color}">\${monSt.label}</div>
+        </div>
+        <div style="padding:14px 16px;border-right:1px solid var(--border)">
+          <div style="font-size:22px;font-weight:800">\${m.acuteUA}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana</div>
+          <div style="font-size:11px;color:var(--text3)">\${m.sessions} sesiones</div>
+        </div>
+        <div style="padding:14px 16px">
+          <div style="font-size:22px;font-weight:800">\${Math.round(m.strain)}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain</div>
+          <div style="font-size:11px;color:\${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'}">\${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
+        </div>
+      </div>
+    </div>\`;
+  })()}
 
   <div class="admin-section">
     <div class="admin-section-title">Últimas sesiones completadas</div>
@@ -3126,45 +3288,96 @@ function drawEvalCharts() {
   if(typeof Chart==='undefined') return;
   const edata = getAthleteEvals(S.evalAthleteId||'self');
   const gridColor='rgba(255,255,255,0.05)';
+
+  // KEY FIX: maintainAspectRatio:true with fixed aspect ratio prevents infinite growth
   const baseOpts = {
-    responsive:true, maintainAspectRatio:false,
-    plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#161b27',titleColor:'#f0f4ff',bodyColor:'#8899bb',borderColor:'rgba(255,255,255,0.1)',borderWidth:1} },
-    scales:{ x:{grid:{color:gridColor},ticks:{color:'#4a5a7a',font:{size:10}}}, y:{grid:{color:gridColor},ticks:{color:'#4a5a7a',font:{size:10}}} }
+    responsive:true,
+    maintainAspectRatio:true,
+    aspectRatio:2.5,
+    plugins:{
+      legend:{display:false},
+      tooltip:{backgroundColor:'#161b27',titleColor:'#f0f4ff',bodyColor:'#8899bb',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
+    },
+    scales:{
+      x:{grid:{color:gridColor},ticks:{color:'#4a5a7a',font:{size:10},maxRotation:0}},
+      y:{grid:{color:gridColor},ticks:{color:'#4a5a7a',font:{size:10}},beginAtZero:false}
+    }
   };
 
-  const mk = (canvasId, labels, datasets, type='line') => {
-    const c=document.getElementById(canvasId); if(!c) return;
-    if(S.evalChartInstances[canvasId]) S.evalChartInstances[canvasId].destroy();
-    S.evalChartInstances[canvasId]=new Chart(c,{type,data:{labels,datasets},options:{...JSON.parse(JSON.stringify(baseOpts)),maintainAspectRatio:false}});
+  const mk = (canvasId, labels, datasets, type='line', extraOpts={}) => {
+    const c=document.getElementById(canvasId);
+    if(!c) return;
+    // destroy previous instance
+    if(S.evalChartInstances[canvasId]) {
+      S.evalChartInstances[canvasId].destroy();
+      delete S.evalChartInstances[canvasId];
+    }
+    const opts = {...JSON.parse(JSON.stringify(baseOpts)), ...extraOpts};
+    S.evalChartInstances[canvasId] = new Chart(c, {type, data:{labels, datasets}, options:opts});
   };
 
   const view = S.evalView||'entry';
+
   if(view==='entry') {
-    const cmjR=edata.cmj||[], sjR=edata.sj||[];
-    const allDates=[...new Set([...cmjR.map(r=>r.date),...sjR.map(r=>r.date)])].sort();
+    // Include CMJ, SJ, Abalakov in the main progress chart
+    const cmjR=edata.cmj||[], sjR=edata.sj||[], abalR=edata.abalakov||[];
+    const allDates=[...new Set([
+      ...cmjR.map(r=>r.date),
+      ...sjR.map(r=>r.date),
+      ...abalR.map(r=>r.date)
+    ])].sort();
+
     if(allDates.length) {
       mk('chart-entry-main', allDates, [
-        {label:'CMJ',data:allDates.map(d=>{const r=cmjR.find(x=>x.date===d);return r?r.height:null}),borderColor:'#e03458',backgroundColor:'rgba(224,52,88,0.08)',tension:.3,pointBackgroundColor:'#e03458',pointRadius:4,spanGaps:true,fill:true},
-        {label:'SJ', data:allDates.map(d=>{const r=sjR.find(x=>x.date===d);return r?r.height:null}),borderColor:'#4a9eff',backgroundColor:'rgba(74,158,255,0.06)',tension:.3,pointBackgroundColor:'#4a9eff',pointRadius:4,spanGaps:true},
-      ]);
-      // Show legend for this one
-      const c=document.getElementById('chart-entry-main');
-      if(c&&S.evalChartInstances['chart-entry-main']) {
-        S.evalChartInstances['chart-entry-main'].options.plugins.legend.display=true;
-        S.evalChartInstances['chart-entry-main'].update();
-      }
+        {
+          label:'CMJ',
+          data:allDates.map(d=>{ const r=cmjR.find(x=>x.date===d); return r?r.height:null; }),
+          borderColor:'#e03458', backgroundColor:'rgba(224,52,88,0.08)',
+          tension:.3, pointBackgroundColor:'#e03458', pointRadius:4, spanGaps:true, fill:false
+        },
+        {
+          label:'SJ',
+          data:allDates.map(d=>{ const r=sjR.find(x=>x.date===d); return r?r.height:null; }),
+          borderColor:'#4a9eff', backgroundColor:'rgba(74,158,255,0.06)',
+          tension:.3, pointBackgroundColor:'#4a9eff', pointRadius:4, spanGaps:true, fill:false
+        },
+        {
+          label:'Abalakov',
+          data:allDates.map(d=>{ const r=abalR.find(x=>x.date===d); return r?r.height:null; }),
+          borderColor:'#9b6fff', backgroundColor:'rgba(155,111,255,0.06)',
+          tension:.3, pointBackgroundColor:'#9b6fff', pointRadius:4, spanGaps:true, fill:false
+        },
+      ], 'line', {plugins:{legend:{display:true,labels:{color:'#8899bb',font:{size:11},boxWidth:12,padding:12}}}});
     }
+
   } else if(view==='history') {
     EVAL_TESTS.forEach(t=>{
       const recs=(edata[t.id]||[]);
-      if(recs.length<2) return;
-      mk(`chart-hist-${t.id}`,recs.map(r=>r.date),[{data:recs.map(r=>r.height),borderColor:'#e03458',backgroundColor:'rgba(224,52,88,0.08)',tension:.3,pointBackgroundColor:'#e03458',pointRadius:3,fill:true}]);
+      if(recs.length < 1) return;
+      const labels = recs.map(r=>r.date);
+      const data   = recs.map(r=>r.height);
+      mk(`chart-hist-${t.id}`, labels, [{
+        data, borderColor:'#e03458', backgroundColor:'rgba(224,52,88,0.08)',
+        tension:.3, pointBackgroundColor:'#e03458', pointRadius:4, fill:true
+      }], 'line', {aspectRatio:2.8});
     });
+
   } else if(view==='compare') {
     const testId=S.evalCompareTest||'cmj';
-    const athletes=[{uid:'self',name:'Yo'},...S.adminAthletes];
-    const data=athletes.map(a=>{const ed=a.uid==='self'?S.evals:(S._athleteEvalsCache?.[a.uid]||{});const recs=ed[testId]||[];const last=recs[recs.length-1];return{name:a.name||a.email||'Admin',value:last?.height||null};}).filter(x=>x.value!==null);
-    if(data.length) mk(`chart-compare-${testId}`,data.map(d=>d.name),[{data:data.map(d=>d.value),backgroundColor:data.map((_,i)=>`hsl(${220+i*25},60%,55%)`),borderRadius:6,borderWidth:0}],'bar');
+    const athletes=[{uid:'self',name:'Yo (admin)'},...S.adminAthletes];
+    const data=athletes.map(a=>{
+      const ed=a.uid==='self'?S.evals:(S._athleteEvalsCache?.[a.uid]||{});
+      const recs=ed[testId]||[];
+      const last=recs[recs.length-1];
+      return {name:a.name||a.email||'Admin', value:last?.height||null};
+    }).filter(x=>x.value!==null);
+
+    if(data.length) mk(`chart-compare-${testId}`,
+      data.map(d=>d.name),
+      [{data:data.map(d=>d.value), backgroundColor:data.map((_,i)=>`hsl(${220+i*30},60%,55%)`), borderRadius:6, borderWidth:0}],
+      'bar',
+      {aspectRatio:2, scales:{x:{grid:{color:gridColor},ticks:{color:'#4a5a7a'}}, y:{grid:{color:gridColor},ticks:{color:'#4a5a7a'},beginAtZero:false}}}
+    );
   }
 }
 window.drawEvalCharts=drawEvalCharts;
@@ -3205,6 +3418,299 @@ async function loadAllAthleteEvals() {
 window.loadAllAthleteEvals=loadAllAthleteEvals;
 
 // ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+// ── DASHBOARD ────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function calcLoadMetrics(sessionLogs) {
+  // sessionLogs = array of {date, week, session, rpe, mins, ua}
+  if(!sessionLogs || !sessionLogs.length) return null;
+  
+  const now = new Date();
+  const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate()-7);
+  const fourWeeksAgo = new Date(now); fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
+  
+  // Acute load: last 7 days
+  const acuteLogs = sessionLogs.filter(l=>new Date(l.date)>=weekAgo);
+  const acuteUA = acuteLogs.reduce((a,l)=>a+l.ua, 0);
+  
+  // Chronic load: average of last 4 weeks
+  const chronicLogs = sessionLogs.filter(l=>new Date(l.date)>=fourWeeksAgo);
+  // Split into 4 weeks
+  const weeklyUA = [0,0,0,0];
+  chronicLogs.forEach(l=>{
+    const daysAgo = Math.floor((now-new Date(l.date))/(1000*60*60*24));
+    const wIdx = Math.floor(daysAgo/7);
+    if(wIdx<4) weeklyUA[wIdx]+=l.ua;
+  });
+  const chronicUA = weeklyUA.reduce((a,v)=>a+v,0)/4;
+  const acwr = chronicUA>0 ? (acuteUA/chronicUA) : null;
+  
+  // Monotony: mean / stddev of daily UA in last 7 days
+  const dailyUA = {};
+  acuteLogs.forEach(l=>{ dailyUA[l.date]=(dailyUA[l.date]||0)+l.ua; });
+  const dailyVals = Object.values(dailyUA);
+  // pad with 0s for missing days
+  while(dailyVals.length<7) dailyVals.push(0);
+  const mean = dailyVals.reduce((a,v)=>a+v,0)/7;
+  const variance = dailyVals.reduce((a,v)=>a+Math.pow(v-mean,2),0)/7;
+  const stddev = Math.sqrt(variance);
+  const monotony = stddev>0 ? mean/stddev : mean>0 ? 2.5 : 0;
+  const strain = acuteUA * monotony;
+  
+  return { acuteUA, chronicUA:Math.round(chronicUA), acwr, monotony, strain, sessions:acuteLogs.length };
+}
+window.calcLoadMetrics=calcLoadMetrics;
+
+function getACWRStatus(acwr) {
+  if(acwr===null) return {label:'Sin datos',color:'var(--text3)'};
+  if(acwr<0.8)   return {label:'Subcarga',color:'var(--blue)'};
+  if(acwr<=1.3)  return {label:'Zona óptima ✓',color:'var(--green)'};
+  if(acwr<=1.5)  return {label:'Precaución',color:'var(--amber)'};
+  return {label:'Riesgo lesional ⚠',color:'var(--red)'};
+}
+
+function getMonotonyStatus(m) {
+  if(!m) return {label:'Sin datos',color:'var(--text3)'};
+  if(m<1.5) return {label:'Buena variación',color:'var(--green)'};
+  if(m<2.0) return {label:'Moderada',color:'var(--amber)'};
+  return {label:'Alta ⚠',color:'var(--red)'};
+}
+
+function renderDashboard() {
+  if(!S.isAdmin) return renderAthleteHome();
+  
+  return `<div class="page-header">
+    <div class="page-title">Dashboard</div>
+    <div class="page-subtitle">Vista general de tus atletas · ${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+  </div>
+  <div id="dashboard-content">
+    <div class="empty-state" style="padding:30px">
+      <div style="font-size:24px;margin-bottom:8px">⏳</div>
+      Cargando atletas...
+    </div>
+  </div>`;
+}
+window.renderDashboard=renderDashboard;
+
+async function loadDashboard() {
+  if(!S.isAdmin) return;
+  try {
+    const snap = await getDocs(collection(db,'users'));
+    S.dashAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
+      .filter(u=>u.email!==ADMIN_EMAIL);
+    
+    // Load personal data for each athlete (parallel)
+    const personalData = await Promise.all(
+      S.dashAthletes.map(a=>getDoc(doc(db,'personal',a.uid)))
+    );
+    S.dashAthletes.forEach((a,i)=>{
+      a._personal = personalData[i].exists() ? personalData[i].data() : {};
+    });
+    
+    S.dashLoaded = true;
+    const el = document.getElementById('dashboard-content');
+    if(el) el.innerHTML = renderDashboardContent();
+  } catch(e) {
+    const el = document.getElementById('dashboard-content');
+    if(el) el.innerHTML = `<div class="empty-state">Error cargando datos: ${e.message}</div>`;
+  }
+}
+window.loadDashboard=loadDashboard;
+
+function renderDashboardContent() {
+  const athletes = S.dashAthletes;
+  const today = new Date().toISOString().split('T')[0];
+  const isDesktop = window.innerWidth >= 900;
+  
+  // Aggregate stats
+  const totalAthletes = athletes.length;
+  const trainedToday = athletes.filter(a=>{
+    const logs = a._personal?.history?._sessionLogs||[];
+    return logs.some(l=>l.date===today);
+  }).length;
+  const wellnessToday = athletes.filter(a=>a._personal?.wellness?.[today]).length;
+  const alertAthletes = athletes.filter(a=>{
+    const logs = a._personal?.history?._sessionLogs||[];
+    const m = calcLoadMetrics(logs);
+    return m && m.acwr && m.acwr>1.5;
+  });
+
+  let html = `<div class="metric-grid" style="margin-bottom:20px">
+    <div class="metric-card">
+      <div class="metric-card-label">ATLETAS <span class="metric-card-icon">👥</span></div>
+      <div class="metric-card-value">${totalAthletes}</div>
+      <div class="metric-card-sub">registrados</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">💪</span></div>
+      <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}">${trainedToday}</div>
+      <div class="metric-card-sub">de ${totalAthletes} atletas</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">❤️</span></div>
+      <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}">${wellnessToday}</div>
+      <div class="metric-card-sub">registros enviados</div>
+    </div>
+    ${alertAthletes.length?`<div class="metric-card" style="border-color:rgba(224,52,88,0.3)">
+      <div class="metric-card-label" style="color:var(--red)">ALERTAS CARGA ⚠</div>
+      <div class="metric-card-value" style="color:var(--red)">${alertAthletes.length}</div>
+      <div class="metric-card-sub">ACWR > 1.5</div>
+    </div>`:''}
+  </div>`;
+
+  if(!athletes.length) {
+    html += `<div class="empty-state">No hay atletas registrados aún.<br><span style="font-size:12px">Cuando un atleta cree su cuenta, aparecerá aquí.</span></div>`;
+    return html;
+  }
+
+  // Athletes list with load metrics
+  if(isDesktop) html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">`;
+  
+  athletes.forEach(a=>{
+    const logs = a._personal?.history?._sessionLogs||[];
+    const metrics = calcLoadMetrics(logs);
+    const lastLog = logs.length ? logs[logs.length-1] : null;
+    const todayLog = logs.filter(l=>l.date===today);
+    const wToday = a._personal?.wellness?.[today];
+    const wScore = wToday ? HOOPER_ITEMS.reduce((acc,i)=>acc+(wToday[i.key]||0),0) : null;
+    const wAllFilled = wToday ? HOOPER_ITEMS.every(i=>wToday[i.key]) : false;
+    const acwrStatus = getACWRStatus(metrics?.acwr||null);
+    const assigned = S.routines?.find(r=>r.id===a.assignedRoutine);
+    
+    html += `<div class="wellness-card" style="cursor:pointer;border-left:3px solid ${a.color||'var(--border2)'}" onclick="adminOpenAthleteDash('${a.uid}')">
+      <div style="padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:10px;height:10px;border-radius:50%;background:${a.color||'var(--text3)'}"></div>
+            <div style="font-size:15px;font-weight:600">${a.name||a.email}</div>
+          </div>
+          <div style="font-size:11px;color:${assigned?'var(--green)':'var(--amber)'}">
+            ${assigned?'✓ '+assigned.name:'Sin rutina'}
+          </div>
+        </div>
+        
+        <!-- Today's activity -->
+        <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <div style="background:var(--bg3);border-radius:var(--rxs);padding:6px 10px;font-size:12px">
+            <span style="color:var(--text3)">Hoy: </span>
+            <span style="font-weight:600;color:${todayLog.length?'var(--green)':'var(--text3)'}">${todayLog.length?`${todayLog.reduce((a,l)=>a+l.ua,0)} UA · RPE ${todayLog[todayLog.length-1]?.rpe}`:'Sin sesión'}</span>
+          </div>
+          ${wAllFilled?`<div style="background:var(--bg3);border-radius:var(--rxs);padding:6px 10px;font-size:12px">
+            <span style="color:var(--text3)">Hooper: </span>
+            <span style="font-weight:600;color:${wScore<=16?'var(--green)':wScore<=24?'var(--amber)':'var(--red)'}">${wScore}</span>
+          </div>`:''}
+        </div>
+        
+        <!-- Load metrics row -->
+        ${metrics?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border-top:1px solid var(--border);padding-top:10px">
+          <div style="text-align:center">
+            <div style="font-size:16px;font-weight:700;color:${acwrStatus.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
+            <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">ACWR</div>
+            <div style="font-size:9px;color:${acwrStatus.color}">${acwrStatus.label}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:16px;font-weight:700">${Math.round(metrics.monotony*10)/10||'—'}</div>
+            <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Monotonía</div>
+            <div style="font-size:9px;color:${getMonotonyStatus(metrics.monotony).color}">${getMonotonyStatus(metrics.monotony).label}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:16px;font-weight:700">${metrics.acuteUA||0}</div>
+            <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">UA semana</div>
+            <div style="font-size:9px;color:var(--text3)">${metrics.sessions} sesiones</div>
+          </div>
+        </div>`:`<div style="font-size:11px;color:var(--text3);border-top:1px solid var(--border);padding-top:8px;text-align:center">Sin datos de carga aún</div>`}
+      </div>
+    </div>`;
+  });
+  
+  if(isDesktop) html += `</div>`;
+  
+  html += `<div style="text-align:center;margin-top:12px">
+    <button class="abtn" onclick="loadDashboard()" style="padding:8px 18px">↻ Actualizar</button>
+  </div>`;
+  
+  return html;
+}
+window.renderDashboardContent=renderDashboardContent;
+
+async function adminOpenAthleteDash(uid) {
+  S.adminView='athlete_detail';
+  S.currentView='admin';
+  renderBottomBar();
+  document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
+  try {
+    const uSnap=await getDoc(doc(db,'users',uid));
+    const pSnap=await getDoc(doc(db,'personal',uid));
+    S.viewingAthlete={uid,userData:uSnap.exists()?uSnap.data():{email:'—',name:'—'},personal:pSnap.exists()?pSnap.data():{}};
+  } catch(e) { S.viewingAthlete=null; }
+  renderMain();
+}
+window.adminOpenAthleteDash=adminOpenAthleteDash;
+
+// Athlete home (non-admin) — brief summary
+function renderAthleteHome() {
+  const today = new Date().toISOString().split('T')[0];
+  const logs = S.history?._sessionLogs||[];
+  const todayLogs = logs.filter(l=>l.date===today);
+  const metrics = calcLoadMetrics(logs);
+  const acwrSt = getACWRStatus(metrics?.acwr||null);
+  const hasTodayWellness = !!S.wellness[today];
+  
+  return `<div class="page-header">
+    <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.split(' ')[0]:''}! 👋</div>
+    <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+  </div>
+  
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+    <div class="metric-card" style="cursor:pointer" onclick="switchView('session')">
+      <div class="metric-card-label">HOY</div>
+      <div class="metric-card-value" style="font-size:22px">${todayLogs.length?'✓':'—'}</div>
+      <div class="metric-card-sub">${todayLogs.length?`${todayLogs.reduce((a,l)=>a+l.ua,0)} UA registradas`:'Sesión pendiente'}</div>
+    </div>
+    <div class="metric-card" style="cursor:pointer" onclick="switchView('wellness')">
+      <div class="metric-card-label">WELLNESS</div>
+      <div class="metric-card-value" style="font-size:22px">${hasTodayWellness?'✓':'—'}</div>
+      <div class="metric-card-sub">${hasTodayWellness?'Registrado hoy':'Sin registro hoy'}</div>
+    </div>
+  </div>
+  
+  ${metrics?`<div class="wellness-card" style="margin-bottom:14px">
+    <div class="wellness-title">Control de carga</div>
+    <div class="wellness-sub">Últimas 4 semanas</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:14px 0">
+      <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
+        <div style="font-size:24px;font-weight:800;color:${acwrSt.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">ACWR</div>
+        <div style="font-size:11px;color:${acwrSt.color};margin-top:2px">${acwrSt.label}</div>
+      </div>
+      <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
+        <div style="font-size:24px;font-weight:800">${Math.round((metrics.monotony||0)*10)/10}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">Monotonía</div>
+        <div style="font-size:11px;color:${getMonotonyStatus(metrics.monotony).color};margin-top:2px">${getMonotonyStatus(metrics.monotony).label}</div>
+      </div>
+      <div style="text-align:center;padding:10px">
+        <div style="font-size:24px;font-weight:800">${metrics.acuteUA}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">UA semana</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${metrics.sessions} sesiones</div>
+      </div>
+    </div>
+  </div>`:''}
+  
+  <div style="display:flex;gap:10px;margin-top:4px">
+    <button class="finish-btn" style="flex:1" onclick="switchView('session')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+      Ir a mi sesión
+    </button>
+    ${!hasTodayWellness?`<button class="finish-btn" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2)" onclick="switchView('wellness')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      Wellness
+    </button>`:''}
+  </div>`;
+}
+
+// Also add 'dashboard' to renderMain
 
 // ── PROFILE MENU ──────────────────────────────────────────────
 function toggleProfileMenu(forceClose=false) {
