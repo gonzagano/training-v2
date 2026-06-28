@@ -3193,7 +3193,7 @@ function renderEvals() {
   if(validView !== view) { S.evalView = validView; }
 
   html += `<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
-    ${evalTabs.map(t=>`<button class="snav-tab ${(validView===t.id)?'active':''}" onclick="S.evalView='${t.id}';renderMain();setTimeout(drawEvalCharts,80)">${t.label}</button>`).join('')}
+    ${evalTabs.map(t=>`<button class="snav-tab ${validView===t.id?'active':''}" onclick="switchEvalView('${t.id}')">${t.label}</button>`).join('')}
   </div>`;
 
   const activeView = validView;
@@ -3763,6 +3763,13 @@ async function deleteEvalRecord(testId, idx) {
   renderMain(); setTimeout(drawEvalCharts,80);
 }
 window.deleteEvalRecord=deleteEvalRecord;
+
+function switchEvalView(viewId) {
+  S.evalView = viewId;
+  renderMain();
+  setTimeout(drawEvalCharts, 80);
+}
+window.switchEvalView = switchEvalView;
 
 function toggleEvalChart(testId) {
   if(!(S.evalHidden instanceof Set)) S.evalHidden=new Set();
