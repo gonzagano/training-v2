@@ -7,7 +7,970 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="GG Training">
+<link rel="manifest" hre<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b1120">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GG Training">
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>GG-Training</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0b1120;
+  --bg2:#111827;
+  --bg3:#1a2438;
+  --bg4:#1f2d45;
+  --border:rgba(255,255,255,0.06);
+  --border2:rgba(255,255,255,0.11);
+  --text:#e8edf8;
+  --text2:#7a90b8;
+  --text3:#3d5070;
+  --accent:#3b7dd8;
+  --accent-dim:rgba(59,125,216,0.12);
+  --accent-dim2:rgba(59,125,216,0.06);
+  --accent-hover:#4d8fe8;
+  --green:#22c55e;  --green-dim:rgba(34,197,94,0.12);
+  --amber:#f59e0b;  --amber-dim:rgba(245,158,11,0.12);
+  --red:#ef4444;    --red-dim:rgba(239,68,68,0.12);
+  --blue:#3b7dd8;   --blue-dim:rgba(59,125,216,0.12);
+  --purple:#8b5cf6; --purple-dim:rgba(139,92,246,0.12);
+  --teal:#14b8a6;   --teal-dim:rgba(20,184,166,0.12);
+  --r:12px; --rsm:8px; --rxs:6px;
+  --sidebar-w:260px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-size:15px}
+#app{height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
+#app-inner{display:flex;flex-direction:column;flex:1;min-height:0;width:100%;max-width:600px;margin:0 auto;position:relative}
+#topbar{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:14px 18px 0;position:relative;z-index:10}
+#subnav{flex-shrink:0;display:flex;gap:6px;padding:10px 18px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
+#subnav::-webkit-scrollbar{display:none}
+#main{flex:1;overflow-y:auto;padding:16px 18px 90px;scroll-behavior:smooth}
+#bottombar{display:flex;background:var(--bg2);border-top:1px solid var(--border);position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:600px;z-index:100}
+
+@media (min-width:900px) {
+  body{background:#0a0d14}
+  #app{flex-direction:row;height:100vh;overflow:hidden}
+  #app-inner{max-width:none;flex-direction:row;flex:1}
+  #topbar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;flex-direction:column;align-items:flex-start;justify-content:flex-start;padding:28px 20px;background:var(--bg2);border-right:1px solid var(--border);z-index:200;overflow-y:auto;gap:0}
+  #subnav{display:none}
+  #bottombar{display:none}
+  #main{margin-left:var(--sidebar-w);padding:32px 40px 40px;max-width:none;overflow-y:auto;flex:1;height:100vh}
+  #week-pill{display:block!important}
+}
+
+#auth-screen{display:none;position:fixed;inset:0;background:var(--bg);z-index:500;align-items:center;justify-content:center}
+#auth-screen.visible{display:flex}
+.auth-box{width:100%;max-width:380px;padding:0 24px}
+.auth-logo{font-size:28px;font-weight:800;letter-spacing:-.03em;color:var(--text);margin-bottom:6px}
+.auth-logo span{color:var(--accent)}
+.auth-sub{font-size:14px;color:var(--text2);margin-bottom:32px}
+.auth-inp{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:12px 14px;color:var(--text);font-size:15px;outline:none;margin-bottom:10px;transition:border-color .15s;font-family:inherit}
+.auth-inp:focus{border-color:var(--accent)}
+.auth-btn{width:100%;padding:13px;background:var(--accent);border:none;border-radius:var(--rsm);color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;transition:background .15s;font-family:inherit}
+.auth-btn:hover{background:var(--accent-hover)}
+.auth-err{font-size:13px;color:var(--red);margin-top:10px;min-height:18px;text-align:center}
+.auth-switch{font-size:13px;color:var(--text2);margin-top:16px;text-align:center;cursor:pointer}
+.auth-switch span{color:var(--accent);font-weight:600}
+
+.app-logo{font-size:15px;font-weight:700;letter-spacing:-.02em;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;text-decoration:none;margin-bottom:0}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.week-pill{font-size:12px;background:var(--accent-dim);color:var(--accent);padding:4px 10px;border-radius:20px;border:1px solid rgba(59,125,216,0.25);white-space:nowrap}
+.avatar-btn{width:32px;height:32px;border-radius:50%;background:var(--accent-dim);border:1px solid rgba(59,125,216,0.3);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+.sidebar-nav{display:none}
+@media(min-width:900px){
+  .app-logo{margin-bottom:36px}
+  .topbar-right{display:none}
+  .sidebar-nav{display:flex;flex-direction:column;gap:4px;width:100%;flex:1}
+  .sidebar-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--rsm);font-size:14px;font-weight:500;color:var(--text2);cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:all .15s;font-family:inherit}
+  .sidebar-item svg{width:18px;height:18px;flex-shrink:0}
+  .sidebar-item:hover{background:var(--bg3);color:var(--text)}
+  .sidebar-item.active{background:var(--accent-dim);color:var(--accent)}
+  .sidebar-section{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:16px 12px 6px;margin-top:8px}
+  .sidebar-footer{margin-top:auto;padding-top:20px;border-top:1px solid var(--border);width:100%}
+  .sidebar-user{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--rsm);cursor:pointer;transition:background .15s}
+  .sidebar-user:hover{background:var(--bg3)}
+  .sidebar-user-av{width:32px;height:32px;border-radius:50%;background:var(--accent-dim);border:1px solid rgba(59,125,216,0.3);color:var(--accent);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .sidebar-user-info{flex:1;min-width:0}
+  .sidebar-user-name{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sidebar-user-role{font-size:11px;color:var(--text3)}
+  .desktop-week{display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rsm);padding:10px 12px;margin-bottom:12px;width:100%}
+  .desktop-week-label{font-size:13px;font-weight:600;color:var(--text)}
+  .desktop-week-sub{font-size:11px;color:var(--text3)}
+  .desktop-week-btns{display:flex;gap:4px}
+  .page-header{margin-bottom:28px}
+  .page-title{font-size:28px;font-weight:800;letter-spacing:-.02em;color:var(--text);line-height:1.2}
+  .page-subtitle{font-size:14px;color:var(--text2);margin-top:4px}
+  .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+  .metric-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px}
+  .metric-card-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+  .metric-card-value{font-size:32px;font-weight:800;color:var(--text);line-height:1}
+  .metric-card-sub{font-size:12px;color:var(--text3);margin-top:6px}
+  .metric-card-icon{opacity:.6}
+  .desktop-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .desktop-cols.single{grid-template-columns:1fr}
+  .desktop-cols.wide{grid-template-columns:2fr 1fr}
+}
+@media(min-width:900px){.metric-grid{grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}}
+
+.bb-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10px 0 14px;cursor:pointer;color:var(--text3);border:none;background:none;font-size:10px;letter-spacing:.04em;transition:color .15s;font-family:inherit}
+.bb-btn svg{width:21px;height:21px}
+.bb-btn.active{color:var(--accent)}
+
+.snav-tab{flex-shrink:0;font-size:12px;padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
+.snav-tab.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(59,125,216,0.3)}
+.snav-tab.done{border-color:rgba(52,201,122,0.3);color:var(--green)}
+
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:10px;overflow:hidden}
+@media(min-width:900px){.card{margin-bottom:0}}
+
+.block-header{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer;user-select:none;transition:background .15s}
+.block-header:hover{background:var(--bg3)}
+.block-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.05em;white-space:nowrap}
+.b1 .block-badge{background:var(--teal-dim);color:var(--teal)}
+.b2 .block-badge{background:var(--blue-dim);color:var(--blue)}
+.b3 .block-badge{background:var(--accent-dim);color:var(--accent)}
+.b4 .block-badge{background:var(--amber-dim);color:var(--amber)}
+.bx .block-badge{background:var(--bg3);color:var(--text2)}
+.block-title-wrap{flex:1;min-width:0}
+.block-title{font-size:14px;font-weight:600;cursor:text;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.block-title-inp{font-size:14px;font-weight:600;background:var(--bg3);border:1px solid var(--accent);border-radius:var(--rxs);padding:2px 8px;width:100%;color:var(--text);outline:none;display:none;font-family:inherit}
+.block-time{font-size:11px;color:var(--text3);white-space:nowrap}
+.block-chevron{color:var(--text3);font-size:18px;transition:transform .2s;flex-shrink:0}
+.block.open .block-chevron{transform:rotate(90deg)}
+.block-body{display:none;padding:0 16px 16px}
+.block.open .block-body{display:block}
+.block-note{font-size:12px;color:var(--text3);font-style:italic;margin-bottom:12px;padding:8px 10px;background:var(--bg3);border-radius:var(--rxs);border-left:2px solid var(--accent-dim)}
+.block-del{width:22px;height:22px;border-radius:50%;background:var(--red-dim);border:none;color:var(--red);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:.5;transition:opacity .15s}
+.block-del:hover{opacity:1}
+
+.cat-header{display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px}
+.cat-header:first-of-type{margin-top:0}
+.cat-label-wrap{display:flex;align-items:center;gap:6px}
+.cat-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;cursor:text}
+.cat-label-inp{font-size:10px;font-weight:700;background:var(--bg3);border:1px solid var(--accent);border-radius:3px;padding:1px 6px;color:var(--text2);outline:none;display:none;letter-spacing:.08em;text-transform:uppercase;font-family:inherit}
+.cat-del{font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border-radius:3px;border:1px solid var(--border);transition:all .15s}
+.cat-del:hover{color:var(--red);border-color:rgba(59,125,216,0.3)}
+.cat-divider{border:none;border-top:1px solid var(--border);margin:12px 0}
+
+.ex-row{display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);position:relative}
+.ex-row:last-of-type{border-bottom:none}
+.ex-check{width:20px;height:20px;border:1.5px solid var(--border2);border-radius:5px;cursor:pointer;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.ex-check.checked{background:var(--accent);border-color:var(--accent)}
+.ex-check.checked::after{content:'✓';font-size:11px;color:#fff;font-weight:700}
+.ex-main{flex:1;min-width:0}
+.ex-name-row{display:flex;align-items:center;gap:6px;margin-bottom:7px;position:relative}
+.ex-name{font-size:14px;font-weight:500;color:var(--text);cursor:pointer;flex:1;min-width:0;word-break:break-word}
+.ex-name-inp{font-size:14px;color:var(--text);background:var(--bg3);border:1px solid var(--accent);border-radius:var(--rxs);padding:3px 8px;width:100%;outline:none;display:none;font-family:inherit}
+.ex-actions{display:flex;gap:4px;flex-shrink:0}
+.ex-icon-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);cursor:pointer;color:var(--text3);font-size:11px;transition:all .15s;flex-shrink:0}
+.ex-icon-btn.has-video{background:rgba(255,0,0,0.08);border-color:rgba(255,60,60,0.25);color:#ff6b6b}
+.ex-icon-btn.del-ex:hover{background:var(--red-dim);border-color:rgba(59,125,216,0.3);color:var(--red)}
+.ex-fields{display:flex;gap:5px;flex-wrap:wrap}
+.field-box{display:flex;flex-direction:column;gap:3px}
+.field-lbl{font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em}
+.field-inp{font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;color:var(--text);width:60px;text-align:center;outline:none;transition:border-color .15s;font-family:inherit}
+.field-inp:focus{border-color:var(--accent)}
+.field-inp.load{width:72px;border-color:rgba(52,201,122,0.3)}
+.field-inp.load:focus{border-color:var(--green)}
+.field-inp.vbt{border-color:rgba(74,158,255,0.3);color:var(--blue);width:64px}
+.field-inp.vbt:focus{border-color:var(--blue)}
+
+/* Menú flotante predictivo para la biblioteca */
+.predictive-menu {
+  position:absolute;top:100%;left:0;width:100%;background:var(--bg2);border:1px solid var(--accent);
+  border-radius:var(--rxs);z-index:999;max-height:180px;overflow-y:auto;box-shadow:0 8px 16px rgba(0,0,0,0.4);
+}
+.predictive-item {
+  padding:8px 12px;font-size:13px;color:var(--text);cursor:pointer;transition:background .15s;
+}
+.predictive-item:hover { background:var(--bg3); color:#fff; }
+
+.intensity-sel{display:flex;gap:4px;align-items:center}
+.intensity-type-btn{font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;font-family:inherit}
+.intensity-type-btn.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(59,125,216,0.3)}
+
+.add-btn{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);cursor:pointer;padding:8px 2px 0;background:none;border:none;width:100%;transition:color .15s;font-family:inherit}
+.add-btn:hover{color:var(--text2)}
+.add-block-btn{width:100%;padding:13px;background:transparent;border:1px dashed var(--border2);border-radius:var(--r);color:var(--text3);font-size:13px;cursor:pointer;margin-bottom:12px;transition:all .15s;font-family:inherit}
+.add-block-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+.rpe-row{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.rpe-lbl{font-size:12px;color:var(--text2);white-space:nowrap}
+.rpe-slider{flex:1;accent-color:var(--accent)}
+.rpe-val{font-size:13px;font-weight:600;color:var(--accent);min-width:20px;text-align:center}
+.finish-btn{width:100%;padding:14px;background:var(--accent);border:none;border-radius:var(--r);color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:16px;transition:background .15s;font-family:inherit}
+.finish-btn:hover{background:var(--accent-hover)}
+.finish-btn:active{opacity:.85}
+
+.admin-section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
+.admin-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding:12px 16px 8px}
+.admin-item{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;gap:10px;border-top:1px solid var(--border)}
+.admin-item:first-of-type{border-top:none}
+.admin-item-lbl{font-size:14px;font-weight:500;color:var(--text)}
+.admin-item-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.abtn{font-size:12px;font-weight:600;padding:6px 13px;border-radius:var(--rxs);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
+.abtn:hover{background:var(--bg4);color:var(--text)}
+.abtn-p{background:var(--accent);border-color:var(--accent);color:#fff!important}
+.abtn-p:hover{background:var(--accent-hover)!important;border-color:var(--accent-hover)!important}
+.abtn-d{background:var(--red-dim);border-color:rgba(59,125,216,0.3);color:var(--red)!important}
+.abtn-d:hover{background:rgba(59,125,216,0.25)!important}
+
+.team-detail-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.team-detail-title{font-size:18px;font-weight:700;flex:1}
+.team-sport-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(59,125,216,0.2)}
+.back-btn{width:34px;height:34px;border-radius:50%;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-family:inherit}
+.back-btn:hover{background:var(--bg4);color:var(--text)}
+.team-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:15px 16px;cursor:pointer;margin-bottom:10px;transition:all .15s}
+.team-card:hover{background:var(--bg3);border-color:var(--border2)}
+.team-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.team-name{font-size:15px;font-weight:600}
+.team-meta{font-size:12px;color:var(--text3)}
+.training-day-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:10px}
+.player-note{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg3);border-radius:var(--rxs);margin-bottom:4px;font-size:13px}
+.player-note-name{font-size:11px;font-weight:600;color:var(--accent);white-space:nowrap}
+.player-note-text{color:var(--text2);flex:1;font-size:12px}
+
+.hooper-item{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-bottom:1px solid var(--border)}
+.hooper-item:last-child{border-bottom:none}
+.hooper-label{font-size:14px;font-weight:500;color:var(--text)}
+.hooper-scale{display:flex;gap:5px}
+.hooper-dot{flex:1;height:32px;border-radius:var(--rxs);border:1px solid var(--border);cursor:pointer;transition:all .15s;background:var(--bg3)}
+.hooper-dot.sel{border-color:transparent}
+.hooper-score-box{display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px}
+.hooper-score-val{font-size:40px;font-weight:800;line-height:1}
+.hooper-score-label{font-size:13px;color:var(--text2)}
+.body-zone-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;display:flex;gap:12px}
+.body-zone-svg{flex:1}
+.body-zone{cursor:pointer;transition:all .2s;fill:var(--bg3);stroke:var(--border2);stroke-width:1}
+.body-zone:hover{fill:rgba(59,125,216,0.15);stroke:var(--accent)}
+.body-zone.sel-low{fill:rgba(52,201,122,0.2);stroke:var(--green)}
+.body-zone.sel-med{fill:rgba(240,160,48,0.25);stroke:var(--amber)}
+.body-zone.sel-high{fill:rgba(239,68,68,0.2);stroke:var(--red)}
+.injury-list{padding:0}
+.injury-item{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+.injury-item:last-child{border-bottom:none}
+.injury-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.injury-info{flex:1}
+.injury-zone{font-size:13px;font-weight:500}
+.injury-pain{font-size:12px;color:var(--text3);margin-top:1px}
+.zone-detail{padding:14px;background:var(--bg3);border-radius:var(--rsm);margin-top:10px}
+.pain-scale{display:flex;gap:4px;margin:8px 0}
+.pain-btn{flex:1;height:34px;border-radius:var(--rxs);cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:12px;font-weight:600;transition:all .15s;font-family:inherit;display:flex;align-items:center;justify-content:center}
+.pain-btn:hover{background:var(--bg4);border-color:var(--accent);color:var(--text)}
+.pain-btn.p-low{background:rgba(34,197,94,0.2);border-color:var(--green);color:var(--green)}
+.pain-btn.p-med{background:rgba(245,158,11,0.2);border-color:var(--amber);color:var(--amber)}
+.pain-btn.p-high{background:rgba(239,68,68,0.2);border-color:var(--red);color:var(--red)}
+.pain-note-inp{width:100%;background:var(--bg4);border:1px solid var(--border);border-radius:var(--rxs);padding:7px 10px;color:var(--text);font-size:13px;outline:none;margin-top:8px;resize:none;font-family:inherit}
+
+.week-nav{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.week-nav-label{font-size:15px;font-weight:600;flex:1;text-align:center}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.stat-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;text-align:center}
+.stat-val{font-size:28px;font-weight:800;color:var(--text)}
+.stat-lbl{font-size:11px;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.06em}
+.session-dots{display:flex;gap:4px}
+.session-dot{width:8px;height:8px;border-radius:50%;background:var(--bg4);border:1px solid var(--border)}
+.session-dot.done{background:var(--green);border-color:var(--green)}
+.load-chart{display:flex;align-items:flex-end;gap:3px;height:60px;margin-top:8px}
+.load-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+.load-bar{width:100%;border-radius:2px 2px 0 0;background:var(--accent-dim);border:1px solid rgba(59,125,216,0.2);transition:height .3s;min-height:2px}
+.load-bar.cur{background:var(--accent);border-color:var(--accent)}
+.load-bar-label{font-size:9px;color:var(--text3);text-align:center}
+
+.profile-menu{position:fixed;top:54px;right:max(12px,calc(50% - 294px));max-width:240px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);width:220px;z-index:300;overflow:hidden;opacity:0;pointer-events:none;transform:scale(.96) translateY(-8px);transform-origin:top right;transition:all .15s}
+.profile-menu.open{opacity:1;pointer-events:all;transform:scale(1) translateY(0)}
+#session-feedback-modal.open{opacity:1!important;pointer-events:all!important}
+.profile-info{padding:14px 16px;border-bottom:1px solid var(--border)}
+.profile-info-name{font-size:14px;font-weight:600}
+.profile-info-email{font-size:12px;color:var(--text3);margin-top:1px}
+.profile-info-role{font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent);display:inline-block;margin-top:6px}
+.profile-menu-item{padding:11px 16px;font-size:14px;cursor:pointer;transition:background .15s}
+.profile-menu-item:hover{background:var(--bg3)}
+.profile-menu-item.danger{color:var(--red)}
+.profile-menu-sep{height:1px;background:var(--border)}
+
+.settings-item{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px}
+.settings-item:last-child{border-bottom:none}
+.settings-lbl{color:var(--text);font-weight:500}
+.settings-sub{font-size:12px;color:var(--text3);margin-top:2px}
+
+.lib-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .2s;backdrop-filter:blur(4px)}
+.lib-overlay.open{opacity:1;pointer-events:all}
+.lib-sheet{background:var(--bg2);border-radius:var(--r) var(--r) 0 0;width:100%;max-height:80vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s;border-top:1px solid var(--border2)}
+.lib-overlay.open .lib-sheet{transform:translateY(0)}
+.lib-header{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px;border-bottom:1px solid var(--border)}
+.lib-title{font-size:15px;font-weight:700}
+.lib-close{font-size:22px;color:var(--text3);cursor:pointer;line-height:1;padding:0 4px}
+.lib-search-wrap{padding:10px 16px;border-bottom:1px solid var(--border)}
+.lib-search{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 12px;color:var(--text);font-size:14px;outline:none;font-family:inherit}
+.lib-search:focus{border-color:var(--accent)}
+.lib-filters{display:flex;gap:6px;padding:8px 16px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);flex-shrink:0}
+.lib-filters::-webkit-scrollbar{display:none}
+.lib-filter{font-size:11px;padding:4px 11px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
+.lib-filter.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(59,125,216,0.3)}
+.lib-list{overflow-y:auto;flex:1;padding:8px 0}
+.lib-item{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;cursor:pointer;transition:background .15s;font-size:14px}
+.lib-item:hover{background:var(--bg3)}
+.lib-item-name{font-weight:500;color:var(--text)}
+.lib-item-tags{font-size:11px;color:var(--text3);margin-top:2px}
+.lib-item-add{width:26px;height:26px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit}
+.lib-new-wrap{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0}
+.lib-new-inp{flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:8px 12px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+.lib-new-btn{background:var(--accent);border:none;border-radius:var(--rsm);color:#fff;font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer;white-space:nowrap;font-family:inherit}
+
+.video-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:450;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px;backdrop-filter:blur(4px)}
+.video-modal.open{opacity:1;pointer-events:all}
+.video-modal-box{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);width:100%;max-width:400px;padding:18px}
+.video-modal-title{font-size:14px;font-weight:600;margin-bottom:10px}
+.video-url-inp{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 12px;color:var(--text);font-size:13px;outline:none;margin-bottom:10px;font-family:inherit}
+.video-url-inp:focus{border-color:var(--accent)}
+.video-preview{width:100%;border-radius:var(--rsm);margin-bottom:10px;aspect-ratio:16/9;background:var(--bg3)}
+.video-modal-btns{display:flex;gap:8px;justify-content:flex-end}
+
+.empty-state{text-align:center;padding:40px 20px;color:var(--text2);font-size:14px;line-height:1.6}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:10px 18px;font-size:13px;color:var(--text);opacity:0;transition:all .25s;z-index:999;white-space:nowrap;pointer-events:none;font-weight:500}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(min-width:900px){.toast{bottom:24px}}
+
+.eval-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.eval-title{font-size:16px;font-weight:700}
+.eval-section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:10px;overflow:hidden}
+.eval-section-hdr{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:background .15s}
+.eval-section-hdr:hover{background:var(--bg3)}
+.eval-section-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.eval-badge{font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(59,125,216,0.2)}
+.eval-section-body{padding:0 16px 16px;display:none}
+.eval-section.open .eval-section-body{display:block}
+.eval-section.open .eval-chevron{transform:rotate(90deg)}
+.eval-chevron{color:var(--text3);font-size:18px;transition:transform .2s}
+.eval-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.eval-field{display:flex;flex-direction:column;gap:4px}
+.eval-field.full{grid-column:1/-1}
+.eval-lbl{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em}
+.eval-inp{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:9px 11px;color:var(--text);font-size:14px;outline:none;width:100%;transition:border-color .15s;font-family:inherit}
+.eval-inp:focus{border-color:var(--accent)}
+.eval-secondary{display:none;grid-column:1/-1}
+.eval-secondary.visible{display:contents}
+.eval-toggle-secondary{font-size:11px;color:var(--text3);cursor:pointer;text-decoration:underline;margin-top:4px;display:inline-block;grid-column:1/-1}
+.eval-toggle-secondary:hover{color:var(--accent)}
+.eval-submit{width:100%;padding:12px;background:var(--accent);border:none;border-radius:var(--rsm);color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-top:12px;grid-column:1/-1;transition:background .15s;font-family:inherit}
+.eval-submit:hover{background:var(--accent-hover)}
+
+.chart-wrapper {
+  background:var(--bg2); border:1px solid var(--border); border-radius:var(--r); padding:16px; margin-bottom:14px;
+}
+.chart-toggle-bar {
+  display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; padding:10px 14px; background:var(--bg2); border:1px solid var(--border); border-radius:var(--rsm);
+}
+.chart-toggle-btn {
+  font-size:11px; font-weight:600; padding:5px 12px; border-radius:20px; border:1px solid var(--border2); background:var(--bg3); color:var(--text2); cursor:pointer; font-family:inherit; transition:0.15s;
+}
+.chart-toggle-btn.active {
+  background:var(--accent-dim); color:var(--accent); border-color:var(--accent);
+}
+
+.eval-history{margin-top:14px}
+.eval-history-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.eval-record{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg3);border-radius:var(--rxs);margin-bottom:6px;font-size:13px}
+.eval-record-date{font-weight:600;color:var(--text)}
+.eval-record-vals{color:var(--text2);font-size:12px}
+.eval-record-del{color:var(--red);cursor:pointer;background:none;border:none;font-size:14px;padding:0 4px}
+
+.compare-row{display:flex;gap:8px;margin-bottom:14px}
+.compare-select{flex:1;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:10px;color:var(--text);outline:none;font-family:inherit}
+</style>
+</head>
+<body>
+<div id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo">GG<span>TRAINING</span></div>
+    <div id="auth-sub" class="auth-sub">Inicia sesión para acceder al sistema</div>
+    <input type="email" id="auth-email" class="auth-inp" placeholder="Correo electrónico" autocomplete="email">
+    <input type="password" id="auth-pass" class="auth-inp" placeholder="Contraseña">
+    <button id="auth-submit" class="auth-btn">Entrar</button>
+    <div id="auth-error" class="auth-err"></div>
+    <div id="auth-switch" class="auth-switch">¿No tienes cuenta? <span>Regístrate</span></div>
+  </div>
+</div>
+<div id="app">
+  <div id="app-inner">
+    <header id="topbar">
+      <a class="app-logo" onclick="goHome()">GG <span>TRAINING</span></a>
+      <div class="topbar-right">
+        <span id="week-pill" class="week-pill" style="display:none">Semana 1</span>
+        <button id="avatar-btn" class="avatar-btn" onclick="toggleProfileMenu()">--</button>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="sidebar-section">Atleta</div>
+        <button class="sidebar-item active" data-view="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Rutina Diaria</button>
+        <button class="sidebar-item" data-view="wellness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14h-2v-2h-2v-2h2v-2h2v2h2v2h-2z"/></svg>Reporte Wellness</button>
+        <button class="sidebar-item" data-view="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Mis Estadísticas</button>
+        <button class="sidebar-item" id="side-athlete-evals-btn" data-view="athleteEvals" style="display:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Mis Evaluaciones</button>
+        <div class="sidebar-section admin-only" style="display:none">Gestión Rendimiento</div>
+        <button class="sidebar-item admin-only" data-view="teams" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Equipos y Carga</button>
+        <button class="sidebar-item admin-only" data-view="admin" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Consola Admin</button>
+        <div class="sidebar-footer">
+          <div class="desktop-week">
+            <div><div class="desktop-week-label" id="d-week-lbl">Semana 1</div><div class="desktop-week-sub">Microciclo Actual</div></div>
+            <div class="desktop-week-btns"><button class="abtn" onclick="changeGlobalWeek(-1)" style="padding:4px 8px"><</button><button class="abtn" onclick="changeGlobalWeek(1)" style="padding:4px 8px">></button></div>
+          </div>
+          <div class="sidebar-user" onclick="toggleProfileMenu()">
+            <div class="sidebar-user-av" id="s-user-av">--</div>
+            <div class="sidebar-user-info"><div class="sidebar-user-name" id="s-user-name">Cargando...</div><div class="sidebar-user-role" id="s-user-role">Deportista</div></div>
+          </div>
+        </div>
+      </nav>
+    </header>
+    <div id="profile-menu" class="profile-menu">
+      <div class="profile-info"><div class="profile-info-name" id="p-menu-name">Usuario</div><div class="profile-info-email" id="p-menu-email">email@test.com</div><div class="profile-info-role" id="p-menu-role">Atleta</div></div>
+      <div class="profile-menu-item admin-only" style="display:none" onclick="S.currentView='admin'; S.adminView='main'; toggleProfileMenu(); renderMain();">Consola Administrador</div>
+      <div class="profile-menu-item" onclick="S.currentView='settings'; toggleProfileMenu(); renderMain();">Configuración</div>
+      <div class="profile-menu-sep"></div>
+      <div class="profile-menu-item danger" onclick="handleLogout()">Cerrar Sesión</div>
+    </div>
+    <div id="subnav"></div>
+    <main id="main"></main>
+    <footer id="bottombar">
+      <button class="bb-btn active" data-view="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Entrenar</button>
+      <button class="bb-btn" data-view="wellness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14h-2v-2h-2v-2h2v-2h2v2h2v2h-2z"/></svg>Wellness</button>
+      <button class="bb-btn" data-view="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Progreso</button>
+      <button class="bb-btn" id="mobile-athlete-evals-btn" data-view="athleteEvals" style="display:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Saltos</button>
+      <button class="bb-btn admin-only" data-view="teams" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Equipos</button>
+    </footer>
+  </div>
+</div>
+<div id="lib-overlay" class="lib-overlay" onclick="closeLibrary()">
+  <div class="lib-sheet" onclick="event.stopPropagation()">
+    <div class="lib-header"><div class="lib-title">Biblioteca de Ejercicios</div><div class="lib-close" onclick="closeLibrary()">&times;</div></div>
+    <div class="lib-search-wrap"><input type="text" id="lib-search" class="lib-search" placeholder="Buscar ejercicio por nombre o patrón..." oninput="libRenderList()"></div>
+    <div class="lib-filters" id="lib-filters"></div>
+    <div class="lib-list" id="lib-list"></div>
+    <div class="lib-new-wrap"><input type="text" id="lib-new-name" class="lib-new-inp" placeholder="Nuevo ejercicio..."><button class="lib-new-btn" onclick="libCreateExercise()">Añadir</button></div>
+  </div>
+</div>
+<div id="video-modal" class="video-modal">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="video-modal-title">Vídeo Referencial</div>
+    <input type="text" id="video-url-inp" class="video-url-inp" placeholder="Pegar URL de YouTube o Vimeo">
+    <div id="video-preview-container"></div>
+    <div class="video-modal-btns"><button class="abtn" onclick="closeVideoModal()">Cancelar</button><button class="abtn abtn-p" onclick="saveVideoUrl()">Guardar</button></div>
+  </div>
+</div>
+<div id="toast" class="toast">Acción completada</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, getDocs, collection, addDoc, updateDoc, deleteDoc, query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAsC2N_X3DKAe554nCRE1MNax8V-w_FWl7fvt",
+  authDomain: "nvrtmkdmfupaymmocetn.firebaseapp.com",
+  projectId: "nvrtmkdmfupaymmocetn",
+  storageBucket: "nvrtmkdmfupaymmocetn.appspot.com",
+  messagingSenderId: "389274021204",
+  appId: "1:389274021204:web:8c5b6ae5cf8f4c29472e38"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// ESTADO GLOBAL DE APLICACIÓN ( AMS PRO DESIGN )
+const S = {
+  user: null,
+  role: 'athlete',
+  athleteData: null,
+  currentView: 'home',
+  currentDayIdx: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
+  currentWeek: 1,
+  adminView: 'main',
+  teams: [],
+  athletes: [],
+  exercises: [],
+  routines: {},
+  athleteRoutines: {},
+  athleteLogs: {},
+  athleteWellness: {},
+  athleteEvals: [],
+  selectedTeam: null,
+  selectedAthlete: null,
+  teamView: null,
+  teamDayEdit: null,
+  teamDayIdx: 0,
+  activeLibCategory: 'Todos',
+  activeLibExRow: null,
+  activeVideoExRow: null,
+  visibleCharts: { abs: true, cea: true, iub: true, lsi: true },
+  chartsInstances: {}
+};
+
+const DAYS = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const CATEGORIES = ['Fuerza','Metabólico','Core','Preventivo','Saltabilidad','Lanzamientos','Todos'];
+
+// INICIALIZADOR DE PRODUCCIÓN ( Lector estricto de la nube )
+function initApp() {
+  onSnapshot(collection(db, "teams"), (snap) => {
+    S.teams = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    if(S.currentView==='teams') renderMain();
+  });
+
+  onSnapshot(collection(db, "users"), (snap) => {
+    S.athletes = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(u => u.role==='athlete');
+    if(S.currentView==='admin' && S.adminView==='athletes') adminGoAthletes();
+  });
+
+  onSnapshot(collection(db, "exercises"), (snap) => {
+    S.exercises = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  });
+
+  onSnapshot(collection(db, "routines"), (snap) => {
+    S.routines = {};
+    snap.docs.forEach(d => { S.routines[d.id] = d.data(); });
+    if(S.role==='admin') renderMain();
+  });
+}
+
+// CONTROL DE AUTENTICACIÓN
+onAuthStateChanged(auth, async (u) => {
+  if (u) {
+    S.user = u;
+    const uDoc = await getDoc(doc(db, "users", u.uid));
+    if (uDoc.exists()) {
+      const uData = uDoc.data();
+      S.role = uData.role || 'athlete';
+      S.athleteData = uData;
+      S.currentWeek = uData.currentWeek || 1;
+    } else {
+      S.role = 'athlete';
+      S.athleteData = { name: u.email, teamId:'' };
+    }
+    setupPermissions();
+    initApp();
+    loadAthleteData();
+    document.getElementById('auth-screen').classList.remove('visible');
+    goHome();
+  } else {
+    S.user = null;
+    document.getElementById('auth-screen').classList.add('visible');
+  }
+});
+
+function setupPermissions() {
+  const adminEls = document.querySelectorAll('.admin-only');
+  adminEls.forEach(el => el.style.display = S.role==='admin' ? 'flex' : 'none');
+  const hasEvalAccess = (S.role==='admin' || S.athleteData?.hasEvalAccess);
+  const mobileEval = document.getElementById('mobile-athlete-evals-btn');
+  const sideEval = document.getElementById('side-athlete-evals-btn');
+  if(mobileEval) mobileEval.style.display = hasEvalAccess ? 'flex' : 'none';
+  if(sideEval) sideEval.style.display = hasEvalAccess ? 'flex' : 'none';
+  
+  const av = id('avatar-btn'); if(av) av.innerText = S.role==='admin'?'AD':'AT';
+  const sav = id('s-user-av'); if(sav) sav.innerText = S.role==='admin'?'AD':'AT';
+  const sname = id('s-user-name'); if(sname) sname.innerText = S.role==='admin'?'Administrador':(S.athleteData?.name||'Atleta');
+  const srole = id('s-user-role'); if(srole) srole.innerText = S.role==='admin'?'Head Coach':'Deportista';
+}
+
+async function loadAthleteData() {
+  if(!S.user) return;
+  onSnapshot(doc(db, "users", S.user.uid), (d) => {
+    if(d.exists()) { S.currentWeek = d.data().currentWeek || 1; id('week-pill').innerText=`Semana ${S.currentWeek}`; id('d-week-lbl').innerText=`Semana ${S.currentWeek}`; }
+  });
+  onSnapshot(query(collection(db, "athlete_logs"), where("athleteId","==",S.user.uid)), (snap) => {
+    S.athleteRoutines = {}; S.athleteLogs = {};
+    snap.docs.forEach(d => { const data=d.data(); if(data.type==='routine_day') { const k=`W${data.week}_D${data.dayIdx}`; S.athleteRoutines[k]=data.routine; S.athleteLogs[k]=data.log; } });
+    if(S.currentView==='home' || S.currentView==='stats') renderMain();
+  });
+  onSnapshot(query(collection(db, "wellness"), where("athleteId","==",S.user.uid)), (snap) => {
+    S.athleteWellness = {}; snap.docs.forEach(d => { const data=d.data(); S.athleteWellness[data.date] = data; });
+    if(S.currentView==='wellness' || S.currentView==='stats') renderMain();
+  });
+  onSnapshot(query(collection(db, "evaluaciones"), where("athleteId","==",S.user.uid), orderBy("date","asc")), (snap) => {
+    S.athleteEvals = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    if(S.currentView==='athleteEvals') renderMain();
+  });
+}
+
+// ROUTER PRINCIPAL DE CONTROL DE VISTAS
+function renderMain() {
+  const m = id('main'); m.innerHTML = '';
+  switch(S.currentView) {
+    case 'home': renderAthleteHome(m); break;
+    case 'wellness': renderWellness(m); break;
+    case 'stats': renderStats(m); break;
+    case 'athleteEvals': renderAthleteEvaluationsView(m); break;
+    case 'teams': renderTeamsView(m); break;
+    case 'admin': renderAdminView(m); break;
+    case 'settings': m.innerHTML=`<div class="page-header"><h1 class="page-title">Configuración</h1></div><div class="card"><div class="settings-item"><span class="settings-lbl">ID de Usuario</span><span class="settings-sub">${S.user?.uid}</span></div></div>`; break;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// APARTADO: BIBLIOTECA DE EJERCICIOS ( MOTOR PREDICTIVO )
+// ──────────────────────────────────────────────────────────────
+window.openLibrary = function(rowId) {
+  S.activeLibExRow = rowId;
+  id('lib-overlay').classList.add('open');
+  libRenderFilters();
+  libRenderList();
+}
+window.closeLibrary = function() { id('lib-overlay').classList.remove('open'); }
+
+function libRenderFilters() {
+  const f = id('lib-filters'); f.innerHTML = '';
+  CATEGORIES.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = `lib-filter ${S.activeLibCategory===c?'active':''}`;
+    btn.innerText = c;
+    btn.onclick = () => { S.activeLibCategory=c; libRenderFilters(); libRenderList(); };
+    f.appendChild(btn);
+  });
+}
+
+window.libRenderList = function() {
+  const container = id('lib-list'); container.innerHTML = '';
+  const q = id('lib-search').value.toLowerCase();
+  let filtered = S.exercises;
+  if(S.activeLibCategory !== 'Todos') filtered = filtered.filter(e => e.category === S.activeLibCategory);
+  if(q) filtered = filtered.filter(e => e.name.toLowerCase().includes(q));
+
+  if(filtered.length === 0) { container.innerHTML = '<div class="empty-state">No se hallaron ejercicios.</div>'; return; }
+  filtered.forEach(ex => {
+    const item = document.createElement('div');
+    item.className = 'lib-item';
+    item.innerHTML = `<div><div class="lib-item-name">${ex.name}</div><div class="lib-item-tags">${ex.category}</div></div><button class="lib-item-add">+</button>`;
+    item.onclick = () => selectExerciseFromLibrary(ex);
+    container.appendChild(item);
+  });
+}
+
+async function libCreateExercise() {
+  const inp = id('lib-new-name'); const name = inp.value.trim(); if(!name) return;
+  const cat = S.activeLibCategory === 'Todos' ? 'Fuerza' : S.activeLibCategory;
+  await addDoc(collection(db, "exercises"), { name, category: cat, videoUrl:'' });
+  inp.value = ''; showToast("Ejercicio creado e indexado.");
+}
+
+function selectExerciseFromLibrary(ex) {
+  const row = document.getElementById(S.activeLibExRow);
+  if(row) {
+    const titleSpan = row.querySelector('.ex-name');
+    const titleInp = row.querySelector('.ex-name-inp');
+    if(titleSpan && titleInp) { titleSpan.innerText = ex.name; titleInp.value = ex.name; titleInp.dispatchEvent(new Event('change')); }
+    if(ex.videoUrl) { const vBtn = row.querySelector('.video-btn'); if(vBtn) vBtn.classList.add('has-video'); }
+  }
+  closeLibrary();
+}
+
+// INYECTOR DE INPUT PREDICTIVO EN LA PLANIFICACIÓN DIARIA
+window.attachPredictiveSearch = function(inputEl, predictiveContainerId) {
+  inputEl.addEventListener('input', () => {
+    const queryStr = inputEl.value.toLowerCase().trim();
+    let container = document.getElementById(predictiveContainerId);
+    if(!container) {
+      container = document.createElement('div'); container.id = predictiveContainerId; container.className = 'predictive-menu';
+      inputEl.parentNode.appendChild(container);
+    }
+    container.innerHTML = '';
+    if(!queryStr) { container.remove(); return; }
+    const matches = S.exercises.filter(e => e.name.toLowerCase().includes(queryStr)).slice(0, 5);
+    if(matches.length === 0) { container.remove(); return; }
+    matches.forEach(ex => {
+      const div = document.createElement('div'); div.className = 'predictive-item'; div.innerText = ex.name;
+      div.onclick = () => {
+        inputEl.value = ex.name; inputEl.dispatchEvent(new Event('change'));
+        const row = inputEl.closest('.ex-row');
+        if(row && ex.videoUrl) { const vBtn = row.querySelector('.video-btn'); if(vBtn) vBtn.classList.add('has-video'); }
+        container.remove();
+      };
+      container.appendChild(div);
+    });
+  });
+  document.addEventListener('click', (e) => { if(!inputEl.contains(e.target)) { const c = document.getElementById(predictiveContainerId); if(c) c.remove(); } });
+}
+
+// ──────────────────────────────────────────────────────────────
+// APARTADO: EVALUACIONES ( GESTIÓN RIGUROSA DE GRÁFICOS )
+// ──────────────────────────────────────────────────────────────
+function renderAthleteEvaluationsView(container) {
+  container.innerHTML = `
+    <div class="page-header"><h1 class="page-title">Historial Neuromuscular</h1><p class="page-subtitle">Monitoreo de Saltabilidad y Asimetrías Coeficientes</p></div>
+    <div class="chart-toggle-bar">
+      <button class="chart-toggle-btn ${S.visibleCharts.abs?'active':''}" onclick="toggleChartVisibility('abs')">Alturas Absolutas</button>
+      <button class="chart-toggle-btn ${S.visibleCharts.cea?'active':''}" onclick="toggleChartVisibility('cea')">Eficiencia CEA (%)</button>
+      <button class="chart-toggle-btn ${S.visibleCharts.iub?'active':''}" onclick="toggleChartVisibility('iub')">Uso de Brazos (%)</button>
+      <button class="chart-toggle-btn ${S.visibleCharts.lsi?'active':''}" onclick="toggleChartVisibility('lsi')">Asimetría LSI (%)</button>
+    </div>
+    <div id="charts-stack"></div>
+    <div class="eval-history"><div class="eval-history-title">Registros Pasados</div><div id="eval-history-list"></div></div>`;
+  renderAthleteEvalsContent();
+}
+
+window.toggleChartVisibility = function(chartKey) {
+  S.visibleCharts[chartKey] = !S.visibleCharts[chartKey];
+  renderAthleteEvalsContent();
+}
+
+function renderAthleteEvalsContent() {
+  const stack = id('charts-stack'); if(!stack) return; stack.innerHTML = '';
+  const listCont = id('eval-history-list'); if(listCont) listCont.innerHTML = '';
+  const evals = S.athleteEvals || [];
+
+  if(evals.length === 0) { stack.innerHTML = '<div class="empty-state">No se registran evaluaciones neuromusculares guardadas.</div>'; return; }
+  
+  // Normalización estricta de orden cronológico
+  const sortedEvals = [...evals].sort((a,b) => new Date(a.date) - new Date(b.date));
+  const labels = sortedEvals.map(e => { const d = new Date(e.date); return isNaN(d.getTime()) ? e.date : d.toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit'}); });
+
+  // 1. Gráfico Alturas Absolutas (SJ, CMJ, ABK)
+  if(S.visibleCharts.abs) {
+    const wrapper = document.createElement('div'); wrapper.className = 'chart-wrapper'; wrapper.innerHTML = `<h3 class="eval-lbl" style="margin-bottom:8px">Alturas Absolutas (cm)</h3><canvas id="chart-abs"></canvas>`;
+    stack.appendChild(wrapper);
+    const datasets = [
+      { label:'Squat Jump', data: sortedEvals.map(e=>e.sj_altura), borderColor:'#14b8a6', backgroundColor:'transparent', borderWidth:2, tension:0.15 },
+      { label:'Countermovement', data: sortedEvals.map(e=>e.cmj_altura), borderColor:'#3b7dd8', backgroundColor:'transparent', borderWidth:2, tension:0.15 },
+      { label:'Abalakov', data: sortedEvals.map(e=>e.abalakov_altura), borderColor:'#8b5cf6', backgroundColor:'transparent', borderWidth:2, tension:0.15 }
+    ];
+    buildChart('chart-abs', labels, datasets);
+  }
+
+  // 2. Gráfico CEA (Déficit Elástico) vs Media del Equipo
+  if(S.visibleCharts.cea) {
+    const wrapper = document.createElement('div'); wrapper.className = 'chart-wrapper'; wrapper.innerHTML = `<h3 class="eval-lbl" style="margin-bottom:8px">Déficit Elástico CEA (%)</h3><canvas id="chart-cea"></canvas>`;
+    stack.appendChild(wrapper);
+    const datasets = [{ label:'Tu CEA', data: sortedEvals.map(e=>e.deficit_elastico), borderColor:'#22c55e', backgroundColor:'transparent', borderWidth:2.5, tension:0.15 }];
+    buildChart('chart-cea', labels, datasets);
+  }
+
+  // 3. Gráfico IUB (Índice de Utilización de Brazos)
+  if(S.visibleCharts.iub) {
+    const wrapper = document.createElement('div'); wrapper.className = 'chart-wrapper'; wrapper.innerHTML = `<h3 class="eval-lbl" style="margin-bottom:8px">Índice Utilización de Brazos (%)</h3><canvas id="chart-iub"></canvas>`;
+    stack.appendChild(wrapper);
+    const datasets = [{ label:'Aprovechamiento Brazos', data: sortedEvals.map(e=>e.utilizacion_brazos), borderColor:'#f59e0b', backgroundColor:'transparent', borderWidth:2, tension:0.15 }];
+    buildChart('chart-iub', labels, datasets);
+  }
+
+  // 4. Gráfico Asimetría Lateral LSI
+  if(S.visibleCharts.lsi) {
+    const wrapper = document.createElement('div'); wrapper.className = 'chart-wrapper'; wrapper.innerHTML = `<h3 class="eval-lbl" style="margin-bottom:8px">Déficit Asimetría Unipedal (%)</h3><canvas id="chart-lsi"></canvas>`;
+    stack.appendChild(wrapper);
+    const datasets = [{ label:'Asimetría LSI', data: sortedEvals.map(e=>e.asimetria_index), borderColor:'#ef4444', backgroundColor:'transparent', borderWidth:2, tension:0.15 }];
+    buildChart('chart-lsi', labels, datasets);
+  }
+
+  // Renderizado del bloque de lista inferior
+  if(listCont) {
+    [...sortedEvals].reverse().forEach(rec => {
+      const item = document.createElement('div'); item.className = 'eval-record';
+      item.innerHTML = `<div class="eval-record-date">${rec.date}</div><div class="eval-record-vals">CMJ: ${rec.cmj_altura||0}cm | SJ: ${rec.sj_altura||0}cm | ABK: ${rec.abalakov_altura||0}cm | Asim: ${rec.asimetria_index||0}%</div>`;
+      listCont.appendChild(item);
+    });
+  }
+}
+
+function buildChart(canvasId, labels, datasets) {
+  const ctx = document.getElementById(canvasId); if(!ctx) return;
+  if(S.chartsInstances[canvasId]) S.chartsInstances[canvasId].destroy();
+  S.chartsInstances[canvasId] = new Chart(ctx, {
+    type:'line',
+    data: { labels, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: { legend: { labels: { color:'#7a90b8', font:{ family:'Inter', size:11 } } } },
+      scales: {
+        x: { grid: { color:'rgba(255,255,255,0.04)' }, ticks: { color:'#7a90b8' } },
+        y: { grid: { color:'rgba(255,255,255,0.04)' }, ticks: { color:'#7a90b8' } }
+      }
+    }
+  });
+}
+
+// CONSOLA INTEGRAL DEL ADMINISTRADOR ( EVALUACIONES Y CORRELACIONES MULTI-ATLETA )
+function adminRenderEvaluationsSection(dom) {
+  dom.innerHTML = `
+    <div class="page-header"><button class="back-btn" data-back="admin-main" style="margin-bottom:12px">&larr;</button><h1 class="page-title">Módulo de Saltabilidad</h1><p class="page-subtitle">Ingreso Clínico de Datos y Comparación de Vectores</p></div>
+    <div class="eval-section open">
+      <div class="eval-section-hdr" onclick="this.parentNode.classList.toggle('open')"><div class="eval-section-title">Registrar Nuevo Testeo</div><div class="eval-chevron">&rsaquo;</div></div>
+      <div class="eval-section-body">
+        <div class="compare-row" style="margin-top:10px">
+          <select id="eval-athlete-select" class="compare-select"><option value="">Seleccionar Deportista...</option>${S.athletes.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select>
+          <input type="date" id="eval-date" class="eval-inp" style="width:140px;" value="${new Date().toISOString().split('T')[0]}">
+        </div>
+        <div class="eval-form">
+          <div class="eval-field"><label class="eval-lbl">Squat Jump (SJ) - cm</label><input type="number" id="ev-sj" class="eval-inp" step="0.1" oninput="calculateLiveIndices()"></div>
+          <div class="eval-field"><label class="eval-lbl">Countermovement (CMJ) - cm</label><input type="number" id="ev-cmj" class="eval-inp" step="0.1" oninput="calculateLiveIndices()"></div>
+          <div class="eval-field"><label class="eval-lbl">Abalakov (ABK) - cm</label><input type="number" id="ev-abk" class="eval-inp" step="0.1" oninput="calculateLiveIndices()"></div>
+          <div class="eval-field"><label class="eval-lbl">Asimetría Unipedal (LSI) - %</label><input type="number" id="ev-lsi" class="eval-inp" step="0.1"></div>
+          <div class="eval-calc full">
+            <div class="eval-calc-item"><div class="eval-calc-val" id="live-cea">0.0%</div><div class="eval-calc-lbl">Déficit Elástico</div></div>
+            <div class="eval-calc-item"><div class="eval-calc-val" id="live-iub">0.0%</div><div class="eval-calc-lbl">Aprovechamiento Brazos</div></div>
+          </div>
+          <button class="eval-submit" onclick="adminSubmitEvaluation()">Guardar Testeo Oficial</button>
+        </div>
+      </div>
+    </div>
+    <div class="eval-section open" style="margin-top:14px;">
+      <div class="eval-section-hdr" onclick="this.parentNode.classList.toggle('open')"><div class="eval-section-title">Comparar Deportistas en Coeficiente Dinámico</div></div>
+      <div class="eval-section-body">
+        <div class="compare-row" style="margin-top:10px">
+          <select id="comp-a1" class="compare-select"><option value="">Atleta A...</option>${S.athletes.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select>
+          <select id="comp-a2" class="compare-select"><option value="">Atleta B...</option>${S.athletes.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select>
+          <button class="abtn abtn-p" onclick="adminExecuteComparison()">Analizar</button>
+        </div>
+        <div class="chart-wrapper" style="height:250px;"><canvas id="adminCompareChart"></canvas></div>
+      </div>
+    </div>`;
+}
+
+window.calculateLiveIndices = function() {
+  const sj = parseFloat(id('ev-sj').value) || 0;
+  const cmj = parseFloat(id('ev-cmj').value) || 0;
+  const abk = parseFloat(id('ev-abk').value) || 0;
+  
+  if(sj > 0 && cmj > 0) { id('live-cea').innerText = (((cmj - sj) / sj) * 100).toFixed(1) + '%'; }
+  if(cmj > 0 && abk > 0) { id('live-iub').innerText = (((abk - cmj) / cmj) * 100).toFixed(1) + '%'; }
+}
+
+async function adminSubmitEvaluation() {
+  const athleteId = id('eval-athlete-select').value;
+  const date = id('eval-date').value;
+  const sj = parseFloat(id('ev-sj').value) || 0;
+  const cmj = parseFloat(id('ev-cmj').value) || 0;
+  const abk = parseFloat(id('ev-abk').value) || 0;
+  const asimetria = parseFloat(id('ev-lsi').value) || 0;
+
+  if(!athleteId || !date) { alert("Falta seleccionar el deportista o fijar la fecha cronológica."); return; }
+  
+  const deficit = sj > 0 ? ((cmj - sj) / sj) * 100 : 0;
+  const arms = cmj > 0 ? ((abk - cmj) / cmj) * 100 : 0;
+
+  await addDoc(collection(db, "evaluaciones"), {
+    athleteId, date, sj_altura:sj, cmj_altura:cmj, abalakov_altura:abk,
+    deficit_elastico: parseFloat(deficit.toFixed(1)),
+    utilizacion_brazos: parseFloat(arms.toFixed(1)),
+    asimetria_index: asimetria
+  });
+
+  id('ev-sj').value=''; id('ev-cmj').value=''; id('ev-abk').value=''; id('ev-lsi').value='';
+  showToast("Evaluación neuromuscular inyectada con éxito.");
+}
+
+window.adminExecuteComparison = async function() {
+  const id1 = id('comp-a1').value; const id2 = id('comp-a2').value;
+  if(!id1 || !id2) return;
+
+  const snap1 = await getDocs(query(collection(db, "evaluaciones"), where("athleteId","==",id1), orderBy("date","asc")));
+  const snap2 = await getDocs(query(collection(db, "evaluaciones"), where("athleteId","==",id2), orderBy("date","asc")));
+
+  const ev1 = snap1.docs.map(d => d.data()); const ev2 = snap2.docs.map(d => d.data());
+  const datesSet = new Set([...ev1.map(e=>e.date), ...ev2.map(e=>e.date)]);
+  const labels = [...datesSet].sort();
+
+  const dataA1 = labels.map(l => { const found = ev1.find(e=>e.date===l); return found ? found.cmj_altura : null; });
+  const dataA2 = labels.map(l => { const found = ev2.find(e=>e.date===l); return found ? found.cmj_altura : null; });
+
+  const ctx = id('adminCompareChart');
+  if(S.chartsInstances['adminCompareChart']) S.chartsInstances['adminCompareChart'].destroy();
+  S.chartsInstances['adminCompareChart'] = new Chart(ctx, {
+    type:'line',
+    data: {
+      labels,
+      datasets: [
+        { label: id('comp-a1').options[id('comp-a1').selectedIndex].text, data: dataA1, borderColor:'#3b7dd8', backgroundColor:'transparent', borderWidth:2 },
+        { label: id('comp-a2').options[id('comp-a2').selectedIndex].text, data: dataA2, borderColor:'#ef4444', backgroundColor:'transparent', borderWidth:2 }
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:false }
+  });
+}
+
+// CONTROL DE ELIMINACIONES ABSOLUTAS EN LA NUBE ( FIN DE REAPARICIONES )
+window.adminDeleteTeam = async function(teamId) {
+  if(!confirm("¿Seguro que deseas eliminar este equipo por completo? Esto limpiará su registro de la nube.")) return;
+  await deleteDoc(doc(db, "teams", teamId));
+  showToast("Equipo borrado definitivamente de la nube.");
+  S.currentView = 'teams'; renderMain();
+}
+
+// RE-DIRECCIONAMIENTO AUXILIAR DE INTERFAZ INTEGRAL
+function goHome() { S.currentView='home'; renderBottomBar(); renderMain(); }
+function id(str) { return document.getElementById(str); }
+function showToast(txt) { const t=id('toast'); if(t) { t.innerText=txt; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); } }
+
+// CONFIGURACIÓN ASOCIATIVA DE CLICS ADICIONALES DE BOTONERAS
+document.querySelectorAll('[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-view]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    S.currentView = btn.getAttribute('data-view');
+    renderMain();
+  });
+});
+
+window.changeGlobalWeek = async function(val) {
+  let newW = S.currentWeek + val; if(newW < 1) newW = 1;
+  S.currentWeek = newW;
+  if(S.user) { await updateDoc(doc(db, "users", S.user.uid), { currentWeek: newW }); }
+  setupPermissions(); renderMain();
+}
+
+// INYECCIÓN DE FUNCIONES FALTANTES PARA EL RENDERIZADO DIARIO
+function renderAthleteHome(dom) {
+  const k = `W${S.currentWeek}_D${S.currentDayIdx}`;
+  dom.innerHTML = `<div class="page-header"><h1 class="page-title">Tu Entrenamiento</h1><p class="page-subtitle">${DAYS[S.currentDayIdx]} - Microciclo ${S.currentWeek}</p></div>`;
+  const routine = S.athleteRoutines[k];
+  if(!routine || routine.length===0) { dom.innerHTML += `<div class="card" style="padding:24px; text-align:center; color:var(--text3);">No hay sesión cargada para este microciclo.</div>`; return; }
+  
+  routine.forEach(block => {
+    const bDiv = document.createElement('div'); bDiv.className='card b3';
+    bDiv.innerHTML = `<div class="block-header"><span class="block-badge">BLOQUE</span><div class="block-title-wrap"><div class="block-title">${block.title||'Ejercicio'}</div></div></div>`;
+    dom.appendChild(bDiv);
+  });
+}
+
+function renderWellness(dom) {
+  dom.innerHTML = `<div class="page-header"><h1 class="page-title">Reporte Wellness</h1></div>
+  <div class="card"><div class="hooper-item"><div class="hooper-label">Fatiga</div><input type="range" min="1" max="5" class="rpe-slider" id="w-fatiga"></div>
+  <button class="finish-btn" onclick="submitWellness()">Registrar Reporte</button></div>`;
+}
+window.submitWellness = async function() {
+  const fatiga = parseInt(id('w-fatiga').value);
+  await addDoc(collection(db, "wellness"), { athleteId: S.user.uid, date: new Date().toISOString().split('T')[0], fatiga });
+  showToast("Wellness guardado."); goHome();
+}
+
+function renderStats(dom) { dom.innerHTML = `<div class="page-header"><h1 class="page-title">Estadísticas de Carga</h1></div><div class="empty-state">Módulo de estadísticas cargado.</div>`; }
+function renderTeamsView(dom) {
+  dom.innerHTML = `<div class="page-header"><h1 class="page-title">Equipos</h1></div>
+  <div class="admin-section">${S.teams.map(t=>`<div class="admin-item"><span class="admin-item-lbl">${t.name}</span><button class="abtn abtn-d" onclick="adminDeleteTeam('${t.id}')">Borrar de raíz</button></div>`).join('')}</div>`;
+}
+function renderAdminView(dom) {
+  if(S.adminView==='evaluations') { adminRenderEvaluationsSection(dom); return; }
+  dom.innerHTML = `<div class="page-header"><h1 class="page-title">Consola del Coach</h1></div>
+  <div class="admin-section">
+    <div class="admin-item" onclick="S.adminView='evaluations'; renderMain();"><span class="admin-item-lbl">Control de Saltabilidad e Índices</span><button class="abtn">Ingresar</button></div>
+  </div>`;
+}
+function renderBottomBar() {
+  document.querySelectorAll('#bottombar .bb-btn').forEach(b => {
+    b.classList.remove('active'); if(b.getAttribute('data-view') === S.currentView) b.classList.add('active');
+  });
+}
+window.toggleProfileMenu = function() { id('profile-menu').classList.toggle('open'); }
+window.handleLogout = () => signOut(auth);
+</script>
+</body>
+</html>f="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>GG-Training</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
