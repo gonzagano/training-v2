@@ -1190,11 +1190,12 @@ window.getSessionList=getSessionList;
 
 function getCurrentBlocks() {
   if (S.isAdmin) return S.blocks;
+  // Athletes ONLY see what was assigned by admin — never DEFAULT_BLOCKS
   if (S.assignedRoutine) {
     const ses = S.assignedRoutine.sessions || {};
     return ses[S.currentSession] || [];
   }
-  return S.blocks;
+  return []; // No assigned routine = empty, not default
 }
 window.getCurrentBlocks=getCurrentBlocks;
 
@@ -1250,7 +1251,14 @@ function renderSession() {
     <div class="page-subtitle">Semana ${S.currentWeek} · ${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>`;
   if (!blocks.length) {
-    return header + `<div class="empty-state">Sin rutina asignada.<br><span style="font-size:12px">Tu entrenador va a asignarte una rutina pronto.</span></div>`;
+    if (!S.isAdmin) {
+      return header + `<div class="empty-state" style="padding:40px 20px">
+        <div style="font-size:32px;margin-bottom:12px">🏋️</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">Sin rutina asignada</div>
+        <div style="font-size:13px;color:var(--text3);line-height:1.6">Tu entrenador está preparando tu planificación.<br>Pronto vas a ver tu rutina acá.</div>
+      </div>`;
+    }
+    return header + `<div class="empty-state">Sin bloques en esta sesión.</div>`;
   }
   return header + blocks.map(b=>renderBlock(b)).join('')
     + `<button class="finish-btn" onclick="finishSession()">✓ Marcar sesión como completada</button>`;
@@ -2008,43 +2016,43 @@ function renderStats() {
 
   let html=`<div class="page-header">
     <div class="page-title">Estadísticas</div>
-    <div class="page-subtitle">Semana ${S.currentWeek} · ${totalS} sesiones completadas</div>
+    <div class="page-subtitle">Semana ${S.currentWeek} · ${totalS} sesión${totalS!==1?'es':''} completada${totalS!==1?'s':''}</div>
   </div>`;
 
-  // Metric cards grid
-  html+=`<div class="metric-grid" style="${isDesktop?'':'grid-template-columns:1fr 1fr;gap:10px;'}margin-bottom:20px">
-    <div class="metric-card">
-      <div class="metric-card-label">SEMANAS <span class="metric-card-icon">📅</span></div>
-      <div class="metric-card-value">${S.currentWeek}</div>
-      <div class="metric-card-sub">ciclo actual</div>
+  // Metric cards — 2x2 grid, no emojis, proper card styling
+  html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Semanas</div>
+      <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${S.currentWeek}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">ciclo actual</div>
     </div>
-    <div class="metric-card">
-      <div class="metric-card-label">SESIONES <span class="metric-card-icon">💪</span></div>
-      <div class="metric-card-value">${totalS}</div>
-      <div class="metric-card-sub">completadas</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Sesiones</div>
+      <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${totalS}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">completadas</div>
     </div>
-    <div class="metric-card">
-      <div class="metric-card-label">RACHA SEMANAL <span class="metric-card-icon">🔥</span></div>
-      <div class="metric-card-value" style="color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}/7</div>
-      <div class="metric-card-sub">días activos esta semana</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Racha semanal</div>
+      <div style="font-size:30px;font-weight:800;line-height:1;color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}<span style="font-size:16px;font-weight:400;color:var(--text3)">/7</span></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">días activos</div>
     </div>
-    <div class="metric-card">
-      <div class="metric-card-label">EJERCICIOS/SESIÓN <span class="metric-card-icon">📊</span></div>
-      <div class="metric-card-value">${totalS>0?Math.round(totalC/totalS):0}</div>
-      <div class="metric-card-sub">promedio por sesión</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Ejerc./sesión</div>
+      <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${totalS>0?Math.round(totalC/totalS):0}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">promedio</div>
     </div>
   </div>`;
 
   // Last 7 days activity strip
-  html+=`<div class="wellness-card" style="margin-bottom:16px">
-    <div class="wellness-title">Actividad — últimos 7 días</div>
-    <div style="display:flex;gap:6px;padding:14px 18px;justify-content:space-between">
+  html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 14px;margin-bottom:16px">
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.06em">Actividad — últimos 7 días</div>
+    <div style="display:flex;gap:4px;justify-content:space-between">
       ${last7.map(d=>{
-        const day=new Date(d+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short'});
+        const day=new Date(d+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short'}).replace('.','');
         const done=doneDs.has(d);
-        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
-          <div style="width:36px;height:36px;border-radius:50%;background:${done?'var(--accent)':'var(--bg3)'};border:1px solid ${done?'var(--accent)':'var(--border)'};display:flex;align-items:center;justify-content:center;font-size:12px">${done?'✓':''}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:capitalize">${day.slice(0,2)}</div>
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+          <div style="width:34px;height:34px;border-radius:50%;background:${done?'var(--accent)':'var(--bg3)'};border:1px solid ${done?'var(--accent)':'var(--border2)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:${done?'#fff':'var(--text3)'}">${done?'✓':''}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:capitalize;text-align:center">${day.slice(0,2)}</div>
         </div>`;
       }).join('')}
     </div>
@@ -2054,9 +2062,9 @@ function renderStats() {
   if(isDesktop) html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">`;
 
   // Top exercises
-  if(topEx.length) html+=`<div class="wellness-card">
-    <div class="wellness-title">Ejercicios más frecuentes</div>
-    <div style="padding:8px 18px 14px">
+  if(topEx.length) html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden">
+    <div style="font-size:14px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Ejercicios más frecuentes</div>
+    <div style="padding:8px 16px 14px">
       ${topEx.map(([id,f],i)=>`
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
           <div style="width:22px;height:22px;border-radius:50%;background:var(--accent-dim);color:var(--accent);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
@@ -2073,7 +2081,7 @@ function renderStats() {
 
   // Wellness trend
   if(wScores.length) html+=`<div class="wellness-card">
-    <div class="wellness-title">Tendencia Hooper</div>
+    <div class="wellness-title">Bienestar semanal</div>
     <div style="padding:8px 18px 14px">
       ${wScores.map(({date,sc})=>{
         const col=sc<=16?'var(--green)':sc<=24?'var(--amber)':'var(--red)';
@@ -2089,7 +2097,7 @@ function renderStats() {
       }).join('')}
     </div>
   </div>`;
-  else html+=`<div class="wellness-card"><div class="wellness-title">Tendencia Hooper</div><div class="empty-state" style="padding:24px">Sin registros de wellness aún.</div></div>`;
+  else html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px"><div style="font-size:14px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Bienestar semanal</div><div class="empty-state" style="padding:24px">Sin registros de wellness aún.</div></div>`;
 
   if(isDesktop) html+=`</div>`;
   return html;
@@ -3127,13 +3135,22 @@ function renderEvals() {
   const coord= lCMJ&&lAbal ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
   const asym = lDer&&lIzq  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
 
+  const currentAthleteName = S.evalAthleteId==='self'
+    ? 'Yo (admin)'
+    : (S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.name || S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.email || 'Atleta');
+
   let html = `<div class="page-header">
     <div class="page-title">Test de Saltabilidad</div>
-    <div class="page-subtitle" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <span>Valoración neuromuscular · Índices elásticos y coordinación</span>
-      ${athleteSel}
-    </div>
+    <div class="page-subtitle">Valoración neuromuscular · Índices elásticos y coordinación</div>
   </div>`;
+
+  if(S.isAdmin) {
+    html += `<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>
+      ${athleteSel}
+      <div style="font-size:13px;font-weight:600;color:var(--text)">${currentAthleteName}</div>
+    </div>`;
+  }
 
   // View toggle tabs
   html += `<div style="display:flex;gap:6px;margin-bottom:20px">
@@ -3252,38 +3269,34 @@ function renderEvals() {
       const last = recs[0];
       const isAsym = t.id==='asym';
       
-      html += `<div class="wellness-card" style="margin-bottom:${isDesktop?'0':'12px'}">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px">
+      html += `<div id="eval-card-${t.id}" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:${isDesktop?'0':'12px'};overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">
           <div>
-            <div style="font-size:15px;font-weight:600">${t.label}</div>
-            <div style="font-size:11px;color:var(--text3);margin-top:1px">${t.desc}</div>
+            <div style="font-size:14px;font-weight:600">${t.label}</div>
+            ${last?`<div style="font-size:13px;font-weight:700;color:${isAsym?(last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)'):'var(--accent)'};margin-top:2px">
+              ${last.height}${t.unit}${isAsym?' · Der:'+last.der+' / Izq:'+last.izq:''}
+            </div>`:'<div style="font-size:12px;color:var(--text3);margin-top:2px">Sin registros</div>'}
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            ${last?`<span style="font-size:14px;font-weight:700;color:${isAsym?(last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)'):'var(--accent)'}">
-              ${last.height}${t.unit}${isAsym?' · Der:'+last.der+'/Izq:'+last.izq:''}
-            </span>`:''}
-            <button onclick="toggleEvalChart('${t.id}')" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:4px 10px;font-size:11px;color:var(--text3);cursor:pointer;font-family:inherit">
-              ${isHidden?'▼ Ver':'▲ Ocultar'}
-            </button>
-          </div>
+          <button class="eval-toggle-btn" onclick="toggleEvalChart('${t.id}')" 
+            style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap">
+            ${isHidden?'▼ Ver':'▲ Ocultar'}
+          </button>
         </div>
-        ${isHidden?'':`
-          <div style="padding:0 16px 14px">
-            ${recsFwd.length>=1?`
-              <div class="eval-chart-wrap" style="margin:0 0 10px;position:relative">
-                <canvas id="chart-hist-${t.id}"></canvas>
+        <div class="eval-hist-body" style="display:${isHidden?'none':'block'};padding:0 16px 14px;border-top:1px solid var(--border)">
+          ${recsFwd.length>=1?`
+            <div style="margin:12px 0 10px;position:relative">
+              <canvas id="chart-hist-${t.id}"></canvas>
+            </div>
+          `:''}
+          ${recs.length?recs.slice(0,5).map((r,i)=>`
+            <div class="eval-record">
+              <div>
+                <div class="eval-record-main">${r.height}${t.unit}${isAsym?` · Der:${r.der} / Izq:${r.izq}`:''}</div>
+                <div class="eval-record-date">${r.date}${r.tof?' · '+r.tof+'ms':''}</div>
               </div>
-            `:''}
-            ${recs.length?recs.slice(0,5).map((r,i)=>`
-              <div class="eval-record">
-                <div>
-                  <div class="eval-record-main">${r.height}${t.unit}${isAsym?` · Der:${r.der} / Izq:${r.izq}`:''}</div>
-                  <div class="eval-record-date">${r.date}${r.tof?' · '+r.tof+'ms':''}</div>
-                </div>
-                ${!isAsym?`<span class="eval-record-del" onclick="deleteEvalRecord('${t.id}',${recsFwd.length-1-i})">×</span>`:''}
-              </div>`).join(''):`<div class="eval-no-data">Sin registros aún</div>`}
-          </div>
-        `}
+              ${!isAsym?`<span class="eval-record-del" onclick="deleteEvalRecord('${t.id}',${recsFwd.length-1-i})">×</span>`:''}
+            </div>`).join(''):`<div class="eval-no-data">Sin registros aún</div>`}
+        </div>
       </div>`;
     });
     html += `</div>`;
@@ -3665,6 +3678,18 @@ function toggleEvalChart(testId) {
   if(!(S.evalHidden instanceof Set)) S.evalHidden=new Set();
   if(S.evalHidden.has(testId)) S.evalHidden.delete(testId);
   else S.evalHidden.add(testId);
+  // Don't re-render full page — just redraw charts after toggling
+  const card = document.getElementById('eval-card-'+testId);
+  if(card) {
+    const body = card.querySelector('.eval-hist-body');
+    if(body) {
+      body.style.display = S.evalHidden.has(testId)?'none':'block';
+      const btn = card.querySelector('.eval-toggle-btn');
+      if(btn) btn.textContent = S.evalHidden.has(testId)?'▼ Ver':'▲ Ocultar';
+      if(!S.evalHidden.has(testId)) setTimeout(drawEvalCharts, 80);
+      return;
+    }
+  }
   renderMain();
   setTimeout(drawEvalCharts, 80);
 }
