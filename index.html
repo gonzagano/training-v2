@@ -856,6 +856,7 @@ let S = {
   // ── EVALUATIONS ──
   evals: {},            // { athleteId: { cmj:[{date,height,tof,vel}], sj:[], abalakov:[], saltoH:[], cmj_der:[], cmj_izq:[] } }
   evalView: 'entry',    // 'entry' | 'history' | 'compare'
+  evalHidden: new Set(), // tests hidden in history view
   evalAthleteId: 'self',// 'self' or uid
   evalShowSecondary: false,
   evalCompareSelected: [],
@@ -1213,6 +1214,7 @@ function renderMain() {
     case 'teams':    m.innerHTML=renderTeams(); break;
     case 'settings': m.innerHTML=renderSettings(); break;
     case 'admin':    m.innerHTML=renderAdmin(); break;
+    case 'library':  m.innerHTML=renderLibraryView(); break;
     case 'evals':    m.innerHTML=renderEvals(); setTimeout(drawEvalCharts,80); break;
     default:         m.innerHTML='';
   }
@@ -2480,8 +2482,8 @@ function renderAdminMain() {
       <button class="abtn abtn-p" onclick="switchView('teams')">Ver →</button>
     </div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Biblioteca de ejercicios</div><div class="admin-item-sub">${S.library.length} ejercicios</div></div>
-      <button class="abtn" onclick="switchView('session')">Ir a sesión</button>
+      <div><div class="admin-item-lbl">Biblioteca de ejercicios</div><div class="admin-item-sub">${S.library.length} ejercicios guardados</div></div>
+      <button class="abtn abtn-p" onclick="switchView('library')">Gestionar →</button>
     </div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Restaurar bloques propios</div><div class="admin-item-sub">Vuelve a la estructura original de tu sesión</div></div>
@@ -3213,28 +3215,75 @@ function renderEvals() {
     if(isDesktop) html += `</div>`;
 
   } else if(view==='history') {
-    // History: one card per test
+    // Each test gets its own card with toggle, bar chart (height on top), and asymmetry for unilateral
+    if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
+    const ASYM_TEST_ID = 'cmj_unilateral'; // virtual id for asymmetry chart
+    
+    // Build test list — replace cmj_der + cmj_izq with asymmetry card
+    const histTests = [
+      ...EVAL_TESTS.filter(t=>t.id!=='cmj_der'&&t.id!=='cmj_izq'),
+      {id:'asym', label:'Asimetría Unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda a lo largo del tiempo'}
+    ];
+
     html += `<div style="${isDesktop?'display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start':''}">`;
-    EVAL_TESTS.forEach(t=>{
-      const recs = (edata[t.id]||[]).slice().reverse();
-      html += `<div class="wellness-card">
-        <div class="wellness-title" style="display:flex;align-items:center;justify-content:space-between">
-          <span>${t.label}</span>
-          ${recs.length?`<span style="font-size:13px;font-weight:700;color:var(--accent)">${recs[0].height} cm</span>`:''}
+    
+    histTests.forEach(t=>{
+      const isHidden = S.evalHidden.has(t.id);
+      let recs, recsFwd;
+      
+      if(t.id==='asym') {
+        const derRecs = edata['cmj_der']||[];
+        const izqRecs = edata['cmj_izq']||[];
+        // Build asymmetry records: match by date
+        const dates = [...new Set([...derRecs.map(r=>r.date),...izqRecs.map(r=>r.date)])].sort();
+        recs = dates.map(date=>{
+          const d = derRecs.find(r=>r.date===date);
+          const i = izqRecs.find(r=>r.date===date);
+          if(!d||!i) return null;
+          const asym = Math.abs(d.height-i.height)/Math.max(d.height,i.height)*100;
+          return {date, height:parseFloat(asym.toFixed(1)), der:d.height, izq:i.height};
+        }).filter(Boolean);
+        recsFwd = recs;
+      } else {
+        recsFwd = (edata[t.id]||[]);
+        recs = [...recsFwd].reverse();
+      }
+      
+      const last = recs[0];
+      const isAsym = t.id==='asym';
+      
+      html += `<div class="wellness-card" style="margin-bottom:${isDesktop?'0':'12px'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px">
+          <div>
+            <div style="font-size:15px;font-weight:600">${t.label}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:1px">${t.desc}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${last?`<span style="font-size:14px;font-weight:700;color:${isAsym?(last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)'):'var(--accent)'}">
+              ${last.height}${t.unit}${isAsym?' · Der:'+last.der+'/Izq:'+last.izq:''}
+            </span>`:''}
+            <button onclick="toggleEvalChart('${t.id}')" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:4px 10px;font-size:11px;color:var(--text3);cursor:pointer;font-family:inherit">
+              ${isHidden?'▼ Ver':'▲ Ocultar'}
+            </button>
+          </div>
         </div>
-        <div class="wellness-sub">${t.desc}</div>
-        <div style="padding:8px 16px">
-          ${recs.length?`
-            <div class="eval-chart-wrap" style="margin:0 0 10px;position:relative">
-              <canvas class="eval-chart" id="chart-hist-${t.id}" style="max-height:120px"></canvas>
-            </div>
-            ${recs.slice(0,6).map((r,i)=>`
+        ${isHidden?'':`
+          <div style="padding:0 16px 14px">
+            ${recsFwd.length>=1?`
+              <div class="eval-chart-wrap" style="margin:0 0 10px;position:relative">
+                <canvas id="chart-hist-${t.id}"></canvas>
+              </div>
+            `:''}
+            ${recs.length?recs.slice(0,5).map((r,i)=>`
               <div class="eval-record">
-                <div><div class="eval-record-main">${r.height} cm</div><div class="eval-record-date">${r.date}${r.tof?' · '+r.tof+'ms':''}</div></div>
-                <span class="eval-record-del" onclick="deleteEvalRecord('${t.id}',${(edata[t.id]||[]).length-1-i})">×</span>
-              </div>`).join('')}
-          `:`<div class="eval-no-data">Sin registros aún</div>`}
-        </div>
+                <div>
+                  <div class="eval-record-main">${r.height}${t.unit}${isAsym?` · Der:${r.der} / Izq:${r.izq}`:''}</div>
+                  <div class="eval-record-date">${r.date}${r.tof?' · '+r.tof+'ms':''}</div>
+                </div>
+                ${!isAsym?`<span class="eval-record-del" onclick="deleteEvalRecord('${t.id}',${recsFwd.length-1-i})">×</span>`:''}
+              </div>`).join(''):`<div class="eval-no-data">Sin registros aún</div>`}
+          </div>
+        `}
       </div>`;
     });
     html += `</div>`;
@@ -3430,16 +3479,147 @@ function drawEvalCharts() {
     }
 
   } else if(view==='history') {
-    EVAL_TESTS.forEach(t=>{
+    if(!(S.evalHidden instanceof Set)) S.evalHidden=new Set();
+
+    // Value labels plugin (show value on top of each bar)
+    const datalabelsPlugin = {
+      id:'datalabels',
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        chart.data.datasets.forEach((dataset, i) => {
+          const meta = chart.getDatasetMeta(i);
+          meta.data.forEach((bar, idx) => {
+            const val = dataset.data[idx];
+            if(val===null||val===undefined) return;
+            ctx.save();
+            ctx.fillStyle = '#7a90b8';
+            ctx.font = '600 10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(val+'cm', bar.x, bar.y - 2);
+            ctx.restore();
+          });
+        });
+      }
+    };
+
+    const datalabelsAsymPlugin = {
+      id:'datalabels',
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        chart.data.datasets.forEach((dataset, i) => {
+          const meta = chart.getDatasetMeta(i);
+          meta.data.forEach((point, idx) => {
+            const val = dataset.data[idx];
+            if(val===null||val===undefined) return;
+            ctx.save();
+            ctx.fillStyle = '#7a90b8';
+            ctx.font = '600 10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(val+'%', point.x, point.y - 4);
+            ctx.restore();
+          });
+        });
+      }
+    };
+
+    // Individual test bar charts
+    EVAL_TESTS.filter(t=>t.id!=='cmj_der'&&t.id!=='cmj_izq').forEach(t=>{
+      if(S.evalHidden.has(t.id)) return;
       const recs=(edata[t.id]||[]);
       if(recs.length < 1) return;
-      const labels = recs.map(r=>r.date);
-      const data   = recs.map(r=>r.height);
-      mk(`chart-hist-${t.id}`, labels, [{
-        data, borderColor:'#3b7dd8', backgroundColor:'rgba(59,125,216,0.08)',
-        tension:.3, pointBackgroundColor:'#3b7dd8', pointRadius:4, fill:true
-      }], 'line', {aspectRatio:2.8});
+      const c=document.getElementById(`chart-hist-${t.id}`); if(!c) return;
+      if(S.evalChartInstances[`chart-hist-${t.id}`]) {
+        S.evalChartInstances[`chart-hist-${t.id}`].destroy();
+        delete S.evalChartInstances[`chart-hist-${t.id}`];
+      }
+      const colorMap = {
+        cmj:'rgba(59,125,216,0.8)', sj:'rgba(34,197,94,0.8)',
+        abalakov:'rgba(139,92,246,0.8)', saltoH:'rgba(20,184,166,0.8)'
+      };
+      const borderMap = {
+        cmj:'#3b7dd8', sj:'#22c55e', abalakov:'#8b5cf6', saltoH:'#14b8a6'
+      };
+      S.evalChartInstances[`chart-hist-${t.id}`] = new Chart(c, {
+        type:'bar',
+        data:{
+          labels: recs.map(r=>r.date),
+          datasets:[{
+            label: t.label,
+            data: recs.map(r=>r.height),
+            backgroundColor: colorMap[t.id]||'rgba(59,125,216,0.8)',
+            borderColor: borderMap[t.id]||'#3b7dd8',
+            borderWidth:1, borderRadius:4
+          }]
+        },
+        options:{
+          responsive:true, maintainAspectRatio:true, aspectRatio:2.4,
+          plugins:{
+            legend:{display:false},
+            tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
+          },
+          scales:{
+            x:{grid:{color:gridColor},ticks:{color:'#3d5070',font:{size:9},maxRotation:30}},
+            y:{grid:{color:gridColor},ticks:{color:'#3d5070',font:{size:9}},beginAtZero:false,
+               title:{display:true,text:'cm',color:'#3d5070',font:{size:9}}}
+          }
+        },
+        plugins:[datalabelsPlugin]
+      });
     });
+
+    // Asymmetry chart (line, shows % over time)
+    if(!S.evalHidden.has('asym')) {
+      const derRecs=edata['cmj_der']||[], izqRecs=edata['cmj_izq']||[];
+      const dates=[...new Set([...derRecs.map(r=>r.date),...izqRecs.map(r=>r.date)])].sort();
+      const asymData=dates.map(date=>{
+        const d=derRecs.find(r=>r.date===date);
+        const i=izqRecs.find(r=>r.date===date);
+        if(!d||!i) return null;
+        return parseFloat((Math.abs(d.height-i.height)/Math.max(d.height,i.height)*100).toFixed(1));
+      });
+      const validPairs = dates.filter((_,i)=>asymData[i]!==null);
+      const validData = asymData.filter(v=>v!==null);
+      
+      const ca = document.getElementById('chart-hist-asym'); if(!ca) return;
+      if(S.evalChartInstances['chart-hist-asym']) {
+        S.evalChartInstances['chart-hist-asym'].destroy();
+        delete S.evalChartInstances['chart-hist-asym'];
+      }
+      if(validPairs.length) {
+        S.evalChartInstances['chart-hist-asym'] = new Chart(ca, {
+          type:'line',
+          data:{
+            labels:validPairs,
+            datasets:[{
+              label:'Asimetría %',
+              data:validData,
+              borderColor:'#f59e0b',
+              backgroundColor:'rgba(245,158,11,0.08)',
+              tension:.3, pointBackgroundColor:validData.map(v=>v>10?'#ef4444':v>5?'#f59e0b':'#22c55e'),
+              pointRadius:5, fill:true
+            }]
+          },
+          options:{
+            responsive:true, maintainAspectRatio:true, aspectRatio:2.4,
+            plugins:{
+              legend:{display:false},
+              tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
+            },
+            scales:{
+              x:{grid:{color:gridColor},ticks:{color:'#3d5070',font:{size:9},maxRotation:30}},
+              y:{grid:{color:gridColor},ticks:{color:'#3d5070',font:{size:9}},
+                 min:0,
+                 title:{display:true,text:'% asimetría',color:'#3d5070',font:{size:9}}
+              }
+            },
+            // danger zone annotation via afterDraw
+          },
+          plugins:[datalabelsAsymPlugin]
+        });
+      }
+    }
 
   } else if(view==='compare') {
     const testId=S.evalCompareTest||'cmj';
@@ -3480,6 +3660,15 @@ async function deleteEvalRecord(testId, idx) {
   renderMain(); setTimeout(drawEvalCharts,80);
 }
 window.deleteEvalRecord=deleteEvalRecord;
+
+function toggleEvalChart(testId) {
+  if(!(S.evalHidden instanceof Set)) S.evalHidden=new Set();
+  if(S.evalHidden.has(testId)) S.evalHidden.delete(testId);
+  else S.evalHidden.add(testId);
+  renderMain();
+  setTimeout(drawEvalCharts, 80);
+}
+window.toggleEvalChart=toggleEvalChart;
 
 function toggleEvalSecondary() { S.evalShowSecondary=!S.evalShowSecondary; renderMain(); }
 window.toggleEvalSecondary=toggleEvalSecondary;
@@ -3790,6 +3979,99 @@ function renderAthleteHome() {
 }
 
 // Also add 'dashboard' to renderMain
+
+// ── LIBRARY VIEW ─────────────────────────────────────────────
+function renderLibraryView() {
+  const search = S._libViewSearch||'';
+  const filter = S._libViewFilter||null;
+  
+  // Get all tags
+  const allTags = [...new Set(S.library.flatMap(e=>e.tags||[]))].sort();
+  
+  // Filter library
+  let items = S.library;
+  if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
+    (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
+  if(filter) items = items.filter(e=>(e.tags||[]).includes(filter));
+  items = [...items].sort((a,b)=>a.name.localeCompare(b.name));
+
+  return `<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between">
+    <div>
+      <div class="page-title">Biblioteca de ejercicios</div>
+      <div class="page-subtitle">${S.library.length} ejercicios · ${allTags.length} categorías</div>
+    </div>
+    <button class="back-btn" data-back="admin-main" style="flex-shrink:0;margin-top:4px">‹</button>
+  </div>
+
+  <!-- Search + filter -->
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+    <input id="lib-view-search" value="${search}" placeholder="Buscar ejercicio..."
+      style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
+      oninput="S._libViewSearch=this.value;renderMain()"
+      onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+    <button class="abtn abtn-p" onclick="addLibraryExercise()">+ Nuevo ejercicio</button>
+  </div>
+
+  <!-- Tag filters -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+    <button class="lib-filter ${!filter?'active':''}" onclick="S._libViewFilter=null;renderMain()">Todos</button>
+    ${allTags.map(t=>`<button class="lib-filter ${filter===t?'active':''}" onclick="S._libViewFilter='${t}';renderMain()">${t}</button>`).join('')}
+  </div>
+
+  <!-- Exercise list -->
+  ${items.length?`<div class="wellness-card">
+    ${items.map((ex,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .15s" 
+           onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}</div>
+          <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+            ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(59,125,216,0.2)">${t}</span>`).join('')}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="abtn" onclick="editLibraryExercise('${ex.id}')" style="font-size:11px">Editar</button>
+          <button class="abtn abtn-d" onclick="deleteLibraryExercise('${ex.id}')" style="font-size:11px">×</button>
+        </div>
+      </div>`).join('')}
+  </div>`:`<div class="empty-state">Sin ejercicios que coincidan.<br><span style="font-size:12px">Probá con otra búsqueda o creá uno nuevo.</span></div>`}`;
+}
+window.renderLibraryView=renderLibraryView;
+
+function addLibraryExercise() {
+  const name = prompt('Nombre del ejercicio:');
+  if(!name||!name.trim()) return;
+  const tagsRaw = prompt('Categorías separadas por coma (ej: Tren inferior,Fuerza):', '');
+  const tags = tagsRaw ? tagsRaw.split(',').map(t=>t.trim()).filter(Boolean) : [];
+  const newEx = {id:genId(), name:name.trim(), tags};
+  S.library.push(newEx);
+  scheduleSave();
+  showToast('✓ Ejercicio agregado');
+  renderMain();
+}
+window.addLibraryExercise=addLibraryExercise;
+
+function editLibraryExercise(id) {
+  const ex = S.library.find(e=>e.id===id); if(!ex) return;
+  const name = prompt('Nombre:', ex.name);
+  if(!name) return;
+  const tagsRaw = prompt('Categorías (separadas por coma):', (ex.tags||[]).join(','));
+  ex.name = name.trim();
+  ex.tags = tagsRaw ? tagsRaw.split(',').map(t=>t.trim()).filter(Boolean) : [];
+  scheduleSave();
+  showToast('✓ Guardado');
+  renderMain();
+}
+window.editLibraryExercise=editLibraryExercise;
+
+function deleteLibraryExercise(id) {
+  if(!confirm('¿Eliminar este ejercicio de la biblioteca?')) return;
+  S.library = S.library.filter(e=>e.id!==id);
+  scheduleSave();
+  showToast('Ejercicio eliminado');
+  renderMain();
+}
+window.deleteLibraryExercise=deleteLibraryExercise;
 
 // ── PROFILE MENU ──────────────────────────────────────────────
 function toggleProfileMenu(forceClose=false) {
