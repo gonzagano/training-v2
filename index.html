@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#0d0a0b">
+<meta name="theme-color" content="#0b1120">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="GG Training">
@@ -19,30 +19,31 @@
    Mobile: bottom nav layout (athletes)
 ══════════════════════════════════════════ */
 :root {
-  /* Palette: dark navy + crimson accent + white */
-  --bg:#0f1117;       /* page bg */
-  --bg2:#161b27;      /* sidebar, cards */
-  --bg3:#1e2535;      /* inputs, elevated surfaces */
-  --bg4:#263042;      /* hover states */
-  --border:rgba(255,255,255,0.07);
-  --border2:rgba(255,255,255,0.12);
-  --text:#f0f4ff;
-  --text2:#8899bb;
-  --text3:#4a5a7a;
-  /* Accent: crimson red */
-  --accent:#e03458;
-  --accent-dim:rgba(224,52,88,0.12);
-  --accent-dim2:rgba(224,52,88,0.06);
-  --accent-hover:#f0405e;
+  /* ── GG-Training palette: AMS PRO style ── */
+  /* Dark navy backgrounds */
+  --bg:#0b1120;
+  --bg2:#111827;      /* sidebar, cards */
+  --bg3:#1a2438;      /* inputs, elevated */
+  --bg4:#1f2d45;      /* hover */
+  --border:rgba(255,255,255,0.06);
+  --border2:rgba(255,255,255,0.11);
+  --text:#e8edf8;
+  --text2:#7a90b8;
+  --text3:#3d5070;
+  /* Accent: AMS-style blue */
+  --accent:#3b7dd8;
+  --accent-dim:rgba(59,125,216,0.12);
+  --accent-dim2:rgba(59,125,216,0.06);
+  --accent-hover:#4d8fe8;
   /* Semantic */
-  --green:#34c97a;  --green-dim:rgba(52,201,122,0.12);
-  --amber:#f0a030;  --amber-dim:rgba(240,160,48,0.12);
-  --red:#e03458;    --red-dim:rgba(224,52,88,0.12);
-  --blue:#4a9eff;   --blue-dim:rgba(74,158,255,0.12);
-  --purple:#9b6fff; --purple-dim:rgba(155,111,255,0.12);
-  --teal:#2dd4bf;   --teal-dim:rgba(45,212,191,0.12);
-  /* Aliases for legacy code */
-  --purple:#e03458; --purple-dim:rgba(224,52,88,0.12); --purple-dim2:rgba(224,52,88,0.06);
+  --green:#22c55e;  --green-dim:rgba(34,197,94,0.12);
+  --amber:#f59e0b;  --amber-dim:rgba(245,158,11,0.12);
+  --red:#ef4444;    --red-dim:rgba(239,68,68,0.12);
+  --blue:#3b7dd8;   --blue-dim:rgba(59,125,216,0.12);
+  --purple:#8b5cf6; --purple-dim:rgba(139,92,246,0.12);
+  --teal:#14b8a6;   --teal-dim:rgba(20,184,166,0.12);
+  /* Legacy aliases */
+  --purple-dim2:rgba(59,125,216,0.06);
   /* Radius */
   --r:12px; --rsm:8px; --rxs:6px;
   /* Sidebar */
@@ -105,8 +106,8 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 /* ── TOPBAR / SIDEBAR ────────────────────────── */
 .app-logo{font-size:15px;font-weight:700;letter-spacing:-.02em;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;text-decoration:none;margin-bottom:0}
 .topbar-right{display:flex;align-items:center;gap:8px}
-.week-pill{font-size:12px;background:var(--accent-dim);color:var(--accent);padding:4px 10px;border-radius:20px;border:1px solid rgba(224,52,88,0.25);white-space:nowrap}
-.avatar-btn{width:32px;height:32px;border-radius:50%;background:var(--accent-dim);border:1px solid rgba(224,52,88,0.3);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.week-pill{font-size:12px;background:var(--accent-dim);color:var(--accent);padding:4px 10px;border-radius:20px;border:1px solid rgba(59,125,216,0.25);white-space:nowrap}
+.avatar-btn{width:32px;height:32px;border-radius:50%;background:var(--accent-dim);border:1px solid rgba(59,125,216,0.3);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 
 /* Desktop sidebar nav items */
 .sidebar-nav{display:none}
@@ -122,7 +123,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
   .sidebar-footer{margin-top:auto;padding-top:20px;border-top:1px solid var(--border);width:100%}
   .sidebar-user{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--rsm);cursor:pointer;transition:background .15s}
   .sidebar-user:hover{background:var(--bg3)}
-  .sidebar-user-av{width:32px;height:32px;border-radius:50%;background:var(--accent-dim);border:1px solid rgba(224,52,88,0.3);color:var(--accent);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .sidebar-user-av{width:32px;height:32px;border-radius:50%;background:var(--accent-dim);border:1px solid rgba(59,125,216,0.3);color:var(--accent);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .sidebar-user-info{flex:1;min-width:0}
   .sidebar-user-name{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sidebar-user-role{font-size:11px;color:var(--text3)}
@@ -156,7 +157,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 
 /* ── SUBNAV TABS ─────────────────────────────── */
 .snav-tab{flex-shrink:0;font-size:12px;padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
-.snav-tab.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(224,52,88,0.3)}
+.snav-tab.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(59,125,216,0.3)}
 .snav-tab.done{border-color:rgba(52,201,122,0.3);color:var(--green)}
 
 /* ── CARDS ──────────────────────────────────── */
@@ -191,7 +192,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .cat-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;cursor:text}
 .cat-label-inp{font-size:10px;font-weight:700;background:var(--bg3);border:1px solid var(--accent);border-radius:3px;padding:1px 6px;color:var(--text2);outline:none;display:none;letter-spacing:.08em;text-transform:uppercase;font-family:inherit}
 .cat-del{font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border-radius:3px;border:1px solid var(--border);transition:all .15s}
-.cat-del:hover{color:var(--red);border-color:rgba(224,52,88,0.3)}
+.cat-del:hover{color:var(--red);border-color:rgba(59,125,216,0.3)}
 .cat-divider{border:none;border-top:1px solid var(--border);margin:12px 0}
 
 /* ── EXERCISE ROW ────────────────────────────── */
@@ -207,7 +208,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .ex-actions{display:flex;gap:4px;flex-shrink:0}
 .ex-icon-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);cursor:pointer;color:var(--text3);font-size:11px;transition:all .15s;flex-shrink:0}
 .ex-icon-btn.has-video{background:rgba(255,0,0,0.08);border-color:rgba(255,60,60,0.25);color:#ff6b6b}
-.ex-icon-btn.del-ex:hover{background:var(--red-dim);border-color:rgba(224,52,88,0.3);color:var(--red)}
+.ex-icon-btn.del-ex:hover{background:var(--red-dim);border-color:rgba(59,125,216,0.3);color:var(--red)}
 .ex-fields{display:flex;gap:5px;flex-wrap:wrap}
 .field-box{display:flex;flex-direction:column;gap:3px}
 .field-lbl{font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em}
@@ -221,7 +222,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 /* ── INTENSITY SELECTOR (RPE/RIR) ────────────── */
 .intensity-sel{display:flex;gap:4px;align-items:center}
 .intensity-type-btn{font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;font-family:inherit}
-.intensity-type-btn.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(224,52,88,0.3)}
+.intensity-type-btn.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(59,125,216,0.3)}
 
 /* ── ADD BUTTONS ─────────────────────────────── */
 .add-btn{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);cursor:pointer;padding:8px 2px 0;background:none;border:none;width:100%;transition:color .15s;font-family:inherit}
@@ -249,13 +250,13 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .abtn:hover{background:var(--bg4);color:var(--text)}
 .abtn-p{background:var(--accent);border-color:var(--accent);color:#fff!important}
 .abtn-p:hover{background:var(--accent-hover)!important;border-color:var(--accent-hover)!important}
-.abtn-d{background:var(--red-dim);border-color:rgba(224,52,88,0.3);color:var(--red)!important}
-.abtn-d:hover{background:rgba(224,52,88,0.25)!important}
+.abtn-d{background:var(--red-dim);border-color:rgba(59,125,216,0.3);color:var(--red)!important}
+.abtn-d:hover{background:rgba(59,125,216,0.25)!important}
 
 /* ── TEAM DETAIL ─────────────────────────────── */
 .team-detail-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
 .team-detail-title{font-size:18px;font-weight:700;flex:1}
-.team-sport-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(224,52,88,0.2)}
+.team-sport-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(59,125,216,0.2)}
 .back-btn{width:34px;height:34px;border-radius:50%;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-family:inherit}
 .back-btn:hover{background:var(--bg4);color:var(--text)}
 .team-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:15px 16px;cursor:pointer;margin-bottom:10px;transition:all .15s}
@@ -282,10 +283,10 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .body-zone-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;display:flex;gap:12px}
 .body-zone-svg{flex:1}
 .body-zone{cursor:pointer;transition:all .2s;fill:var(--bg3);stroke:var(--border2);stroke-width:1}
-.body-zone:hover{fill:rgba(224,52,88,0.15);stroke:var(--accent)}
+.body-zone:hover{fill:rgba(59,125,216,0.15);stroke:var(--accent)}
 .body-zone.sel-low{fill:rgba(52,201,122,0.2);stroke:var(--green)}
 .body-zone.sel-med{fill:rgba(240,160,48,0.25);stroke:var(--amber)}
-.body-zone.sel-high{fill:rgba(224,52,88,0.3);stroke:var(--red)}
+.body-zone.sel-high{fill:rgba(59,125,216,0.3);stroke:var(--red)}
 .injury-list{padding:0}
 .injury-item{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
 .injury-item:last-child{border-bottom:none}
@@ -295,8 +296,11 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .injury-pain{font-size:12px;color:var(--text3);margin-top:1px}
 .zone-detail{padding:14px;background:var(--bg3);border-radius:var(--rsm);margin-top:10px}
 .pain-scale{display:flex;gap:4px;margin:8px 0}
-.pain-dot{flex:1;height:28px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--bg4);transition:all .15s}
-.pain-dot.active{border-color:transparent}
+.pain-btn{flex:1;height:34px;border-radius:var(--rxs);cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:12px;font-weight:600;transition:all .15s;font-family:inherit;display:flex;align-items:center;justify-content:center}
+.pain-btn:hover{background:var(--bg4);border-color:var(--accent);color:var(--text)}
+.pain-btn.p-low{background:rgba(34,197,94,0.2);border-color:var(--green);color:var(--green)}
+.pain-btn.p-med{background:rgba(245,158,11,0.2);border-color:var(--amber);color:var(--amber)}
+.pain-btn.p-high{background:rgba(239,68,68,0.2);border-color:var(--red);color:var(--red)}
 .pain-note-inp{width:100%;background:var(--bg4);border:1px solid var(--border);border-radius:var(--rxs);padding:7px 10px;color:var(--text);font-size:13px;outline:none;margin-top:8px;resize:none;font-family:inherit}
 
 /* ── PROGRESS / STATS ────────────────────────── */
@@ -311,7 +315,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .session-dot.done{background:var(--green);border-color:var(--green)}
 .load-chart{display:flex;align-items:flex-end;gap:3px;height:60px;margin-top:8px}
 .load-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
-.load-bar{width:100%;border-radius:2px 2px 0 0;background:var(--accent-dim);border:1px solid rgba(224,52,88,0.2);transition:height .3s;min-height:2px}
+.load-bar{width:100%;border-radius:2px 2px 0 0;background:var(--accent-dim);border:1px solid rgba(59,125,216,0.2);transition:height .3s;min-height:2px}
 .load-bar.cur{background:var(--accent);border-color:var(--accent)}
 .load-bar-label{font-size:9px;color:var(--text3);text-align:center}
 
@@ -348,7 +352,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .lib-filters{display:flex;gap:6px;padding:8px 16px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);flex-shrink:0}
 .lib-filters::-webkit-scrollbar{display:none}
 .lib-filter{font-size:11px;padding:4px 11px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
-.lib-filter.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(224,52,88,0.3)}
+.lib-filter.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(59,125,216,0.3)}
 .lib-list{overflow-y:auto;flex:1;padding:8px 0}
 .lib-item{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;cursor:pointer;transition:background .15s;font-size:14px}
 .lib-item:hover{background:var(--bg3)}
@@ -382,7 +386,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .eval-section-hdr{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:background .15s}
 .eval-section-hdr:hover{background:var(--bg3)}
 .eval-section-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
-.eval-badge{font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(224,52,88,0.2)}
+.eval-badge{font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(59,125,216,0.2)}
 .eval-section-body{padding:0 16px 16px;display:none}
 .eval-section.open .eval-section-body{display:block}
 .eval-section.open .eval-chevron{transform:rotate(90deg)}
@@ -416,6 +420,28 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 canvas.eval-chart{width:100%!important;display:block}
 .eval-no-data{font-size:13px;color:var(--text3);text-align:center;padding:20px 0}
 
+/* ── WELLNESS ────────────────────────────────────────────────── */
+.wellness-submit{
+  width:calc(100% - 32px);margin:14px 16px;padding:14px 20px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-hover));
+  border:none;border-radius:var(--r);color:#fff;
+  font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;
+  transition:all .2s;letter-spacing:.02em;
+  box-shadow:0 4px 20px rgba(59,125,216,0.35);
+  display:flex;align-items:center;justify-content:center;gap:8px
+}
+.wellness-submit:hover{transform:translateY(-1px);box-shadow:0 6px 28px rgba(59,125,216,0.5)}
+.wellness-submit:active{transform:translateY(0);opacity:.9}
+
+/* Pain scale buttons — match app design */
+.pain-dot{
+  flex:1;height:36px;border-radius:var(--rxs);cursor:pointer;
+  border:1px solid var(--border2);background:var(--bg3);
+  transition:all .15s;color:var(--text2);font-size:12px;font-weight:600;
+  display:flex;align-items:center;justify-content:center
+}
+.pain-dot:hover{background:var(--bg4);border-color:var(--accent);color:var(--text)}
+.pain-dot.active{border-color:transparent;color:#fff;font-weight:700}
 /* ── LOADING ─────────────────────────────────── */
 #loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:600}
 .loading-logo{font-size:36px;font-weight:800;letter-spacing:-.03em;color:var(--text)}
@@ -445,10 +471,10 @@ canvas.eval-chart{width:100%!important;display:block}
     <!-- Logo -->
     <div class="app-logo" onclick="goHome()">
       <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
-        <rect width="32" height="32" rx="8" fill="rgba(224,52,88,0.15)"/>
-        <path d="M9 23C9 23 10 14 16 11C22 8 24 14 24 14" stroke="#e03458" stroke-width="2.2" stroke-linecap="round"/>
-        <path d="M14 23C14 23 14 17 16 11" stroke="#e03458" stroke-width="1.6" stroke-linecap="round" opacity=".6"/>
-        <circle cx="16" cy="9" r="2.2" fill="#e03458" opacity=".8"/>
+        <rect width="32" height="32" rx="8" fill="rgba(59,125,216,0.15)"/>
+        <path d="M9 23C9 23 10 14 16 11C22 8 24 14 24 14" stroke="#3b7dd8" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M14 23C14 23 14 17 16 11" stroke="#3b7dd8" stroke-width="1.6" stroke-linecap="round" opacity=".6"/>
+        <circle cx="16" cy="9" r="2.2" fill="#3b7dd8" opacity=".8"/>
       </svg>
       <span style="font-size:16px;font-weight:800;letter-spacing:-.02em">GG<span style="color:var(--accent)">-Training</span></span>
     </div>
@@ -1788,7 +1814,7 @@ function renderZoneDetail() {
       <span class="zone-close" onclick="S.selectedZone=null;renderMain()">×</span>
     </div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dolor 0–10</div>
-    <div class="pain-scale">${painBtns}</div>
+    <div class="pain-scale" style="display:flex;gap:4px;margin:8px 0">${painBtns}</div>
     <textarea class="pain-note-inp" placeholder="Observaciones..." onchange="setPainNote('${zid}',this.value)">${inj.note||''}</textarea>
     <button class="wellness-submit" onclick="saveInjury('${zid}')">Guardar molestia</button>
   </div>`;
@@ -1819,7 +1845,7 @@ function getRPEColor(v) {
   if(v<=3) return '#34c97a';
   if(v<=6) return '#f0a030';
   if(v<=8) return '#e05030';
-  return '#e03458';
+  return '#3b7dd8';
 }
 window.getRPEColor=getRPEColor;
 
@@ -3199,8 +3225,8 @@ function renderEvals() {
         <div class="wellness-sub">${t.desc}</div>
         <div style="padding:8px 16px">
           ${recs.length?`
-            <div class="eval-chart-wrap" style="margin:0 0 10px">
-              <canvas class="eval-chart" id="chart-hist-${t.id}" height="100"></canvas>
+            <div class="eval-chart-wrap" style="margin:0 0 10px;position:relative">
+              <canvas class="eval-chart" id="chart-hist-${t.id}" style="max-height:120px"></canvas>
             </div>
             ${recs.slice(0,6).map((r,i)=>`
               <div class="eval-record">
@@ -3319,35 +3345,88 @@ function drawEvalCharts() {
   const view = S.evalView||'entry';
 
   if(view==='entry') {
-    // Include CMJ, SJ, Abalakov in the main progress chart
+    // BAR CHART: one cluster per test, grouped by date
     const cmjR=edata.cmj||[], sjR=edata.sj||[], abalR=edata.abalakov||[];
+    const derR=edata.cmj_der||[], izqR=edata.cmj_izq||[], hR=edata.saltoH||[];
+    
+    // Collect all unique dates across all tests
     const allDates=[...new Set([
       ...cmjR.map(r=>r.date),
       ...sjR.map(r=>r.date),
-      ...abalR.map(r=>r.date)
+      ...abalR.map(r=>r.date),
+      ...derR.map(r=>r.date),
+      ...izqR.map(r=>r.date),
+      ...hR.map(r=>r.date),
     ])].sort();
 
     if(allDates.length) {
+      const findVal = (recs, date) => {
+        const r = recs.find(x=>x.date===date);
+        return r ? r.height : null;
+      };
+      
+      // Grouped bar: each group = one date, bars = each test
       mk('chart-entry-main', allDates, [
         {
-          label:'CMJ',
-          data:allDates.map(d=>{ const r=cmjR.find(x=>x.date===d); return r?r.height:null; }),
-          borderColor:'#e03458', backgroundColor:'rgba(224,52,88,0.08)',
-          tension:.3, pointBackgroundColor:'#e03458', pointRadius:4, spanGaps:true, fill:false
+          label:'CMJ', 
+          data:allDates.map(d=>findVal(cmjR,d)),
+          backgroundColor:'rgba(59,125,216,0.85)', borderColor:'#3b7dd8',
+          borderWidth:1, borderRadius:4, skipNull:true
         },
         {
           label:'SJ',
-          data:allDates.map(d=>{ const r=sjR.find(x=>x.date===d); return r?r.height:null; }),
-          borderColor:'#4a9eff', backgroundColor:'rgba(74,158,255,0.06)',
-          tension:.3, pointBackgroundColor:'#4a9eff', pointRadius:4, spanGaps:true, fill:false
+          data:allDates.map(d=>findVal(sjR,d)),
+          backgroundColor:'rgba(34,197,94,0.85)', borderColor:'#22c55e',
+          borderWidth:1, borderRadius:4, skipNull:true
         },
         {
           label:'Abalakov',
-          data:allDates.map(d=>{ const r=abalR.find(x=>x.date===d); return r?r.height:null; }),
-          borderColor:'#9b6fff', backgroundColor:'rgba(155,111,255,0.06)',
-          tension:.3, pointBackgroundColor:'#9b6fff', pointRadius:4, spanGaps:true, fill:false
+          data:allDates.map(d=>findVal(abalR,d)),
+          backgroundColor:'rgba(139,92,246,0.85)', borderColor:'#8b5cf6',
+          borderWidth:1, borderRadius:4, skipNull:true
         },
-      ], 'line', {plugins:{legend:{display:true,labels:{color:'#8899bb',font:{size:11},boxWidth:12,padding:12}}}});
+        {
+          label:'CMJ Der.',
+          data:allDates.map(d=>findVal(derR,d)),
+          backgroundColor:'rgba(245,158,11,0.85)', borderColor:'#f59e0b',
+          borderWidth:1, borderRadius:4, skipNull:true
+        },
+        {
+          label:'CMJ Izq.',
+          data:allDates.map(d=>findVal(izqR,d)),
+          backgroundColor:'rgba(239,68,68,0.85)', borderColor:'#ef4444',
+          borderWidth:1, borderRadius:4, skipNull:true
+        },
+        {
+          label:'Salto H.',
+          data:allDates.map(d=>findVal(hR,d)),
+          backgroundColor:'rgba(20,184,166,0.85)', borderColor:'#14b8a6',
+          borderWidth:1, borderRadius:4, skipNull:true
+        },
+      ], 'bar', {
+        plugins:{
+          legend:{
+            display:true,
+            labels:{color:'#7a90b8',font:{size:11},boxWidth:12,padding:10,
+              filter: (item, data) => data.datasets[item.datasetIndex].data.some(v=>v!==null)
+            }
+          }
+        },
+        scales:{
+          x:{
+            grid:{color:'rgba(255,255,255,0.05)'},
+            ticks:{color:'#3d5070',font:{size:10}},
+            stacked:false
+          },
+          y:{
+            grid:{color:'rgba(255,255,255,0.05)'},
+            ticks:{color:'#3d5070',font:{size:10}},
+            beginAtZero:false,
+            title:{display:true,text:'cm',color:'#3d5070',font:{size:10}}
+          }
+        },
+        aspectRatio:2.2
+      });
     }
 
   } else if(view==='history') {
@@ -3357,8 +3436,8 @@ function drawEvalCharts() {
       const labels = recs.map(r=>r.date);
       const data   = recs.map(r=>r.height);
       mk(`chart-hist-${t.id}`, labels, [{
-        data, borderColor:'#e03458', backgroundColor:'rgba(224,52,88,0.08)',
-        tension:.3, pointBackgroundColor:'#e03458', pointRadius:4, fill:true
+        data, borderColor:'#3b7dd8', backgroundColor:'rgba(59,125,216,0.08)',
+        tension:.3, pointBackgroundColor:'#3b7dd8', pointRadius:4, fill:true
       }], 'line', {aspectRatio:2.8});
     });
 
@@ -3553,7 +3632,7 @@ function renderDashboardContent() {
       <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}">${wellnessToday}</div>
       <div class="metric-card-sub">registros enviados</div>
     </div>
-    ${alertAthletes.length?`<div class="metric-card" style="border-color:rgba(224,52,88,0.3)">
+    ${alertAthletes.length?`<div class="metric-card" style="border-color:rgba(59,125,216,0.3)">
       <div class="metric-card-label" style="color:var(--red)">ALERTAS CARGA ⚠</div>
       <div class="metric-card-value" style="color:var(--red)">${alertAthletes.length}</div>
       <div class="metric-card-sub">ACWR > 1.5</div>
