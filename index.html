@@ -857,6 +857,7 @@ let S = {
   evals: {},            // { athleteId: { cmj:[{date,height,tof,vel}], sj:[], abalakov:[], saltoH:[], cmj_der:[], cmj_izq:[] } }
   evalView: 'entry',    // 'entry' | 'history' | 'compare'
   evalHidden: new Set(), // tests hidden in history view
+  _evalAthletesLoading: false,
   evalAthleteId: 'self',// 'self' or uid
   evalShowSecondary: false,
   evalCompareSelected: [],
@@ -960,7 +961,12 @@ onAuthStateChanged(auth, async (user) => {
     if (d.startDate) S.startDate = d.startDate;
     if (d.library) S.library = d.library;
     // blocks only loaded for admin (athletes get them from assigned routine)
-    if (S.isAdmin && d.blocks) S.blocks = d.blocks;
+    if (S.isAdmin) {
+      // Admin loads their own personal blocks
+      if (d.blocks) S.blocks = d.blocks;
+      else S.blocks = JSON.parse(JSON.stringify(DEFAULT_BLOCKS)); // admin fallback to default
+    }
+    // Athletes never load blocks — they come from assignedRoutine only
   }
 
   if (S.isAdmin) {
@@ -1114,8 +1120,8 @@ function renderBottomBar() {
     {id:'admin',    label:'Panel Admin', section:null, svg:'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>'},
   ] : [
     {id:'session',  label:'Mi Rutina',   section:null, svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
-    {id:'progress', label:'Progresión',  section:null, svg:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'},
     {id:'wellness', label:'Wellness',    section:null, svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
+    {id:'evals',    label:'Mis Saltos',  section:null, svg:'<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'},
     {id:'stats',    label:'Stats',       section:null, svg:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>'},
   ];
 
@@ -1896,7 +1902,11 @@ window.setHooper=setHooper;
 
 function submitWellness(wKey) {
   S.wellness[wKey].date=wKey; S.wellness[wKey].submitted=true;
-  scheduleSave(); showToast('✓ Wellness registrado'); renderMain();
+  scheduleSave();
+  showToast('✓ Wellness de hoy guardado');
+  const main=document.getElementById('main');
+  if(main) main.scrollTo({top:0,behavior:'smooth'});
+  renderMain();
 }
 window.submitWellness=submitWellness;
 
@@ -2059,7 +2069,7 @@ function renderStats() {
   </div>`;
 
   // Two columns on desktop
-  if(isDesktop) html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">`;
+  if(isDesktop) html+=`<div class="desktop-cols">`;
 
   // Top exercises
   if(topEx.length) html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden">
@@ -3116,6 +3126,19 @@ const EVAL_TESTS = [
 
 function renderEvals() {
   const isDesktop = window.innerWidth >= 900;
+  
+  // Auto-load athletes if admin hasn't loaded them yet
+  if(S.isAdmin && !S.adminAthletes.length && !S._evalAthletesLoading) {
+    S._evalAthletesLoading = true;
+    getDocs(collection(db,'users')).then(snap=>{
+      S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
+        .filter(u=>u.email!==ADMIN_EMAIL);
+      S._evalAthletesLoading = false;
+      renderMain();
+      setTimeout(drawEvalCharts,80);
+    }).catch(()=>{ S._evalAthletesLoading=false; });
+  }
+
   const edata = getAthleteEvals(S.evalAthleteId||'self');
   const view = S.evalView||'entry';
 
@@ -3152,14 +3175,30 @@ function renderEvals() {
     </div>`;
   }
 
-  // View toggle tabs
-  html += `<div style="display:flex;gap:6px;margin-bottom:20px">
-    <button class="snav-tab ${view==='entry'?'active':''}" onclick="S.evalView='entry';renderMain()">Registrar salto</button>
-    <button class="snav-tab ${view==='history'?'active':''}" onclick="S.evalView='history';renderMain()">Historial</button>
-    <button class="snav-tab ${view==='compare'?'active':''}" onclick="S.evalView='compare';renderMain()">Comparar atletas</button>
+  // View toggle tabs — athletes only see history (+ team compare if in a team)
+  // Admin sees all tabs
+  const evalTabs = S.isAdmin
+    ? [
+        {id:'entry',   label:'Registrar salto'},
+        {id:'history', label:'Historial'},
+        {id:'compare', label:'Comparar atletas'},
+      ]
+    : [
+        {id:'history', label:'Mi historial'},
+        {id:'team_compare', label:'Comparar en equipo'},
+      ];
+
+  // Force valid view for role
+  const validView = evalTabs.find(t=>t.id===view) ? view : evalTabs[0].id;
+  if(validView !== view) { S.evalView = validView; }
+
+  html += `<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
+    ${evalTabs.map(t=>`<button class="snav-tab ${(validView===t.id)?'active':''}" onclick="S.evalView='${t.id}';renderMain();setTimeout(drawEvalCharts,80)">${t.label}</button>`).join('')}
   </div>`;
 
-  if(view==='entry') {
+  const activeView = validView;
+
+  if(activeView==='entry') {
     // AMS-style: form left, metrics + chart right
     const sec = S.evalShowSecondary;
     if(isDesktop) html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">`;
@@ -3223,7 +3262,7 @@ function renderEvals() {
       </div>
       <!-- Mini progress chart -->
       <div class="eval-chart-wrap">
-        <div class="eval-chart-title">Progresión CMJ y SJ</div>
+        <div class="eval-chart-title">Progresión de saltos — todos los tests</div>
         <canvas class="eval-chart" id="chart-entry-main" height="180"></canvas>
         ${!(edata.cmj||[]).length?`<div class="eval-no-data">Sin datos suficientes para el gráfico</div>`:''}
       </div>
@@ -3231,7 +3270,7 @@ function renderEvals() {
 
     if(isDesktop) html += `</div>`;
 
-  } else if(view==='history') {
+  } else if(activeView==='history') {
     // Each test gets its own card with toggle, bar chart (height on top), and asymmetry for unilateral
     if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
     const ASYM_TEST_ID = 'cmj_unilateral'; // virtual id for asymmetry chart
@@ -3301,10 +3340,17 @@ function renderEvals() {
     });
     html += `</div>`;
 
-  } else if(view==='compare') {
+  } else if(activeView==='compare') {
     if(!S.isAdmin) {
       html += `<div class="empty-state">Solo disponible para el administrador.</div>`;
     } else {
+      // Auto-load athletes if not loaded yet
+      if(!S.adminAthletes.length) {
+        html += `<div style="text-align:center;padding:30px;color:var(--text3)">
+          <div style="margin-bottom:10px">Cargando atletas...</div>
+          <button class="abtn abtn-p" onclick="loadEvalAthletes()">Cargar atletas</button>
+        </div>`;
+      } else {
       const testId = S.evalCompareTest||'cmj';
       html += `<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
         ${EVAL_TESTS.map(t=>`<button class="snav-tab ${testId===t.id?'active':''}" onclick="S.evalCompareTest='${t.id}';renderMain()">${t.label}</button>`).join('')}
@@ -3324,12 +3370,54 @@ function renderEvals() {
           <button class="abtn abtn-p" style="margin-top:12px;width:100%" onclick="loadAllAthleteEvals()">↻ Actualizar datos de alumnos</button>
         </div>
       </div>`;
+      } // end else (adminAthletes.length)
     }
+  } else if(activeView==='team_compare') {
+    // Athlete view: compare with team average
+    html += renderAthleteTeamCompare(edata);
   }
 
   return html;
 }
 window.renderEvals=renderEvals;
+
+function renderAthleteTeamCompare(myData) {
+  // Find which team this athlete belongs to
+  const myTeam = S.teams?.find(t=>(t.players||[]).some(p=>
+    p===S.userData?.name || p===S.userData?.email
+  ));
+
+  let html = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px">Comparación con el equipo</div>`;
+
+  if(!myTeam) {
+    html += `<div class="eval-no-data">No estás registrado en ningún equipo.</div></div>`;
+    return html;
+  }
+
+  html += `<div style="font-size:12px;color:var(--text3);margin-bottom:14px">${myTeam.name}</div>`;
+  html += `<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tu último valor vs. media del equipo</div>`;
+
+  EVAL_TESTS.filter(t=>t.id!=='cmj_der'&&t.id!=='cmj_izq').forEach(t=>{
+    const myRecs = myData[t.id]||[];
+    const myLast = myRecs.length ? myRecs[myRecs.length-1].height : null;
+    if(!myLast) return;
+
+    html += `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="font-weight:500">${t.label}</span>
+        <span style="color:var(--accent);font-weight:700">${myLast} cm</span>
+      </div>
+      <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">
+        <div style="height:100%;background:var(--accent);border-radius:3px;width:${Math.min(100,myLast/60*100)}%"></div>
+      </div>
+    </div>`;
+  });
+
+  html += `</div>`;
+  return html;
+}
+window.renderAthleteTeamCompare=renderAthleteTeamCompare;
 
 async function saveAllEvals() {
   const date = document.getElementById('einp-date-all')?.value || new Date().toISOString().split('T')[0];
@@ -3405,8 +3493,10 @@ function drawEvalCharts() {
   };
 
   const view = S.evalView||'entry';
+  // Map athlete views to chart equivalents
+  const chartView = (view==='team_compare') ? 'history' : view;
 
-  if(view==='entry') {
+  if(chartView==='entry') {
     // BAR CHART: one cluster per test, grouped by date
     const cmjR=edata.cmj||[], sjR=edata.sj||[], abalR=edata.abalakov||[];
     const derR=edata.cmj_der||[], izqR=edata.cmj_izq||[], hR=edata.saltoH||[];
@@ -3491,7 +3581,7 @@ function drawEvalCharts() {
       });
     }
 
-  } else if(view==='history') {
+  } else if(chartView==='history') {
     if(!(S.evalHidden instanceof Set)) S.evalHidden=new Set();
 
     // Value labels plugin (show value on top of each bar)
@@ -3634,7 +3724,7 @@ function drawEvalCharts() {
       }
     }
 
-  } else if(view==='compare') {
+  } else if(chartView==='compare') {
     const testId=S.evalCompareTest||'cmj';
     const athletes=[{uid:'self',name:'Yo (admin)'},...S.adminAthletes];
     const data=athletes.map(a=>{
@@ -3697,6 +3787,18 @@ window.toggleEvalChart=toggleEvalChart;
 
 function toggleEvalSecondary() { S.evalShowSecondary=!S.evalShowSecondary; renderMain(); }
 window.toggleEvalSecondary=toggleEvalSecondary;
+
+async function loadEvalAthletes() {
+  if(!S.isAdmin) return;
+  try {
+    const snap = await getDocs(collection(db,'users'));
+    S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
+      .filter(u=>u.email!==ADMIN_EMAIL);
+    renderMain();
+    setTimeout(drawEvalCharts, 80);
+  } catch(e) { showToast('Error cargando atletas'); }
+}
+window.loadEvalAthletes=loadEvalAthletes;
 
 async function loadAllAthleteEvals() {
   if(!S.isAdmin||!S.adminAthletes.length) return;
@@ -3951,10 +4053,16 @@ function renderAthleteHome() {
   const acwrSt = getACWRStatus(metrics?.acwr||null);
   const hasTodayWellness = !!S.wellness[today];
   
+  const routineName = S.assignedRoutine?.name || null;
   return `<div class="page-header">
     <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.split(' ')[0]:''}! 👋</div>
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
+  ${routineName?`<div style="background:var(--accent-dim);border:1px solid rgba(59,125,216,0.25);border-radius:var(--rsm);padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+    <span style="color:var(--accent);font-weight:600">Rutina activa:</span>
+    <span style="color:var(--text)">${routineName}</span>
+  </div>`:''}
   
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
     <div class="metric-card" style="cursor:pointer" onclick="switchView('session')">
