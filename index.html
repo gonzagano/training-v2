@@ -1362,8 +1362,8 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
         ${isAthleteMode ? `
           <div class="field-box"><span class="field-lbl" style="color:var(--green)">Carga real (kg)</span>
             <input class="field-inp load" type="text" placeholder="—" value="${d.load||''}" onchange="setField('${ex.id}','load',this.value)" style="border-color:rgba(212,100,122,0.35)"></div>
-          <div class="field-box"><span class="field-lbl" style="color:var(--amber)">RPE real</span>
-            <input class="field-inp" type="text" placeholder="—" value="${d.rpe||''}" onchange="setField('${ex.id}','rpe',this.value)" style="border-color:rgba(251,191,36,0.4)"></div>
+          <div class="field-box"><span class="field-lbl" style="color:var(--amber)">RPE ejercicio</span>
+            <input class="field-inp" type="number" min="1" max="10" placeholder="—" value="${d.rpe||''}" onchange="setField('${ex.id}','rpe',this.value);this.style.borderColor=getRPEColor(+this.value)" style="border-color:${d.rpe?getRPEColor(+d.rpe):'rgba(245,158,11,0.4)'}"></div>
           ${vbtF}
         ` : `
           <div class="field-box"><span class="field-lbl">Series</span>
@@ -2408,11 +2408,18 @@ function deletePlayer(teamId,pi) {
 window.deletePlayer=deletePlayer;
 
 async function deleteTeam(teamId) {
-  if(!confirm('¿Eliminar este equipo?')) return;
-  S.teams=S.teams.filter(t=>t.id!==teamId);
-  S.teamView=null;
-  // delete from firestore would need deleteDoc, skip for now
-  renderMain(); showToast('Equipo eliminado');
+  if(!confirm('¿Eliminar este equipo? Esta acción no se puede deshacer.')) return;
+  try {
+    await deleteDoc(doc(db,'teams',teamId));
+    S.teams = S.teams.filter(t=>t.id!==teamId);
+    S.teamView = null;
+    S.currentView = 'teams';
+    renderBottomBar();
+    renderMain();
+    showToast('✓ Equipo eliminado permanentemente');
+  } catch(e) {
+    showToast('Error al eliminar: '+e.message);
+  }
 }
 window.deleteTeam=deleteTeam;
 
@@ -2847,9 +2854,7 @@ function renderRoutineEditor() {
   const curSession = S._routineEditSession;
   const blocks = curSession ? (r.sessions[curSession]||[]) : [];
 
-  const sessionTabs = sessionNames.map(s=>`
-    <button class="snav-tab ${curSession===s?'active':''}" onclick="routineSelectSession('${s}')">${s}</button>
-  `).join('');
+  const sessionTabs = sessionNames.map(s=>'<button class="snav-tab '+(curSession===s?'active':'')+'" onclick="routineSelectSession(\''+s+'\')">'+s+'</button>').join('');
 
   const blocksHtml = blocks.map(b=>renderRoutineBlock(b,curSession)).join('');
 
@@ -3126,13 +3131,12 @@ const EVAL_TESTS = [
 
 function renderEvals() {
   const isDesktop = window.innerWidth >= 900;
-  
-  // Auto-load athletes if admin hasn't loaded them yet
+
+  // Auto-load athletes list if admin hasn't loaded it yet
   if(S.isAdmin && !S.adminAthletes.length && !S._evalAthletesLoading) {
     S._evalAthletesLoading = true;
     getDocs(collection(db,'users')).then(snap=>{
-      S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
-        .filter(u=>u.email!==ADMIN_EMAIL);
+      S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.email!==ADMIN_EMAIL);
       S._evalAthletesLoading = false;
       renderMain();
       setTimeout(drawEvalCharts,80);
@@ -3142,282 +3146,257 @@ function renderEvals() {
   const edata = getAthleteEvals(S.evalAthleteId||'self');
   const view = S.evalView||'entry';
 
-  // Athlete selector (admin)
+  // Athlete selector (admin only) — strictly scopes which athlete's data is shown/edited
   let athleteSel = '';
   if(S.isAdmin && S.adminAthletes.length) {
-    const opts = [`<option value="self">Yo mismo</option>`]
-      .concat(S.adminAthletes.map(a=>`<option value="${a.uid}" ${S.evalAthleteId===a.uid?'selected':''}>${a.name||a.email}</option>`));
-    athleteSel = `<select class="eval-inp" onchange="S.evalAthleteId=this.value;renderMain()" style="cursor:pointer;max-width:220px">${opts.join('')}</select>`;
+    const opts = ['<option value="self">Yo mismo</option>']
+      .concat(S.adminAthletes.map(a=>'<option value="'+a.uid+'" '+(S.evalAthleteId===a.uid?'selected':'')+'>'+(a.name||a.email)+'</option>'));
+    athleteSel = '<select class="eval-inp" onchange="selectEvalAthlete(this.value)" style="cursor:pointer;max-width:220px">'+opts.join('')+'</select>';
   }
 
-  // Computed indices from last records
-  const lastOf = id => { const r=(edata[id]||[]); return r.length?r[r.length-1]:null; };
+  const lastOf = id => { const r=(edata[id]||[]); return r.length ? r[r.length-1] : null; };
   const lCMJ=lastOf('cmj'), lSJ=lastOf('sj'), lAbal=lastOf('abalakov');
   const lDer=lastOf('cmj_der'), lIzq=lastOf('cmj_izq');
-  const ice  = lCMJ&&lSJ   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1)   : null;
-  const coord= lCMJ&&lAbal ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
-  const asym = lDer&&lIzq  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
+  const ice   = (lCMJ&&lSJ)   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1) : null;
+  const coord = (lCMJ&&lAbal) ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
+  const asym  = (lDer&&lIzq)  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
 
   const currentAthleteName = S.evalAthleteId==='self'
     ? 'Yo (admin)'
     : (S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.name || S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.email || 'Atleta');
 
-  let html = `<div class="page-header">
-    <div class="page-title">Test de Saltabilidad</div>
-    <div class="page-subtitle">Valoración neuromuscular · Índices elásticos y coordinación</div>
-  </div>`;
+  let html = '<div class="page-header"><div class="page-title">Test de Saltabilidad</div>'
+    + '<div class="page-subtitle">Valoración neuromuscular · Índices elásticos y coordinación</div></div>';
 
   if(S.isAdmin) {
-    html += `<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>
-      ${athleteSel}
-      <div style="font-size:13px;font-weight:600;color:var(--text)">${currentAthleteName}</div>
-    </div>`;
+    html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+      + '<div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
+      + athleteSel
+      + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
+      + '</div>';
   }
 
-  // View toggle tabs — athletes only see history (+ team compare if in a team)
-  // Admin sees all tabs
+  // Tabs — role aware
   const evalTabs = S.isAdmin
-    ? [
-        {id:'entry',   label:'Registrar salto'},
-        {id:'history', label:'Historial'},
-        {id:'compare', label:'Comparar atletas'},
-      ]
-    : [
-        {id:'history', label:'Mi historial'},
-        {id:'team_compare', label:'Comparar en equipo'},
-      ];
+    ? [{id:'entry',label:'Registrar salto'},{id:'history',label:'Historial'},{id:'compare',label:'Comparar atletas'}]
+    : [{id:'history',label:'Mi historial'},{id:'team_compare',label:'Comparar en equipo'}];
+  const activeView = evalTabs.find(t=>t.id===view) ? view : evalTabs[0].id;
+  if(activeView !== view) S.evalView = activeView;
 
-  // Force valid view for role
-  const validView = evalTabs.find(t=>t.id===view) ? view : evalTabs[0].id;
-  if(validView !== view) { S.evalView = validView; }
-
-  html += `<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
-    ${evalTabs.map(t=>`<button class="snav-tab ${validView===t.id?'active':''}" onclick="switchEvalView('${t.id}')">${t.label}</button>`).join('')}
-  </div>`;
-
-  const activeView = validView;
+  const tabsHtml = evalTabs.map(t=>'<button class="snav-tab '+(activeView===t.id?'active':'')+'" onclick="switchEvalView(\''+t.id+'\')">'+t.label+'</button>').join('');
+  html += '<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">'+tabsHtml+'</div>';
 
   if(activeView==='entry') {
-    // AMS-style: form left, metrics + chart right
-    const sec = S.evalShowSecondary;
-    if(isDesktop) html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">`;
-
-    // LEFT: Entry form
-    html += `<div>
-      <div class="wellness-card">
-        <div class="wellness-title">Entrada de datos</div>
-        <div class="wellness-sub">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          ${EVAL_TESTS.map(t=>`
-            <div class="eval-field ${t.id==='saltoH'||t.id==='abalakov'?'full':''}">
-              <label class="eval-lbl">${t.label} (${t.unit})</label>
-              <input class="eval-inp" type="number" step="0.1" placeholder="—" id="einp-height-${t.id}" 
-                value="${lastOf(t.id)?lastOf(t.id).height:''}" 
-                style="text-align:center;font-size:18px;font-weight:700;padding:10px">
-            </div>`).join('')}
-          <div class="eval-field full" style="margin-top:4px">
-            <label class="eval-lbl">Fecha</label>
-            <input class="eval-inp" type="date" id="einp-date-all" value="${new Date().toISOString().split('T')[0]}">
-          </div>
-          <div class="eval-field full">
-            <span class="eval-toggle-secondary" onclick="toggleEvalSecondary()">
-              ${sec?'▲ Ocultar':'▼ Mostrar'} tiempo de vuelo y velocidad
-            </span>
-          </div>
-          ${sec?`
-            <div class="eval-field"><label class="eval-lbl">T. vuelo CMJ (ms)</label><input class="eval-inp" type="number" id="einp-tof-cmj" placeholder="—"></div>
-            <div class="eval-field"><label class="eval-lbl">Vel. CMJ (m/s)</label><input class="eval-inp" type="number" id="einp-vel-cmj" placeholder="—"></div>
-          `:''}
-        </div>
-        <div style="padding:0 16px 16px">
-          <button class="wellness-submit" onclick="saveAllEvals()">Procesar salto</button>
-        </div>
-      </div>
-    </div>`;
-
-    // RIGHT: Metric cards + mini chart
-    html += `<div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-        <div class="metric-card">
-          <div class="metric-card-label">ÍNDICE ELÁSTICO <span class="metric-card-icon">⚡</span></div>
-          <div class="metric-card-value" style="font-size:28px;color:${ice?'var(--accent)':'var(--text3)'}">${ice!==null?ice+'%':'-- %'}</div>
-          <div class="metric-card-sub">(CMJ−SJ)/SJ · ${lCMJ&&lSJ?`CMJ ${lCMJ.height} · SJ ${lSJ.height}`:'Sin datos'}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-card-label">COORD. DE BRAZOS <span class="metric-card-icon">💪</span></div>
-          <div class="metric-card-value" style="font-size:28px;color:${coord?'var(--blue)':'var(--text3)'}">${coord!==null?coord+'%':'-- %'}</div>
-          <div class="metric-card-sub">(Abal−CMJ)/CMJ · ${lCMJ&&lAbal?`Abal ${lAbal.height} · CMJ ${lCMJ.height}`:'Sin datos'}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-card-label">ASIMETRÍA UNILAT. <span class="metric-card-icon">↔</span></div>
-          <div class="metric-card-value" style="font-size:28px;color:${asym?parseFloat(asym)>10?'var(--red)':'var(--green)':'var(--text3)'}">${asym!==null?asym+'%':'-- %'}</div>
-          <div class="metric-card-sub">${lDer&&lIzq?`Der ${lDer.height} · Izq ${lIzq.height}`:'Sin datos'}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-card-label">MEJOR CMJ <span class="metric-card-icon">↑</span></div>
-          <div class="metric-card-value" style="font-size:28px">${lCMJ?lCMJ.height+' cm':'--'}</div>
-          <div class="metric-card-sub">${lCMJ?'Último registro · '+lCMJ.date:'Sin datos'}</div>
-        </div>
-      </div>
-      <!-- Mini progress chart -->
-      <div class="eval-chart-wrap">
-        <div class="eval-chart-title">Progresión de saltos — todos los tests</div>
-        <canvas class="eval-chart" id="chart-entry-main" height="180"></canvas>
-        ${!(edata.cmj||[]).length?`<div class="eval-no-data">Sin datos suficientes para el gráfico</div>`:''}
-      </div>
-    </div>`;
-
-    if(isDesktop) html += `</div>`;
-
+    html += renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, isDesktop);
   } else if(activeView==='history') {
-    // Each test gets its own card with toggle, bar chart (height on top), and asymmetry for unilateral
-    if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
-    const ASYM_TEST_ID = 'cmj_unilateral'; // virtual id for asymmetry chart
-    
-    // Build test list — replace cmj_der + cmj_izq with asymmetry card
-    const histTests = [
-      ...EVAL_TESTS.filter(t=>t.id!=='cmj_der'&&t.id!=='cmj_izq'),
-      {id:'asym', label:'Asimetría Unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda a lo largo del tiempo'}
-    ];
-
-    html += `<div style="${isDesktop?'display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start':''}">`;
-    
-    histTests.forEach(t=>{
-      const isHidden = S.evalHidden.has(t.id);
-      let recs, recsFwd;
-      
-      if(t.id==='asym') {
-        const derRecs = edata['cmj_der']||[];
-        const izqRecs = edata['cmj_izq']||[];
-        // Build asymmetry records: match by date
-        const dates = [...new Set([...derRecs.map(r=>r.date),...izqRecs.map(r=>r.date)])].sort();
-        recs = dates.map(date=>{
-          const d = derRecs.find(r=>r.date===date);
-          const i = izqRecs.find(r=>r.date===date);
-          if(!d||!i) return null;
-          const asym = Math.abs(d.height-i.height)/Math.max(d.height,i.height)*100;
-          return {date, height:parseFloat(asym.toFixed(1)), der:d.height, izq:i.height};
-        }).filter(Boolean);
-        recsFwd = recs;
-      } else {
-        recsFwd = (edata[t.id]||[]);
-        recs = [...recsFwd].reverse();
-      }
-      
-      const last = recs[0];
-      const isAsym = t.id==='asym';
-      
-      html += `<div id="eval-card-${t.id}" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:${isDesktop?'0':'12px'};overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">
-          <div>
-            <div style="font-size:14px;font-weight:600">${t.label}</div>
-            ${last?`<div style="font-size:13px;font-weight:700;color:${isAsym?(last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)'):'var(--accent)'};margin-top:2px">
-              ${last.height}${t.unit}${isAsym?' · Der:'+last.der+' / Izq:'+last.izq:''}
-            </div>`:'<div style="font-size:12px;color:var(--text3);margin-top:2px">Sin registros</div>'}
-          </div>
-          <button class="eval-toggle-btn" onclick="toggleEvalChart('${t.id}')" 
-            style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap">
-            ${isHidden?'▼ Ver':'▲ Ocultar'}
-          </button>
-        </div>
-        <div class="eval-hist-body" style="display:${isHidden?'none':'block'};padding:0 16px 14px;border-top:1px solid var(--border)">
-          ${recsFwd.length>=1?`
-            <div style="margin:12px 0 10px;position:relative">
-              <canvas id="chart-hist-${t.id}"></canvas>
-            </div>
-          `:''}
-          ${recs.length?recs.slice(0,5).map((r,i)=>`
-            <div class="eval-record">
-              <div>
-                <div class="eval-record-main">${r.height}${t.unit}${isAsym?` · Der:${r.der} / Izq:${r.izq}`:''}</div>
-                <div class="eval-record-date">${r.date}${r.tof?' · '+r.tof+'ms':''}</div>
-              </div>
-              ${!isAsym?`<span class="eval-record-del" onclick="deleteEvalRecord('${t.id}',${recsFwd.length-1-i})">×</span>`:''}
-            </div>`).join(''):`<div class="eval-no-data">Sin registros aún</div>`}
-        </div>
-      </div>`;
-    });
-    html += `</div>`;
-
+    html += renderEvalHistory(edata, isDesktop);
   } else if(activeView==='compare') {
-    if(!S.isAdmin) {
-      html += `<div class="empty-state">Solo disponible para el administrador.</div>`;
-    } else {
-      // Auto-load athletes if not loaded yet
-      if(!S.adminAthletes.length) {
-        html += `<div style="text-align:center;padding:30px;color:var(--text3)">
-          <div style="margin-bottom:10px">Cargando atletas...</div>
-          <button class="abtn abtn-p" onclick="loadEvalAthletes()">Cargar atletas</button>
-        </div>`;
-      } else {
-      const testId = S.evalCompareTest||'cmj';
-      html += `<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
-        ${EVAL_TESTS.map(t=>`<button class="snav-tab ${testId===t.id?'active':''}" onclick="S.evalCompareTest='${t.id}';renderMain()">${t.label}</button>`).join('')}
-      </div>`;
-      const athletes = [{uid:'self',name:'Yo (admin)',email:''},...S.adminAthletes];
-      const data = athletes.map(a=>{
-        const ed = a.uid==='self'?S.evals:(S._athleteEvalsCache?.[a.uid]||{});
-        const recs=ed[testId]||[]; const last=recs[recs.length-1];
-        return {name:a.name||a.email||'Admin',value:last?.height||null};
-      }).filter(x=>x.value!==null);
-      html += `<div class="wellness-card">
-        <div class="wellness-title">Comparación — ${EVAL_TESTS.find(t=>t.id===testId)?.label}</div>
-        <div class="wellness-sub">Último registro por atleta</div>
-        <div style="padding:16px">
-          ${data.length?`<canvas class="eval-chart" id="chart-compare-${testId}" height="220"></canvas>`
-          :`<div class="eval-no-data">Sin datos. Cargá evaluaciones primero.</div>`}
-          <button class="abtn abtn-p" style="margin-top:12px;width:100%" onclick="loadAllAthleteEvals()">↻ Actualizar datos de alumnos</button>
-        </div>
-      </div>`;
-      } // end else (adminAthletes.length)
-    }
+    html += renderEvalCompare();
   } else if(activeView==='team_compare') {
-    // Athlete view: compare with team average
     html += renderAthleteTeamCompare(edata);
   }
 
   return html;
 }
-window.renderEvals=renderEvals;
+window.renderEvals = renderEvals;
+
+function selectEvalAthlete(uid) {
+  S.evalAthleteId = uid;
+  renderMain();
+  setTimeout(drawEvalCharts, 100);
+}
+window.selectEvalAthlete = selectEvalAthlete;
+
+function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, isDesktop) {
+  const sec = S.evalShowSecondary;
+  let html = isDesktop ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">' : '';
+
+  // LEFT: entry form
+  html += '<div><div class="wellness-card"><div class="wellness-title">Entrada de datos</div>'
+    + '<div class="wellness-sub">'+new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})+'</div>'
+    + '<div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+
+  EVAL_TESTS.forEach(t=>{
+    const last = (edata[t.id]||[]).slice(-1)[0];
+    const fullWidth = (t.id==='saltoH'||t.id==='abalakov') ? 'full' : '';
+    html += '<div class="eval-field '+fullWidth+'">'
+      + '<label class="eval-lbl">'+t.label+' ('+t.unit+')</label>'
+      + '<input class="eval-inp" type="number" step="0.1" placeholder="—" id="einp-height-'+t.id+'" value="'+(last?last.height:'')+'" style="text-align:center;font-size:18px;font-weight:700;padding:10px"></div>';
+  });
+
+  html += '<div class="eval-field full" style="margin-top:4px"><label class="eval-lbl">Fecha</label>'
+    + '<input class="eval-inp" type="date" id="einp-date-all" value="'+new Date().toISOString().split('T')[0]+'"></div>';
+  html += '<div class="eval-field full"><span class="eval-toggle-secondary" onclick="toggleEvalSecondary()">'
+    + (sec?'▲ Ocultar':'▼ Mostrar')+' tiempo de vuelo y velocidad</span></div>';
+
+  if(sec) {
+    html += '<div class="eval-field"><label class="eval-lbl">T. vuelo CMJ (ms)</label><input class="eval-inp" type="number" id="einp-tof-cmj" placeholder="—"></div>';
+    html += '<div class="eval-field"><label class="eval-lbl">Vel. CMJ (m/s)</label><input class="eval-inp" type="number" id="einp-vel-cmj" placeholder="—"></div>';
+  }
+
+  html += '</div><div style="padding:0 16px 16px"><button class="wellness-submit" onclick="saveAllEvals()">Procesar salto</button></div></div></div>';
+
+  // RIGHT: metric cards + chart
+  html += '<div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
+  html += metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'));
+  html += metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'));
+  html += metricCardHtml('ASIMETRÍA UNILAT.', '↔', asym!==null?asym+'%':'-- %', asym?(parseFloat(asym)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'));
+  html += metricCardHtml('MEJOR CMJ', '↑', lCMJ?lCMJ.height+' cm':'--', 'var(--text)', lCMJ?'Último registro · '+lCMJ.date:'Sin datos');
+  html += '</div>';
+
+  html += '<div class="eval-chart-wrap"><div class="eval-chart-title">Progresión de saltos — todos los tests</div>'
+    + '<canvas class="eval-chart" id="chart-entry-main" height="180"></canvas>';
+  const hasAnyData = EVAL_TESTS.some(t=>(edata[t.id]||[]).length>0);
+  if(!hasAnyData) html += '<div class="eval-no-data">Sin datos suficientes para el gráfico</div>';
+  html += '</div></div>';
+
+  if(isDesktop) html += '</div>';
+  return html;
+}
+
+function metricCardHtml(label, icon, value, color, sub) {
+  return '<div class="metric-card"><div class="metric-card-label">'+label+' <span class="metric-card-icon">'+icon+'</span></div>'
+    + '<div class="metric-card-value" style="font-size:28px;color:'+color+'">'+value+'</div>'
+    + '<div class="metric-card-sub">'+sub+'</div></div>';
+}
+
+function renderEvalHistory(edata, isDesktop) {
+  if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
+
+  const histTests = EVAL_TESTS.filter(t=>t.id!=='cmj_der' && t.id!=='cmj_izq')
+    .concat([{id:'asym', label:'Asimetría Unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda'}]);
+
+  let html = isDesktop ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">' : '';
+
+  histTests.forEach(t=>{
+    const isHidden = S.evalHidden.has(t.id);
+    let recsFwd, recs, last, isAsym = (t.id==='asym');
+
+    if(isAsym) {
+      const der = edata['cmj_der']||[], izq = edata['cmj_izq']||[];
+      const dates = [...new Set([...der.map(r=>r.date), ...izq.map(r=>r.date)])].sort();
+      recsFwd = dates.map(date=>{
+        const d = der.find(r=>r.date===date), i = izq.find(r=>r.date===date);
+        if(!d||!i) return null;
+        const a = Math.abs(d.height-i.height)/Math.max(d.height,i.height)*100;
+        return {date, height: parseFloat(a.toFixed(1)), der: d.height, izq: i.height};
+      }).filter(Boolean);
+      recs = recsFwd.slice().reverse();
+    } else {
+      recsFwd = edata[t.id]||[];
+      recs = recsFwd.slice().reverse();
+    }
+    last = recs[0]||null;
+
+    html += '<div id="eval-card-'+t.id+'" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:'+(isDesktop?'0':'12px')+';overflow:hidden">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">';
+    html += '<div><div style="font-size:14px;font-weight:600">'+t.label+'</div>';
+    if(last) {
+      const lcolor = isAsym ? (last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)') : 'var(--accent)';
+      html += '<div style="font-size:13px;font-weight:700;color:'+lcolor+';margin-top:2px">'+last.height+t.unit+(isAsym?' · Der:'+last.der+' / Izq:'+last.izq:'')+'</div>';
+    } else {
+      html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Sin registros</div>';
+    }
+    html += '</div>';
+    html += '<button class="eval-toggle-btn" onclick="toggleEvalChart(\''+t.id+'\')" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap">'
+      + (isHidden?'▼ Ver':'▲ Ocultar') + '</button>';
+    html += '</div>';
+
+    html += '<div class="eval-hist-body" style="display:'+(isHidden?'none':'block')+';padding:0 16px 14px;border-top:1px solid var(--border)">';
+    if(recsFwd.length>=1) {
+      html += '<div style="margin:12px 0 10px;position:relative"><canvas id="chart-hist-'+t.id+'"></canvas></div>';
+    }
+    if(recs.length) {
+      recs.slice(0,5).forEach((r,i)=>{
+        html += '<div class="eval-record"><div>'
+          + '<div class="eval-record-main">'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+'</div>'
+          + '<div class="eval-record-date">'+r.date+(r.tof?' · '+r.tof+'ms':'')+'</div></div>';
+        if(!isAsym) html += '<span class="eval-record-del" onclick="deleteEvalRecord(\''+t.id+'\','+(recsFwd.length-1-i)+')">×</span>';
+        html += '</div>';
+      });
+    } else {
+      html += '<div class="eval-no-data">Sin registros aún</div>';
+    }
+    html += '</div></div>';
+  });
+
+  if(isDesktop) html += '</div>';
+  return html;
+}
+
+function renderEvalCompare() {
+  if(!S.adminAthletes.length) {
+    return '<div style="text-align:center;padding:30px;color:var(--text3)">'
+      + '<div style="margin-bottom:10px">Cargando atletas...</div>'
+      + '<button class="abtn abtn-p" onclick="loadEvalAthletes()">Cargar atletas</button></div>';
+  }
+
+  const testId = S.evalCompareTest||'cmj';
+  const tabsHtml = EVAL_TESTS.map(t=>'<button class="snav-tab '+(testId===t.id?'active':'')+'" onclick="switchCompareTest(\''+t.id+'\')">'+t.label+'</button>').join('');
+  let html = '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">'+tabsHtml+'</div>';
+
+  const athletes = [{uid:'self', name:'Yo (admin)', email:''}].concat(S.adminAthletes);
+  const allData = athletes.map(a=>{
+    const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
+    const recs = ed[testId]||[];
+    const last = recs.length ? recs[recs.length-1] : null;
+    return {name: a.name||a.email||'Atleta', value: last?last.height:null};
+  });
+  const withData = allData.filter(x=>x.value!==null);
+  const withoutData = allData.filter(x=>x.value===null);
+  const testLabel = (EVAL_TESTS.find(t=>t.id===testId)||{}).label || testId;
+
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">';
+  html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
+  html += '<div style="font-size:15px;font-weight:600">Comparación — '+testLabel+'</div>';
+  html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro por atleta</div></div>';
+  html += '<div style="padding:16px">';
+
+  if(withData.length>=1) {
+    html += '<canvas class="eval-chart" id="chart-compare-'+testId+'" height="220" style="margin-bottom:12px"></canvas>';
+    withData.forEach(d=>{
+      html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">'
+        + '<span>'+d.name+'</span><span style="font-weight:700;color:var(--accent)">'+d.value+' cm</span></div>';
+    });
+  } else {
+    html += '<div class="eval-no-data">Sin datos registrados.<br><span style="font-size:12px">Presioná Actualizar después de cargar evaluaciones.</span></div>';
+  }
+  if(withoutData.length) {
+    html += '<div style="font-size:11px;color:var(--text3);margin-top:8px">Sin datos: '+withoutData.map(d=>d.name).join(', ')+'</div>';
+  }
+  html += '<button class="abtn abtn-p" style="width:100%;margin-top:12px" onclick="loadAllAthleteEvals()">↻ Actualizar datos de atletas</button>';
+  html += '</div></div>';
+  return html;
+}
 
 function renderAthleteTeamCompare(myData) {
-  // Find which team this athlete belongs to
-  const myTeam = S.teams?.find(t=>(t.players||[]).some(p=>
-    p===S.userData?.name || p===S.userData?.email
-  ));
-
-  let html = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px">
-    <div style="font-size:14px;font-weight:600;margin-bottom:4px">Comparación con el equipo</div>`;
+  const myTeam = (S.teams||[]).find(t=>(t.players||[]).some(p=>p===S.userData?.name || p===S.userData?.email));
+  let html = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px">'
+    + '<div style="font-size:14px;font-weight:600;margin-bottom:4px">Comparación con el equipo</div>';
 
   if(!myTeam) {
-    html += `<div class="eval-no-data">No estás registrado en ningún equipo.</div></div>`;
+    html += '<div class="eval-no-data">No estás registrado en ningún equipo.</div></div>';
     return html;
   }
 
-  html += `<div style="font-size:12px;color:var(--text3);margin-bottom:14px">${myTeam.name}</div>`;
-  html += `<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tu último valor vs. media del equipo</div>`;
+  html += '<div style="font-size:12px;color:var(--text3);margin-bottom:14px">'+myTeam.name+'</div>';
+  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tu último valor vs. media del equipo (visual)</div>';
 
-  EVAL_TESTS.filter(t=>t.id!=='cmj_der'&&t.id!=='cmj_izq').forEach(t=>{
+  EVAL_TESTS.filter(t=>t.id!=='cmj_der' && t.id!=='cmj_izq').forEach(t=>{
     const myRecs = myData[t.id]||[];
     const myLast = myRecs.length ? myRecs[myRecs.length-1].height : null;
     if(!myLast) return;
-
-    html += `<div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-        <span style="font-weight:500">${t.label}</span>
-        <span style="color:var(--accent);font-weight:700">${myLast} cm</span>
-      </div>
-      <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">
-        <div style="height:100%;background:var(--accent);border-radius:3px;width:${Math.min(100,myLast/60*100)}%"></div>
-      </div>
-    </div>`;
+    html += '<div style="margin-bottom:12px">'
+      + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">'
+      + '<span style="font-weight:500">'+t.label+'</span><span style="color:var(--accent);font-weight:700">'+myLast+' cm</span></div>'
+      + '<div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">'
+      + '<div style="height:100%;background:var(--accent);border-radius:3px;width:'+Math.min(100,myLast/60*100)+'%"></div></div></div>';
   });
 
-  html += `</div>`;
+  html += '</div>';
   return html;
 }
-window.renderAthleteTeamCompare=renderAthleteTeamCompare;
+window.renderAthleteTeamCompare = renderAthleteTeamCompare;
 
 async function saveAllEvals() {
   const date = document.getElementById('einp-date-all')?.value || new Date().toISOString().split('T')[0];
@@ -3427,10 +3406,10 @@ async function saveAllEvals() {
   const uid = S.evalAthleteId||'self';
 
   for(const t of EVAL_TESTS) {
-    const hEl = document.getElementById(`einp-height-${t.id}`);
-    if(!hEl||!hEl.value) continue;
+    const hEl = document.getElementById('einp-height-'+t.id);
+    if(!hEl || !hEl.value) continue;
     const h = parseFloat(hEl.value);
-    if(isNaN(h)||h<=0) continue;
+    if(isNaN(h) || h<=0) continue;
     const rec = {date, height:h};
     if(t.id==='cmj') { if(tof) rec.tof=parseFloat(tof); if(vel) rec.vel=parseFloat(vel); }
 
@@ -3452,301 +3431,245 @@ async function saveAllEvals() {
     scheduleSave();
   } else {
     try {
-      await setDoc(doc(db,'personal',uid),{evals:S._athleteEvalsCache[uid]},{merge:true});
+      await setDoc(doc(db,'personal',uid), {evals:S._athleteEvalsCache[uid]}, {merge:true});
     } catch(e) { showToast('Error al guardar'); return; }
   }
-  showToast(`✓ ${saved} test${saved!==1?'s':''} guardado${saved!==1?'s':''}`);
-  setTimeout(()=>{ if(S.currentView==='evals') { renderMain(); setTimeout(drawEvalCharts,80); }},100);
-}
-window.saveAllEvals=saveAllEvals;
 
+  showToast('✓ '+saved+' test'+(saved!==1?'s':'')+' guardado'+(saved!==1?'s':''));
+  setTimeout(()=>{ if(S.currentView==='evals'){ renderMain(); setTimeout(drawEvalCharts,80);} }, 100);
+}
+window.saveAllEvals = saveAllEvals;
+
+// ── CHART DRAWING — strictly scoped to S.evalAthleteId, redraws on every call ──
 function drawEvalCharts() {
   if(typeof Chart==='undefined') return;
+  // Always destroy ALL existing chart instances first to prevent stale/mixed data
+  Object.keys(S.evalChartInstances||{}).forEach(key=>{
+    try { S.evalChartInstances[key].destroy(); } catch(e){}
+    delete S.evalChartInstances[key];
+  });
+
   const edata = getAthleteEvals(S.evalAthleteId||'self');
-  const gridColor='rgba(255,255,255,0.05)';
-
-  // KEY FIX: maintainAspectRatio:true with fixed aspect ratio prevents infinite growth
-  const baseOpts = {
-    responsive:true,
-    maintainAspectRatio:true,
-    aspectRatio:2.5,
-    plugins:{
-      legend:{display:false},
-      tooltip:{backgroundColor:'#161b27',titleColor:'#f0f4ff',bodyColor:'#8899bb',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
-    },
-    scales:{
-      x:{grid:{color:gridColor},ticks:{color:'#4a5a7a',font:{size:10},maxRotation:0}},
-      y:{grid:{color:gridColor},ticks:{color:'#4a5a7a',font:{size:10}},beginAtZero:false}
-    }
-  };
-
-  const mk = (canvasId, labels, datasets, type='line', extraOpts={}) => {
-    const c=document.getElementById(canvasId);
-    if(!c) return;
-    // destroy previous instance
-    if(S.evalChartInstances[canvasId]) {
-      S.evalChartInstances[canvasId].destroy();
-      delete S.evalChartInstances[canvasId];
-    }
-    const opts = {...JSON.parse(JSON.stringify(baseOpts)), ...extraOpts};
-    S.evalChartInstances[canvasId] = new Chart(c, {type, data:{labels, datasets}, options:opts});
-  };
-
+  const gridColor = 'rgba(255,255,255,0.05)';
   const view = S.evalView||'entry';
-  // Map athlete views to chart equivalents
   const chartView = (view==='team_compare') ? 'history' : view;
 
+  const tooltipStyle = {backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1};
+
   if(chartView==='entry') {
-    // BAR CHART: one cluster per test, grouped by date
     const cmjR=edata.cmj||[], sjR=edata.sj||[], abalR=edata.abalakov||[];
     const derR=edata.cmj_der||[], izqR=edata.cmj_izq||[], hR=edata.saltoH||[];
-    
-    // Collect all unique dates across all tests
-    const allDates=[...new Set([
-      ...cmjR.map(r=>r.date),
-      ...sjR.map(r=>r.date),
-      ...abalR.map(r=>r.date),
-      ...derR.map(r=>r.date),
-      ...izqR.map(r=>r.date),
-      ...hR.map(r=>r.date),
+    const allDates = [...new Set([
+      ...cmjR.map(r=>r.date), ...sjR.map(r=>r.date), ...abalR.map(r=>r.date),
+      ...derR.map(r=>r.date), ...izqR.map(r=>r.date), ...hR.map(r=>r.date)
     ])].sort();
 
-    if(allDates.length) {
-      const findVal = (recs, date) => {
-        const r = recs.find(x=>x.date===date);
-        return r ? r.height : null;
-      };
-      
-      // Grouped bar: each group = one date, bars = each test
-      mk('chart-entry-main', allDates, [
-        {
-          label:'CMJ', 
-          data:allDates.map(d=>findVal(cmjR,d)),
-          backgroundColor:'rgba(59,125,216,0.85)', borderColor:'#3b7dd8',
-          borderWidth:1, borderRadius:4, skipNull:true
+    const c = document.getElementById('chart-entry-main');
+    if(c && allDates.length) {
+      const findVal = (recs,date) => { const r=recs.find(x=>x.date===date); return r?r.height:null; };
+      S.evalChartInstances['chart-entry-main'] = new Chart(c, {
+        type:'bar',
+        data:{
+          labels: allDates,
+          datasets:[
+            {label:'CMJ', data:allDates.map(d=>findVal(cmjR,d)), backgroundColor:'rgba(59,125,216,0.85)', borderColor:'#3b7dd8', borderWidth:1, borderRadius:4, skipNull:true},
+            {label:'SJ', data:allDates.map(d=>findVal(sjR,d)), backgroundColor:'rgba(34,197,94,0.85)', borderColor:'#22c55e', borderWidth:1, borderRadius:4, skipNull:true},
+            {label:'Abalakov', data:allDates.map(d=>findVal(abalR,d)), backgroundColor:'rgba(139,92,246,0.85)', borderColor:'#8b5cf6', borderWidth:1, borderRadius:4, skipNull:true},
+            {label:'CMJ Der.', data:allDates.map(d=>findVal(derR,d)), backgroundColor:'rgba(245,158,11,0.85)', borderColor:'#f59e0b', borderWidth:1, borderRadius:4, skipNull:true},
+            {label:'CMJ Izq.', data:allDates.map(d=>findVal(izqR,d)), backgroundColor:'rgba(239,68,68,0.85)', borderColor:'#ef4444', borderWidth:1, borderRadius:4, skipNull:true},
+            {label:'Salto H.', data:allDates.map(d=>findVal(hR,d)), backgroundColor:'rgba(20,184,166,0.85)', borderColor:'#14b8a6', borderWidth:1, borderRadius:4, skipNull:true},
+          ]
         },
-        {
-          label:'SJ',
-          data:allDates.map(d=>findVal(sjR,d)),
-          backgroundColor:'rgba(34,197,94,0.85)', borderColor:'#22c55e',
-          borderWidth:1, borderRadius:4, skipNull:true
-        },
-        {
-          label:'Abalakov',
-          data:allDates.map(d=>findVal(abalR,d)),
-          backgroundColor:'rgba(139,92,246,0.85)', borderColor:'#8b5cf6',
-          borderWidth:1, borderRadius:4, skipNull:true
-        },
-        {
-          label:'CMJ Der.',
-          data:allDates.map(d=>findVal(derR,d)),
-          backgroundColor:'rgba(245,158,11,0.85)', borderColor:'#f59e0b',
-          borderWidth:1, borderRadius:4, skipNull:true
-        },
-        {
-          label:'CMJ Izq.',
-          data:allDates.map(d=>findVal(izqR,d)),
-          backgroundColor:'rgba(239,68,68,0.85)', borderColor:'#ef4444',
-          borderWidth:1, borderRadius:4, skipNull:true
-        },
-        {
-          label:'Salto H.',
-          data:allDates.map(d=>findVal(hR,d)),
-          backgroundColor:'rgba(20,184,166,0.85)', borderColor:'#14b8a6',
-          borderWidth:1, borderRadius:4, skipNull:true
-        },
-      ], 'bar', {
-        plugins:{
-          legend:{
-            display:true,
-            labels:{color:'#7a90b8',font:{size:11},boxWidth:12,padding:10,
-              filter: (item, data) => data.datasets[item.datasetIndex].data.some(v=>v!==null)
-            }
-          }
-        },
-        scales:{
-          x:{
-            grid:{color:'rgba(255,255,255,0.05)'},
-            ticks:{color:'#3d5070',font:{size:10}},
-            stacked:false
+        options:{
+          responsive:true, maintainAspectRatio:true, aspectRatio:2.2,
+          plugins:{
+            legend:{display:true, labels:{color:'#7a90b8', font:{size:11}, boxWidth:12, padding:10,
+              filter:(item,data)=>data.datasets[item.datasetIndex].data.some(v=>v!==null)}},
+            tooltip:tooltipStyle
           },
-          y:{
-            grid:{color:'rgba(255,255,255,0.05)'},
-            ticks:{color:'#3d5070',font:{size:10}},
-            beginAtZero:false,
-            title:{display:true,text:'cm',color:'#3d5070',font:{size:10}}
+          scales:{
+            x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:10}}},
+            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:10}}, beginAtZero:false, title:{display:true,text:'cm',color:'#3d5070',font:{size:10}}}
           }
-        },
-        aspectRatio:2.2
+        }
       });
     }
 
   } else if(chartView==='history') {
-    if(!(S.evalHidden instanceof Set)) S.evalHidden=new Set();
+    if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
 
-    // Value labels plugin (show value on top of each bar)
-    const datalabelsPlugin = {
-      id:'datalabels',
+    // Datalabels plugin for bar charts (value above bar)
+    const barLabelsPlugin = {
+      id:'barlabels',
       afterDatasetsDraw(chart) {
         const ctx = chart.ctx;
-        chart.data.datasets.forEach((dataset, i) => {
-          const meta = chart.getDatasetMeta(i);
-          meta.data.forEach((bar, idx) => {
-            const val = dataset.data[idx];
+        chart.data.datasets.forEach((ds,i)=>{
+          chart.getDatasetMeta(i).data.forEach((bar,idx)=>{
+            const val = ds.data[idx];
             if(val===null||val===undefined) return;
             ctx.save();
-            ctx.fillStyle = '#7a90b8';
+            ctx.fillStyle = '#a8b8d8';
             ctx.font = '600 10px Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
-            ctx.fillText(val+'cm', bar.x, bar.y - 2);
+            ctx.fillText(val+'cm', bar.x, bar.y-4);
             ctx.restore();
           });
         });
       }
     };
 
-    const datalabelsAsymPlugin = {
-      id:'datalabels',
-      afterDatasetsDraw(chart) {
-        const ctx = chart.ctx;
-        chart.data.datasets.forEach((dataset, i) => {
-          const meta = chart.getDatasetMeta(i);
-          meta.data.forEach((point, idx) => {
-            const val = dataset.data[idx];
-            if(val===null||val===undefined) return;
-            ctx.save();
-            ctx.fillStyle = '#7a90b8';
-            ctx.font = '600 10px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(val+'%', point.x, point.y - 4);
-            ctx.restore();
-          });
-        });
-      }
-    };
+    const colorMap   = {cmj:'rgba(59,125,216,0.8)', sj:'rgba(34,197,94,0.8)', abalakov:'rgba(139,92,246,0.8)', saltoH:'rgba(20,184,166,0.8)'};
+    const borderMap  = {cmj:'#3b7dd8', sj:'#22c55e', abalakov:'#8b5cf6', saltoH:'#14b8a6'};
 
-    // Individual test bar charts
-    EVAL_TESTS.filter(t=>t.id!=='cmj_der'&&t.id!=='cmj_izq').forEach(t=>{
+    EVAL_TESTS.filter(t=>t.id!=='cmj_der' && t.id!=='cmj_izq').forEach(t=>{
       if(S.evalHidden.has(t.id)) return;
-      const recs=(edata[t.id]||[]);
-      if(recs.length < 1) return;
-      const c=document.getElementById(`chart-hist-${t.id}`); if(!c) return;
-      if(S.evalChartInstances[`chart-hist-${t.id}`]) {
-        S.evalChartInstances[`chart-hist-${t.id}`].destroy();
-        delete S.evalChartInstances[`chart-hist-${t.id}`];
-      }
-      const colorMap = {
-        cmj:'rgba(59,125,216,0.8)', sj:'rgba(34,197,94,0.8)',
-        abalakov:'rgba(139,92,246,0.8)', saltoH:'rgba(20,184,166,0.8)'
-      };
-      const borderMap = {
-        cmj:'#3b7dd8', sj:'#22c55e', abalakov:'#8b5cf6', saltoH:'#14b8a6'
-      };
-      S.evalChartInstances[`chart-hist-${t.id}`] = new Chart(c, {
+      const recs = edata[t.id]||[];
+      if(!recs.length) return;
+      const c = document.getElementById('chart-hist-'+t.id);
+      if(!c) return;
+
+      S.evalChartInstances['chart-hist-'+t.id] = new Chart(c, {
         type:'bar',
         data:{
           labels: recs.map(r=>r.date),
-          datasets:[{
-            label: t.label,
-            data: recs.map(r=>r.height),
-            backgroundColor: colorMap[t.id]||'rgba(59,125,216,0.8)',
-            borderColor: borderMap[t.id]||'#3b7dd8',
-            borderWidth:1, borderRadius:4
-          }]
+          datasets:[
+            {
+              type:'bar', label:t.label,
+              data: recs.map(r=>r.height),
+              backgroundColor: colorMap[t.id]||'rgba(59,125,216,0.8)',
+              borderColor: borderMap[t.id]||'#3b7dd8',
+              borderWidth:1, borderRadius:4, order:2
+            },
+            {
+              type:'line', label:t.label+' (línea)',
+              data: recs.map(r=>r.height),
+              borderColor: borderMap[t.id]||'#3b7dd8',
+              borderWidth:2, pointRadius:3, pointBackgroundColor:'#fff',
+              tension:0.3, fill:false, order:1
+            }
+          ]
         },
         options:{
-          responsive:true, maintainAspectRatio:true, aspectRatio:2.4,
+          responsive:true, maintainAspectRatio:true, aspectRatio:2.3,
           plugins:{
             legend:{display:false},
-            tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
+            tooltip:{...tooltipStyle, filter:item=>item.datasetIndex===0}
           },
           scales:{
-            x:{grid:{color:gridColor},ticks:{color:'#3d5070',font:{size:9},maxRotation:30}},
-            y:{grid:{color:gridColor},ticks:{color:'#3d5070',font:{size:9}},beginAtZero:false,
-               title:{display:true,text:'cm',color:'#3d5070',font:{size:9}}}
+            x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}, maxRotation:30}},
+            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}}, beginAtZero:false, title:{display:true,text:'cm',color:'#3d5070',font:{size:9}}}
           }
         },
-        plugins:[datalabelsPlugin]
+        plugins:[barLabelsPlugin]
       });
     });
 
-    // Asymmetry chart (line, shows % over time)
+    // Asymmetry chart (separate, always a line)
     if(!S.evalHidden.has('asym')) {
-      const derRecs=edata['cmj_der']||[], izqRecs=edata['cmj_izq']||[];
-      const dates=[...new Set([...derRecs.map(r=>r.date),...izqRecs.map(r=>r.date)])].sort();
-      const asymData=dates.map(date=>{
-        const d=derRecs.find(r=>r.date===date);
-        const i=izqRecs.find(r=>r.date===date);
+      const der=edata['cmj_der']||[], izq=edata['cmj_izq']||[];
+      const dates=[...new Set([...der.map(r=>r.date), ...izq.map(r=>r.date)])].sort();
+      const asymVals = dates.map(date=>{
+        const d=der.find(r=>r.date===date), i=izq.find(r=>r.date===date);
         if(!d||!i) return null;
         return parseFloat((Math.abs(d.height-i.height)/Math.max(d.height,i.height)*100).toFixed(1));
       });
-      const validPairs = dates.filter((_,i)=>asymData[i]!==null);
-      const validData = asymData.filter(v=>v!==null);
-      
-      const ca = document.getElementById('chart-hist-asym'); if(!ca) return;
-      if(S.evalChartInstances['chart-hist-asym']) {
-        S.evalChartInstances['chart-hist-asym'].destroy();
-        delete S.evalChartInstances['chart-hist-asym'];
-      }
-      if(validPairs.length) {
-        S.evalChartInstances['chart-hist-asym'] = new Chart(ca, {
+      const validDates = dates.filter((_,idx)=>asymVals[idx]!==null);
+      const validVals  = asymVals.filter(v=>v!==null);
+      const c = document.getElementById('chart-hist-asym');
+      if(c && validDates.length) {
+        S.evalChartInstances['chart-hist-asym'] = new Chart(c, {
           type:'line',
           data:{
-            labels:validPairs,
+            labels:validDates,
             datasets:[{
-              label:'Asimetría %',
-              data:validData,
-              borderColor:'#f59e0b',
-              backgroundColor:'rgba(245,158,11,0.08)',
-              tension:.3, pointBackgroundColor:validData.map(v=>v>10?'#ef4444':v>5?'#f59e0b':'#22c55e'),
-              pointRadius:5, fill:true
+              label:'Asimetría %', data:validVals,
+              borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)',
+              tension:.3, pointRadius:5,
+              pointBackgroundColor:validVals.map(v=>v>10?'#ef4444':v>5?'#f59e0b':'#22c55e'),
+              fill:true
             }]
           },
           options:{
-            responsive:true, maintainAspectRatio:true, aspectRatio:2.4,
-            plugins:{
-              legend:{display:false},
-              tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
-            },
+            responsive:true, maintainAspectRatio:true, aspectRatio:2.3,
+            plugins:{legend:{display:false}, tooltip:tooltipStyle},
             scales:{
-              x:{grid:{color:gridColor},ticks:{color:'#3d5070',font:{size:9},maxRotation:30}},
-              y:{grid:{color:gridColor},ticks:{color:'#3d5070',font:{size:9}},
-                 min:0,
-                 title:{display:true,text:'% asimetría',color:'#3d5070',font:{size:9}}
-              }
-            },
-            // danger zone annotation via afterDraw
+              x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}, maxRotation:30}},
+              y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}}, min:0, title:{display:true,text:'% asimetría',color:'#3d5070',font:{size:9}}}
+            }
           },
-          plugins:[datalabelsAsymPlugin]
+          plugins:[{
+            id:'asymlabels',
+            afterDatasetsDraw(chart){
+              const ctx=chart.ctx;
+              chart.getDatasetMeta(0).data.forEach((pt,idx)=>{
+                const val=chart.data.datasets[0].data[idx];
+                if(val===null||val===undefined) return;
+                ctx.save();
+                ctx.fillStyle='#a8b8d8';
+                ctx.font='600 10px Inter, sans-serif';
+                ctx.textAlign='center';
+                ctx.textBaseline='bottom';
+                ctx.fillText(val+'%', pt.x, pt.y-6);
+                ctx.restore();
+              });
+            }
+          }]
         });
       }
     }
 
   } else if(chartView==='compare') {
-    const testId=S.evalCompareTest||'cmj';
-    const athletes=[{uid:'self',name:'Yo (admin)'},...S.adminAthletes];
-    const data=athletes.map(a=>{
-      const ed=a.uid==='self'?S.evals:(S._athleteEvalsCache?.[a.uid]||{});
-      const recs=ed[testId]||[];
-      const last=recs[recs.length-1];
-      return {name:a.name||a.email||'Admin', value:last?.height||null};
+    const testId = S.evalCompareTest||'cmj';
+    const athletes = [{uid:'self',name:'Yo (admin)'}].concat(S.adminAthletes);
+    const compData = athletes.map(a=>{
+      const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
+      const recs = ed[testId]||[];
+      const last = recs.length ? recs[recs.length-1] : null;
+      return {name: a.name||a.email||'Admin', value: last?last.height:null};
     }).filter(x=>x.value!==null);
 
-    if(data.length) mk(`chart-compare-${testId}`,
-      data.map(d=>d.name),
-      [{data:data.map(d=>d.value), backgroundColor:data.map((_,i)=>`hsl(${220+i*30},60%,55%)`), borderRadius:6, borderWidth:0}],
-      'bar',
-      {aspectRatio:2, scales:{x:{grid:{color:gridColor},ticks:{color:'#4a5a7a'}}, y:{grid:{color:gridColor},ticks:{color:'#4a5a7a'},beginAtZero:false}}}
-    );
+    const canvasId = 'chart-compare-'+testId;
+    const c = document.getElementById(canvasId);
+    if(c && compData.length) {
+      const colors = compData.map((_,i)=>'hsl('+(210+i*35)+',65%,55%)');
+      S.evalChartInstances[canvasId] = new Chart(c, {
+        type:'bar',
+        data:{labels:compData.map(d=>d.name), datasets:[{data:compData.map(d=>d.value), backgroundColor:colors, borderRadius:6, borderWidth:0}]},
+        options:{
+          responsive:true, maintainAspectRatio:true, aspectRatio:2,
+          plugins:{legend:{display:false}, tooltip:{...tooltipStyle, callbacks:{label:ctx=>' '+ctx.raw+' cm'}}},
+          scales:{
+            x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:11}}},
+            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:10}}, beginAtZero:false, title:{display:true,text:'cm',color:'#3d5070',font:{size:10}}}
+          }
+        },
+        plugins:[{
+          id:'comparelabels',
+          afterDatasetsDraw(chart){
+            const ctx=chart.ctx;
+            chart.getDatasetMeta(0).data.forEach((bar,idx)=>{
+              const val=chart.data.datasets[0].data[idx];
+              if(!val) return;
+              ctx.save();
+              ctx.fillStyle='#e8edf8';
+              ctx.font='700 11px Inter, sans-serif';
+              ctx.textAlign='center';
+              ctx.textBaseline='bottom';
+              ctx.fillText(val+'cm', bar.x, bar.y-3);
+              ctx.restore();
+            });
+          }
+        }]
+      });
+    }
   }
 }
-window.drawEvalCharts=drawEvalCharts;
+window.drawEvalCharts = drawEvalCharts;
 
 function getAthleteEvals(uid) {
   if(uid==='self') return S.evals;
-  return S._athleteEvalsCache?.[uid] || {};
+  return (S._athleteEvalsCache && S._athleteEvalsCache[uid]) || {};
 }
 
 async function deleteEvalRecord(testId, idx) {
@@ -3757,12 +3680,26 @@ async function deleteEvalRecord(testId, idx) {
   } else {
     if(S._athleteEvalsCache?.[uid]?.[testId]) {
       S._athleteEvalsCache[uid][testId].splice(idx,1);
-      try { await setDoc(doc(db,'personal',uid),{evals:S._athleteEvalsCache[uid]},{merge:true}); } catch(e){}
+      try { await setDoc(doc(db,'personal',uid), {evals:S._athleteEvalsCache[uid]}, {merge:true}); } catch(e){}
     }
   }
-  renderMain(); setTimeout(drawEvalCharts,80);
+  renderMain();
+  setTimeout(drawEvalCharts, 80);
 }
-window.deleteEvalRecord=deleteEvalRecord;
+window.deleteEvalRecord = deleteEvalRecord;
+
+function setLibFilter(tag) {
+  S._libViewFilter = (S._libViewFilter===tag) ? null : tag;
+  renderMain();
+}
+window.setLibFilter = setLibFilter;
+
+function switchCompareTest(testId) {
+  S.evalCompareTest = testId;
+  renderMain();
+  setTimeout(drawEvalCharts, 80);
+}
+window.switchCompareTest = switchCompareTest;
 
 function switchEvalView(viewId) {
   S.evalView = viewId;
@@ -3772,52 +3709,57 @@ function switchEvalView(viewId) {
 window.switchEvalView = switchEvalView;
 
 function toggleEvalChart(testId) {
-  if(!(S.evalHidden instanceof Set)) S.evalHidden=new Set();
+  if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
   if(S.evalHidden.has(testId)) S.evalHidden.delete(testId);
   else S.evalHidden.add(testId);
-  // Don't re-render full page — just redraw charts after toggling
+
   const card = document.getElementById('eval-card-'+testId);
   if(card) {
     const body = card.querySelector('.eval-hist-body');
-    if(body) {
-      body.style.display = S.evalHidden.has(testId)?'none':'block';
-      const btn = card.querySelector('.eval-toggle-btn');
-      if(btn) btn.textContent = S.evalHidden.has(testId)?'▼ Ver':'▲ Ocultar';
-      if(!S.evalHidden.has(testId)) setTimeout(drawEvalCharts, 80);
-      return;
-    }
+    const btn = card.querySelector('.eval-toggle-btn');
+    if(body) body.style.display = S.evalHidden.has(testId) ? 'none' : 'block';
+    if(btn) btn.textContent = S.evalHidden.has(testId) ? '▼ Ver' : '▲ Ocultar';
+    if(!S.evalHidden.has(testId)) setTimeout(drawEvalCharts, 80);
+    return;
   }
   renderMain();
   setTimeout(drawEvalCharts, 80);
 }
-window.toggleEvalChart=toggleEvalChart;
+window.toggleEvalChart = toggleEvalChart;
 
-function toggleEvalSecondary() { S.evalShowSecondary=!S.evalShowSecondary; renderMain(); }
-window.toggleEvalSecondary=toggleEvalSecondary;
+function toggleEvalSecondary() {
+  S.evalShowSecondary = !S.evalShowSecondary;
+  renderMain();
+}
+window.toggleEvalSecondary = toggleEvalSecondary;
 
 async function loadEvalAthletes() {
   if(!S.isAdmin) return;
   try {
     const snap = await getDocs(collection(db,'users'));
-    S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
-      .filter(u=>u.email!==ADMIN_EMAIL);
+    S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.email!==ADMIN_EMAIL);
     renderMain();
     setTimeout(drawEvalCharts, 80);
   } catch(e) { showToast('Error cargando atletas'); }
 }
-window.loadEvalAthletes=loadEvalAthletes;
+window.loadEvalAthletes = loadEvalAthletes;
 
 async function loadAllAthleteEvals() {
-  if(!S.isAdmin||!S.adminAthletes.length) return;
+  if(!S.isAdmin || !S.adminAthletes.length) return;
   showToast('Cargando datos...');
-  if(!S._athleteEvalsCache) S._athleteEvalsCache={};
+  if(!S._athleteEvalsCache) S._athleteEvalsCache = {};
   for(const a of S.adminAthletes) {
-    try { const snap=await getDoc(doc(db,'personal',a.uid)); if(snap.exists()) S._athleteEvalsCache[a.uid]=snap.data().evals||{}; } catch(e){}
+    try {
+      const snap = await getDoc(doc(db,'personal',a.uid));
+      if(snap.exists()) S._athleteEvalsCache[a.uid] = snap.data().evals || {};
+    } catch(e) {}
   }
   showToast('✓ Datos actualizados');
-  renderMain(); setTimeout(drawEvalCharts,80);
+  renderMain();
+  setTimeout(drawEvalCharts, 80);
 }
-window.loadAllAthleteEvals=loadAllAthleteEvals;
+window.loadAllAthleteEvals = loadAllAthleteEvals;
+
 
 // ══════════════════════════════════════════════════════════════
 
@@ -3933,11 +3875,27 @@ function renderDashboardContent() {
     return logs.some(l=>l.date===today);
   }).length;
   const wellnessToday = athletes.filter(a=>a._personal?.wellness?.[today]).length;
-  const alertAthletes = athletes.filter(a=>{
+
+  // Alert detection: ACWR risk + wellness silence (2+ days without check-in)
+  const twoDaysAgo = new Date(); twoDaysAgo.setDate(twoDaysAgo.getDate()-2);
+  const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+
+  const acwrAlerts = athletes.filter(a=>{
     const logs = a._personal?.history?._sessionLogs||[];
     const m = calcLoadMetrics(logs);
     return m && m.acwr && m.acwr>1.5;
-  });
+  }).map(a=>({athlete:a, type:'acwr', detail:'ACWR elevado'}));
+
+  const wellnessAlerts = athletes.filter(a=>{
+    const wellness = a._personal?.wellness||{};
+    const dates = Object.keys(wellness).filter(d=>wellness[d] && HOOPER_ITEMS.every(i=>wellness[d][i.key]));
+    if(!dates.length) return true; // never checked in
+    const lastDate = dates.sort().reverse()[0];
+    return lastDate < twoDaysAgoStr;
+  }).map(a=>({athlete:a, type:'wellness', detail:'Sin wellness hace 2+ días'}));
+
+  const allAlerts = [...acwrAlerts, ...wellnessAlerts];
+  const alertAthletes = acwrAlerts.map(x=>x.athlete); // keep for backward compat in metric card
 
   let html = `<div class="metric-grid" style="margin-bottom:20px">
     <div class="metric-card">
@@ -3955,12 +3913,33 @@ function renderDashboardContent() {
       <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}">${wellnessToday}</div>
       <div class="metric-card-sub">registros enviados</div>
     </div>
-    ${alertAthletes.length?`<div class="metric-card" style="border-color:rgba(59,125,216,0.3)">
-      <div class="metric-card-label" style="color:var(--red)">ALERTAS CARGA ⚠</div>
-      <div class="metric-card-value" style="color:var(--red)">${alertAthletes.length}</div>
-      <div class="metric-card-sub">ACWR > 1.5</div>
+    ${allAlerts.length?`<div class="metric-card" style="border-color:rgba(239,68,68,0.3)">
+      <div class="metric-card-label" style="color:var(--red)">ALERTAS ⚠</div>
+      <div class="metric-card-value" style="color:var(--red)">${allAlerts.length}</div>
+      <div class="metric-card-sub">requieren atención</div>
     </div>`:''}
   </div>`;
+
+  // Dedicated alerts panel
+  if(allAlerts.length) {
+    html += `<div style="background:var(--bg2);border:1px solid rgba(239,68,68,0.25);border-radius:var(--r);margin-bottom:20px;overflow:hidden">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <span style="color:var(--red);font-size:16px">⚠</span>
+        <span style="font-size:14px;font-weight:600">Atención requerida</span>
+      </div>
+      ${allAlerts.map(({athlete,type,detail})=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${type==='acwr'?'var(--red)':'var(--amber)'}"></div>
+            <div>
+              <div style="font-size:13px;font-weight:500">${athlete.name||athlete.email}</div>
+              <div style="font-size:11px;color:var(--text3)">${detail}</div>
+            </div>
+          </div>
+          <span style="color:var(--text3);font-size:16px">›</span>
+        </div>`).join('')}
+    </div>`;
+  }
 
   if(!athletes.length) {
     html += `<div class="empty-state">No hay atletas registrados aún.<br><span style="font-size:12px">Cuando un atleta cree su cuenta, aparecerá aquí.</span></div>`;
@@ -4155,7 +4134,7 @@ function renderLibraryView() {
   <!-- Tag filters -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
     <button class="lib-filter ${!filter?'active':''}" onclick="S._libViewFilter=null;renderMain()">Todos</button>
-    ${allTags.map(t=>`<button class="lib-filter ${filter===t?'active':''}" onclick="S._libViewFilter='${t}';renderMain()">${t}</button>`).join('')}
+    ${allTags.map(t=>'<button class="lib-filter '+(filter===t?'active':'')+'" onclick="setLibFilter(\''+t+'\')">' + t + '</button>').join('')}
   </div>
 
   <!-- Exercise list -->
