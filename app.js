@@ -20,6 +20,15 @@ const db = getFirestore(fbApp);
 // ── ADMIN EMAIL (el tuyo) ─────────────────────────────────────
 const ADMIN_EMAIL = "gonzaloganora@gmail.com";
 
+// ── INSTITUCIONES / EQUIPOS FIJOS ──────────────────────────────
+// Catálogo cerrado: un atleta "de equipo" siempre pertenece a una de estas
+// instituciones, y dentro de ella, a una de sus categorías. Esto genera
+// (o reutiliza) el equipo real en Firestore al completar el onboarding.
+const INSTITUTIONS = {
+  'Handball-EDLP': { sport: 'Handball', categories: ['Cadetes', 'Juveniles', 'Juniors', 'Liga de Honor'] },
+  'Basquet-Club Universal': { sport: 'Basquet', categories: ['u15', 'u17', 'u21'] }
+};
+
 // ── DEFAULT DATA ─────────────────────────────────────────────
 const DEFAULT_BLOCKS = [
   { id:'b1', label:'Bloque 1', title:'Activación y movilidad', time:'5–10 min', colorKey:'b1',
@@ -243,6 +252,14 @@ let S = {
   adminAthletes: [],     // list of all user docs
   viewingAthlete: null,  // { uid, userData, personal }
   editingRoutine: null,  // { id, name, sessions }
+  // ── ONBOARDING (perfil de atleta) ──
+  onboardingStep: 1,
+  onboardingData: {
+    fullName: '', age: '', height: '', weight: '',
+    athleteType: '',      // 'individual' | 'team'
+    sport: '', position: '',           // si es individual
+    institution: '', category: ''      // si es de equipo
+  },
 };
 
 // ── AUTH MODE ─────────────────────────────────────────────────
@@ -362,6 +379,12 @@ onAuthStateChanged(auth, async (user) => {
     }
   }
 
+  // ── GATE DE ONBOARDING ──────────────────────────────────────
+  // Los atletas (no el admin) no pueden usar la app hasta completar su perfil.
+  if (!S.isAdmin && !S.userData.onboardingComplete) {
+    S.currentView = 'onboarding';
+  }
+
   // Update profile menu
   document.getElementById('pm-name').textContent = S.userData.name || '—';
   document.getElementById('pm-email').textContent = S.userData.email || '—';
@@ -446,8 +469,238 @@ function countChecked(w) {
   return n;
 }
 
+// ── ONBOARDING (perfil de atleta obligatorio) ──────────────────
+function renderOnboarding() {
+  const step = S.onboardingStep;
+  const d = S.onboardingData;
+  let html = `<div class="page-header">
+    <div class="page-title">Completá tu perfil</div>
+    <div class="page-subtitle">Paso ${step} de 4 · Necesario antes de usar la app</div>
+  </div>`;
+
+  html += `<div style="display:flex;gap:6px;margin-bottom:20px">
+    ${[1,2,3,4].map(n=>`<div style="flex:1;height:4px;border-radius:2px;background:${n<=step?'var(--accent)':'var(--border2)'}"></div>`).join('')}
+  </div>`;
+
+  if (step===1) html += renderOnboardingStep1(d);
+  else if (step===2) html += renderOnboardingStep2(d);
+  else if (step===3) html += renderOnboardingStep3(d);
+  else if (step===4) html += renderOnboardingStep4(d);
+
+  return `<div style="max-width:520px;margin:0 auto">${html}</div>`;
+}
+window.renderOnboarding = renderOnboarding;
+
+function renderOnboardingStep1(d) {
+  return `<div class="wellness-card">
+    <div class="wellness-title">Datos personales</div>
+    <div class="wellness-sub">Completá tu información básica</div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label class="eval-lbl">Apellido y nombre</label>
+        <input class="auth-inp" style="margin:0;display:block" type="text" value="${d.fullName || S.userData?.name || ''}" oninput="setOnboardingField('fullName',this.value)" placeholder="Ej: Pérez, Juan">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div><label class="eval-lbl">Edad</label><input class="auth-inp" style="margin:0" type="number" min="1" value="${d.age}" oninput="setOnboardingField('age',this.value)" placeholder="años"></div>
+        <div><label class="eval-lbl">Altura (cm)</label><input class="auth-inp" style="margin:0" type="number" min="1" value="${d.height}" oninput="setOnboardingField('height',this.value)" placeholder="cm"></div>
+        <div><label class="eval-lbl">Peso (kg)</label><input class="auth-inp" style="margin:0" type="number" min="1" value="${d.weight}" oninput="setOnboardingField('weight',this.value)" placeholder="kg"></div>
+      </div>
+    </div>
+    <div style="padding:0 16px 16px">
+      <button class="wellness-submit" onclick="onboardingNext()">Continuar</button>
+    </div>
+  </div>`;
+}
+
+function renderOnboardingStep2(d) {
+  let html = `<div class="wellness-card">
+    <div class="wellness-title">¿Qué tipo de atleta sos?</div>
+    <div class="wellness-sub">Esto define cómo se organizan tus datos</div>
+    <div style="padding:16px;display:flex;gap:10px">
+      <div onclick="selectAthleteType('individual')" style="flex:1;cursor:pointer;border:2px solid ${d.athleteType==='individual'?'var(--accent)':'var(--border2)'};border-radius:var(--r);padding:16px;text-align:center;background:${d.athleteType==='individual'?'var(--bg3)':'transparent'}">
+        <div style="font-size:14px;font-weight:700">Atleta individual</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">No pertenezco a ningún equipo</div>
+      </div>
+      <div onclick="selectAthleteType('team')" style="flex:1;cursor:pointer;border:2px solid ${d.athleteType==='team'?'var(--accent)':'var(--border2)'};border-radius:var(--r);padding:16px;text-align:center;background:${d.athleteType==='team'?'var(--bg3)':'transparent'}">
+        <div style="font-size:14px;font-weight:700">Atleta de equipo</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Formo parte de un equipo</div>
+      </div>
+    </div>`;
+
+  if (d.athleteType === 'individual') {
+    html += `<div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:12px">
+      <div><label class="eval-lbl">Deporte</label><input class="auth-inp" style="margin:0" type="text" value="${d.sport}" oninput="setOnboardingField('sport',this.value)" placeholder="Ej: Tenis, Básquet..."></div>
+      <div><label class="eval-lbl">Posición</label><input class="auth-inp" style="margin:0" type="text" value="${d.position}" oninput="setOnboardingField('position',this.value)" placeholder="Ej: Base, Alero..."></div>
+    </div>`;
+  } else if (d.athleteType === 'team') {
+    html += `<div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:12px">
+      <div><label class="eval-lbl">Institución</label>
+        <select class="auth-inp" style="margin:0" onchange="selectInstitution(this.value)">
+          <option value="">Seleccionar...</option>
+          ${Object.keys(INSTITUTIONS).map(inst=>`<option value="${inst}" ${d.institution===inst?'selected':''}>${inst}</option>`).join('')}
+        </select>
+      </div>
+      ${d.institution ? `<div><label class="eval-lbl">Categoría</label>
+        <select class="auth-inp" style="margin:0" onchange="setOnboardingField('category',this.value)">
+          <option value="">Seleccionar...</option>
+          ${INSTITUTIONS[d.institution].categories.map(c=>`<option value="${c}" ${d.category===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>` : ''}
+    </div>`;
+  }
+
+  const canContinue = d.athleteType==='individual' ? !!(d.sport && d.position) : d.athleteType==='team' ? !!(d.institution && d.category) : false;
+  html += `<div style="padding:0 16px 16px;display:flex;gap:10px">
+    <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
+    <button class="wellness-submit" style="flex:2;${canContinue?'':'opacity:.4;pointer-events:none'}" onclick="onboardingNext()">Continuar</button>
+  </div></div>`;
+  return html;
+}
+
+function renderOnboardingStep3(d) {
+  return `<div class="wellness-card">
+    <div class="wellness-title">Lesiones o molestias</div>
+    <div class="wellness-sub">Si tenés alguna lesión pasada o actual, marcala en el mapa (es opcional)</div>
+    <div class="body-map-wrap">
+      <div class="body-svg-wrap">${renderBodySVG('front')}<div class="body-svg-label">Frente</div></div>
+      <div class="body-svg-wrap">${renderBodySVG('back')}<div class="body-svg-label">Espalda</div></div>
+    </div>
+    ${S.selectedZone ? renderZoneDetail() : ''}
+    ${renderInjuryList()}
+  </div>
+  <div style="padding:16px 0;display:flex;gap:10px">
+    <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
+    <button class="wellness-submit" style="flex:2" onclick="onboardingNext()">Continuar</button>
+  </div>`;
+}
+
+function renderOnboardingStep4(d) {
+  const typeLabel = d.athleteType==='individual' ? `Individual · ${d.sport} · ${d.position}` : `${d.institution} · ${d.category}`;
+  const injCount = Object.keys(S.injuries).length;
+  return `<div class="wellness-card">
+    <div class="wellness-title">Confirmá tus datos</div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px;font-size:13px">
+      <div><b>Nombre:</b> ${d.fullName || '—'}</div>
+      <div><b>Edad:</b> ${d.age||'—'} · <b>Altura:</b> ${d.height||'—'} cm · <b>Peso:</b> ${d.weight||'—'} kg</div>
+      <div><b>Perfil:</b> ${typeLabel}</div>
+      <div><b>Lesiones registradas:</b> ${injCount ? injCount : 'Ninguna'}</div>
+    </div>
+    <div id="onboarding-err" style="color:var(--red);font-size:12px;padding:0 16px 8px;text-align:center"></div>
+    <div style="padding:0 16px 16px;display:flex;gap:10px">
+      <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
+      <button class="wellness-submit" style="flex:2" id="onboarding-finish-btn" onclick="finishOnboarding()">Finalizar y entrar</button>
+    </div>
+  </div>`;
+}
+
+function setOnboardingField(key, val) { S.onboardingData[key] = val; }
+window.setOnboardingField = setOnboardingField;
+
+function selectAthleteType(type) { S.onboardingData.athleteType = type; renderMain(); }
+window.selectAthleteType = selectAthleteType;
+
+function selectInstitution(inst) { S.onboardingData.institution = inst; S.onboardingData.category = ''; renderMain(); }
+window.selectInstitution = selectInstitution;
+
+function onboardingNext() {
+  const d = S.onboardingData;
+  if (S.onboardingStep === 1 && (!d.fullName || !d.age || !d.height || !d.weight)) {
+    showToast('Completá todos los campos'); return;
+  }
+  if (S.onboardingStep === 2) {
+    const ok = d.athleteType==='individual' ? (d.sport && d.position) : d.athleteType==='team' ? (d.institution && d.category) : false;
+    if (!ok) { showToast('Completá los datos de tu perfil'); return; }
+  }
+  S.onboardingStep = Math.min(4, S.onboardingStep + 1);
+  renderMain();
+}
+window.onboardingNext = onboardingNext;
+
+function onboardingPrev() {
+  S.onboardingStep = Math.max(1, S.onboardingStep - 1);
+  renderMain();
+}
+window.onboardingPrev = onboardingPrev;
+
+// Busca un equipo real ya creado para esta institución+categoría, o lo crea si es
+// la primera vez que alguien se registra en esa combinación.
+async function findOrCreateTeam(institution, category) {
+  const sport = INSTITUTIONS[institution].sport;
+  const tSnap = await getDocs(collection(db, 'teams'));
+  const existing = tSnap.docs.map(dd => ({ id: dd.id, ...dd.data() }))
+    .find(t => t.institution === institution && t.category === category);
+  if (existing) return existing.id;
+  const id = genId();
+  const team = {
+    id, name: institution, sport, category, institution,
+    players: [], memberUids: [], trainingDays: [], color: '',
+    createdAt: new Date().toISOString()
+  };
+  await setDoc(doc(db, 'teams', id), team);
+  return id;
+}
+
+async function finishOnboarding() {
+  const d = S.onboardingData;
+  const btn = document.getElementById('onboarding-finish-btn');
+  const errEl = document.getElementById('onboarding-err');
+  if (errEl) errEl.textContent = '';
+  if (btn) { btn.textContent = 'Guardando...'; btn.style.pointerEvents = 'none'; }
+  try {
+    const update = {
+      name: d.fullName || S.userData.name,
+      age: Number(d.age) || null,
+      height: Number(d.height) || null,
+      weight: Number(d.weight) || null,
+      athleteType: d.athleteType,
+      onboardingComplete: true
+    };
+    if (d.athleteType === 'individual') {
+      update.sport = d.sport;
+      update.position = d.position;
+      update.institution = null; update.category = null; update.teamId = null;
+    } else {
+      update.institution = d.institution;
+      update.category = d.category;
+      update.sport = INSTITUTIONS[d.institution].sport;
+      update.position = null;
+      const teamId = await findOrCreateTeam(d.institution, d.category);
+      update.teamId = teamId;
+      // Vincular esta cuenta real (uid) al roster del equipo, sin romper
+      // el campo `players` (nombres) que ya usa el editor de días de equipo.
+      const tRef = doc(db, 'teams', teamId);
+      const tSnap = await getDoc(tRef);
+      const tData = tSnap.exists() ? tSnap.data() : {};
+      const memberUids = tData.memberUids || [];
+      const players = tData.players || [];
+      if (!memberUids.includes(S.user.uid)) memberUids.push(S.user.uid);
+      if (!players.includes(update.name)) players.push(update.name);
+      await updateDoc(tRef, { memberUids, players });
+    }
+    await setDoc(doc(db, 'users', S.user.uid), update, { merge: true });
+    // Por si durante el paso de lesiones se marcó algo en el mapa corporal,
+    // lo persistimos ya (vive en la colección /personal, no en /users).
+    await saveToFirestore();
+    S.userData = { ...S.userData, ...update };
+    showToast('✓ Perfil completado');
+    S.currentView = 'dashboard';
+    renderBottomBar();
+    renderAll();
+  } catch (e) {
+    if (errEl) errEl.textContent = 'Error al guardar: ' + (e.message || e);
+    if (btn) { btn.textContent = 'Finalizar y entrar'; btn.style.pointerEvents = ''; }
+  }
+}
+window.finishOnboarding = finishOnboarding;
+
 // ── VIEWS ─────────────────────────────────────────────────────
 function switchView(v) {
+  // Mientras el perfil de atleta esté incompleto, no se puede navegar a otro lado
+  if (!S.isAdmin && S.userData && !S.userData.onboardingComplete) {
+    S.currentView = 'onboarding';
+    renderAll();
+    return;
+  }
   S.currentView=v;
   renderBottomBar();
   renderAll();
@@ -480,6 +733,14 @@ window.navTo=navTo;
 
 
 function renderBottomBar() {
+  // Mientras el atleta no completó su perfil, no mostramos ninguna navegación
+  if (!S.isAdmin && S.userData && !S.userData.onboardingComplete) {
+    const bbEmpty = document.getElementById('bottombar');
+    const snEmpty = document.getElementById('sidebar-nav');
+    if (bbEmpty) bbEmpty.innerHTML = '';
+    if (snEmpty) snEmpty.innerHTML = '';
+    return;
+  }
   const isDesktop = window.innerWidth >= 900;
   const tabs = S.isAdmin ? [
     {id:'dashboard',label:'Dashboard',   section:null, svg:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'},
@@ -595,6 +856,7 @@ function renderMain() {
     case 'admin':    m.innerHTML=renderAdmin(); break;
     case 'library':  m.innerHTML=renderLibraryView(); break;
     case 'evals':    m.innerHTML=renderEvals(); setTimeout(drawEvalCharts,80); break;
+    case 'onboarding': m.innerHTML=renderOnboarding(); break;
     default:         m.innerHTML='';
   }
   // re-draw charts if needed
