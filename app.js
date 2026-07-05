@@ -224,7 +224,7 @@ let S = {
   startDate: new Date().toISOString().split('T')[0],
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
-  videos: {}, history: {}, wellness: {}, injuries: {},
+  videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [],
   teams: [], progressView: { week: 1 },
   libTarget: null, videoTarget: null,
   activeFilter: null, selectedZone: null,
@@ -349,6 +349,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.history) S.history = d.history;
     if (d.wellness) S.wellness = d.wellness;
     if (d.injuries) S.injuries = d.injuries;
+    if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     if (d.startDate) S.startDate = d.startDate;
     if (d.library) S.library = d.library;
@@ -418,7 +419,7 @@ async function saveToFirestore() {
     // Athletes with assigned routines don't save blocks (read-only from routine)
     const dataToSave = {
       videos: S.videos, history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
-      wellness: S.wellness, injuries: S.injuries,
+      wellness: S.wellness, injuries: S.injuries, injuryArchive: S.injuryArchive||[],
       currentWeek: S.currentWeek, startDate: S.startDate,
       updatedAt: serverTimestamp()
     };
@@ -1488,24 +1489,48 @@ function renderZoneDetail() {
 function renderInjuryList() {
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   const active=Object.entries(S.injuries).filter(([,v])=>v.pain>0);
-  if(!active.length) return `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Sin molestias registradas</div>`;
-  return `<div class="injury-list">${active.map(([id,inj])=>{
-    const zone=allZones.find(z=>z.id===id);
-    const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
-    const lbl=inj.pain>=8?'Dolor':inj.pain>=4?'Molestia':'Leve';
-    const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
-    const hist=inj.history||[];
-    const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
-    return `<div class="injury-item">
-      <div class="injury-dot" style="background:${col}"></div>
-      <div class="injury-info">
-        <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''}</div>
-        <div class="injury-pain">Dolor: ${inj.pain}/10 · ${lbl}${inj.note?' · '+inj.note.slice(0,30):''}</div>
-      </div>
-      <div class="injury-trend" style="color:${col}">${trend}</div>
-    </div>`;
-  }).join('')}</div>`;
+  const activeHtml = !active.length
+    ? `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Sin molestias activas</div>`
+    : `<div class="injury-list">${active.map(([id,inj])=>{
+        const zone=allZones.find(z=>z.id===id);
+        const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
+        const lbl=inj.pain>=8?'Dolor':inj.pain>=4?'Molestia':'Leve';
+        const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
+        const hist=inj.history||[];
+        const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
+        return `<div class="injury-item">
+          <div class="injury-dot" style="background:${col}"></div>
+          <div class="injury-info">
+            <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''}</div>
+            <div class="injury-pain">Dolor: ${inj.pain}/10 · ${lbl}${inj.note?' · '+inj.note.slice(0,30):''}</div>
+          </div>
+          <div class="injury-trend" style="color:${col}">${trend}</div>
+        </div>`;
+      }).join('')}</div>`;
+  return activeHtml + renderResolvedInjuries();
 }
+
+// Lista compacta de lesiones ya resueltas (archivadas). No es el reporte
+// final para el club — eso vive en la futura sección de Estadísticas de
+// Equipos — pero evita que el dato quede invisible mientras tanto.
+function renderResolvedInjuries() {
+  const arch = S.injuryArchive||[];
+  if(!arch.length) return '';
+  const sorted = [...arch].sort((a,b)=> (b.resolvedDate||'').localeCompare(a.resolvedDate||''));
+  return `<div style="margin-top:10px">
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 4px">Historial (resueltas)</div>
+    ${sorted.map(r=>{
+      const typeLbl = r.type?INJURY_TYPES[r.type]:'';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:1px solid var(--border);font-size:12px">
+        <div>
+          <div style="font-weight:600">${r.zoneLabel}${typeLbl?` · ${typeLbl}`:''}</div>
+          <div style="color:var(--text3)">${r.startDate} → ${r.resolvedDate} · pico ${r.peakPain}/10</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+window.renderResolvedInjuries=renderResolvedInjuries;
 
 function getRPEColor(v) {
   if(v<=3) return '#34c97a';
@@ -1581,10 +1606,31 @@ function setInjuryType(zid,type) {
 }
 window.setInjuryType=setInjuryType;
 
+// Copia una lesión activa al historial permanente antes de que desaparezca
+// de la lista de "activas". No se pierde nada: queda disponible para
+// reportes futuros por atleta o por equipo.
+function archiveInjury(zid) {
+  const inj=S.injuries[zid]; if(!inj) return;
+  const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
+  const zone=allZones.find(z=>z.id===zid);
+  const hist=inj.history||[];
+  if(!S.injuryArchive) S.injuryArchive=[];
+  S.injuryArchive.push({
+    zoneId: zid,
+    zoneLabel: zone?zone.label:zid,
+    type: inj.type||'',
+    startDate: hist.length?hist[0].date:new Date().toISOString().split('T')[0],
+    resolvedDate: new Date().toISOString().split('T')[0],
+    peakPain: hist.length?Math.max(...hist.map(h=>h.pain),inj.pain):inj.pain,
+    history: hist
+  });
+}
+
 function removeInjury(zid) {
   if(!S.injuries[zid]) return;
+  archiveInjury(zid);
   delete S.injuries[zid];
-  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada'); renderMain();
+  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada y guardada en el historial'); renderMain();
 }
 window.removeInjury=removeInjury;
 
@@ -1592,7 +1638,7 @@ function saveInjury(zid) {
   const inj=S.injuries[zid]; if(!inj) return;
   if(!inj.history) inj.history=[];
   inj.history.push({date:new Date().toISOString().split('T')[0],pain:inj.pain,note:inj.note||'',type:inj.type||''});
-  if(inj.pain===0) delete S.injuries[zid];
+  if(inj.pain===0) { archiveInjury(zid); delete S.injuries[zid]; }
   S.selectedZone=null; scheduleSave(); showToast('✓ Molestia guardada'); renderMain();
 }
 window.saveInjury=saveInjury;
@@ -1634,7 +1680,7 @@ function updateInjuryFollowup(zid,val) {
   const last=inj.history[inj.history.length-1];
   if(last && last.date===today) { last.pain=val; last.note=inj.note||''; last.type=inj.type||''; }
   else inj.history.push({date:today,pain:val,note:inj.note||'',type:inj.type||''});
-  if(val===0) delete S.injuries[zid];
+  if(val===0) { archiveInjury(zid); delete S.injuries[zid]; }
   scheduleSave(); showToast('✓ Seguimiento guardado'); renderMain();
 }
 window.updateInjuryFollowup=updateInjuryFollowup;
