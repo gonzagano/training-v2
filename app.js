@@ -226,6 +226,7 @@ let S = {
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
   videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [],
   teams: [], progressView: { week: 1 },
+  myTeam: null, // solo para atletas de equipo: el doc de su propio equipo
   libTarget: null, videoTarget: null,
   activeFilter: null, selectedZone: null,
   teamView: null,
@@ -370,7 +371,9 @@ onAuthStateChanged(auth, async (user) => {
     const rSnap = await getDocs(collection(db, 'routines'));
     S.routines = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   } else {
-    // Athlete: load assigned routine from their user doc
+    // Athlete: la rutina PERSONAL (assignedRoutine) tiene prioridad.
+    // Si no tiene una personal y pertenece a un equipo, hereda los "días de
+    // entrenamiento" que el admin armó para ese equipo — son la rutina real.
     const assignedId = S.userData.assignedRoutine || null;
     if (assignedId) {
       const rSnap = await getDoc(doc(db, 'routines', assignedId));
@@ -379,6 +382,24 @@ onAuthStateChanged(auth, async (user) => {
         S.currentRoutineSessions = Object.keys(S.assignedRoutine.sessions || {});
         if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
         // blocks are read-only from routine; don't overwrite with personal
+      }
+    } else if (S.userData.teamId) {
+      const tSnap = await getDoc(doc(db, 'teams', S.userData.teamId));
+      if (tSnap.exists()) {
+        const team = { id: S.userData.teamId, ...tSnap.data() };
+        S.myTeam = team;
+        const days = team.trainingDays || [];
+        const sessions = {};
+        days.forEach((d, i) => {
+          let key = d.title || `Día ${i + 1}`;
+          if (sessions[key]) key = `${key} (${i + 1})`; // evita choques de nombre
+          sessions[key] = d.blocks || [];
+        });
+        // Se arma como si fuera una rutina más — así toda la lógica de
+        // sesión/semana/historial que ya existe funciona sin cambios.
+        S.assignedRoutine = { id: null, name: team.category ? `${team.name} · ${team.category}` : team.name, sessions, fromTeam: true };
+        S.currentRoutineSessions = Object.keys(sessions);
+        if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
       }
     }
   }
@@ -2300,14 +2321,19 @@ function renderAdminAthletes() {
   } else {
     html+=S.adminAthletes.map(a=>{
       const assigned = S.routines.find(r=>r.id===a.assignedRoutine);
+      const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
+      const statusLbl = assigned
+        ? `✓ Personalizada: ${assigned.name}`
+        : myTeam
+          ? `↳ Rutina del equipo: ${myTeam.name}`
+          : 'Sin rutina asignada';
+      const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
       return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div>
             <div style="font-size:14px;font-weight:600">${a.name||a.email}</div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.email}</div>
-            <div style="font-size:11px;margin-top:4px;color:${assigned?'var(--green)':'var(--amber)'}">
-              ${assigned?'✓ '+assigned.name:'Sin rutina asignada'}
-            </div>
+            <div style="font-size:11px;margin-top:4px;color:${statusColor}">${statusLbl}</div>
           </div>
           <span style="color:var(--text3);font-size:18px">›</span>
         </div>
@@ -2360,8 +2386,9 @@ function renderAthleteDetail() {
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
 
   // Assign routine options
+  const myTeam = userData.teamId ? S.teams.find(t=>t.id===userData.teamId) : null;
   const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
-    <option value="">— Sin rutina —</option>
+    <option value="">${myTeam?'— Usar la del equipo —':'— Sin rutina —'}</option>
     ${S.routines.map(r=>`<option value="${r.id}" ${userData.assignedRoutine===r.id?'selected':''}>${r.name}</option>`).join('')}
   </select>`;
 
@@ -2378,12 +2405,16 @@ function renderAthleteDetail() {
   </div>
 
   <div class="admin-section">
-    <div class="admin-section-title">Rutina asignada</div>
+    <div class="admin-section-title">${myTeam?'Rutina personalizada (opcional)':'Rutina asignada'}</div>
     <div class="admin-item" style="gap:8px;flex-wrap:wrap">
       ${routineOpts}
       <button class="abtn abtn-p" onclick="assignRoutineToAthlete('${uid}')">Asignar</button>
     </div>
-    ${assigned?`<div style="padding:8px 14px;font-size:12px;color:var(--green)">✓ Actualmente: ${assigned.name}</div>`:`<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
+    ${assigned
+      ? `<div style="padding:8px 14px;font-size:12px;color:var(--green)">✓ Personalizada activa: ${assigned.name}${myTeam?' (reemplaza a la del equipo)':''}</div>`
+      : myTeam
+        ? `<div style="padding:8px 14px;font-size:12px;color:var(--accent)">↳ Hereda la rutina del equipo "${myTeam.name}" · sin personalización propia</div>`
+        : `<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
   </div>
 
   <div class="admin-section">
