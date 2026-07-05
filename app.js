@@ -224,8 +224,13 @@ let S = {
   startDate: new Date().toISOString().split('T')[0],
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
-  videos: {}, history: {}, wellness: {}, injuries: {},
+  videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [],
   teams: [], progressView: { week: 1 },
+  myTeam: null, // solo para atletas de equipo: el doc de su propio equipo
+  teamSubview: 'rutina',      // 'rutina'|'wellness'|'stats'|'evals' dentro de un equipo
+  atletaView: null,           // uid del atleta individual seleccionado (o null = lista)
+  atletaSubview: 'rutina',
+  evalScopeUids: null,        // si está seteado, Evaluaciones solo muestra estos uids
   libTarget: null, videoTarget: null,
   activeFilter: null, selectedZone: null,
   teamView: null,
@@ -253,6 +258,7 @@ let S = {
   // ── ADMIN PANEL STATE ──
   adminView: 'main',     // 'main' | 'athletes' | 'athlete_detail' | 'routines' | 'routine_edit'
   adminAthletes: [],     // list of all user docs
+  adminAthletesLoaded: false,
   viewingAthlete: null,  // { uid, userData, personal }
   editingRoutine: null,  // { id, name, sessions }
   // ── ONBOARDING (perfil de atleta) ──
@@ -349,6 +355,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.history) S.history = d.history;
     if (d.wellness) S.wellness = d.wellness;
     if (d.injuries) S.injuries = d.injuries;
+    if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     if (d.startDate) S.startDate = d.startDate;
     if (d.library) S.library = d.library;
@@ -369,7 +376,9 @@ onAuthStateChanged(auth, async (user) => {
     const rSnap = await getDocs(collection(db, 'routines'));
     S.routines = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   } else {
-    // Athlete: load assigned routine from their user doc
+    // Athlete: la rutina PERSONAL (assignedRoutine) tiene prioridad.
+    // Si no tiene una personal y pertenece a un equipo, hereda los "días de
+    // entrenamiento" que el admin armó para ese equipo — son la rutina real.
     const assignedId = S.userData.assignedRoutine || null;
     if (assignedId) {
       const rSnap = await getDoc(doc(db, 'routines', assignedId));
@@ -378,6 +387,24 @@ onAuthStateChanged(auth, async (user) => {
         S.currentRoutineSessions = Object.keys(S.assignedRoutine.sessions || {});
         if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
         // blocks are read-only from routine; don't overwrite with personal
+      }
+    } else if (S.userData.teamId) {
+      const tSnap = await getDoc(doc(db, 'teams', S.userData.teamId));
+      if (tSnap.exists()) {
+        const team = { id: S.userData.teamId, ...tSnap.data() };
+        S.myTeam = team;
+        const days = team.trainingDays || [];
+        const sessions = {};
+        days.forEach((d, i) => {
+          let key = d.title || `Día ${i + 1}`;
+          if (sessions[key]) key = `${key} (${i + 1})`; // evita choques de nombre
+          sessions[key] = d.blocks || [];
+        });
+        // Se arma como si fuera una rutina más — así toda la lógica de
+        // sesión/semana/historial que ya existe funciona sin cambios.
+        S.assignedRoutine = { id: null, name: team.category ? `${team.name} · ${team.category}` : team.name, sessions, fromTeam: true };
+        S.currentRoutineSessions = Object.keys(sessions);
+        if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
       }
     }
   }
@@ -418,7 +445,7 @@ async function saveToFirestore() {
     // Athletes with assigned routines don't save blocks (read-only from routine)
     const dataToSave = {
       videos: S.videos, history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
-      wellness: S.wellness, injuries: S.injuries,
+      wellness: S.wellness, injuries: S.injuries, injuryArchive: S.injuryArchive||[],
       currentWeek: S.currentWeek, startDate: S.startDate,
       updatedAt: serverTimestamp()
     };
@@ -747,13 +774,9 @@ function renderBottomBar() {
   const isDesktop = window.innerWidth >= 900;
   const tabs = S.isAdmin ? [
     {id:'dashboard',label:'Dashboard',   section:null, svg:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'},
-    {id:'session',  label:'Mi Sesión',   section:null, svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
-    {id:'progress', label:'Progresión',  section:'Seguimiento', svg:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'},
-    {id:'wellness', label:'Wellness',    section:null, svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
-    {id:'stats',    label:'Estadísticas',section:null, svg:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>'},
-    {id:'evals',    label:'Evaluaciones',section:'Gestión', svg:'<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'},
     {id:'teams',    label:'Equipos',     section:null, svg:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'},
-    {id:'admin',    label:'Panel Admin', section:null, svg:'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>'},
+    {id:'atletas',  label:'Atletas',     section:null, svg:'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>'},
+    {id:'admin',    label:'Panel Admin', section:null, svg:'<circle cx="12" cy="8" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4h-2a4 4 0 0 0-4 4v2"/><path d="M22 21v-1a3 3 0 0 0-2-2.83"/>'},
   ] : [
     {id:'session',  label:'Mi Rutina',   section:null, svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
     {id:'wellness', label:'Wellness',    section:null, svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
@@ -855,6 +878,7 @@ function renderMain() {
     case 'wellness': m.innerHTML=renderWellness(); break;
     case 'stats':    m.innerHTML=renderStats(); break;
     case 'teams':    m.innerHTML=renderTeams(); break;
+    case 'atletas':  m.innerHTML=renderAtletas(); break;
     case 'settings': m.innerHTML=renderSettings(); break;
     case 'admin':    m.innerHTML=renderAdmin(); break;
     case 'library':  m.innerHTML=renderLibraryView(); break;
@@ -1488,24 +1512,48 @@ function renderZoneDetail() {
 function renderInjuryList() {
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   const active=Object.entries(S.injuries).filter(([,v])=>v.pain>0);
-  if(!active.length) return `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Sin molestias registradas</div>`;
-  return `<div class="injury-list">${active.map(([id,inj])=>{
-    const zone=allZones.find(z=>z.id===id);
-    const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
-    const lbl=inj.pain>=8?'Dolor':inj.pain>=4?'Molestia':'Leve';
-    const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
-    const hist=inj.history||[];
-    const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
-    return `<div class="injury-item">
-      <div class="injury-dot" style="background:${col}"></div>
-      <div class="injury-info">
-        <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''}</div>
-        <div class="injury-pain">Dolor: ${inj.pain}/10 · ${lbl}${inj.note?' · '+inj.note.slice(0,30):''}</div>
-      </div>
-      <div class="injury-trend" style="color:${col}">${trend}</div>
-    </div>`;
-  }).join('')}</div>`;
+  const activeHtml = !active.length
+    ? `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Sin molestias activas</div>`
+    : `<div class="injury-list">${active.map(([id,inj])=>{
+        const zone=allZones.find(z=>z.id===id);
+        const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
+        const lbl=inj.pain>=8?'Dolor':inj.pain>=4?'Molestia':'Leve';
+        const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
+        const hist=inj.history||[];
+        const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
+        return `<div class="injury-item">
+          <div class="injury-dot" style="background:${col}"></div>
+          <div class="injury-info">
+            <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''}</div>
+            <div class="injury-pain">Dolor: ${inj.pain}/10 · ${lbl}${inj.note?' · '+inj.note.slice(0,30):''}</div>
+          </div>
+          <div class="injury-trend" style="color:${col}">${trend}</div>
+        </div>`;
+      }).join('')}</div>`;
+  return activeHtml + renderResolvedInjuries();
 }
+
+// Lista compacta de lesiones ya resueltas (archivadas). No es el reporte
+// final para el club — eso vive en la futura sección de Estadísticas de
+// Equipos — pero evita que el dato quede invisible mientras tanto.
+function renderResolvedInjuries() {
+  const arch = S.injuryArchive||[];
+  if(!arch.length) return '';
+  const sorted = [...arch].sort((a,b)=> (b.resolvedDate||'').localeCompare(a.resolvedDate||''));
+  return `<div style="margin-top:10px">
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 4px">Historial (resueltas)</div>
+    ${sorted.map(r=>{
+      const typeLbl = r.type?INJURY_TYPES[r.type]:'';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:1px solid var(--border);font-size:12px">
+        <div>
+          <div style="font-weight:600">${r.zoneLabel}${typeLbl?` · ${typeLbl}`:''}</div>
+          <div style="color:var(--text3)">${r.startDate} → ${r.resolvedDate} · pico ${r.peakPain}/10</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+window.renderResolvedInjuries=renderResolvedInjuries;
 
 function getRPEColor(v) {
   if(v<=3) return '#34c97a';
@@ -1581,10 +1629,31 @@ function setInjuryType(zid,type) {
 }
 window.setInjuryType=setInjuryType;
 
+// Copia una lesión activa al historial permanente antes de que desaparezca
+// de la lista de "activas". No se pierde nada: queda disponible para
+// reportes futuros por atleta o por equipo.
+function archiveInjury(zid) {
+  const inj=S.injuries[zid]; if(!inj) return;
+  const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
+  const zone=allZones.find(z=>z.id===zid);
+  const hist=inj.history||[];
+  if(!S.injuryArchive) S.injuryArchive=[];
+  S.injuryArchive.push({
+    zoneId: zid,
+    zoneLabel: zone?zone.label:zid,
+    type: inj.type||'',
+    startDate: hist.length?hist[0].date:new Date().toISOString().split('T')[0],
+    resolvedDate: new Date().toISOString().split('T')[0],
+    peakPain: hist.length?Math.max(...hist.map(h=>h.pain),inj.pain):inj.pain,
+    history: hist
+  });
+}
+
 function removeInjury(zid) {
   if(!S.injuries[zid]) return;
+  archiveInjury(zid);
   delete S.injuries[zid];
-  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada'); renderMain();
+  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada y guardada en el historial'); renderMain();
 }
 window.removeInjury=removeInjury;
 
@@ -1592,7 +1661,7 @@ function saveInjury(zid) {
   const inj=S.injuries[zid]; if(!inj) return;
   if(!inj.history) inj.history=[];
   inj.history.push({date:new Date().toISOString().split('T')[0],pain:inj.pain,note:inj.note||'',type:inj.type||''});
-  if(inj.pain===0) delete S.injuries[zid];
+  if(inj.pain===0) { archiveInjury(zid); delete S.injuries[zid]; }
   S.selectedZone=null; scheduleSave(); showToast('✓ Molestia guardada'); renderMain();
 }
 window.saveInjury=saveInjury;
@@ -1634,7 +1703,7 @@ function updateInjuryFollowup(zid,val) {
   const last=inj.history[inj.history.length-1];
   if(last && last.date===today) { last.pain=val; last.note=inj.note||''; last.type=inj.type||''; }
   else inj.history.push({date:today,pain:val,note:inj.note||'',type:inj.type||''});
-  if(val===0) delete S.injuries[zid];
+  if(val===0) { archiveInjury(zid); delete S.injuries[zid]; }
   scheduleSave(); showToast('✓ Seguimiento guardado'); renderMain();
 }
 window.updateInjuryFollowup=updateInjuryFollowup;
@@ -1844,7 +1913,7 @@ function renderTeams() {
 
 function renderTeamDetail(team) {
   if(S.teamDayEdit) return renderTeamDayEditor(team, S.teamDayEdit);
-  const days=team.trainingDays||[];
+  const sub = S.teamSubview || 'rutina';
   let html=`<div class="team-detail-header">
     <button class="back-btn" data-back="team-list">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
@@ -1853,11 +1922,40 @@ function renderTeamDetail(team) {
     </div>
     <span class="team-sport-badge">${team.sport||''}</span>
   </div>
-  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+  <div style="font-size:13px;color:var(--text3);margin-bottom:12px">${team.category||''}</div>
+  <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+    <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Rutina</button>
+    <button class="snav-tab ${sub==='wellness'?'active':''}" onclick="setTeamSubview('wellness')">Wellness</button>
+    <button class="snav-tab ${sub==='stats'?'active':''}" onclick="setTeamSubview('stats')">Estadísticas</button>
+    <button class="snav-tab ${sub==='evals'?'active':''}" onclick="setTeamSubview('evals')">Evaluaciones</button>
+  </div>`;
+
+  if(sub==='wellness') html += renderGroupWellness(team.memberUids||[]);
+  else if(sub==='stats') html += renderGroupStats(team.memberUids||[]);
+  else if(sub==='evals') html += renderEvals();
+  else html += renderTeamRutina(team);
+  return html;
+}
+
+function setTeamSubview(v) {
+  S.teamSubview = v;
+  if (v==='evals') {
+    S.evalScopeUids = S.teamView?.memberUids || [];
+    if (!S.evalScopeUids.includes(S.evalAthleteId)) S.evalAthleteId = S.evalScopeUids[0] || null;
+    ensureAdminAthletes().then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); });
+    return;
+  }
+  if (v==='wellness' || v==='stats') { ensureGroupPersonalData(S.teamView?.memberUids||[]).then(renderMain); return; }
+  renderMain();
+}
+window.setTeamSubview = setTeamSubview;
+
+function renderTeamRutina(team) {
+  const days=team.trainingDays||[];
+  let html=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <span style="font-size:11px;color:var(--text3)">Color:</span>
     ${TEAM_COLORS.map(c=>`<div onclick="setTeamColor('${team.id}','${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${team.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
-  </div>
-  <div style="font-size:13px;color:var(--text3);margin-bottom:14px">${team.category||''}</div>`;
+  </div>`;
 
   if(days.length) {
     const curIdx = S.teamDayIdx||0;
@@ -1944,6 +2042,112 @@ async function setAthleteColor(uid, color) {
   } catch(e){ showToast('Error'); }
 }
 window.setAthleteColor=setAthleteColor;
+
+// ── DATOS AGRUPADOS (Wellness/Estadísticas dentro de Equipos y Atletas) ──
+// Carga la lista de atletas si todavía no está en memoria.
+async function ensureAdminAthletes() {
+  if (S.adminAthletes && S.adminAthletes.length) { S.adminAthletesLoaded = true; return; }
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    S.adminAthletes = snap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(u => u.email !== ADMIN_EMAIL);
+  } catch (e) { S.adminAthletes = S.adminAthletes || []; }
+  S.adminAthletesLoaded = true;
+}
+window.ensureAdminAthletes = ensureAdminAthletes;
+
+// Trae /personal/{uid} solo de los atletas pedidos que todavía no lo tengan
+// cacheado (evita releer a todo el mundo cada vez que se abre una pestaña).
+async function ensureGroupPersonalData(memberUids) {
+  await ensureAdminAthletes();
+  const need = S.adminAthletes.filter(a => memberUids.includes(a.uid) && !a._personal);
+  if (!need.length) return;
+  const results = await Promise.all(need.map(a => getDoc(doc(db, 'personal', a.uid))));
+  need.forEach((a, i) => { a._personal = results[i].exists() ? results[i].data() : {}; });
+}
+window.ensureGroupPersonalData = ensureGroupPersonalData;
+
+function computeHooperScore(w) {
+  if (!w) return null;
+  let score = 0, allFilled = true;
+  HOOPER_ITEMS.forEach(item => { if (w[item.key]) score += w[item.key]; else allFilled = false; });
+  return allFilled ? score : null;
+}
+
+function getLatestSessionLog(personal) {
+  const logs = (personal?.history?._sessionLogs) || [];
+  if (!logs.length) return null;
+  return [...logs].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+}
+
+function getActiveInjuriesSummary(personal) {
+  const inj = personal?.injuries || {};
+  const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  return Object.entries(inj).filter(([, v]) => v.pain > 0).map(([zid, v]) => {
+    const zone = allZones.find(z => z.id === zid);
+    return { zoneLabel: zone ? zone.label : zid, pain: v.pain, type: v.type || '' };
+  });
+}
+
+// Ficha compacta de un atleta: wellness de hoy, alerta de lesión, último RPE.
+// La reutilizamos acá y, más adelante, en las tarjetas del Dashboard.
+function renderAthleteSummaryCard(a) {
+  const today = new Date().toISOString().split('T')[0];
+  const p = a._personal || {};
+  const todayWellness = p.wellness ? p.wellness[today] : null;
+  const score = todayWellness ? computeHooperScore(todayWellness) : null;
+  const injuries = getActiveInjuriesSummary(p);
+  const lastLog = getLatestSessionLog(p);
+  const scoreColor = score === null ? 'var(--text3)' : score <= 16 ? 'var(--green)' : score <= 24 ? 'var(--amber)' : 'var(--red)';
+  return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div>
+        <div style="font-size:14px;font-weight:600">${a.name || a.email}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.sport || ''}${a.position ? ' · ' + a.position : ''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        ${score !== null
+          ? `<div style="font-size:18px;font-weight:700;color:${scoreColor}">${score}</div><div style="font-size:10px;color:var(--text3)">Wellness</div>`
+          : `<div style="font-size:11px;color:var(--text3)">Sin wellness hoy</div>`}
+      </div>
+    </div>
+    ${injuries.length ? `<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+      ${injuries.map(inj => `<div style="font-size:11px;color:var(--red);display:flex;align-items:center;gap:4px">⚠️ ${inj.zoneLabel}${inj.type ? ' · ' + INJURY_TYPES[inj.type] : ''} (${inj.pain}/10)</div>`).join('')}
+    </div>` : ''}
+    ${lastLog ? `<div style="margin-top:6px;font-size:11px;color:var(--text3)">Última sesión: RPE ${lastLog.rpe} · ${lastLog.date}</div>` : ''}
+  </div>`;
+}
+window.renderAthleteSummaryCard = renderAthleteSummaryCard;
+
+function renderGroupWellness(memberUids) {
+  const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
+  if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
+  const today = new Date().toISOString().split('T')[0];
+  const doneCount = members.filter(a => a._personal?.wellness?.[today]).length;
+  return `<div style="margin-bottom:12px;font-size:12px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
+    <div style="display:flex;flex-direction:column;gap:10px">${members.map(renderAthleteSummaryCard).join('')}</div>`;
+}
+window.renderGroupWellness = renderGroupWellness;
+
+function renderGroupStats(memberUids) {
+  const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
+  if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
+  const rows = members.map(a => {
+    const logs = (a._personal?.history?._sessionLogs) || [];
+    const weekLogs = logs.filter(l => l.week === S.currentWeek);
+    const avgRpe = weekLogs.length ? (weekLogs.reduce((s, l) => s + (l.rpe || 0), 0) / weekLogs.length).toFixed(1) : '—';
+    const totalUA = weekLogs.reduce((s, l) => s + (l.ua || 0), 0);
+    return `<div class="admin-item" style="justify-content:space-between;flex-wrap:wrap">
+      <div style="font-size:13px;font-weight:600">${a.name || a.email}</div>
+      <div style="font-size:12px;color:var(--text3);display:flex;gap:14px">
+        <span>${weekLogs.length} sesiones</span>
+        <span>RPE prom: ${avgRpe}</span>
+        <span>UA: ${totalUA}</span>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div style="margin-bottom:10px;font-size:12px;color:var(--text3)">Semana ${S.currentWeek}</div>${rows}`;
+}
+window.renderGroupStats = renderGroupStats;
 
 // ── TEAM DAY EDITOR ───────────────────────────────────────────
 function openTeamDayEditor(teamId,dayIdx){S.teamDayEdit={teamId,dayIdx};renderMain();}
@@ -2034,7 +2238,7 @@ window.saveTeamDayBlocks=saveTeamDayBlocks;
 
 
 
-function openTeam(id) { S.teamView=S.teams.find(t=>t.id===id)||null; S.currentView='teams'; renderBottomBar(); renderMain(); }
+function openTeam(id) { S.teamView=S.teams.find(t=>t.id===id)||null; S.teamSubview='rutina'; S.currentView='teams'; renderBottomBar(); renderMain(); }
 window.openTeam=openTeam;
 
 function addTrainingDay(teamId) {
@@ -2132,6 +2336,125 @@ async function saveTeam(teamId) {
   const t=S.teams.find(x=>x.id===teamId); if(!t) return;
   try { await setDoc(doc(db,'teams',teamId),t); } catch(e) { console.error(e); }
 }
+
+// ── ATLETAS (individuales, sin equipo) ─────────────────────────
+function renderAtletas() {
+  if (S.atletaView) return renderAtletaDetail(S.atletaView);
+
+  let html = `<div style="font-size:16px;font-weight:700;margin-bottom:14px">Atletas individuales</div>`;
+
+  if (!S.adminAthletesLoaded) {
+    ensureAdminAthletes().then(renderMain);
+    return html + `<div class="empty-state">Cargando...</div>`;
+  }
+
+  const individuals = (S.adminAthletes || []).filter(a => a.athleteType === 'individual');
+  if (!individuals.length) {
+    html += `<div class="empty-state">No hay atletas individuales registrados todavía.<br><span style="font-size:12px">Aparecen acá los que se registran sin elegir un equipo.</span></div>`;
+  } else {
+    html += individuals.map(a => `
+      <div class="card" style="padding:14px;cursor:pointer;margin-bottom:8px" onclick="openAtleta('${a.uid}')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:14px;font-weight:600">${a.name || a.email}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.sport || ''}${a.position ? ' · ' + a.position : ''}</div>
+          </div>
+          <span style="color:var(--text3);font-size:18px">›</span>
+        </div>
+      </div>`).join('');
+  }
+  return html;
+}
+window.renderAtletas = renderAtletas;
+
+function openAtleta(uid) {
+  const a = (S.adminAthletes || []).find(x => x.uid === uid);
+  if (!a) return;
+  S.atletaView = a;
+  S.atletaSubview = 'rutina';
+  ensureGroupPersonalData([uid]).then(renderMain);
+  renderMain();
+}
+window.openAtleta = openAtleta;
+
+function renderAtletaDetail(a) {
+  const sub = S.atletaSubview || 'rutina';
+  let html = `<div class="team-detail-header">
+    <button class="back-btn" onclick="S.atletaView=null;renderMain()">‹</button>
+    <div class="team-detail-title">${a.name || a.email}</div>
+  </div>
+  <div style="font-size:13px;color:var(--text3);margin-bottom:12px">${a.sport || ''}${a.position ? ' · ' + a.position : ''}</div>
+  <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+    <button class="snav-tab ${sub === 'rutina' ? 'active' : ''}" onclick="setAtletaSubview('rutina')">Rutina</button>
+    <button class="snav-tab ${sub === 'wellness' ? 'active' : ''}" onclick="setAtletaSubview('wellness')">Wellness</button>
+    <button class="snav-tab ${sub === 'stats' ? 'active' : ''}" onclick="setAtletaSubview('stats')">Estadísticas</button>
+    <button class="snav-tab ${sub === 'evals' ? 'active' : ''}" onclick="setAtletaSubview('evals')">Evaluaciones</button>
+  </div>`;
+
+  if (sub === 'wellness') html += renderGroupWellness([a.uid]);
+  else if (sub === 'stats') html += renderGroupStats([a.uid]);
+  else if (sub === 'evals') html += renderEvals();
+  else html += renderAtletaRutina(a);
+  return html;
+}
+window.renderAtletaDetail = renderAtletaDetail;
+
+function setAtletaSubview(v) {
+  S.atletaSubview = v;
+  if (v === 'evals') {
+    S.evalScopeUids = S.atletaView ? [S.atletaView.uid] : [];
+    S.evalAthleteId = S.atletaView?.uid || null;
+    ensureAdminAthletes().then(() => { renderMain(); setTimeout(drawEvalCharts, 80); });
+    return;
+  }
+  if (v === 'wellness' || v === 'stats') {
+    ensureGroupPersonalData(S.atletaView ? [S.atletaView.uid] : []).then(renderMain);
+    return;
+  }
+  renderMain();
+}
+window.setAtletaSubview = setAtletaSubview;
+
+// Vista de solo-lectura de la rutina asignada, + el mismo control de
+// asignación que ya existe en Panel Admin → Alumnos (misma id de <select>,
+// así assignRoutineToAthlete funciona sin cambios).
+function renderAtletaRutina(a) {
+  const routine = S.routines.find(r => r.id === a.assignedRoutine);
+  const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
+    <option value="">— Sin rutina —</option>
+    ${S.routines.map(r => `<option value="${r.id}" ${a.assignedRoutine === r.id ? 'selected' : ''}>${r.name}</option>`).join('')}
+  </select>`;
+
+  let html = `<div class="admin-section">
+    <div class="admin-section-title">Rutina asignada</div>
+    <div class="admin-item" style="gap:8px;flex-wrap:wrap">
+      ${routineOpts}
+      <button class="abtn abtn-p" onclick="assignRoutineToAthlete('${a.uid}')">Asignar</button>
+    </div>
+  </div>`;
+
+  if (!routine) {
+    html += `<div class="empty-state">Este atleta no tiene una rutina asignada todavía.</div>`;
+    return html;
+  }
+
+  const sessionNames = Object.keys(routine.sessions || {});
+  html += `<div style="font-size:13px;font-weight:600;margin:14px 0 8px">${routine.name}</div>`;
+  sessionNames.forEach(sName => {
+    const blocks = routine.sessions[sName] || [];
+    html += `<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--text3);margin-bottom:4px">${sName}</div>`;
+    blocks.forEach(b => {
+      (b.categories || []).forEach(cat => {
+        (cat.exercises || []).forEach(ex => {
+          html += `<div style="font-size:12px;padding:4px 0;border-top:1px solid var(--border)">${ex.name} — ${formatExSummary(ex)}</div>`;
+        });
+      });
+    });
+    html += `</div>`;
+  });
+  return html;
+}
+window.renderAtletaRutina = renderAtletaRutina;
 
 // ── SETTINGS ─────────────────────────────────────────────────
 function renderSettings() {
@@ -2254,14 +2577,19 @@ function renderAdminAthletes() {
   } else {
     html+=S.adminAthletes.map(a=>{
       const assigned = S.routines.find(r=>r.id===a.assignedRoutine);
+      const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
+      const statusLbl = assigned
+        ? `✓ Personalizada: ${assigned.name}`
+        : myTeam
+          ? `↳ Rutina del equipo: ${myTeam.name}`
+          : 'Sin rutina asignada';
+      const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
       return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div>
             <div style="font-size:14px;font-weight:600">${a.name||a.email}</div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.email}</div>
-            <div style="font-size:11px;margin-top:4px;color:${assigned?'var(--green)':'var(--amber)'}">
-              ${assigned?'✓ '+assigned.name:'Sin rutina asignada'}
-            </div>
+            <div style="font-size:11px;margin-top:4px;color:${statusColor}">${statusLbl}</div>
           </div>
           <span style="color:var(--text3);font-size:18px">›</span>
         </div>
@@ -2314,8 +2642,9 @@ function renderAthleteDetail() {
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
 
   // Assign routine options
+  const myTeam = userData.teamId ? S.teams.find(t=>t.id===userData.teamId) : null;
   const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
-    <option value="">— Sin rutina —</option>
+    <option value="">${myTeam?'— Usar la del equipo —':'— Sin rutina —'}</option>
     ${S.routines.map(r=>`<option value="${r.id}" ${userData.assignedRoutine===r.id?'selected':''}>${r.name}</option>`).join('')}
   </select>`;
 
@@ -2332,12 +2661,16 @@ function renderAthleteDetail() {
   </div>
 
   <div class="admin-section">
-    <div class="admin-section-title">Rutina asignada</div>
+    <div class="admin-section-title">${myTeam?'Rutina personalizada (opcional)':'Rutina asignada'}</div>
     <div class="admin-item" style="gap:8px;flex-wrap:wrap">
       ${routineOpts}
       <button class="abtn abtn-p" onclick="assignRoutineToAthlete('${uid}')">Asignar</button>
     </div>
-    ${assigned?`<div style="padding:8px 14px;font-size:12px;color:var(--green)">✓ Actualmente: ${assigned.name}</div>`:`<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
+    ${assigned
+      ? `<div style="padding:8px 14px;font-size:12px;color:var(--green)">✓ Personalizada activa: ${assigned.name}${myTeam?' (reemplaza a la del equipo)':''}</div>`
+      : myTeam
+        ? `<div style="padding:8px 14px;font-size:12px;color:var(--accent)">↳ Hereda la rutina del equipo "${myTeam.name}" · sin personalización propia</div>`
+        : `<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
   </div>
 
   <div class="admin-section">
@@ -2853,10 +3186,20 @@ function renderEvals() {
 
   // Athlete selector (admin only) — strictly scopes which athlete's data is shown/edited
   let athleteSel = '';
-  if(S.isAdmin && S.adminAthletes.length) {
-    const opts = ['<option value="self">Yo mismo</option>']
-      .concat(S.adminAthletes.map(a=>'<option value="'+a.uid+'" '+(S.evalAthleteId===a.uid?'selected':'')+'>'+(a.name||a.email)+'</option>'));
-    athleteSel = '<select class="eval-inp" onchange="selectEvalAthlete(this.value)" style="cursor:pointer;max-width:220px">'+opts.join('')+'</select>';
+  if(S.isAdmin) {
+    const pool = S.evalScopeUids ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid)) : S.adminAthletes;
+    if (S.evalScopeUids) {
+      // Estamos dentro de Equipos o Atletas: sin "Yo mismo", solo el grupo acotado
+      athleteSel = pool.length
+        ? '<select class="eval-inp" onchange="selectEvalAthlete(this.value)" style="cursor:pointer;max-width:220px">'
+          + pool.map(a=>'<option value="'+a.uid+'" '+(S.evalAthleteId===a.uid?'selected':'')+'>'+(a.name||a.email)+'</option>').join('')
+          + '</select>'
+        : '<div style="font-size:12px;color:var(--text3)">Sin atletas en este grupo todavía</div>';
+    } else if (S.adminAthletes.length) {
+      const opts = ['<option value="self">Yo mismo</option>']
+        .concat(S.adminAthletes.map(a=>'<option value="'+a.uid+'" '+(S.evalAthleteId===a.uid?'selected':'')+'>'+(a.name||a.email)+'</option>'));
+      athleteSel = '<select class="eval-inp" onchange="selectEvalAthlete(this.value)" style="cursor:pointer;max-width:220px">'+opts.join('')+'</select>';
+    }
   }
 
   const lastOf = id => { const r=(edata[id]||[]); return r.length ? r[r.length-1] : null; };
