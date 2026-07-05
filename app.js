@@ -224,9 +224,8 @@ let S = {
   startDate: new Date().toISOString().split('T')[0],
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
-  videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [],
+  videos: {}, history: {}, wellness: {}, injuries: {},
   teams: [], progressView: { week: 1 },
-  myTeam: null, // solo para atletas de equipo: el doc de su propio equipo
   libTarget: null, videoTarget: null,
   activeFilter: null, selectedZone: null,
   teamView: null,
@@ -350,7 +349,6 @@ onAuthStateChanged(auth, async (user) => {
     if (d.history) S.history = d.history;
     if (d.wellness) S.wellness = d.wellness;
     if (d.injuries) S.injuries = d.injuries;
-    if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     if (d.startDate) S.startDate = d.startDate;
     if (d.library) S.library = d.library;
@@ -371,9 +369,7 @@ onAuthStateChanged(auth, async (user) => {
     const rSnap = await getDocs(collection(db, 'routines'));
     S.routines = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   } else {
-    // Athlete: la rutina PERSONAL (assignedRoutine) tiene prioridad.
-    // Si no tiene una personal y pertenece a un equipo, hereda los "días de
-    // entrenamiento" que el admin armó para ese equipo — son la rutina real.
+    // Athlete: load assigned routine from their user doc
     const assignedId = S.userData.assignedRoutine || null;
     if (assignedId) {
       const rSnap = await getDoc(doc(db, 'routines', assignedId));
@@ -382,24 +378,6 @@ onAuthStateChanged(auth, async (user) => {
         S.currentRoutineSessions = Object.keys(S.assignedRoutine.sessions || {});
         if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
         // blocks are read-only from routine; don't overwrite with personal
-      }
-    } else if (S.userData.teamId) {
-      const tSnap = await getDoc(doc(db, 'teams', S.userData.teamId));
-      if (tSnap.exists()) {
-        const team = { id: S.userData.teamId, ...tSnap.data() };
-        S.myTeam = team;
-        const days = team.trainingDays || [];
-        const sessions = {};
-        days.forEach((d, i) => {
-          let key = d.title || `Día ${i + 1}`;
-          if (sessions[key]) key = `${key} (${i + 1})`; // evita choques de nombre
-          sessions[key] = d.blocks || [];
-        });
-        // Se arma como si fuera una rutina más — así toda la lógica de
-        // sesión/semana/historial que ya existe funciona sin cambios.
-        S.assignedRoutine = { id: null, name: team.category ? `${team.name} · ${team.category}` : team.name, sessions, fromTeam: true };
-        S.currentRoutineSessions = Object.keys(sessions);
-        if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
       }
     }
   }
@@ -440,7 +418,7 @@ async function saveToFirestore() {
     // Athletes with assigned routines don't save blocks (read-only from routine)
     const dataToSave = {
       videos: S.videos, history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
-      wellness: S.wellness, injuries: S.injuries, injuryArchive: S.injuryArchive||[],
+      wellness: S.wellness, injuries: S.injuries,
       currentWeek: S.currentWeek, startDate: S.startDate,
       updatedAt: serverTimestamp()
     };
@@ -1510,48 +1488,24 @@ function renderZoneDetail() {
 function renderInjuryList() {
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   const active=Object.entries(S.injuries).filter(([,v])=>v.pain>0);
-  const activeHtml = !active.length
-    ? `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Sin molestias activas</div>`
-    : `<div class="injury-list">${active.map(([id,inj])=>{
-        const zone=allZones.find(z=>z.id===id);
-        const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
-        const lbl=inj.pain>=8?'Dolor':inj.pain>=4?'Molestia':'Leve';
-        const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
-        const hist=inj.history||[];
-        const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
-        return `<div class="injury-item">
-          <div class="injury-dot" style="background:${col}"></div>
-          <div class="injury-info">
-            <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''}</div>
-            <div class="injury-pain">Dolor: ${inj.pain}/10 · ${lbl}${inj.note?' · '+inj.note.slice(0,30):''}</div>
-          </div>
-          <div class="injury-trend" style="color:${col}">${trend}</div>
-        </div>`;
-      }).join('')}</div>`;
-  return activeHtml + renderResolvedInjuries();
+  if(!active.length) return `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Sin molestias registradas</div>`;
+  return `<div class="injury-list">${active.map(([id,inj])=>{
+    const zone=allZones.find(z=>z.id===id);
+    const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
+    const lbl=inj.pain>=8?'Dolor':inj.pain>=4?'Molestia':'Leve';
+    const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
+    const hist=inj.history||[];
+    const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
+    return `<div class="injury-item">
+      <div class="injury-dot" style="background:${col}"></div>
+      <div class="injury-info">
+        <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''}</div>
+        <div class="injury-pain">Dolor: ${inj.pain}/10 · ${lbl}${inj.note?' · '+inj.note.slice(0,30):''}</div>
+      </div>
+      <div class="injury-trend" style="color:${col}">${trend}</div>
+    </div>`;
+  }).join('')}</div>`;
 }
-
-// Lista compacta de lesiones ya resueltas (archivadas). No es el reporte
-// final para el club — eso vive en la futura sección de Estadísticas de
-// Equipos — pero evita que el dato quede invisible mientras tanto.
-function renderResolvedInjuries() {
-  const arch = S.injuryArchive||[];
-  if(!arch.length) return '';
-  const sorted = [...arch].sort((a,b)=> (b.resolvedDate||'').localeCompare(a.resolvedDate||''));
-  return `<div style="margin-top:10px">
-    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 4px">Historial (resueltas)</div>
-    ${sorted.map(r=>{
-      const typeLbl = r.type?INJURY_TYPES[r.type]:'';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:1px solid var(--border);font-size:12px">
-        <div>
-          <div style="font-weight:600">${r.zoneLabel}${typeLbl?` · ${typeLbl}`:''}</div>
-          <div style="color:var(--text3)">${r.startDate} → ${r.resolvedDate} · pico ${r.peakPain}/10</div>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-window.renderResolvedInjuries=renderResolvedInjuries;
 
 function getRPEColor(v) {
   if(v<=3) return '#34c97a';
@@ -1627,31 +1581,10 @@ function setInjuryType(zid,type) {
 }
 window.setInjuryType=setInjuryType;
 
-// Copia una lesión activa al historial permanente antes de que desaparezca
-// de la lista de "activas". No se pierde nada: queda disponible para
-// reportes futuros por atleta o por equipo.
-function archiveInjury(zid) {
-  const inj=S.injuries[zid]; if(!inj) return;
-  const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
-  const zone=allZones.find(z=>z.id===zid);
-  const hist=inj.history||[];
-  if(!S.injuryArchive) S.injuryArchive=[];
-  S.injuryArchive.push({
-    zoneId: zid,
-    zoneLabel: zone?zone.label:zid,
-    type: inj.type||'',
-    startDate: hist.length?hist[0].date:new Date().toISOString().split('T')[0],
-    resolvedDate: new Date().toISOString().split('T')[0],
-    peakPain: hist.length?Math.max(...hist.map(h=>h.pain),inj.pain):inj.pain,
-    history: hist
-  });
-}
-
 function removeInjury(zid) {
   if(!S.injuries[zid]) return;
-  archiveInjury(zid);
   delete S.injuries[zid];
-  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada y guardada en el historial'); renderMain();
+  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada'); renderMain();
 }
 window.removeInjury=removeInjury;
 
@@ -1659,7 +1592,7 @@ function saveInjury(zid) {
   const inj=S.injuries[zid]; if(!inj) return;
   if(!inj.history) inj.history=[];
   inj.history.push({date:new Date().toISOString().split('T')[0],pain:inj.pain,note:inj.note||'',type:inj.type||''});
-  if(inj.pain===0) { archiveInjury(zid); delete S.injuries[zid]; }
+  if(inj.pain===0) delete S.injuries[zid];
   S.selectedZone=null; scheduleSave(); showToast('✓ Molestia guardada'); renderMain();
 }
 window.saveInjury=saveInjury;
@@ -1701,7 +1634,7 @@ function updateInjuryFollowup(zid,val) {
   const last=inj.history[inj.history.length-1];
   if(last && last.date===today) { last.pain=val; last.note=inj.note||''; last.type=inj.type||''; }
   else inj.history.push({date:today,pain:val,note:inj.note||'',type:inj.type||''});
-  if(val===0) { archiveInjury(zid); delete S.injuries[zid]; }
+  if(val===0) delete S.injuries[zid];
   scheduleSave(); showToast('✓ Seguimiento guardado'); renderMain();
 }
 window.updateInjuryFollowup=updateInjuryFollowup;
@@ -2321,19 +2254,14 @@ function renderAdminAthletes() {
   } else {
     html+=S.adminAthletes.map(a=>{
       const assigned = S.routines.find(r=>r.id===a.assignedRoutine);
-      const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
-      const statusLbl = assigned
-        ? `✓ Personalizada: ${assigned.name}`
-        : myTeam
-          ? `↳ Rutina del equipo: ${myTeam.name}`
-          : 'Sin rutina asignada';
-      const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
       return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div>
             <div style="font-size:14px;font-weight:600">${a.name||a.email}</div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.email}</div>
-            <div style="font-size:11px;margin-top:4px;color:${statusColor}">${statusLbl}</div>
+            <div style="font-size:11px;margin-top:4px;color:${assigned?'var(--green)':'var(--amber)'}">
+              ${assigned?'✓ '+assigned.name:'Sin rutina asignada'}
+            </div>
           </div>
           <span style="color:var(--text3);font-size:18px">›</span>
         </div>
@@ -2386,9 +2314,8 @@ function renderAthleteDetail() {
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
 
   // Assign routine options
-  const myTeam = userData.teamId ? S.teams.find(t=>t.id===userData.teamId) : null;
   const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
-    <option value="">${myTeam?'— Usar la del equipo —':'— Sin rutina —'}</option>
+    <option value="">— Sin rutina —</option>
     ${S.routines.map(r=>`<option value="${r.id}" ${userData.assignedRoutine===r.id?'selected':''}>${r.name}</option>`).join('')}
   </select>`;
 
@@ -2405,16 +2332,12 @@ function renderAthleteDetail() {
   </div>
 
   <div class="admin-section">
-    <div class="admin-section-title">${myTeam?'Rutina personalizada (opcional)':'Rutina asignada'}</div>
+    <div class="admin-section-title">Rutina asignada</div>
     <div class="admin-item" style="gap:8px;flex-wrap:wrap">
       ${routineOpts}
       <button class="abtn abtn-p" onclick="assignRoutineToAthlete('${uid}')">Asignar</button>
     </div>
-    ${assigned
-      ? `<div style="padding:8px 14px;font-size:12px;color:var(--green)">✓ Personalizada activa: ${assigned.name}${myTeam?' (reemplaza a la del equipo)':''}</div>`
-      : myTeam
-        ? `<div style="padding:8px 14px;font-size:12px;color:var(--accent)">↳ Hereda la rutina del equipo "${myTeam.name}" · sin personalización propia</div>`
-        : `<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
+    ${assigned?`<div style="padding:8px 14px;font-size:12px;color:var(--green)">✓ Actualmente: ${assigned.name}</div>`:`<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
   </div>
 
   <div class="admin-section">
