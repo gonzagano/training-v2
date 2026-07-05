@@ -29,6 +29,9 @@ const INSTITUTIONS = {
   'Basquet-Club Universal': { sport: 'Basquet', categories: ['u15', 'u17', 'u21'] }
 };
 
+// ── TIPOS DE LESIÓN/MOLESTIA ────────────────────────────────────
+const INJURY_TYPES = { muscular: 'Muscular', articular: 'Articular', ligamentaria: 'Ligamentaria' };
+
 // ── DEFAULT DATA ─────────────────────────────────────────────
 const DEFAULT_BLOCKS = [
   { id:'b1', label:'Bloque 1', title:'Activación y movilidad', time:'5–10 min', colorKey:'b1',
@@ -1361,6 +1364,8 @@ function renderWellness() {
     <div class="page-subtitle">${today} · Hooper Index</div>
   </div>`;
 
+  html += renderInjuryFollowup();
+
   if(isDesktop) {
     // Desktop: Hooper left, body map right
     html += `<div style="display:grid;grid-template-columns:1fr 380px;gap:20px;align-items:start">
@@ -1454,19 +1459,29 @@ function renderZoneDetail() {
   const zid=S.selectedZone;
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   const zone=allZones.find(z=>z.id===zid); if(!zone) return '';
-  const inj=S.injuries[zid]||{pain:0,note:'',date:''};
+  const inj=S.injuries[zid]||{pain:0,note:'',type:'',history:[]};
   const painBtns=Array.from({length:11},(_,i)=>{
     const cls=inj.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn';
     return `<button class="${cls}" onclick="setPain('${zid}',${i})">${i}</button>`;
   }).join('');
+  const typeBtns=Object.entries(INJURY_TYPES).map(([k,label])=>{
+    const active=inj.type===k;
+    return `<button onclick="setInjuryType('${zid}','${k}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?'var(--accent)':'var(--border2)'};background:${active?'var(--bg3)':'transparent'};color:${active?'var(--text)':'var(--text3)'};font-size:12px;cursor:pointer">${label}</button>`;
+  }).join('');
+  const isExisting = !!S.injuries[zid];
   return `<div class="zone-detail">
     <div class="zone-detail-title">${zone.label}
       <span class="zone-close" onclick="S.selectedZone=null;renderMain()">×</span>
     </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Nivel de la molestia</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">${typeBtns}</div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dolor 0–10</div>
-    <div class="pain-scale" style="display:flex;gap:4px;margin:8px 0">${painBtns}</div>
+    <div class="pain-scale" style="display:flex;gap:4px;margin:8px 0;flex-wrap:wrap">${painBtns}</div>
     <textarea class="pain-note-inp" placeholder="Observaciones..." onchange="setPainNote('${zid}',this.value)">${inj.note||''}</textarea>
-    <button class="wellness-submit" onclick="saveInjury('${zid}')">Guardar molestia</button>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="wellness-submit" style="flex:2" onclick="saveInjury('${zid}')">Guardar molestia</button>
+      ${isExisting?`<button style="flex:1;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:var(--rsm);cursor:pointer;font-size:13px" onclick="removeInjury('${zid}')">Quitar</button>`:''}
+    </div>
   </div>`;
 }
 
@@ -1478,12 +1493,13 @@ function renderInjuryList() {
     const zone=allZones.find(z=>z.id===id);
     const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
     const lbl=inj.pain>=8?'Dolor':inj.pain>=4?'Molestia':'Leve';
+    const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
     const hist=inj.history||[];
     const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
     return `<div class="injury-item">
       <div class="injury-dot" style="background:${col}"></div>
       <div class="injury-info">
-        <div class="injury-zone">${zone?.label||id}</div>
+        <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''}</div>
         <div class="injury-pain">Dolor: ${inj.pain}/10 · ${lbl}${inj.note?' · '+inj.note.slice(0,30):''}</div>
       </div>
       <div class="injury-trend" style="color:${col}">${trend}</div>
@@ -1548,25 +1564,80 @@ function selectZone(zid) { S.selectedZone=zid; renderMain(); }
 window.selectZone=selectZone;
 
 function setPain(zid,val) {
-  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',history:[]};
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',history:[]};
   S.injuries[zid].pain=val; renderMain();
 }
 window.setPain=setPain;
 
 function setPainNote(zid,val) {
-  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',history:[]};
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',history:[]};
   S.injuries[zid].note=val;
 }
 window.setPainNote=setPainNote;
 
+function setInjuryType(zid,type) {
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',history:[]};
+  S.injuries[zid].type=type; renderMain();
+}
+window.setInjuryType=setInjuryType;
+
+function removeInjury(zid) {
+  if(!S.injuries[zid]) return;
+  delete S.injuries[zid];
+  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada'); renderMain();
+}
+window.removeInjury=removeInjury;
+
 function saveInjury(zid) {
   const inj=S.injuries[zid]; if(!inj) return;
   if(!inj.history) inj.history=[];
-  inj.history.push({date:new Date().toISOString().split('T')[0],pain:inj.pain,note:inj.note||''});
+  inj.history.push({date:new Date().toISOString().split('T')[0],pain:inj.pain,note:inj.note||'',type:inj.type||''});
   if(inj.pain===0) delete S.injuries[zid];
   S.selectedZone=null; scheduleSave(); showToast('✓ Molestia guardada'); renderMain();
 }
 window.saveInjury=saveInjury;
+
+// ── SEGUIMIENTO DIARIO DE LESIONES (dentro de Wellness) ────────
+function renderInjuryFollowup() {
+  const active=Object.entries(S.injuries).filter(([,v])=>v.pain>0);
+  if(!active.length) return '';
+  const today=new Date().toISOString().split('T')[0];
+  const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
+  return `<div class="wellness-card" style="margin-bottom:16px">
+    <div class="wellness-title">Seguimiento de molestias</div>
+    <div class="wellness-sub">Contanos cómo estás hoy de cada una</div>
+    ${active.map(([zid,inj])=>{
+      const zone=allZones.find(z=>z.id===zid);
+      const hist=inj.history||[];
+      const doneToday = hist.length>0 && hist[hist.length-1].date===today;
+      const scaleBtns=Array.from({length:11},(_,i)=>{
+        const cls=inj.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn';
+        return `<button class="${cls}" ${doneToday?'disabled':''} onclick="updateInjuryFollowup('${zid}',${i})">${i}</button>`;
+      }).join('');
+      return `<div style="padding:12px 16px;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:600">${zone?.label||zid}${inj.type?` · ${INJURY_TYPES[inj.type]}`:''}</div>
+          ${doneToday?'<span style="font-size:11px;color:var(--green)">✓ Registrado hoy</span>':''}
+        </div>
+        <div class="pain-scale" style="display:flex;gap:4px;flex-wrap:wrap;${doneToday?'opacity:.5':''}">${scaleBtns}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+window.renderInjuryFollowup=renderInjuryFollowup;
+
+function updateInjuryFollowup(zid,val) {
+  const inj=S.injuries[zid]; if(!inj) return;
+  const today=new Date().toISOString().split('T')[0];
+  inj.pain=val;
+  if(!inj.history) inj.history=[];
+  const last=inj.history[inj.history.length-1];
+  if(last && last.date===today) { last.pain=val; last.note=inj.note||''; last.type=inj.type||''; }
+  else inj.history.push({date:today,pain:val,note:inj.note||'',type:inj.type||''});
+  if(val===0) delete S.injuries[zid];
+  scheduleSave(); showToast('✓ Seguimiento guardado'); renderMain();
+}
+window.updateInjuryFollowup=updateInjuryFollowup;
 
 // ── PROGRESS ──────────────────────────────────────────────────
 function renderProgress() {
