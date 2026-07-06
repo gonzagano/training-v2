@@ -1311,10 +1311,16 @@ function createAndAddExercise() {
   S.library.push(newLibEx);
   if(S.libTarget) {
     const {blockId,catIdx,sessionName,isRoutine}=S.libTarget;
-    if(isRoutine && S.editingRoutine) {
+    if(S.libTarget.isTD) {
+      // Adding to team day editor (esto es lo que faltaba)
+      const {teamId,dayIdx}=S.libTarget;
+      const b=getTDBlock(blockId,teamId,dayIdx);
+      if(b) b.categories[catIdx].exercises.push({id:genId(),name,series:'',reps:'',pct:'',rpe:'',note:''});
+      scheduleSave(); closeLib(); renderMain();
+    } else if(isRoutine && S.editingRoutine) {
       const b=(S.editingRoutine.sessions[sessionName]||[]).find(x=>x.id===blockId);
       if(b) b.categories[catIdx].exercises.push({id:genId(),name,series:'',reps:'',pct:'',rpe:'',note:''});
-      closeLib(); renderMain();
+      scheduleSave(); closeLib(); renderMain();
     } else {
       const b=S.blocks.find(x=>x.id===blockId);
       if(b) b.categories[catIdx].exercises.push({id:genId(),name});
@@ -1942,7 +1948,9 @@ function setTeamSubview(v) {
   if (v==='evals') {
     S.evalScopeUids = S.teamView?.memberUids || [];
     if (!S.evalScopeUids.includes(S.evalAthleteId)) S.evalAthleteId = S.evalScopeUids[0] || null;
-    ensureAdminAthletes().then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); });
+    ensureAdminAthletes()
+      .then(()=>ensureAthleteEvalData(S.evalAthleteId))
+      .then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); });
     return;
   }
   if (v==='wellness' || v==='stats') { ensureGroupPersonalData(S.teamView?.memberUids||[]).then(renderMain); return; }
@@ -2404,7 +2412,9 @@ function setAtletaSubview(v) {
   if (v === 'evals') {
     S.evalScopeUids = S.atletaView ? [S.atletaView.uid] : [];
     S.evalAthleteId = S.atletaView?.uid || null;
-    ensureAdminAthletes().then(() => { renderMain(); setTimeout(drawEvalCharts, 80); });
+    ensureAdminAthletes()
+      .then(()=>ensureAthleteEvalData(S.evalAthleteId))
+      .then(() => { renderMain(); setTimeout(drawEvalCharts, 80); });
     return;
   }
   if (v === 'wellness' || v === 'stats') {
@@ -3248,8 +3258,9 @@ function renderEvals() {
 }
 window.renderEvals = renderEvals;
 
-function selectEvalAthlete(uid) {
+async function selectEvalAthlete(uid) {
   S.evalAthleteId = uid;
+  await ensureAthleteEvalData(uid);
   renderMain();
   setTimeout(drawEvalCharts, 100);
 }
@@ -3311,7 +3322,7 @@ function metricCardHtml(label, icon, value, color, sub) {
 function renderEvalHistory(edata, isDesktop) {
   if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
 
-  const histTests = EVAL_TESTS.filter(t=>t.id!=='cmj_der' && t.id!=='cmj_izq')
+  const histTests = EVAL_TESTS
     .concat([{id:'asym', label:'Asimetría Unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda'}]);
 
   let html = isDesktop ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">' : '';
@@ -3501,6 +3512,13 @@ function drawEvalCharts() {
   const gridColor = 'rgba(255,255,255,0.05)';
   const view = S.evalView||'entry';
   const chartView = (view==='team_compare') ? 'history' : view;
+  // Escalas fijas por test (pedidas explícitamente): la mayoría 10–80cm,
+  // salto horizontal mucho más largo, y unilateral en un rango bajo.
+  const scaleMap = {
+    cmj:{min:10,max:80}, sj:{min:10,max:80}, abalakov:{min:10,max:80},
+    saltoH:{min:50,max:340},
+    cmj_der:{min:0,max:40}, cmj_izq:{min:0,max:40}
+  };
 
   const tooltipStyle = {backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1};
 
@@ -3567,15 +3585,16 @@ function drawEvalCharts() {
       }
     };
 
-    const colorMap   = {cmj:'rgba(59,125,216,0.8)', sj:'rgba(34,197,94,0.8)', abalakov:'rgba(139,92,246,0.8)', saltoH:'rgba(20,184,166,0.8)'};
-    const borderMap  = {cmj:'#3b7dd8', sj:'#22c55e', abalakov:'#8b5cf6', saltoH:'#14b8a6'};
+    const colorMap   = {cmj:'rgba(59,125,216,0.8)', sj:'rgba(34,197,94,0.8)', abalakov:'rgba(139,92,246,0.8)', saltoH:'rgba(20,184,166,0.8)', cmj_der:'rgba(245,158,11,0.8)', cmj_izq:'rgba(239,68,68,0.8)'};
+    const borderMap  = {cmj:'#3b7dd8', sj:'#22c55e', abalakov:'#8b5cf6', saltoH:'#14b8a6', cmj_der:'#f59e0b', cmj_izq:'#ef4444'};
 
-    EVAL_TESTS.filter(t=>t.id!=='cmj_der' && t.id!=='cmj_izq').forEach(t=>{
+    EVAL_TESTS.forEach(t=>{
       if(S.evalHidden.has(t.id)) return;
       const recs = edata[t.id]||[];
       if(!recs.length) return;
       const c = document.getElementById('chart-hist-'+t.id);
       if(!c) return;
+      const sc = scaleMap[t.id] || {};
 
       S.evalChartInstances['chart-hist-'+t.id] = new Chart(c, {
         type:'bar',
@@ -3606,7 +3625,7 @@ function drawEvalCharts() {
           },
           scales:{
             x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}, maxRotation:30}},
-            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}}, beginAtZero:false, title:{display:true,text:'cm',color:'#3d5070',font:{size:9}}}
+            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:'#3d5070',font:{size:9}}}
           }
         },
         plugins:[barLabelsPlugin]
@@ -3680,6 +3699,7 @@ function drawEvalCharts() {
     const canvasId = 'chart-compare-'+testId;
     const c = document.getElementById(canvasId);
     if(c && compData.length) {
+      const sc = scaleMap[testId] || {};
       const colors = compData.map((_,i)=>'hsl('+(210+i*35)+',65%,55%)');
       S.evalChartInstances[canvasId] = new Chart(c, {
         type:'bar',
@@ -3689,7 +3709,7 @@ function drawEvalCharts() {
           plugins:{legend:{display:false}, tooltip:{...tooltipStyle, callbacks:{label:ctx=>' '+ctx.raw+' cm'}}},
           scales:{
             x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:11}}},
-            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:10}}, beginAtZero:false, title:{display:true,text:'cm',color:'#3d5070',font:{size:10}}}
+            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:10}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:'#3d5070',font:{size:10}}}
           }
         },
         plugins:[{
@@ -3719,6 +3739,21 @@ function getAthleteEvals(uid) {
   if(uid==='self') return S.evals;
   return (S._athleteEvalsCache && S._athleteEvalsCache[uid]) || {};
 }
+
+// Trae /personal/{uid}.evals para UN atleta puntual si todavía no está en
+// caché. Antes, solo el botón "Comparar atletas" (loadAllAthleteEvals)
+// poblaba esta caché — por eso elegir un atleta individual no mostraba
+// sus saltos, aunque el dato sí existía en Firestore.
+async function ensureAthleteEvalData(uid) {
+  if (!uid || uid === 'self') return;
+  if (S._athleteEvalsCache && S._athleteEvalsCache[uid]) return;
+  try {
+    const snap = await getDoc(doc(db, 'personal', uid));
+    if (!S._athleteEvalsCache) S._athleteEvalsCache = {};
+    S._athleteEvalsCache[uid] = snap.exists() ? (snap.data().evals || {}) : {};
+  } catch (e) {}
+}
+window.ensureAthleteEvalData = ensureAthleteEvalData;
 
 async function deleteEvalRecord(testId, idx) {
   if(!confirm('¿Eliminar este registro?')) return;
