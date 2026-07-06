@@ -3303,11 +3303,7 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
   html += metricCardHtml('MEJOR CMJ', '↑', lCMJ?lCMJ.height+' cm':'--', 'var(--text)', lCMJ?'Último registro · '+lCMJ.date:'Sin datos');
   html += '</div>';
 
-  html += '<div class="eval-chart-wrap"><div class="eval-chart-title">Progresión de saltos — todos los tests</div>'
-    + '<canvas class="eval-chart" id="chart-entry-main" height="180"></canvas>';
-  const hasAnyData = EVAL_TESTS.some(t=>(edata[t.id]||[]).length>0);
-  if(!hasAnyData) html += '<div class="eval-no-data">Sin datos suficientes para el gráfico</div>';
-  html += '</div></div>';
+  html += '</div>';
 
   if(isDesktop) html += '</div>';
   return html;
@@ -3394,7 +3390,12 @@ function renderEvalCompare() {
   const tabsHtml = EVAL_TESTS.map(t=>'<button class="snav-tab '+(testId===t.id?'active':'')+'" onclick="switchCompareTest(\''+t.id+'\')">'+t.label+'</button>').join('');
   let html = '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">'+tabsHtml+'</div>';
 
-  const athletes = [{uid:'self', name:'Yo (admin)', email:''}].concat(S.adminAthletes);
+  // Si estamos dentro de un equipo o de un atleta individual (S.evalScopeUids
+  // seteado), la comparación se acota a ESE grupo — nada de "Yo (admin)" ni
+  // de atletas de otro lado. Sin acotar, es el comportamiento anterior.
+  const athletes = S.evalScopeUids
+    ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid))
+    : [{uid:'self', name:'Yo (admin)', email:''}].concat(S.adminAthletes);
   const allData = athletes.map(a=>{
     const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
     const recs = ed[testId]||[];
@@ -3522,46 +3523,7 @@ function drawEvalCharts() {
 
   const tooltipStyle = {backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1};
 
-  if(chartView==='entry') {
-    const cmjR=edata.cmj||[], sjR=edata.sj||[], abalR=edata.abalakov||[];
-    const derR=edata.cmj_der||[], izqR=edata.cmj_izq||[], hR=edata.saltoH||[];
-    const allDates = [...new Set([
-      ...cmjR.map(r=>r.date), ...sjR.map(r=>r.date), ...abalR.map(r=>r.date),
-      ...derR.map(r=>r.date), ...izqR.map(r=>r.date), ...hR.map(r=>r.date)
-    ])].sort();
-
-    const c = document.getElementById('chart-entry-main');
-    if(c && allDates.length) {
-      const findVal = (recs,date) => { const r=recs.find(x=>x.date===date); return r?r.height:null; };
-      S.evalChartInstances['chart-entry-main'] = new Chart(c, {
-        type:'bar',
-        data:{
-          labels: allDates,
-          datasets:[
-            {label:'CMJ', data:allDates.map(d=>findVal(cmjR,d)), backgroundColor:'rgba(59,125,216,0.85)', borderColor:'#3b7dd8', borderWidth:1, borderRadius:4, skipNull:true},
-            {label:'SJ', data:allDates.map(d=>findVal(sjR,d)), backgroundColor:'rgba(34,197,94,0.85)', borderColor:'#22c55e', borderWidth:1, borderRadius:4, skipNull:true},
-            {label:'Abalakov', data:allDates.map(d=>findVal(abalR,d)), backgroundColor:'rgba(139,92,246,0.85)', borderColor:'#8b5cf6', borderWidth:1, borderRadius:4, skipNull:true},
-            {label:'CMJ Der.', data:allDates.map(d=>findVal(derR,d)), backgroundColor:'rgba(245,158,11,0.85)', borderColor:'#f59e0b', borderWidth:1, borderRadius:4, skipNull:true},
-            {label:'CMJ Izq.', data:allDates.map(d=>findVal(izqR,d)), backgroundColor:'rgba(239,68,68,0.85)', borderColor:'#ef4444', borderWidth:1, borderRadius:4, skipNull:true},
-            {label:'Salto H.', data:allDates.map(d=>findVal(hR,d)), backgroundColor:'rgba(20,184,166,0.85)', borderColor:'#14b8a6', borderWidth:1, borderRadius:4, skipNull:true},
-          ]
-        },
-        options:{
-          responsive:true, maintainAspectRatio:true, aspectRatio:2.2,
-          plugins:{
-            legend:{display:true, labels:{color:'#7a90b8', font:{size:11}, boxWidth:12, padding:10,
-              filter:(item,data)=>data.datasets[item.datasetIndex].data.some(v=>v!==null)}},
-            tooltip:tooltipStyle
-          },
-          scales:{
-            x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:10}}},
-            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:10}}, beginAtZero:false, title:{display:true,text:'cm',color:'#3d5070',font:{size:10}}}
-          }
-        }
-      });
-    }
-
-  } else if(chartView==='history') {
+  if(chartView==='history') {
     if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
 
     // Datalabels plugin for bar charts (value above bar)
@@ -3688,7 +3650,9 @@ function drawEvalCharts() {
 
   } else if(chartView==='compare') {
     const testId = S.evalCompareTest||'cmj';
-    const athletes = [{uid:'self',name:'Yo (admin)'}].concat(S.adminAthletes);
+    const athletes = S.evalScopeUids
+      ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid))
+      : [{uid:'self',name:'Yo (admin)'}].concat(S.adminAthletes);
     const compData = athletes.map(a=>{
       const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
       const recs = ed[testId]||[];
@@ -3831,7 +3795,8 @@ async function loadAllAthleteEvals() {
   if(!S.isAdmin || !S.adminAthletes.length) return;
   showToast('Cargando datos...');
   if(!S._athleteEvalsCache) S._athleteEvalsCache = {};
-  for(const a of S.adminAthletes) {
+  const targets = S.evalScopeUids ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid)) : S.adminAthletes;
+  for(const a of targets) {
     try {
       const snap = await getDoc(doc(db,'personal',a.uid));
       if(snap.exists()) S._athleteEvalsCache[a.uid] = snap.data().evals || {};
