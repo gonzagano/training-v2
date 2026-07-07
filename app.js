@@ -2451,19 +2451,20 @@ function renderAtletaRutina(a) {
   }
 
   const sessionNames = Object.keys(routine.sessions || {});
-  html += `<div style="font-size:13px;font-weight:600;margin:14px 0 8px">${routine.name}</div>`;
-  sessionNames.forEach(sName => {
-    const blocks = routine.sessions[sName] || [];
-    html += `<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--text3);margin-bottom:4px">${sName}</div>`;
-    blocks.forEach(b => {
-      (b.categories || []).forEach(cat => {
-        (cat.exercises || []).forEach(ex => {
-          html += `<div style="font-size:12px;padding:4px 0;border-top:1px solid var(--border)">${ex.name} — ${formatExSummary(ex)}</div>`;
-        });
-      });
-    });
-    html += `</div>`;
-  });
+  html += `<div class="admin-section">
+    <div class="admin-section-title">${routine.name}</div>
+    ${sessionNames.map(sName => {
+      const blocks = routine.sessions[sName] || [];
+      const exRows = [];
+      blocks.forEach(b => (b.categories || []).forEach(cat => (cat.exercises || []).forEach(ex => exRows.push(ex))));
+      return `<div style="padding:10px 16px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${sName}</div>
+        ${exRows.length
+          ? exRows.map((ex,i) => `<div style="font-size:13px;padding:5px 0;${i>0?'border-top:1px solid var(--border)':''}"><span style="color:var(--text)">${ex.name}</span> <span style="color:var(--text3)">— ${formatExSummary(ex)}</span></div>`).join('')
+          : `<div style="font-size:12px;color:var(--text3)">Sin ejercicios cargados</div>`}
+      </div>`;
+    }).join('')}
+  </div>`;
   return html;
 }
 window.renderAtletaRutina = renderAtletaRutina;
@@ -3193,7 +3194,12 @@ function renderEvals() {
     }).catch(()=>{ S._evalAthletesLoading=false; });
   }
 
-  const edata = getAthleteEvals(S.evalAthleteId||'self');
+  // Cuando estamos DENTRO de un equipo o de un atleta puntual (evalScopeUids seteado),
+  // nunca hay que caer en 'self' — eso mostraría las evaluaciones propias del admin
+  // disfrazadas de datos del grupo. El fallback a 'self' solo aplica en la vista general.
+  const edata = S.evalScopeUids
+    ? getAthleteEvals(S.evalAthleteId || '')
+    : getAthleteEvals(S.evalAthleteId || 'self');
   const view = S.evalView||'entry';
 
   // Athlete selector (admin only) — strictly scopes which athlete's data is shown/edited
@@ -3511,7 +3517,11 @@ function drawEvalCharts() {
     delete S.evalChartInstances[key];
   });
 
-  const edata = getAthleteEvals(S.evalAthleteId||'self');
+  // Mismo criterio que en renderEvals: si estamos scopeados a un equipo/atleta,
+  // nunca sustituir por las evaluaciones propias del admin.
+  const edata = S.evalScopeUids
+    ? getAthleteEvals(S.evalAthleteId || '')
+    : getAthleteEvals(S.evalAthleteId || 'self');
   const gridColor = 'rgba(255,255,255,0.05)';
   const view = S.evalView||'entry';
   const chartView = (view==='team_compare') ? 'history' : view;
