@@ -1248,7 +1248,7 @@ window.closeLibIfOutside=closeLibIfOutside;
 function renderLibFilters() {
   const f=document.getElementById('lib-filters');
   f.innerHTML=[{id:null,label:'Todos'},...ALL_FILTERS.map(t=>({id:t,label:t}))].map(ft=>
-    `<span class="filter-chip ${S.activeFilter===ft.id?'active':''}" onclick="setFilter('${ft.id}')">${ft.label}</span>`
+    `<span class="lib-filter ${S.activeFilter===ft.id?'active':''}" onclick="setFilter('${ft.id}')">${ft.label}</span>`
   ).join('');
 }
 
@@ -1269,9 +1269,11 @@ function renderLibList() {
   if(!items.length) { list.innerHTML=`<div class="empty-state">No se encontraron ejercicios</div>`; return; }
   list.innerHTML=items.map(ex=>`
     <div class="lib-item" onclick="addFromLib('${ex.id}')">
-      <span class="lib-name">${ex.name}</span>
-      <div class="lib-tags">${(ex.tags||[]).slice(0,2).map(t=>`<span class="lib-tag">${t}</span>`).join('')}</div>
-      <span class="lib-add-icon">+</span>
+      <div>
+        <div class="lib-item-name">${ex.name}</div>
+        ${(ex.tags||[]).length?`<div class="lib-item-tags">${(ex.tags||[]).slice(0,2).join(' · ')}</div>`:''}
+      </div>
+      <button class="lib-item-add" tabindex="-1">+</button>
     </div>`).join('');
 }
 window.renderLibList=renderLibList;

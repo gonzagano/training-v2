@@ -147,35 +147,34 @@
 </div>
 
 <!-- Library Sheet -->
-<div class="overlay" id="lib-overlay" onclick="closeLibIfOutside(event)">
-  <div class="sheet" id="lib-sheet">
-    <div class="sheet-header">
-      <div class="sheet-title">Biblioteca de ejercicios</div>
-      <input class="sheet-search" id="lib-search" placeholder="Buscar ejercicio..." oninput="renderLibList()">
-      <div class="filter-row" id="lib-filters"></div>
+<div class="lib-overlay" id="lib-overlay" onclick="closeLibIfOutside(event)">
+  <div class="lib-sheet" id="lib-sheet">
+    <div class="lib-header">
+      <div class="lib-title">Biblioteca de ejercicios</div>
+      <span class="lib-close" onclick="closeLib()">×</span>
     </div>
-    <div class="sheet-list" id="lib-list"></div>
-    <div class="sheet-new">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Crear ejercicio nuevo</div>
-      <div class="sheet-new-row">
-        <input class="sheet-inp" id="lib-new-name" placeholder="Nombre del ejercicio">
-        <button class="sheet-btn sheet-btn-p" onclick="createAndAddExercise()">+ Agregar</button>
-        <button class="sheet-btn sheet-btn-s" onclick="closeLib()">Cancelar</button>
-      </div>
+    <div class="lib-search-wrap">
+      <input class="lib-search" id="lib-search" placeholder="Buscar ejercicio..." oninput="renderLibList()">
+    </div>
+    <div class="lib-filters" id="lib-filters"></div>
+    <div class="lib-list" id="lib-list"></div>
+    <div class="lib-new-wrap">
+      <input class="lib-new-inp" id="lib-new-name" placeholder="Crear ejercicio nuevo...">
+      <button class="lib-new-btn" onclick="createAndAddExercise()">+ Agregar</button>
     </div>
   </div>
 </div>
 
 <!-- Video Modal -->
-<div class="modal-overlay" id="video-overlay" onclick="closeVideoIfOutside(event)">
-  <div class="modal">
-    <div class="modal-title" id="video-modal-title">Video del ejercicio</div>
-    <div class="modal-sub">Pegá un link de YouTube</div>
-    <input class="modal-inp" id="video-url-inp" placeholder="https://youtube.com/...">
-    <div class="modal-footer">
-      <button class="mbtn mbtn-d" id="video-clear-btn" onclick="clearVideoUrl()" style="display:none">Quitar</button>
-      <button class="mbtn mbtn-s" onclick="closeVideoModal()">Cancelar</button>
-      <button class="mbtn mbtn-p" onclick="saveVideoUrl()">Guardar</button>
+<div class="video-modal" id="video-overlay" onclick="closeVideoIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="video-modal-title">Video del ejercicio</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Pegá un link de YouTube</div>
+    <input class="video-url-inp" id="video-url-inp" placeholder="https://youtube.com/...">
+    <div class="video-modal-btns">
+      <button class="abtn abtn-d" id="video-clear-btn" onclick="clearVideoUrl()" style="display:none">Quitar</button>
+      <button class="abtn" onclick="closeVideoModal()">Cancelar</button>
+      <button class="abtn abtn-p" onclick="saveVideoUrl()">Guardar</button>
     </div>
   </div>
 </div>
