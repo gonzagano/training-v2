@@ -315,6 +315,11 @@ let S = {
     institution: '', category: ''      // si es de equipo
   },
 };
+// Los atributos inline (onclick="S.x=...", oninput="S.x=...") se ejecutan en el
+// scope global del navegador, no en el scope de este módulo — sin esto, CUALQUIER
+// referencia directa a S dentro de un atributo HTML revienta con
+// "ReferenceError: S is not defined". Esta línea es la que lo habilita.
+window.S = S;
 
 // ── AUTH MODE ─────────────────────────────────────────────────
 let authMode = 'login';
