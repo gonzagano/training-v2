@@ -394,7 +394,6 @@ onAuthStateChanged(auth, async (user) => {
   const pSnap = await getDoc(pRef);
   if (pSnap.exists()) {
     const d = pSnap.data();
-    if (d.videos) S.videos = d.videos;
     if (d.evals) S.evals = d.evals;
     if (d.sessionLogs) { if(!S.history) S.history={}; S.history._sessionLogs=d.sessionLogs; }
     if (d.history) S.history = d.history;
@@ -403,7 +402,6 @@ onAuthStateChanged(auth, async (user) => {
     if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     if (d.startDate) S.startDate = d.startDate;
-    if (d.library) S.library = d.library;
     // blocks only loaded for admin (athletes get them from assigned routine)
     if (S.isAdmin) {
       // Admin loads their own personal blocks
@@ -412,6 +410,31 @@ onAuthStateChanged(auth, async (user) => {
     }
     // Athletes never load blocks — they come from assignedRoutine only
   }
+
+  // Biblioteca de ejercicios y videos: son recursos COMPARTIDOS de todo el
+  // gimnasio (un solo admin, un solo set de ejercicios/videos) — viven en un
+  // documento aparte que TODOS (admin y atletas) leen, para que un atleta vea
+  // los mismos videos que el admin cargó. Antes vivían en personal/{uid} de
+  // cada usuario, por eso nunca le llegaban a ningún atleta.
+  try {
+    const sharedRef = doc(db, 'shared', 'library');
+    const sharedSnap = await getDoc(sharedRef);
+    if (sharedSnap.exists()) {
+      const sd = sharedSnap.data();
+      if (sd.library) S.library = sd.library;
+      if (sd.videos) S.videos = sd.videos;
+    } else if (S.isAdmin && pSnap.exists()) {
+      // Migración única: si el admin todavía tiene biblioteca/videos viejos en
+      // su documento personal (de antes de este cambio), los copiamos al
+      // documento compartido para no perder lo ya cargado.
+      const d = pSnap.data();
+      if (d.library || d.videos) {
+        if (d.library) S.library = d.library;
+        if (d.videos) S.videos = d.videos;
+        await setDoc(sharedRef, { library: S.library, videos: S.videos }, { merge: true });
+      }
+    }
+  } catch(e) { console.error('Error cargando biblioteca/videos compartidos', e); }
 
   if (S.isAdmin) {
     // Load teams
@@ -489,15 +512,16 @@ async function saveToFirestore() {
   try {
     // Athletes with assigned routines don't save blocks (read-only from routine)
     const dataToSave = {
-      videos: S.videos, history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
+      history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
       wellness: S.wellness, injuries: S.injuries, injuryArchive: S.injuryArchive||[],
       currentWeek: S.currentWeek, startDate: S.startDate,
       updatedAt: serverTimestamp()
     };
     if (S.isAdmin) {
-      // Admin saves their own personal blocks AND library
+      // Admin saves their own personal blocks
       dataToSave.blocks = S.blocks;
-      dataToSave.library = S.library;
+      // Biblioteca y videos son compartidos — van a su propio documento, no al personal
+      await setDoc(doc(db, 'shared', 'library'), { library: S.library, videos: S.videos }, { merge: true });
     }
     await setDoc(doc(db, 'personal', S.user.uid), dataToSave, { merge: true });
   } catch(e) { console.error('Save error', e); }
@@ -1029,7 +1053,10 @@ function renderBlock(b) {
 
 function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const d=getED(S.currentWeek,S.currentSession,ex.id);
-  const videoKey=ex.libId||ex.id;
+  // Ejercicios agregados ANTES de que existiera libId no tienen ese vínculo — como
+  // respaldo, buscamos por nombre exacto en la biblioteca para no perder el video.
+  const libMatch = ex.libId ? null : S.library.find(l=>l.name.trim().toLowerCase()===(ex.name||'').trim().toLowerCase());
+  const videoKey=ex.libId||(libMatch&&libMatch.id)||ex.id;
   const hasV=!!S.videos[videoKey];
   const canEdit=S.isAdmin && !forceReadOnly;
   const isAthleteMode=!S.isAdmin && !!S.assignedRoutine;
@@ -4092,7 +4119,7 @@ window.deleteEvalRecord = deleteEvalRecord;
 
 function setLibFilter(tag) {
   S._libViewFilter = (S._libViewFilter===tag) ? null : tag;
-  renderMain();
+  updateLibViewResults();
 }
 window.setLibFilter = setLibFilter;
 
@@ -4503,19 +4530,7 @@ function renderAthleteHome() {
 
 // ── LIBRARY VIEW ─────────────────────────────────────────────
 function renderLibraryView() {
-  const search = S._libViewSearch||'';
-  const filter = S._libViewFilter||null;
-  
-  // Get all tags
   const allTags = [...new Set(S.library.flatMap(e=>e.tags||[]))].sort();
-  
-  // Filter library
-  let items = S.library;
-  if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
-    (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
-  if(filter) items = items.filter(e=>(e.tags||[]).includes(filter));
-  items = [...items].sort((a,b)=>a.name.localeCompare(b.name));
-
   return `<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between">
     <div>
       <div class="page-title">Biblioteca de ejercicios</div>
@@ -4526,16 +4541,33 @@ function renderLibraryView() {
 
   <!-- Search + filter -->
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-    <input id="lib-view-search" value="${search}" placeholder="Buscar ejercicio..."
+    <input id="lib-view-search" value="${S._libViewSearch||''}" placeholder="Buscar ejercicio..."
       style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
-      oninput="S._libViewSearch=this.value;renderMain()"
+      oninput="S._libViewSearch=this.value;updateLibViewResults()"
       onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
     <button class="abtn abtn-p" onclick="addLibraryExercise()">+ Nuevo ejercicio</button>
   </div>
 
-  <!-- Tag filters -->
+  <div id="lib-view-body">${renderLibViewBody()}</div>`;
+}
+window.renderLibraryView=renderLibraryView;
+
+// Recalcula SOLO la parte filtrable (chips de tags + lista) sin tocar el input
+// de búsqueda — así el input nunca pierde el foco mientras se escribe.
+function renderLibViewBody() {
+  const search = S._libViewSearch||'';
+  const filter = S._libViewFilter||null;
+  const allTags = [...new Set(S.library.flatMap(e=>e.tags||[]))].sort();
+
+  let items = S.library;
+  if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
+    (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
+  if(filter) items = items.filter(e=>(e.tags||[]).includes(filter));
+  items = [...items].sort((a,b)=>a.name.localeCompare(b.name));
+
+  return `<!-- Tag filters -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-    <button class="lib-filter ${!filter?'active':''}" onclick="S._libViewFilter=null;renderMain()">Todos</button>
+    <button class="lib-filter ${!filter?'active':''}" onclick="S._libViewFilter=null;updateLibViewResults()">Todos</button>
     ${allTags.map(t=>'<button class="lib-filter '+(filter===t?'active':'')+'" onclick="setLibFilter(\''+t+'\')">' + t + '</button>').join('')}
   </div>
 
@@ -4562,7 +4594,13 @@ function renderLibraryView() {
       </div>`;}).join('')}
   </div>`:`<div class="empty-state">Sin ejercicios que coincidan.<br><span style="font-size:12px">Probá con otra búsqueda o creá uno nuevo.</span></div>`}`;
 }
-window.renderLibraryView=renderLibraryView;
+window.renderLibViewBody=renderLibViewBody;
+
+function updateLibViewResults() {
+  const el=document.getElementById('lib-view-body');
+  if(el) el.innerHTML=renderLibViewBody();
+}
+window.updateLibViewResults=updateLibViewResults;
 
 function addLibraryExercise() {
   const name = prompt('Nombre del ejercicio:');
