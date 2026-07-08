@@ -1029,7 +1029,8 @@ function renderBlock(b) {
 
 function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const d=getED(S.currentWeek,S.currentSession,ex.id);
-  const hasV=!!S.videos[ex.id];
+  const videoKey=ex.libId||ex.id;
+  const hasV=!!S.videos[videoKey];
   const canEdit=S.isAdmin && !forceReadOnly;
   const isAthleteMode=!S.isAdmin && !!S.assignedRoutine;
   // Routine prescription values (from routine definition or admin-set in exercise)
@@ -1057,7 +1058,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
         <span class="ex-name" ${canEdit?`ondblclick="editExName(this,'${ex.id}','${blockId}',${catIdx})"`:''}>${ex.name}</span>
         <input class="ex-name-inp" id="exinp-${ex.id}" ${canEdit?`onblur="saveExName('${ex.id}','${blockId}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"`:''}>
         <div class="ex-actions">
-          <div class="ex-icon-btn ${hasV?'has-video':''}" onclick="openVideoModal('${ex.id}','${ex.name}',${canEdit})" title="${canEdit?'Video':'Ver video'}">
+          <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',${canEdit})" title="${canEdit?'Video':'Ver video'}">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </div>
           ${canEdit?`<div class="ex-icon-btn del-ex" onclick="deleteExercise('${ex.id}','${blockId}',${catIdx})" title="Eliminar">×</div>`:''}
@@ -1387,19 +1388,19 @@ function addFromLib(libId) {
     const {teamId,dayIdx}=S.libTarget;
     const b=getTDBlock(blockId,teamId,dayIdx);
     if(!b)return;
-    b.categories[catIdx].exercises.push({id:genId(),name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''});
+    b.categories[catIdx].exercises.push({id:genId(),libId:libEx.id,name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''});
     closeLib();renderMain();
   } else if(isRoutine && S.editingRoutine) {
     // Adding to routine editor
     const b=(S.editingRoutine.sessions[sessionName]||[]).find(x=>x.id===blockId);
     if(!b) return;
-    const newEx={id:genId(),name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''};
+    const newEx={id:genId(),libId:libEx.id,name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''};
     b.categories[catIdx].exercises.push(newEx);
     closeLib(); renderMain();
   } else {
     // Adding to admin's personal session
     const b=S.blocks.find(x=>x.id===blockId); if(!b) return;
-    const newEx={id:genId(),name:libEx.name};
+    const newEx={id:genId(),libId:libEx.id,name:libEx.name};
     b.categories[catIdx].exercises.push(newEx);
     scheduleSave(); closeLib(); renderMain();
   }
@@ -1418,15 +1419,15 @@ function createAndAddExercise() {
       // Adding to team day editor (esto es lo que faltaba)
       const {teamId,dayIdx}=S.libTarget;
       const b=getTDBlock(blockId,teamId,dayIdx);
-      if(b) b.categories[catIdx].exercises.push({id:genId(),name,series:'',reps:'',pct:'',rpe:'',note:''});
+      if(b) b.categories[catIdx].exercises.push({id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
       scheduleSave(); closeLib(); renderMain();
     } else if(isRoutine && S.editingRoutine) {
       const b=(S.editingRoutine.sessions[sessionName]||[]).find(x=>x.id===blockId);
-      if(b) b.categories[catIdx].exercises.push({id:genId(),name,series:'',reps:'',pct:'',rpe:'',note:''});
+      if(b) b.categories[catIdx].exercises.push({id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
       scheduleSave(); closeLib(); renderMain();
     } else {
       const b=S.blocks.find(x=>x.id===blockId);
-      if(b) b.categories[catIdx].exercises.push({id:genId(),name});
+      if(b) b.categories[catIdx].exercises.push({id:genId(),libId:newLibEx.id,name});
       scheduleSave(); closeLib(); renderMain();
     }
   }
@@ -1513,8 +1514,7 @@ function saveVideoUrl() {
   if(S.videoTarget) {
     if(url) S.videos[S.videoTarget]=url; else delete S.videos[S.videoTarget];
     scheduleSave();
-    const btn=document.querySelector(`#exrow-${S.videoTarget} .ex-icon-btn`);
-    if(btn) btn.classList.toggle('has-video',!!url);
+    document.querySelectorAll(`[data-videokey="${S.videoTarget}"]`).forEach(btn=>btn.classList.toggle('has-video',!!url));
     showToast(url?'▶ Video guardado':'Video eliminado');
     const embed=getYouTubeEmbedUrl(url);
     document.getElementById('video-preview-frame').src=embed||'';
@@ -2248,6 +2248,31 @@ async function setAthleteColor(uid, color) {
 }
 window.setAthleteColor=setAthleteColor;
 
+// Posición del atleta dentro de un equipo — el desplegable depende del deporte del equipo.
+const POSITION_OPTIONS = {
+  handball: ['Central','Lateral','Extremo','Pivote','Arquero'],
+  basquet: ['Base','Escolta','Alero','Pivot'],
+};
+function getPositionOptionsForSport(sport) {
+  const s=(sport||'').toLowerCase();
+  if(s.includes('handball')||s.includes('balonmano')) return POSITION_OPTIONS.handball;
+  if(s.includes('basquet')||s.includes('básquet')||s.includes('basket')) return POSITION_OPTIONS.basquet;
+  return null; // deporte no reconocido: se usa un campo de texto libre en su lugar
+}
+window.getPositionOptionsForSport=getPositionOptionsForSport;
+
+async function setAthletePosition(uid, position) {
+  try {
+    await setDoc(doc(db,'users',uid),{position},{merge:true});
+    const a = S.adminAthletes.find(x=>x.uid===uid);
+    if(a) a.position=position;
+    if(S.viewingAthlete?.userData) S.viewingAthlete.userData.position=position;
+    showToast('✓ Posición guardada');
+    renderMain();
+  } catch(e){ showToast('Error'); }
+}
+window.setAthletePosition=setAthletePosition;
+
 // ── DATOS AGRUPADOS (Wellness/Estadísticas dentro de Equipos y Atletas) ──
 // Carga la lista de atletas si todavía no está en memoria.
 async function ensureAdminAthletes() {
@@ -2292,6 +2317,81 @@ function getActiveInjuriesSummary(personal) {
   });
 }
 
+// Resumen de carga + wellness de un atleta, usado para promediar a nivel equipo/posición.
+function computeAthleteLoadSummary(a) {
+  const logs=(a._personal?.history?._sessionLogs)||[];
+  const m=calcLoadMetrics(logs);
+  const today=new Date().toISOString().split('T')[0];
+  const todayUA=logs.filter(l=>l.date===today).reduce((s,l)=>s+(l.ua||0),0);
+  const wellness=a._personal?.wellness||{};
+  const last7=Object.entries(wellness).sort((x,y)=>y[0].localeCompare(x[0])).slice(0,7);
+  const wPcts=last7.map(([,w])=>getWellnessScore(w)).filter(x=>x.allFilled).map(x=>x.pct);
+  const avgWellness=wPcts.length?Math.round(wPcts.reduce((s,v)=>s+v,0)/wPcts.length):null;
+  return {
+    todayUA: logs.length?todayUA:null,
+    acuteUA: m?m.acuteUA:null,
+    chronicUA: m?m.chronicUA:null,
+    acwr: m&&m.acwr!=null?m.acwr:null,
+    monotony: m&&m.monotony!=null?m.monotony:null,
+    avgWellness,
+  };
+}
+window.computeAthleteLoadSummary=computeAthleteLoadSummary;
+
+// Promedia una métrica entre varios resúmenes, ignorando los atletas sin dato para esa métrica.
+function avgMetric(summaries,key) {
+  const vals=summaries.map(s=>s[key]).filter(v=>v!==null&&v!==undefined&&!isNaN(v));
+  if(!vals.length) return null;
+  return vals.reduce((a,v)=>a+v,0)/vals.length;
+}
+window.avgMetric=avgMetric;
+
+// Tarjeta de métricas promedio (equipo completo o un grupo por posición)
+function renderTeamMetricsCard(title,members) {
+  const summaries=members.map(computeAthleteLoadSummary);
+  const avgW=avgMetric(summaries,'avgWellness');
+  const avgToday=avgMetric(summaries,'todayUA');
+  const avgAcute=avgMetric(summaries,'acuteUA');
+  const avgChronic=avgMetric(summaries,'chronicUA');
+  const avgAcwr=avgMetric(summaries,'acwr');
+  const avgMono=avgMetric(summaries,'monotony');
+  const wState=getWellnessState(avgW!==null?Math.round(avgW):null);
+  const acwrSt=getACWRStatus(avgAcwr);
+  const monSt=getMonotonyStatus(avgMono);
+  return `<div class="admin-section">
+    <div class="admin-section-title">${title} · ${members.length} atleta${members.length!==1?'s':''}</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
+      <div style="background:var(--bg2);padding:12px;text-align:center">
+        <div style="font-size:18px;font-weight:800;color:${wState.color}">${avgW!==null?avgW+'%':'—'}</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness sem.</div>
+      </div>
+      <div style="background:var(--bg2);padding:12px;text-align:center">
+        <div style="font-size:18px;font-weight:800;color:${acwrSt.color}">${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
+        <div style="font-size:9px;color:${acwrSt.color}">${acwrSt.label}</div>
+      </div>
+      <div style="background:var(--bg2);padding:12px;text-align:center">
+        <div style="font-size:18px;font-weight:800;color:${monSt.color}">${avgMono!==null?avgMono.toFixed(1):'—'}</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía</div>
+        <div style="font-size:9px;color:${monSt.color}">${monSt.label}</div>
+      </div>
+      <div style="background:var(--bg2);padding:12px;text-align:center">
+        <div style="font-size:16px;font-weight:700">${avgToday!==null?Math.round(avgToday):'—'}</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga hoy (UA)</div>
+      </div>
+      <div style="background:var(--bg2);padding:12px;text-align:center">
+        <div style="font-size:16px;font-weight:700">${avgAcute!==null?Math.round(avgAcute):'—'}</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
+      </div>
+      <div style="background:var(--bg2);padding:12px;text-align:center">
+        <div style="font-size:16px;font-weight:700">${avgChronic!==null?Math.round(avgChronic):'—'}</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga crónica (UA)</div>
+      </div>
+    </div>
+  </div>`;
+}
+window.renderTeamMetricsCard=renderTeamMetricsCard;
+
 // Ficha compacta de un atleta: wellness de hoy, alerta de lesión, último RPE.
 // La reutilizamos acá y, más adelante, en las tarjetas del Dashboard.
 function renderAthleteSummaryCard(a) {
@@ -2327,21 +2427,53 @@ function renderGroupWellness(memberUids) {
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
   const today = new Date().toISOString().split('T')[0];
   const doneCount = members.filter(a => a._personal?.wellness?.[today]).length;
-  return `<div style="margin-bottom:12px;font-size:12px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
+
+  let html = renderTeamMetricsCard('Promedio del equipo', members);
+  const withPos = members.filter(a=>a.position);
+  if (withPos.length) {
+    const positions = [...new Set(members.map(a=>a.position||'Sin posición'))].sort((a,b)=>{
+      if(a==='Sin posición') return 1;
+      if(b==='Sin posición') return -1;
+      return a.localeCompare(b);
+    });
+    html += positions.map(pos=>renderTeamMetricsCard(pos, members.filter(a=>(a.position||'Sin posición')===pos))).join('');
+  }
+
+  html += `<div style="margin:14px 0 12px;font-size:12px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
     <div style="display:flex;flex-direction:column;gap:10px">${members.map(renderAthleteSummaryCard).join('')}</div>`;
+  return html;
 }
 window.renderGroupWellness = renderGroupWellness;
 
 function renderGroupStats(memberUids) {
   const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
+
+  // 1) Promedio general del equipo
+  let html = renderTeamMetricsCard('Promedio del equipo', members);
+
+  // 2) Desglose por posición (solo si al menos alguien tiene posición cargada)
+  const withPos = members.filter(a=>a.position);
+  if (withPos.length) {
+    const positions = [...new Set(members.map(a=>a.position||'Sin posición'))].sort((a,b)=>{
+      if(a==='Sin posición') return 1;
+      if(b==='Sin posición') return -1;
+      return a.localeCompare(b);
+    });
+    html += positions.map(pos=>{
+      const group = members.filter(a=>(a.position||'Sin posición')===pos);
+      return renderTeamMetricsCard(pos, group);
+    }).join('');
+  }
+
+  // 3) Detalle semanal por atleta (como antes)
   const rows = members.map(a => {
     const logs = (a._personal?.history?._sessionLogs) || [];
     const weekLogs = logs.filter(l => l.week === S.currentWeek);
     const avgRpe = weekLogs.length ? (weekLogs.reduce((s, l) => s + (l.rpe || 0), 0) / weekLogs.length).toFixed(1) : '—';
     const totalUA = weekLogs.reduce((s, l) => s + (l.ua || 0), 0);
     return `<div class="admin-item" style="justify-content:space-between;flex-wrap:wrap">
-      <div style="font-size:13px;font-weight:600">${a.name || a.email}</div>
+      <div><div style="font-size:13px;font-weight:600">${a.name || a.email}</div><div style="font-size:11px;color:var(--text3)">${a.position||''}</div></div>
       <div style="font-size:12px;color:var(--text3);display:flex;gap:14px">
         <span>${weekLogs.length} sesiones</span>
         <span>RPE prom: ${avgRpe}</span>
@@ -2349,7 +2481,8 @@ function renderGroupStats(memberUids) {
       </div>
     </div>`;
   }).join('');
-  return `<div style="margin-bottom:10px;font-size:12px;color:var(--text3)">Semana ${S.currentWeek}</div>${rows}`;
+  html += `<div class="admin-section"><div class="admin-section-title">Detalle por atleta · Semana ${S.currentWeek}</div>${rows}</div>`;
+  return html;
 }
 window.renderGroupStats = renderGroupStats;
 
@@ -2865,6 +2998,23 @@ function renderAthleteDetail() {
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <span style="font-size:11px;color:var(--text3)">Color:</span>
     ${TEAM_COLORS.map(c=>`<div onclick="setAthleteColor('${uid}','${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${userData.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Posición</div>
+    <div class="admin-item" style="gap:8px;flex-wrap:wrap">
+      ${(()=>{
+        const posOpts=getPositionOptionsForSport(myTeam?.sport);
+        if(posOpts) {
+          return `<select id="pos-sel-${uid}" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthletePosition('${uid}',this.value)">
+            <option value="">— Sin posición —</option>
+            ${posOpts.map(p=>`<option value="${p}" ${userData.position===p?'selected':''}>${p}</option>`).join('')}
+          </select>`;
+        }
+        return `<input id="pos-inp-${uid}" value="${userData.position||''}" placeholder="Ej: Base, Alero..." style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+      })()}
+    </div>
+    ${!myTeam?.sport?`<div style="padding:0 14px 10px;font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
   </div>
 
   <div class="admin-section">
@@ -4071,7 +4221,7 @@ function getACWRStatus(acwr) {
 function getMonotonyStatus(m) {
   if(!m) return {label:'Sin datos',color:'var(--text3)'};
   if(m<1.5) return {label:'Buena variación',color:'var(--green)'};
-  if(m<2.0) return {label:'Moderada',color:'var(--amber)'};
+  if(m<2.0) return {label:'Moderada',color:'var(--blue)'};
   return {label:'Alta ⚠',color:'var(--red)'};
 }
 
@@ -4391,7 +4541,9 @@ function renderLibraryView() {
 
   <!-- Exercise list -->
   ${items.length?`<div class="wellness-card">
-    ${items.map((ex,i)=>`
+    ${items.map((ex,i)=>{
+      const hasV=!!S.videos[ex.id];
+      return `
       <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .15s" 
            onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         <div style="flex:1;min-width:0">
@@ -4401,10 +4553,13 @@ function renderLibraryView() {
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
+          <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${ex.id}" onclick="openVideoModal('${ex.id}','${ex.name}',true)" title="Video">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
           <button class="abtn" onclick="editLibraryExercise('${ex.id}')" style="font-size:11px">Editar</button>
           <button class="abtn abtn-d" onclick="deleteLibraryExercise('${ex.id}')" style="font-size:11px">×</button>
         </div>
-      </div>`).join('')}
+      </div>`;}).join('')}
   </div>`:`<div class="empty-state">Sin ejercicios que coincidan.<br><span style="font-size:12px">Probá con otra búsqueda o creá uno nuevo.</span></div>`}`;
 }
 window.renderLibraryView=renderLibraryView;
