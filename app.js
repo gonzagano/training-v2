@@ -120,14 +120,59 @@ const DEFAULT_LIBRARY = [
 
 const ALL_FILTERS = ['MMII','MMSS','zona media','unilateral','bilateral','fuerza','tracción','empuje','hombros','rehabilitación','funcional','iso','cadera','rodilla','lumbar'];
 
-const HOOPER_ITEMS = [
-  {key:'fatiga', label:'Fatiga', desc:'¿Qué tan cansado te sentís?', lo:'Sin fatiga', hi:'Muy cansado'},
-  {key:'sueño_calidad', label:'Calidad del sueño', desc:'¿Cómo dormiste?', lo:'Muy bien', hi:'Muy mal'},
-  {key:'sueño_cantidad', label:'Cantidad de sueño', desc:'¿Dormiste suficiente?', lo:'Suficiente', hi:'Insuficiente'},
-  {key:'estres', label:'Estrés', desc:'¿Cuánto estrés sentís?', lo:'Sin estrés', hi:'Muy estresado'},
-  {key:'dolor_muscular', label:'Dolor muscular (DOMS)', desc:'¿Sentís dolor muscular residual?', lo:'Sin dolor', hi:'Mucho dolor'},
-  {key:'humor', label:'Estado de ánimo', desc:'¿Cómo es tu humor hoy?', lo:'Muy bien', hi:'Muy mal'},
+// Escala 1→5 en TODOS los ítems, y 5 siempre significa "mejor". Cada opción tiene
+// una etiqueta explícita para que el atleta nunca tenga que interpretar un número solo.
+const WELLNESS_ITEMS = [
+  {key:'fatiga', label:'Fatiga', options:[
+    {v:1,label:'Muy cansado',emoji:'😩'},{v:2,label:'Cansado',emoji:'😕'},{v:3,label:'Normal',emoji:'😐'},{v:4,label:'Fresco',emoji:'🙂'},{v:5,label:'Muy fresco',emoji:'💪'}]},
+  {key:'sueño_calidad', label:'Calidad del sueño', options:[
+    {v:1,label:'Muy mala',emoji:'😩'},{v:2,label:'Mala',emoji:'😕'},{v:3,label:'Normal',emoji:'😐'},{v:4,label:'Buena',emoji:'🙂'},{v:5,label:'Muy buena',emoji:'😴'}]},
+  {key:'estres', label:'Estrés', options:[
+    {v:1,label:'Muy estresado',emoji:'😩'},{v:2,label:'Estresado',emoji:'😕'},{v:3,label:'Normal',emoji:'😐'},{v:4,label:'Relajado',emoji:'🙂'},{v:5,label:'Muy relajado',emoji:'😌'}]},
+  {key:'dolor_muscular', label:'Dolor muscular (DOMS)', options:[
+    {v:1,label:'Mucho dolor',emoji:'😣'},{v:2,label:'Dolor',emoji:'😕'},{v:3,label:'Normal',emoji:'😐'},{v:4,label:'Leve',emoji:'🙂'},{v:5,label:'Sin dolor',emoji:'💪'}]},
+  {key:'humor', label:'Estado de ánimo', options:[
+    {v:1,label:'Muy mal',emoji:'😩'},{v:2,label:'Mal',emoji:'😕'},{v:3,label:'Normal',emoji:'😐'},{v:4,label:'Bien',emoji:'🙂'},{v:5,label:'Muy bien',emoji:'😄'}]},
 ];
+
+// Sueño: el atleta selecciona horas reales (no una categoría). La categoría y el
+// puntaje interno se derivan automáticamente a partir de las horas.
+function sleepHoursCategory(hours) {
+  if(hours===null||hours===undefined||hours==='') return null;
+  const h=+hours;
+  if(h<=3)  return {score:1, label:'Insuficiente', color:'var(--red)'};
+  if(h<=5)  return {score:2, label:'Poco', color:'var(--amber)'};
+  if(h<=7)  return {score:4, label:'Suficiente', color:'var(--green)'};
+  return       {score:5, label:'Excelente', color:'var(--green)'};
+}
+window.sleepHoursCategory=sleepHoursCategory;
+
+// Score compuesto de wellness: promedio de sub-puntajes normalizados (0–1, 1=mejor)
+// entre los 5 ítems Likert + el ítem de horas de sueño. Se expresa como % (0–100, mayor=mejor).
+function getWellnessScore(w) {
+  if(!w) return {pct:null, allFilled:false};
+  const parts=[]; let allFilled=true;
+  WELLNESS_ITEMS.forEach(item=>{
+    if(w[item.key]) parts.push((w[item.key]-1)/4);
+    else allFilled=false;
+  });
+  if(w.sueño_horas!==undefined && w.sueño_horas!==null && w.sueño_horas!=='') {
+    const cat=sleepHoursCategory(w.sueño_horas);
+    parts.push((cat.score-1)/4);
+  } else allFilled=false;
+  if(!parts.length) return {pct:null, allFilled:false};
+  const pct=Math.round((parts.reduce((a,v)=>a+v,0)/parts.length)*100);
+  return {pct, allFilled};
+}
+window.getWellnessScore=getWellnessScore;
+
+function getWellnessState(pct) {
+  if(pct===null||pct===undefined) return {label:'Sin datos', color:'var(--text3)'};
+  if(pct>=75) return {label:'En buena forma 💪', color:'var(--green)'};
+  if(pct>=50) return {label:'Normal ✓', color:'var(--amber)'};
+  return {label:'Fatigado 😴', color:'var(--red)'};
+}
+window.getWellnessState=getWellnessState;
 
 // BODY_ZONES: type 'ellipse' → cx,cy,rx,ry | type 'circle' → cx,cy,r
 // Joints = circle, segments = ellipse. viewBox 0 0 200 400
@@ -1012,7 +1057,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
         <span class="ex-name" ${canEdit?`ondblclick="editExName(this,'${ex.id}','${blockId}',${catIdx})"`:''}>${ex.name}</span>
         <input class="ex-name-inp" id="exinp-${ex.id}" ${canEdit?`onblur="saveExName('${ex.id}','${blockId}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"`:''}>
         <div class="ex-actions">
-          <div class="ex-icon-btn ${hasV?'has-video':''}" onclick="openVideoModal('${ex.id}','${ex.name}')" title="Video">
+          <div class="ex-icon-btn ${hasV?'has-video':''}" onclick="openVideoModal('${ex.id}','${ex.name}',${canEdit})" title="${canEdit?'Video':'Ver video'}">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </div>
           ${canEdit?`<div class="ex-icon-btn del-ex" onclick="deleteExercise('${ex.id}','${blockId}',${catIdx})" title="Eliminar">×</div>`:''}
@@ -1115,11 +1160,13 @@ async function submitSessionFeedback() {
 
   const ua = rpe * mins;
   const date = new Date().toISOString().split('T')[0];
-  const log = { date, week:S.currentWeek, session:S.currentSession, rpe, mins, ua, feel, injury };
+  const log = { date, week:S.currentWeek, session:S.currentSession, rpe, mins, ua, feel, injury, activity:'gimnasio' };
 
-  // Save to sessionLogs
+  // Save to sessionLogs — si ya había un log de gimnasio hoy (por ejemplo cargado
+  // manualmente desde Wellness), lo reemplaza en vez de duplicar la carga del día.
   if(!S.history) S.history={};
   if(!S.history._sessionLogs) S.history._sessionLogs=[];
+  S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity==='gimnasio'));
   S.history._sessionLogs.push(log);
   scheduleSave();
 
@@ -1131,6 +1178,60 @@ async function submitSessionFeedback() {
   }
 }
 window.submitSessionFeedback=submitSessionFeedback;
+
+// ── CARGA DE HOY (Gimnasio / Pelota / Partido) ────────────────
+// Registro de carga interna independiente de si el atleta tiene rutina
+// asignada. Cada actividad completada (mins + RPE) se guarda como un log
+// más en S.history._sessionLogs, con el mismo modelo sRPE (UA = mins × RPE)
+// que ya usa calcLoadMetrics para ACWR / monotonía / strain.
+const LOAD_ACTIVITIES = [
+  {key:'gimnasio', label:'Gimnasio', emoji:'🏋️'},
+  {key:'pelota',   label:'Pelota',   emoji:'🏀'},
+  {key:'partido',  label:'Partido',  emoji:'🏆'},
+];
+
+function getTodayLoadLog(activity) {
+  const today=new Date().toISOString().split('T')[0];
+  const logs=(S.history?._sessionLogs)||[];
+  return logs.find(l=>l.date===today && l.activity===activity) || null;
+}
+window.getTodayLoadLog=getTodayLoadLog;
+
+function updateLoadDraft(activity,field,value) {
+  if(!S.loadDraft) S.loadDraft={};
+  if(!S.loadDraft[activity]) {
+    const existing=getTodayLoadLog(activity);
+    S.loadDraft[activity]=existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0};
+  }
+  S.loadDraft[activity][field]= field==='mins' ? (value===''?'':Math.max(0,+value)) : +value;
+  renderMain();
+}
+window.updateLoadDraft=updateLoadDraft;
+
+function saveLoadLog() {
+  const today=new Date().toISOString().split('T')[0];
+  if(!S.history) S.history={};
+  if(!S.history._sessionLogs) S.history._sessionLogs=[];
+  let savedAny=false;
+  LOAD_ACTIVITIES.forEach(act=>{
+    const draft=(S.loadDraft&&S.loadDraft[act.key])||null;
+    const existing=getTodayLoadLog(act.key);
+    const mins = draft ? draft.mins : existing?.mins;
+    const rpe  = draft ? draft.rpe  : existing?.rpe;
+    if(mins && rpe) {
+      // saca cualquier log previo de esta actividad hoy, para no duplicar carga
+      S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===today && l.activity===act.key));
+      S.history._sessionLogs.push({date:today, activity:act.key, session:act.label, week:S.currentWeek, rpe, mins, ua:mins*rpe});
+      savedAny=true;
+    }
+  });
+  if(!savedAny) { showToast('Completá minutos y RPE de al menos una actividad'); return; }
+  S.loadDraft={};
+  scheduleSave();
+  showToast('✓ Carga de hoy guardada');
+  renderMain();
+}
+window.saveLoadLog=saveLoadLog;
 
 // ── ADMIN EDIT ACTIONS ────────────────────────────────────────
 function editBlockTitle(e,blockId) {
@@ -1335,39 +1436,99 @@ function createAndAddExercise() {
 window.createAndAddExercise=createAndAddExercise;
 
 // ── VIDEO ─────────────────────────────────────────────────────
-function openVideoModal(exId,exName) {
+// Convierte cualquier link de YouTube (watch, youtu.be, shorts, embed) a una URL embebible
+function getYouTubeEmbedUrl(url) {
+  if(!url) return '';
+  try {
+    const u = new URL(url);
+    let id = '';
+    if(u.hostname.includes('youtu.be')) id = u.pathname.slice(1);
+    else if(u.searchParams.get('v')) id = u.searchParams.get('v');
+    else if(u.pathname.includes('/embed/')) id = u.pathname.split('/embed/')[1];
+    else if(u.pathname.includes('/shorts/')) id = u.pathname.split('/shorts/')[1];
+    id = (id||'').split('&')[0].split('?')[0].split('/')[0];
+    return id ? `https://www.youtube.com/embed/${id}` : '';
+  } catch(e) { return ''; }
+}
+window.getYouTubeEmbedUrl=getYouTubeEmbedUrl;
+
+function openVideoModal(exId,exName,editable) {
   S.videoTarget=exId;
-  document.getElementById('video-modal-title').textContent=exName;
+  S.videoEditable=!!editable;
   const url=S.videos[exId]||'';
-  document.getElementById('video-url-inp').value=url;
-  document.getElementById('video-clear-btn').style.display=url?'inline-block':'none';
+
+  const els = {
+    editNote: document.getElementById('video-modal-editnote'),
+    previewWrap: document.getElementById('video-preview-wrap'),
+    previewFrame: document.getElementById('video-preview-frame'),
+    urlInp: document.getElementById('video-url-inp'),
+    clearBtn: document.getElementById('video-clear-btn'),
+    cancelBtn: document.getElementById('video-cancel-btn'),
+    saveBtn: document.getElementById('video-save-btn'),
+    emptyNote: document.getElementById('video-empty-note'),
+    closeBtn: document.getElementById('video-close-btn'),
+  };
+  document.getElementById('video-modal-title').textContent=exName;
+  const embed=getYouTubeEmbedUrl(url);
+
+  if(S.videoEditable) {
+    els.editNote.style.display='block';
+    els.urlInp.style.display='block';
+    els.urlInp.value=url;
+    els.clearBtn.style.display=url?'inline-block':'none';
+    els.cancelBtn.style.display='inline-block';
+    els.saveBtn.style.display='inline-block';
+    els.emptyNote.style.display='none';
+    els.closeBtn.style.display='none';
+    els.previewFrame.src=embed||'';
+    els.previewWrap.style.display=embed?'block':'none';
+  } else {
+    if(!url) { showToast('Todavía no hay video cargado para este ejercicio'); S.videoTarget=null; return; }
+    els.editNote.style.display='none';
+    els.urlInp.style.display='none';
+    els.clearBtn.style.display='none';
+    els.cancelBtn.style.display='none';
+    els.saveBtn.style.display='none';
+    els.emptyNote.style.display='none';
+    els.closeBtn.style.display='block';
+    els.previewFrame.src=embed||'';
+    els.previewWrap.style.display=embed?'block':'none';
+  }
   document.getElementById('video-overlay').classList.add('open');
 }
 window.openVideoModal=openVideoModal;
 
-function closeVideoModal() { document.getElementById('video-overlay').classList.remove('open'); }
+function closeVideoModal() {
+  document.getElementById('video-overlay').classList.remove('open');
+  document.getElementById('video-preview-frame').src=''; // corta la reproducción al cerrar
+}
 window.closeVideoModal=closeVideoModal;
 
 function closeVideoIfOutside(e) { if(e.target===document.getElementById('video-overlay')) closeVideoModal(); }
 window.closeVideoIfOutside=closeVideoIfOutside;
 
 function saveVideoUrl() {
+  if(!S.videoEditable) return; // el atleta no puede guardar aunque manipule el DOM
   const url=document.getElementById('video-url-inp').value.trim();
   if(S.videoTarget) {
-    if(url) { S.videos[S.videoTarget]=url; window.open(url,'_blank'); }
-    else delete S.videos[S.videoTarget];
+    if(url) S.videos[S.videoTarget]=url; else delete S.videos[S.videoTarget];
     scheduleSave();
     const btn=document.querySelector(`#exrow-${S.videoTarget} .ex-icon-btn`);
     if(btn) btn.classList.toggle('has-video',!!url);
     showToast(url?'▶ Video guardado':'Video eliminado');
+    const embed=getYouTubeEmbedUrl(url);
+    document.getElementById('video-preview-frame').src=embed||'';
+    document.getElementById('video-preview-wrap').style.display=embed?'block':'none';
+    document.getElementById('video-clear-btn').style.display=url?'inline-block':'none';
   }
-  closeVideoModal();
 }
 window.saveVideoUrl=saveVideoUrl;
 
 function clearVideoUrl() {
   document.getElementById('video-url-inp').value='';
   document.getElementById('video-clear-btn').style.display='none';
+  document.getElementById('video-preview-frame').src='';
+  document.getElementById('video-preview-wrap').style.display='none';
 }
 window.clearVideoUrl=clearVideoUrl;
 
@@ -1378,22 +1539,15 @@ function renderWellness() {
   if(!S.wellness[wKey]) S.wellness[wKey]={};
   const w=S.wellness[wKey];
 
-  let hooperScore=0; let allFilled=true;
-  HOOPER_ITEMS.forEach(item=>{ if(w[item.key]) hooperScore+=w[item.key]; else allFilled=false; });
-
-  const stateLabel = allFilled
-    ? (hooperScore<=16?'En buena forma 💪':hooperScore<=24?'Normal ✓':'Fatigado 😴')
-    : 'Completá todos los ítems';
-  const stateColor = allFilled
-    ? (hooperScore<=16?'var(--green)':hooperScore<=24?'var(--amber)':'var(--red)')
-    : 'var(--text3)';
+  const {pct, allFilled} = getWellnessScore(w);
+  const wState = getWellnessState(allFilled?pct:null);
 
   const isDesktop = window.innerWidth >= 900;
 
   // Desktop: two-column layout. Mobile: stacked.
   let html = `<div class="page-header">
     <div class="page-title">Wellness</div>
-    <div class="page-subtitle">${today} · Hooper Index</div>
+    <div class="page-subtitle">${today} · Check-in diario</div>
   </div>`;
 
   html += renderInjuryFollowup();
@@ -1404,41 +1558,87 @@ function renderWellness() {
       <div>`;
   }
 
-  // Hooper card
+  // Wellness card
   html += `<div class="wellness-card">
-    <div class="wellness-title">Hooper Index</div>
-    <div class="wellness-sub">1 = muy bien · 7 = muy mal</div>`;
+    <div class="wellness-title">¿Cómo estás hoy?</div>
+    <div class="wellness-sub">Tocá la opción que mejor te describe en cada ítem</div>`;
 
-  HOOPER_ITEMS.forEach(item=>{
+  WELLNESS_ITEMS.forEach(item=>{
     const val=w[item.key]||0;
-    const pct = val ? Math.round(((val-1)/6)*100) : 0;
-    const sliderColor = val ? `hsl(${Math.round((1-val/7)*120)},65%,45%)` : 'var(--border2)';
+    const selOpt=item.options.find(o=>o.v===val);
+    const selColor = val ? `hsl(${Math.round((val-1)/4*120)},65%,45%)` : 'var(--text3)';
     html+=`<div class="hooper-item">
       <div class="hooper-label">
         <span>${item.label}</span>
-        <span style="color:${val?sliderColor:'var(--text3)'};font-size:16px;font-weight:700">${val||'—'}</span>
+        <span style="color:${selColor};font-size:12px;font-weight:700">${selOpt?selOpt.label:'—'}</span>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;margin:4px 0 2px">
-        <span style="font-size:10px;color:var(--text3);white-space:nowrap">${item.lo}</span>
-        <input type="range" min="1" max="7" step="1" value="${val||1}"
-          style="flex:1;-webkit-appearance:none;height:6px;border-radius:3px;outline:none;cursor:pointer;accent-color:${sliderColor};background:linear-gradient(to right,${sliderColor} ${pct}%,var(--bg3) ${pct}%)"
-          oninput="updateHooper('${wKey}','${item.key}',this)">
-        <span style="font-size:10px;color:var(--text3);white-space:nowrap">${item.hi}</span>
+      <div class="hooper-scale">
+        ${item.options.map(o=>{
+          const color=`hsl(${Math.round((o.v-1)/4*120)},65%,45%)`;
+          return `<div class="hooper-dot ${val===o.v?'sel':''}" style="${val===o.v?`background:${color}`:''}" onclick="setHooper('${wKey}','${item.key}',${o.v})" title="${o.label}">${o.emoji}</div>`;
+        }).join('')}
       </div>
     </div>`;
   });
 
-  html+=`<div class="hooper-result">
+  // Sueño: horas reales, no una calificación subjetiva
+  const hours = w.sueño_horas!==undefined && w.sueño_horas!==null && w.sueño_horas!=='' ? +w.sueño_horas : null;
+  const sleepCat = sleepHoursCategory(hours);
+  const sleepPct = hours!==null ? Math.round((hours/12)*100) : 0;
+  html+=`<div class="hooper-item">
+    <div class="hooper-label">
+      <span>Horas de sueño</span>
+      <span style="color:${sleepCat?sleepCat.color:'var(--text3)'};font-size:12px;font-weight:700">${hours!==null?`${hours}h · ${sleepCat.label}`:'—'}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:4px 0 2px">
+      <span style="font-size:10px;color:var(--text3);white-space:nowrap">0h</span>
+      <input type="range" min="0" max="12" step="0.5" value="${hours||0}"
+        style="flex:1;-webkit-appearance:none;height:6px;border-radius:3px;outline:none;cursor:pointer;accent-color:${sleepCat?sleepCat.color:'var(--border2)'};background:linear-gradient(to right,${sleepCat?sleepCat.color:'var(--border2)'} ${sleepPct}%,var(--bg3) ${sleepPct}%)"
+        oninput="updateSleepHours('${wKey}',this)">
+      <span style="font-size:10px;color:var(--text3);white-space:nowrap">12h+</span>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:2px">0-3h insuficiente · 4-5h poco · 6-7h suficiente · 8h+ excelente</div>
+  </div>`;
+
+  html+=`<div class="hooper-score-box">
     <div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score total</div>
-      <div class="hooper-score" style="color:${stateColor}">${allFilled?hooperScore:'—'}</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">≤16 bien · ≤24 normal · >24 fatigado</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy</div>
+      <div class="hooper-score-val" style="color:${wState.color}">${allFilled?pct+'%':'—'}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">≥75% bien · ≥50% normal · &lt;50% fatigado</div>
     </div>
     <div style="text-align:right">
-      <div class="hooper-state" style="color:${stateColor}">${stateLabel}</div>
+      <div class="hooper-score-label" style="color:${wState.color};font-weight:700">${allFilled?wState.label:'Completá todos los ítems'}</div>
     </div>
   </div>
   ${allFilled?`<button class="wellness-submit" onclick="submitWellness('${wKey}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar registro de hoy</button>`:''}
+  </div>`;
+
+  // Carga de hoy: Gimnasio / Pelota / Partido — siempre disponible, tenga o no
+  // rutina cargada. Alimenta directamente el cálculo de ACWR/monotonía/strain.
+  html += `<div class="wellness-card">
+    <div class="wellness-title">Carga de hoy</div>
+    <div class="wellness-sub">Cargá minutos y RPE de cada actividad que hiciste hoy (las que no correspondan, dejalas en blanco)</div>`;
+
+  LOAD_ACTIVITIES.forEach(act=>{
+    const existing=getTodayLoadLog(act.key);
+    const draft=(S.loadDraft&&S.loadDraft[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0});
+    const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
+    html+=`<div class="load-item">
+      <div class="load-item-label"><span>${act.emoji}</span><span>${act.label}</span></div>
+      <div class="load-item-row">
+        <input type="number" min="0" max="300" class="load-mins-inp" placeholder="min" value="${draft.mins||''}" oninput="updateLoadDraft('${act.key}','mins',this.value)">
+        <div class="load-rpe-scale">
+          ${Array.from({length:11},(_,i)=>i).map(v=>{
+            const color=v===0?'var(--text3)':`hsl(${Math.round((10-v)/10*120)},65%,45%)`;
+            return `<div class="load-rpe-dot ${draft.rpe===v?'sel':''}" style="${draft.rpe===v?`background:${color}`:''}" onclick="updateLoadDraft('${act.key}','rpe',${v})" title="RPE ${v}">${v}</div>`;
+          }).join('')}
+        </div>
+      </div>
+      ${ua?`<div class="load-ua-preview">${draft.mins} min × RPE ${draft.rpe} = ${ua} UA</div>`:''}
+    </div>`;
+  });
+
+  html += `<button class="wellness-submit" style="margin-top:12px" onclick="saveLoadLog()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar carga de hoy</button>
   </div>`;
 
   if(isDesktop) {
@@ -1584,21 +1784,17 @@ function updateUAPreview() {
 }
 window.updateUAPreview=updateUAPreview;
 
-function getHooperColor(v) {
-  return `hsl(${Math.round((1-v/7)*120)},65%,45%)`;
-}
-window.getHooperColor=getHooperColor;
-
-function updateHooper(wKey,k,input) {
-  const v=+input.value;
-  const pct=Math.round(((v-1)/6)*100);
-  const color=getHooperColor(v);
-  input.style.background=`linear-gradient(to right,${color} ${pct}%,var(--bg3) ${pct}%)`;
+function updateSleepHours(wKey,input) {
+  const h=+input.value;
+  const cat=sleepHoursCategory(h);
+  const pct=Math.round((h/12)*100);
+  input.style.background=`linear-gradient(to right,${cat.color} ${pct}%,var(--bg3) ${pct}%)`;
+  input.style.accentColor=cat.color;
   const wrap=input.closest('.hooper-item');
-  if(wrap){const sp=wrap.querySelector('.hooper-label span:last-child');if(sp){sp.textContent=v;sp.style.color=color;}}
-  setHooper(wKey,k,v);
+  if(wrap){const sp=wrap.querySelector('.hooper-label span:last-child');if(sp){sp.textContent=`${h}h · ${cat.label}`;sp.style.color=cat.color;}}
+  setHooper(wKey,'sueño_horas',h);
 }
-window.updateHooper=updateHooper;
+window.updateSleepHours=updateSleepHours;
 
 function setHooper(wKey,key,val) {
   if(!S.wellness[wKey]) S.wellness[wKey]={};
@@ -1800,8 +1996,8 @@ function renderStats() {
   const maxF=topEx[0]?.[1]||1;
   const wDays=Object.entries(S.wellness).sort((a,b)=>a[0].localeCompare(b[0])).slice(-7);
   const wScores=wDays.map(([date,w])=>{
-    const sc=HOOPER_ITEMS.reduce((acc,i)=>acc+(w[i.key]||0),0);
-    return {date,sc,ok:HOOPER_ITEMS.every(i=>w[i.key])};
+    const {pct,allFilled}=getWellnessScore(w);
+    return {date,pct,ok:allFilled};
   }).filter(x=>x.ok);
   const streak=last7.filter(d=>doneDs.has(d)).length;
   const isDesktop=window.innerWidth>=900;
@@ -1875,16 +2071,15 @@ function renderStats() {
   if(wScores.length) html+=`<div class="wellness-card">
     <div class="wellness-title">Bienestar semanal</div>
     <div style="padding:8px 18px 14px">
-      ${wScores.map(({date,sc})=>{
-        const col=sc<=16?'var(--green)':sc<=24?'var(--amber)':'var(--red)';
-        const pct=Math.round(sc/42*100);
+      ${wScores.map(({date,pct})=>{
+        const st=getWellnessState(pct);
         return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
           <div style="font-size:12px;color:var(--text3);min-width:44px">${date.slice(5)}</div>
           <div style="flex:1;height:6px;border-radius:3px;background:var(--bg3)">
-            <div style="height:100%;border-radius:3px;background:${col};width:${pct}%;transition:width .3s"></div>
+            <div style="height:100%;border-radius:3px;background:${st.color};width:${pct}%;transition:width .3s"></div>
           </div>
-          <div style="font-size:13px;font-weight:700;color:${col};min-width:24px;text-align:right">${sc}</div>
-          <div style="font-size:10px;color:${col};min-width:36px">${sc<=16?'Bien':sc<=24?'Normal':'Fatiga'}</div>
+          <div style="font-size:13px;font-weight:700;color:${st.color};min-width:32px;text-align:right">${pct}%</div>
+          <div style="font-size:10px;color:${st.color};min-width:36px">${pct>=75?'Bien':pct>=50?'Normal':'Fatiga'}</div>
         </div>`;
       }).join('')}
     </div>
@@ -2078,9 +2273,8 @@ window.ensureGroupPersonalData = ensureGroupPersonalData;
 
 function computeHooperScore(w) {
   if (!w) return null;
-  let score = 0, allFilled = true;
-  HOOPER_ITEMS.forEach(item => { if (w[item.key]) score += w[item.key]; else allFilled = false; });
-  return allFilled ? score : null;
+  const {pct, allFilled} = getWellnessScore(w);
+  return allFilled ? pct : null;
 }
 
 function getLatestSessionLog(personal) {
@@ -2107,7 +2301,7 @@ function renderAthleteSummaryCard(a) {
   const score = todayWellness ? computeHooperScore(todayWellness) : null;
   const injuries = getActiveInjuriesSummary(p);
   const lastLog = getLatestSessionLog(p);
-  const scoreColor = score === null ? 'var(--text3)' : score <= 16 ? 'var(--green)' : score <= 24 ? 'var(--amber)' : 'var(--red)';
+  const scoreColor = getWellnessState(score).color;
   return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div>
@@ -2116,7 +2310,7 @@ function renderAthleteSummaryCard(a) {
       </div>
       <div style="text-align:right;flex-shrink:0">
         ${score !== null
-          ? `<div style="font-size:18px;font-weight:700;color:${scoreColor}">${score}</div><div style="font-size:10px;color:var(--text3)">Wellness</div>`
+          ? `<div style="font-size:18px;font-weight:700;color:${scoreColor}">${score}%</div><div style="font-size:10px;color:var(--text3)">Wellness</div>`
           : `<div style="font-size:11px;color:var(--text3)">Sin wellness hoy</div>`}
       </div>
     </div>
@@ -2753,13 +2947,12 @@ function renderAthleteDetail() {
   <div class="admin-section">
     <div class="admin-section-title">Wellness — últimos 7 días</div>
     ${wEntries.length?wEntries.map(([date,w])=>{
-      const score=HOOPER_ITEMS.reduce((a,i)=>a+(w[i.key]||0),0);
-      const allFilled=HOOPER_ITEMS.every(i=>w[i.key]);
+      const {pct,allFilled}=getWellnessScore(w);
       if(!allFilled) return '';
-      const col=score<=16?'var(--green)':score<=24?'var(--amber)':'var(--red)';
+      const col=getWellnessState(pct).color;
       return `<div class="admin-item">
         <span style="font-size:12px;color:var(--text3)">${date}</span>
-        <span style="font-size:14px;font-weight:600;color:${col}">${score}</span>
+        <span style="font-size:14px;font-weight:600;color:${col}">${pct}%</span>
       </div>`;
     }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div>`}
   </div>
@@ -3948,7 +4141,7 @@ function renderDashboardContent() {
 
   const wellnessAlerts = athletes.filter(a=>{
     const wellness = a._personal?.wellness||{};
-    const dates = Object.keys(wellness).filter(d=>wellness[d] && HOOPER_ITEMS.every(i=>wellness[d][i.key]));
+    const dates = Object.keys(wellness).filter(d=>wellness[d] && getWellnessScore(wellness[d]).allFilled);
     if(!dates.length) return true; // never checked in
     const lastDate = dates.sort().reverse()[0];
     return lastDate < twoDaysAgoStr;
@@ -4015,8 +4208,7 @@ function renderDashboardContent() {
     const lastLog = logs.length ? logs[logs.length-1] : null;
     const todayLog = logs.filter(l=>l.date===today);
     const wToday = a._personal?.wellness?.[today];
-    const wScore = wToday ? HOOPER_ITEMS.reduce((acc,i)=>acc+(wToday[i.key]||0),0) : null;
-    const wAllFilled = wToday ? HOOPER_ITEMS.every(i=>wToday[i.key]) : false;
+    const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
     const acwrStatus = getACWRStatus(metrics?.acwr||null);
     const assigned = S.routines?.find(r=>r.id===a.assignedRoutine);
     
@@ -4039,8 +4231,8 @@ function renderDashboardContent() {
             <span style="font-weight:600;color:${todayLog.length?'var(--green)':'var(--text3)'}">${todayLog.length?`${todayLog.reduce((a,l)=>a+l.ua,0)} UA · RPE ${todayLog[todayLog.length-1]?.rpe}`:'Sin sesión'}</span>
           </div>
           ${wAllFilled?`<div style="background:var(--bg3);border-radius:var(--rxs);padding:6px 10px;font-size:12px">
-            <span style="color:var(--text3)">Hooper: </span>
-            <span style="font-weight:600;color:${wScore<=16?'var(--green)':wScore<=24?'var(--amber)':'var(--red)'}">${wScore}</span>
+            <span style="color:var(--text3)">Wellness: </span>
+            <span style="font-weight:600;color:${getWellnessState(wPct).color}">${wPct}%</span>
           </div>`:''}
         </div>
         
