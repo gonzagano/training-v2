@@ -805,6 +805,7 @@ function switchView(v) {
     renderAll();
     return;
   }
+  if (v!=='wellness') S.wellnessViewDate=null; // siempre vuelve a "hoy" al reingresar
   S.currentView=v;
   renderBottomBar();
   renderAll();
@@ -1223,45 +1224,46 @@ const LOAD_ACTIVITIES = [
   {key:'partido',  label:'Partido',  emoji:'🏆'},
 ];
 
-function getTodayLoadLog(activity) {
-  const today=new Date().toISOString().split('T')[0];
+function getLoadLog(activity,date) {
   const logs=(S.history?._sessionLogs)||[];
-  return logs.find(l=>l.date===today && l.activity===activity) || null;
+  return logs.find(l=>l.date===date && l.activity===activity) || null;
 }
-window.getTodayLoadLog=getTodayLoadLog;
+window.getLoadLog=getLoadLog;
 
-function updateLoadDraft(activity,field,value) {
+function updateLoadDraft(date,activity,field,value) {
   if(!S.loadDraft) S.loadDraft={};
-  if(!S.loadDraft[activity]) {
-    const existing=getTodayLoadLog(activity);
-    S.loadDraft[activity]=existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0};
+  if(!S.loadDraft[date]) S.loadDraft[date]={};
+  if(!S.loadDraft[date][activity]) {
+    const existing=getLoadLog(activity,date);
+    S.loadDraft[date][activity]=existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0};
   }
-  S.loadDraft[activity][field]= field==='mins' ? (value===''?'':Math.max(0,+value)) : +value;
+  S.loadDraft[date][activity][field]= field==='mins' ? (value===''?'':Math.max(0,+value)) : +value;
   renderMain();
 }
 window.updateLoadDraft=updateLoadDraft;
 
-function saveLoadLog() {
+function saveLoadLog(date) {
   const today=new Date().toISOString().split('T')[0];
+  date = date || today;
   if(!S.history) S.history={};
   if(!S.history._sessionLogs) S.history._sessionLogs=[];
   let savedAny=false;
   LOAD_ACTIVITIES.forEach(act=>{
-    const draft=(S.loadDraft&&S.loadDraft[act.key])||null;
-    const existing=getTodayLoadLog(act.key);
+    const draft=(S.loadDraft?.[date]?.[act.key])||null;
+    const existing=getLoadLog(act.key,date);
     const mins = draft ? draft.mins : existing?.mins;
     const rpe  = draft ? draft.rpe  : existing?.rpe;
     if(mins && rpe) {
-      // saca cualquier log previo de esta actividad hoy, para no duplicar carga
-      S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===today && l.activity===act.key));
-      S.history._sessionLogs.push({date:today, activity:act.key, session:act.label, week:S.currentWeek, rpe, mins, ua:mins*rpe});
+      // saca cualquier log previo de esta actividad en esa fecha, para no duplicar carga
+      S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity===act.key));
+      S.history._sessionLogs.push({date, activity:act.key, session:act.label, week:S.currentWeek, rpe, mins, ua:mins*rpe});
       savedAny=true;
     }
   });
   if(!savedAny) { showToast('Completá minutos y RPE de al menos una actividad'); return; }
-  S.loadDraft={};
+  if(S.loadDraft) delete S.loadDraft[date];
   scheduleSave();
-  showToast('✓ Carga de hoy guardada');
+  showToast(date===today ? '✓ Carga de hoy guardada' : `✓ Carga del ${date} guardada`);
   renderMain();
 }
 window.saveLoadLog=saveLoadLog;
@@ -1565,9 +1567,29 @@ function clearVideoUrl() {
 window.clearVideoUrl=clearVideoUrl;
 
 // ── WELLNESS ──────────────────────────────────────────────────
+const WELLNESS_BACKFILL_DAYS = 13; // hasta 2 semanas atrás para completar días salteados
+
+function shiftWellnessDate(delta) {
+  const today=new Date().toISOString().split('T')[0];
+  const base=S.wellnessViewDate||today;
+  const d=new Date(base+'T00:00:00');
+  d.setDate(d.getDate()+delta);
+  const newDate=d.toISOString().split('T')[0];
+  if(newDate>today) return;
+  const minD=new Date(); minD.setDate(minD.getDate()-WELLNESS_BACKFILL_DAYS);
+  if(newDate<minD.toISOString().split('T')[0]) return;
+  S.wellnessViewDate=(newDate===today)?null:newDate;
+  renderMain();
+}
+window.shiftWellnessDate=shiftWellnessDate;
+
+function goToTodayWellness() { S.wellnessViewDate=null; renderMain(); }
+window.goToTodayWellness=goToTodayWellness;
+
 function renderWellness() {
   const today=new Date().toISOString().split('T')[0];
-  const wKey=today;
+  const wKey=S.wellnessViewDate||today;
+  const isToday=wKey===today;
   if(!S.wellness[wKey]) S.wellness[wKey]={};
   const w=S.wellness[wKey];
 
@@ -1576,10 +1598,22 @@ function renderWellness() {
 
   const isDesktop = window.innerWidth >= 900;
 
+  const minAllowed=(()=>{const d=new Date();d.setDate(d.getDate()-WELLNESS_BACKFILL_DAYS);return d.toISOString().split('T')[0];})();
+  const canGoBack=wKey>minAllowed, canGoForward=wKey<today;
+  const dateLabel=isToday?'Hoy':new Date(wKey+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+
   // Desktop: two-column layout. Mobile: stacked.
   let html = `<div class="page-header">
     <div class="page-title">Wellness</div>
-    <div class="page-subtitle">${today} · Check-in diario</div>
+    <div class="page-subtitle">${wKey} · Check-in diario</div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px">
+    <button class="abtn" onclick="shiftWellnessDate(-1)" ${canGoBack?'':'disabled style="opacity:.3;cursor:not-allowed"'}>‹</button>
+    <div style="text-align:center">
+      <div style="font-size:14px;font-weight:700;text-transform:capitalize">${dateLabel}</div>
+      ${!isToday?`<div style="font-size:11px;color:var(--accent);cursor:pointer" onclick="goToTodayWellness()">Volver a hoy →</div>`:''}
+    </div>
+    <button class="abtn" onclick="shiftWellnessDate(1)" ${canGoForward?'':'disabled style="opacity:.3;cursor:not-allowed"'}>›</button>
   </div>`;
 
   html += renderInjuryFollowup();
@@ -1592,7 +1626,7 @@ function renderWellness() {
 
   // Wellness card
   html += `<div class="wellness-card">
-    <div class="wellness-title">¿Cómo estás hoy?</div>
+    <div class="wellness-title">${isToday?'¿Cómo estás hoy?':'¿Cómo estuviste ese día?'}</div>
     <div class="wellness-sub">Tocá la opción que mejor te describe en cada ítem</div>`;
 
   WELLNESS_ITEMS.forEach(item=>{
@@ -1642,27 +1676,28 @@ function renderWellness() {
       <div class="hooper-score-label" style="color:${wState.color};font-weight:700">${allFilled?wState.label:'Completá todos los ítems'}</div>
     </div>
   </div>
-  ${allFilled?`<button class="wellness-submit" onclick="submitWellness('${wKey}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar registro de hoy</button>`:''}
+  ${allFilled?`<button class="wellness-submit" onclick="submitWellness('${wKey}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar registro${isToday?' de hoy':''}</button>`:''}
   </div>`;
 
-  // Carga de hoy: Gimnasio / Pelota / Partido — siempre disponible, tenga o no
+  // Carga del día: Gimnasio / Pelota / Partido — siempre disponible, tenga o no
   // rutina cargada. Alimenta directamente el cálculo de ACWR/monotonía/strain.
+  // Usa wKey (la fecha que se esté viendo), no necesariamente hoy.
   html += `<div class="wellness-card">
-    <div class="wellness-title">Carga de hoy</div>
-    <div class="wellness-sub">Cargá minutos y RPE de cada actividad que hiciste hoy (las que no correspondan, dejalas en blanco)</div>`;
+    <div class="wellness-title">${isToday?'Carga de hoy':'Carga de ese día'}</div>
+    <div class="wellness-sub">Cargá minutos y RPE de cada actividad (las que no correspondan, dejalas en blanco)</div>`;
 
   LOAD_ACTIVITIES.forEach(act=>{
-    const existing=getTodayLoadLog(act.key);
-    const draft=(S.loadDraft&&S.loadDraft[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0});
+    const existing=getLoadLog(act.key,wKey);
+    const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0});
     const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
     html+=`<div class="load-item">
       <div class="load-item-label"><span>${act.emoji}</span><span>${act.label}</span></div>
       <div class="load-item-row">
-        <input type="number" min="0" max="300" class="load-mins-inp" placeholder="min" value="${draft.mins||''}" oninput="updateLoadDraft('${act.key}','mins',this.value)">
+        <input type="number" min="0" max="300" class="load-mins-inp" placeholder="min" value="${draft.mins||''}" oninput="updateLoadDraft('${wKey}','${act.key}','mins',this.value)">
         <div class="load-rpe-scale">
           ${Array.from({length:11},(_,i)=>i).map(v=>{
             const color=v===0?'var(--text3)':`hsl(${Math.round((10-v)/10*120)},65%,45%)`;
-            return `<div class="load-rpe-dot ${draft.rpe===v?'sel':''}" style="${draft.rpe===v?`background:${color}`:''}" onclick="updateLoadDraft('${act.key}','rpe',${v})" title="RPE ${v}">${v}</div>`;
+            return `<div class="load-rpe-dot ${draft.rpe===v?'sel':''}" style="${draft.rpe===v?`background:${color}`:''}" onclick="updateLoadDraft('${wKey}','${act.key}','rpe',${v})" title="RPE ${v}">${v}</div>`;
           }).join('')}
         </div>
       </div>
@@ -1670,7 +1705,7 @@ function renderWellness() {
     </div>`;
   });
 
-  html += `<button class="wellness-submit" style="margin-top:12px" onclick="saveLoadLog()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar carga de hoy</button>
+  html += `<button class="wellness-submit" style="margin-top:12px" onclick="saveLoadLog('${wKey}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar carga${isToday?' de hoy':' de ese día'}</button>
   </div>`;
 
   if(isDesktop) {
@@ -2942,34 +2977,54 @@ window.adminGoAthletes=adminGoAthletes;
 function renderAdminAthletes() {
   let html=`<div class="team-detail-header">
     <button class="back-btn" data-back="admin-main">‹</button>
-    <div class="team-detail-title">Alumnos</div>
+    <div class="team-detail-title">Atletas</div>
   </div>`;
   if(!S.adminAthletes.length) {
-    html+=`<div class="empty-state">No hay alumnos registrados aún.</div>`;
-  } else {
-    html+=S.adminAthletes.map(a=>{
-      const assigned = S.routines.find(r=>r.id===a.assignedRoutine);
-      const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
-      const statusLbl = assigned
-        ? `✓ Personalizada: ${assigned.name}`
-        : myTeam
-          ? `↳ Rutina del equipo: ${myTeam.name}`
-          : 'Sin rutina asignada';
-      const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
-      return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <div style="font-size:14px;font-weight:600">${a.name||a.email}</div>
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.email}</div>
-            <div style="font-size:11px;margin-top:4px;color:${statusColor}">${statusLbl}</div>
-          </div>
-          <span style="color:var(--text3);font-size:18px">›</span>
-        </div>
-      </div>`;
-    }).join('');
+    html+=`<div class="empty-state">No hay atletas registrados aún.</div>`;
+    return html;
   }
+  html += `<div style="margin-bottom:14px">
+    <input id="athletes-search-inp" value="${S._athletesSearch||''}" placeholder="Buscar atleta..."
+      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
+      oninput="setAthletesSearch(this.value)">
+  </div>
+  <div id="athletes-list-body">${renderAthletesListBody()}</div>`;
   return html;
 }
+window.renderAdminAthletes=renderAdminAthletes;
+
+// Separado del shell para poder refrescar solo esto al buscar, sin perder el foco del input.
+function renderAthletesListBody() {
+  const search=(S._athletesSearch||'').toLowerCase();
+  let list=S.adminAthletes;
+  if(search) list=list.filter(a=>(a.name||a.email||'').toLowerCase().includes(search));
+  if(!list.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan.</div>`;
+  return `<div class="wellness-card" style="padding:0">
+    ${list.map(a=>{
+      const assigned = S.routines.find(r=>r.id===a.assignedRoutine);
+      const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
+      const statusLbl = assigned ? '✓ Personalizada' : myTeam ? '↳ Del equipo' : 'Sin rutina';
+      const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+        <div style="width:9px;height:9px;border-radius:50%;background:${a.color||'var(--text3)'};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name:'Individual'}${a.position?' · '+a.position:''}</div>
+        </div>
+        <span style="font-size:11px;color:${statusColor};flex-shrink:0;white-space:nowrap">${statusLbl}</span>
+        <span style="color:var(--text3);font-size:18px;flex-shrink:0">›</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+window.renderAthletesListBody=renderAthletesListBody;
+
+function setAthletesSearch(v) {
+  S._athletesSearch=v;
+  const el=document.getElementById('athletes-list-body');
+  if(el) el.innerHTML=renderAthletesListBody();
+}
+window.setAthletesSearch=setAthletesSearch;
 
 async function adminOpenAthlete(uid) {
   S.adminView='athlete_detail';
@@ -3020,33 +3075,67 @@ function renderAthleteDetail() {
     ${S.routines.map(r=>`<option value="${r.id}" ${userData.assignedRoutine===r.id?'selected':''}>${r.name}</option>`).join('')}
   </select>`;
 
+  // ── Resumen rápido: wellness de hoy + ACWR, para no tener que bucear ──
+  const today=new Date().toISOString().split('T')[0];
+  const todayW = wellness[today];
+  const {pct:todayPct, allFilled:todayFilled} = getWellnessScore(todayW);
+  const wState = getWellnessState(todayFilled?todayPct:null);
+  const logs = personal._sessionLogs||[];
+  const m = calcLoadMetrics(logs);
+  const acwrSt = getACWRStatus(m?.acwr??null);
+  const activeInjCount = activeInj.length;
+
   let html=`<div class="team-detail-header">
     <button class="back-btn" data-back="admin-athletes">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
-      <div style="width:12px;height:12px;border-radius:50%;background:${userData.color||'var(--text3)'}"></div>
+      <div style="width:12px;height:12px;border-radius:50%;background:${userData.color||'var(--text3)'};flex-shrink:0"></div>
       ${userData.name||userData.email}
     </div>
   </div>
-  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-    <span style="font-size:11px;color:var(--text3)">Color:</span>
-    ${TEAM_COLORS.map(c=>`<div onclick="setAthleteColor('${uid}','${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${userData.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+    ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent)">${myTeam.name}</span>`:''}
+    ${userData.position?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${userData.position}</span>`:''}
+    ${userData.sport&&!myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${userData.sport}</span>`:''}
+  </div>
+
+  <!-- Resumen rápido -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
+    <div style="background:var(--bg2);padding:14px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:${wState.color}">${todayFilled?todayPct+'%':'—'}</div>
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy</div>
+    </div>
+    <div style="background:var(--bg2);padding:14px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:${acwrSt.color}">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
+    </div>
+    <div style="background:var(--bg2);padding:14px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:${activeInjCount?'var(--red)':'var(--green)'}">${activeInjCount||'0'}</div>
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias activas</div>
+    </div>
   </div>
 
   <div class="admin-section">
-    <div class="admin-section-title">Posición</div>
-    <div class="admin-item" style="gap:8px;flex-wrap:wrap">
-      ${(()=>{
-        const posOpts=getPositionOptionsForSport(myTeam?.sport);
-        if(posOpts) {
-          return `<select id="pos-sel-${uid}" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthletePosition('${uid}',this.value)">
-            <option value="">— Sin posición —</option>
-            ${posOpts.map(p=>`<option value="${p}" ${userData.position===p?'selected':''}>${p}</option>`).join('')}
-          </select>`;
-        }
-        return `<input id="pos-inp-${uid}" value="${userData.position||''}" placeholder="Ej: Base, Alero..." style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
-      })()}
+    <div class="admin-section-title">Perfil</div>
+    <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:10px">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Color</span>
+        ${TEAM_COLORS.map(c=>`<div onclick="setAthleteColor('${uid}','${c}')" style="width:20px;height:20px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${userData.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Posición</span>
+        ${(()=>{
+          const posOpts=getPositionOptionsForSport(myTeam?.sport);
+          if(posOpts) {
+            return `<select id="pos-sel-${uid}" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthletePosition('${uid}',this.value)">
+              <option value="">— Sin posición —</option>
+              ${posOpts.map(p=>`<option value="${p}" ${userData.position===p?'selected':''}>${p}</option>`).join('')}
+            </select>`;
+          }
+          return `<input id="pos-inp-${uid}" value="${userData.position||''}" placeholder="Ej: Base, Alero..." style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+        })()}
+      </div>
+      ${!myTeam?.sport&&myTeam?`<div style="font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
     </div>
-    ${!myTeam?.sport?`<div style="padding:0 14px 10px;font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
   </div>
 
   <div class="admin-section">
@@ -3060,10 +3149,6 @@ function renderAthleteDetail() {
       : myTeam
         ? `<div style="padding:8px 14px;font-size:12px;color:var(--accent)">↳ Hereda la rutina del equipo "${myTeam.name}" · sin personalización propia</div>`
         : `<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Semana actual del alumno</div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Semana ${personal.currentWeek||1}</div><div class="admin-item-sub">${personal.startDate?'Desde: '+personal.startDate:''}</div></div>
       <div style="display:flex;gap:6px">
@@ -3075,33 +3160,30 @@ function renderAthleteDetail() {
 
   <!-- Load metrics from session logs -->
   ${(()=>{
-    const logs=personal._sessionLogs||[];
-    const m=calcLoadMetrics(logs);
-    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin datos. El atleta debe completar sesiones con feedback.</div></div>';
-    const acwrSt=getACWRStatus(m.acwr);
+    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin datos. El atleta debe cargar su carga de gimnasio/pelota/partido en Wellness.</div></div>';
     const monSt=getMonotonyStatus(m.monotony);
     return `<div class="admin-section">
       <div class="admin-section-title">Control de carga interna</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0">
-        <div style="padding:14px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)">
-          <div style="font-size:22px;font-weight:800;color:\${acwrSt.color}">\${m.acwr?.toFixed(2)||'—'}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border)">
+        <div style="background:var(--bg2);padding:14px 16px">
+          <div style="font-size:22px;font-weight:800;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
-          <div style="font-size:11px;color:\${acwrSt.color}">\${acwrSt.label}</div>
+          <div style="font-size:11px;color:${acwrSt.color}">${acwrSt.label}</div>
         </div>
-        <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
-          <div style="font-size:22px;font-weight:800">\${Math.round((m.monotony||0)*10)/10}</div>
+        <div style="background:var(--bg2);padding:14px 16px">
+          <div style="font-size:22px;font-weight:800;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía</div>
-          <div style="font-size:11px;color:\${monSt.color}">\${monSt.label}</div>
+          <div style="font-size:11px;color:${monSt.color}">${monSt.label}</div>
         </div>
-        <div style="padding:14px 16px;border-right:1px solid var(--border)">
-          <div style="font-size:22px;font-weight:800">\${m.acuteUA}</div>
+        <div style="background:var(--bg2);padding:14px 16px">
+          <div style="font-size:22px;font-weight:800">${m.acuteUA}</div>
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana</div>
-          <div style="font-size:11px;color:var(--text3)">\${m.sessions} sesiones</div>
+          <div style="font-size:11px;color:var(--text3)">${m.sessions} sesiones</div>
         </div>
-        <div style="padding:14px 16px">
-          <div style="font-size:22px;font-weight:800">\${Math.round(m.strain)}</div>
+        <div style="background:var(--bg2);padding:14px 16px">
+          <div style="font-size:22px;font-weight:800">${Math.round(m.strain)}</div>
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain</div>
-          <div style="font-size:11px;color:\${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'}">\${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
+          <div style="font-size:11px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'}">${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
         </div>
       </div>
     </div>`;
@@ -4381,74 +4463,84 @@ function renderDashboardContent() {
     return html;
   }
 
-  // Athletes list with load metrics
-  if(isDesktop) html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">`;
-  
-  athletes.forEach(a=>{
-    const logs = a._personal?.history?._sessionLogs||[];
-    const metrics = calcLoadMetrics(logs);
-    const lastLog = logs.length ? logs[logs.length-1] : null;
-    const todayLog = logs.filter(l=>l.date===today);
-    const wToday = a._personal?.wellness?.[today];
-    const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
-    const acwrStatus = getACWRStatus(metrics?.acwr||null);
-    const assigned = S.routines?.find(r=>r.id===a.assignedRoutine);
-    
-    html += `<div class="wellness-card" style="cursor:pointer;border-left:3px solid ${a.color||'var(--border2)'}" onclick="adminOpenAthleteDash('${a.uid}')">
-      <div style="padding:14px 16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="width:10px;height:10px;border-radius:50%;background:${a.color||'var(--text3)'}"></div>
-            <div style="font-size:15px;font-weight:600">${a.name||a.email}</div>
-          </div>
-          <div style="font-size:11px;color:${assigned?'var(--green)':'var(--amber)'}">
-            ${assigned?'✓ '+assigned.name:'Sin rutina'}
-          </div>
-        </div>
-        
-        <!-- Today's activity -->
-        <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-          <div style="background:var(--bg3);border-radius:var(--rxs);padding:6px 10px;font-size:12px">
-            <span style="color:var(--text3)">Hoy: </span>
-            <span style="font-weight:600;color:${todayLog.length?'var(--green)':'var(--text3)'}">${todayLog.length?`${todayLog.reduce((a,l)=>a+l.ua,0)} UA · RPE ${todayLog[todayLog.length-1]?.rpe}`:'Sin sesión'}</span>
-          </div>
-          ${wAllFilled?`<div style="background:var(--bg3);border-radius:var(--rxs);padding:6px 10px;font-size:12px">
-            <span style="color:var(--text3)">Wellness: </span>
-            <span style="font-weight:600;color:${getWellnessState(wPct).color}">${wPct}%</span>
-          </div>`:''}
-        </div>
-        
-        <!-- Load metrics row -->
-        ${metrics?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border-top:1px solid var(--border);padding-top:10px">
-          <div style="text-align:center">
-            <div style="font-size:16px;font-weight:700;color:${acwrStatus.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
-            <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">ACWR</div>
-            <div style="font-size:9px;color:${acwrStatus.color}">${acwrStatus.label}</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:16px;font-weight:700">${Math.round(metrics.monotony*10)/10||'—'}</div>
-            <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Monotonía</div>
-            <div style="font-size:9px;color:${getMonotonyStatus(metrics.monotony).color}">${getMonotonyStatus(metrics.monotony).label}</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:16px;font-weight:700">${metrics.acuteUA||0}</div>
-            <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">UA semana</div>
-            <div style="font-size:9px;color:var(--text3)">${metrics.sessions} sesiones</div>
-          </div>
-        </div>`:`<div style="font-size:11px;color:var(--text3);border-top:1px solid var(--border);padding-top:8px;text-align:center">Sin datos de carga aún</div>`}
-      </div>
-    </div>`;
-  });
-  
-  if(isDesktop) html += `</div>`;
-  
+  // Búsqueda + filtro por equipo — para que esto siga siendo usable con 30-50 atletas,
+  // no solo con 2. Filas compactas en vez de una tarjeta enorme por atleta.
+  const teamsWithAthletes = [...new Set(athletes.filter(a=>a.teamId).map(a=>a.teamId))]
+    .map(tid=>S.teams?.find(t=>t.id===tid)).filter(Boolean);
+  html += `<div style="margin-bottom:10px">
+    <input id="dash-search-inp" value="${S.dashSearch||''}" placeholder="Buscar atleta..."
+      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
+      oninput="setDashSearch(this.value)">
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+    <button class="lib-filter ${!S.dashTeamFilter?'active':''}" onclick="setDashTeamFilter(null)">Todos (${athletes.length})</button>
+    <button class="lib-filter ${S.dashTeamFilter==='individual'?'active':''}" onclick="setDashTeamFilter('individual')">Individuales</button>
+    ${teamsWithAthletes.map(t=>`<button class="lib-filter ${S.dashTeamFilter===t.id?'active':''}" onclick="setDashTeamFilter('${t.id}')">${t.name}</button>`).join('')}
+  </div>
+  <div id="dash-athlete-list">${renderDashboardAthleteList()}</div>`;
+
   html += `<div style="text-align:center;margin-top:12px">
     <button class="abtn" onclick="loadDashboard()" style="padding:8px 18px">↻ Actualizar</button>
   </div>`;
-  
+
   return html;
 }
 window.renderDashboardContent=renderDashboardContent;
+
+// Fila compacta por atleta (color, nombre, equipo/posición, chips de wellness/ACWR/hoy).
+// Separada de renderDashboardContent para poder refrescarla sola al buscar/filtrar,
+// sin re-renderizar el input de búsqueda (y así no perderle el foco al escribir).
+function renderDashboardAthleteList() {
+  const athletes = S.dashAthletes||[];
+  const search = (S.dashSearch||'').toLowerCase();
+  const teamFilter = S.dashTeamFilter||null;
+  const today = new Date().toISOString().split('T')[0];
+
+  let filtered = athletes;
+  if(teamFilter==='individual') filtered = filtered.filter(a=>!a.teamId);
+  else if(teamFilter) filtered = filtered.filter(a=>a.teamId===teamFilter);
+  if(search) filtered = filtered.filter(a=>(a.name||a.email||'').toLowerCase().includes(search));
+
+  if(!filtered.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan con la búsqueda.</div>`;
+
+  return `<div class="wellness-card" style="padding:0">
+    ${filtered.map(a=>{
+      const logs = a._personal?.history?._sessionLogs||[];
+      const metrics = calcLoadMetrics(logs);
+      const todayLog = logs.filter(l=>l.date===today);
+      const wToday = a._personal?.wellness?.[today];
+      const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
+      const acwrStatus = getACWRStatus(metrics?.acwr??null);
+      const team = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+        <div style="width:9px;height:9px;border-radius:50%;background:${a.color||'var(--text3)'};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name:'Individual'}${a.position?' · '+a.position:''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          ${wAllFilled?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${getWellnessState(wPct).color};font-weight:600;white-space:nowrap">${wPct}%</span>`:''}
+          ${metrics?.acwr!=null?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${acwrStatus.color};font-weight:600;white-space:nowrap">ACWR ${metrics.acwr.toFixed(2)}</span>`:''}
+          ${todayLog.length?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:var(--green);white-space:nowrap">✓ hoy</span>`:''}
+        </div>
+        <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+window.renderDashboardAthleteList=renderDashboardAthleteList;
+
+function updateDashboardAthleteList() {
+  const el=document.getElementById('dash-athlete-list');
+  if(el) el.innerHTML=renderDashboardAthleteList();
+}
+window.updateDashboardAthleteList=updateDashboardAthleteList;
+
+function setDashSearch(v) { S.dashSearch=v; updateDashboardAthleteList(); }
+window.setDashSearch=setDashSearch;
+
+function setDashTeamFilter(v) { S.dashTeamFilter=v; updateDashboardAthleteList(); }
+window.setDashTeamFilter=setDashTeamFilter;
 
 async function adminOpenAthleteDash(uid) {
   S.adminView='athlete_detail';
