@@ -955,7 +955,7 @@ function renderMain() {
     case 'teams':    m.innerHTML=renderTeams(); break;
     case 'atletas':  m.innerHTML=renderAtletas(); break;
     case 'settings': m.innerHTML=renderSettings(); break;
-    case 'admin':    m.innerHTML=renderAdmin(); break;
+    case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAthleteTrendChart,80); break;
     case 'library':  m.innerHTML=renderLibraryView(); break;
     case 'evals':    m.innerHTML=renderEvals(); setTimeout(drawEvalCharts,80); break;
     case 'onboarding': m.innerHTML=renderOnboarding(); break;
@@ -2270,12 +2270,34 @@ function renderTeamRutina(team) {
   }
 
   html+=`<button class="add-block-btn" style="margin-top:10px" onclick="addTrainingDay('${team.id}')">+ Agregar sesión</button>`;
+
+  // Reconciliación: el roster (texto libre) y las cuentas realmente vinculadas
+  // (memberUids, vía código de invitación) son dos listas separadas — esto puede
+  // desalinearse con muchos atletas. Marcamos qué nombres del roster tienen
+  // cuenta real, y avisamos si hay cuentas vinculadas que no están en el roster.
+  const linkedMembers = (S.adminAthletes||[]).filter(a=>(team.memberUids||[]).includes(a.uid));
+  const norm = s => (s||'').trim().toLowerCase();
+  const unmatchedLinked = linkedMembers.filter(a=>!(team.players||[]).some(p=>norm(p)===norm(a.name)||norm(p)===norm(a.email)));
+
   html+=`<div class="admin-section" style="margin-top:16px"><div class="admin-section-title">Jugadores</div>
-    ${(team.players||[]).map((p,pi)=>`<div class="admin-item"><div class="admin-item-lbl">${p}</div><button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button></div>`).join('')}
+    ${(team.players||[]).map((p,pi)=>{
+      const match=linkedMembers.find(a=>norm(a.name)===norm(p)||norm(a.email)===norm(p));
+      return `<div class="admin-item">
+        <div class="admin-item-lbl">${p} ${match?`<span style="font-size:10px;color:var(--green);font-weight:600;margin-left:6px">✓ cuenta vinculada</span>`:`<span style="font-size:10px;color:var(--amber);margin-left:6px">sin cuenta</span>`}</div>
+        <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
+      </div>`;
+    }).join('')}
     <div class="admin-item">
       <input id="new-player-inp" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" placeholder="Nombre del jugador">
       <button class="abtn abtn-p" onclick="addPlayer('${team.id}')">Agregar</button>
     </div></div>
+  ${unmatchedLinked.length?`<div class="admin-section" style="margin-top:12px;border-color:var(--amber)">
+    <div class="admin-section-title" style="color:var(--amber)">⚠ ${unmatchedLinked.length} atleta${unmatchedLinked.length===1?'':'s'} con cuenta vinculada pero fuera del roster</div>
+    ${unmatchedLinked.map(a=>`<div class="admin-item">
+      <div class="admin-item-lbl">${a.name||a.email}</div>
+      <button class="abtn abtn-p" onclick="addLinkedPlayerToRoster('${team.id}','${(a.name||a.email).replace(/'/g,"\\'")}')">+ Agregar al roster</button>
+    </div>`).join('')}
+  </div>`:''}
   <button class="abtn abtn-d" style="width:100%;margin-top:8px;padding:10px;border-radius:var(--r)" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>`;
   return html;
 }
@@ -2714,6 +2736,15 @@ function addPlayer(teamId) {
 }
 window.addPlayer=addPlayer;
 
+function addLinkedPlayerToRoster(teamId,name) {
+  const t=S.teams.find(x=>x.id===teamId); if(!t) return;
+  if(!t.players) t.players=[];
+  if(!t.players.some(p=>p.trim().toLowerCase()===name.trim().toLowerCase())) t.players.push(name);
+  saveTeam(teamId); renderMain();
+  showToast(`✓ ${name} agregado al roster`);
+}
+window.addLinkedPlayerToRoster=addLinkedPlayerToRoster;
+
 function deletePlayer(teamId,pi) {
   const t=S.teams.find(x=>x.id===teamId); if(!t) return;
   t.players.splice(pi,1); saveTeam(teamId); renderMain();
@@ -3080,7 +3111,7 @@ function renderAthleteDetail() {
   const todayW = wellness[today];
   const {pct:todayPct, allFilled:todayFilled} = getWellnessScore(todayW);
   const wState = getWellnessState(todayFilled?todayPct:null);
-  const logs = personal._sessionLogs||[];
+  const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
   const m = calcLoadMetrics(logs);
   const acwrSt = getACWRStatus(m?.acwr??null, m?.daysOfHistory);
   const activeInjCount = activeInj.length;
@@ -3111,6 +3142,13 @@ function renderAthleteDetail() {
     <div style="background:var(--bg2);padding:14px;text-align:center">
       <div style="font-size:20px;font-weight:800;color:${activeInjCount?'var(--red)':'var(--green)'}">${activeInjCount||'0'}</div>
       <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias activas</div>
+    </div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Tendencia — últimos 30 días</div>
+    <div style="padding:14px 16px;height:220px;position:relative">
+      <canvas id="athlete-trend-chart"></canvas>
     </div>
   </div>
 
@@ -4344,6 +4382,68 @@ function getACWRStatus(acwr, daysOfHistory) {
   if(acwr<=1.5)  return {label:'Precaución',color:'var(--amber)'};
   return {label:'Riesgo lesional ⚠',color:'var(--red)'};
 }
+
+// Gráfico de tendencia en la ficha del atleta: ACWR y wellness día a día,
+// últimos 30 días. El ACWR se recalcula "como si fuera ese día" (solo con los
+// logs hasta esa fecha), así la curva refleja cómo evolucionó de verdad, no
+// solo la foto de hoy.
+function drawAthleteTrendChart() {
+  if(typeof Chart==='undefined') return;
+  if(!S.athleteChartInstances) S.athleteChartInstances={};
+  Object.keys(S.athleteChartInstances).forEach(k=>{
+    try{S.athleteChartInstances[k].destroy();}catch(e){}
+    delete S.athleteChartInstances[k];
+  });
+  if(!S.viewingAthlete) return;
+  const canvas=document.getElementById('athlete-trend-chart');
+  if(!canvas) return;
+
+  const {personal}=S.viewingAthlete;
+  const logs=personal.history?._sessionLogs || personal.sessionLogs || [];
+  const wellness=personal.wellness||{};
+  const DAYS=30;
+  const labels=[], acwrData=[], wellnessData=[];
+  const today=new Date();
+
+  for(let i=DAYS-1;i>=0;i--){
+    const d=new Date(today); d.setDate(d.getDate()-i);
+    const dateStr=d.toISOString().split('T')[0];
+    labels.push(dateStr.slice(5));
+    const logsUpToDate=logs.filter(l=>l.date<=dateStr);
+    const m=calcLoadMetrics(logsUpToDate);
+    acwrData.push(m?.acwr!=null ? +m.acwr.toFixed(2) : null);
+    const {pct,allFilled}=getWellnessScore(wellness[dateStr]);
+    wellnessData.push(allFilled?pct:null);
+  }
+
+  if(acwrData.every(v=>v===null) && wellnessData.every(v=>v===null)) return; // nada que graficar
+
+  const gridColor='rgba(255,255,255,0.05)';
+  S.athleteChartInstances['trend']=new Chart(canvas,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {label:'Wellness %',data:wellnessData,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,0.08)',yAxisID:'y',spanGaps:true,tension:.3,pointRadius:2,fill:true},
+        {label:'ACWR',data:acwrData,borderColor:'#3b7dd8',backgroundColor:'rgba(59,125,216,0.08)',yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:2,fill:false},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{color:'#a8b8d8',font:{size:11},boxWidth:12}},
+        tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
+      },
+      scales:{
+        x:{ ticks:{color:'#7a90b8',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8}, grid:{color:gridColor} },
+        y:{ position:'left', min:0, max:100, ticks:{color:'#22c55e',font:{size:10},stepSize:25}, grid:{color:gridColor} },
+        y1:{ position:'right', min:0, suggestedMax:2, ticks:{color:'#3b7dd8',font:{size:10}}, grid:{drawOnChartArea:false} },
+      }
+    }
+  });
+}
+window.drawAthleteTrendChart=drawAthleteTrendChart;
 
 function getMonotonyStatus(m) {
   if(!m) return {label:'Sin datos',color:'var(--text3)'};
