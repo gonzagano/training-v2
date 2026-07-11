@@ -3082,7 +3082,7 @@ function renderAthleteDetail() {
   const wState = getWellnessState(todayFilled?todayPct:null);
   const logs = personal._sessionLogs||[];
   const m = calcLoadMetrics(logs);
-  const acwrSt = getACWRStatus(m?.acwr??null);
+  const acwrSt = getACWRStatus(m?.acwr??null, m?.daysOfHistory);
   const activeInjCount = activeInj.length;
 
   let html=`<div class="team-detail-header">
@@ -4306,7 +4306,17 @@ function calcLoadMetrics(sessionLogs) {
     if(wIdx<4) weeklyUA[wIdx]+=l.ua;
   });
   const chronicUA = weeklyUA.reduce((a,v)=>a+v,0)/4;
-  const acwr = chronicUA>0 ? (acuteUA/chronicUA) : null;
+
+  // El ACWR (acuteUA/chronicUA) es un artefacto estadístico cuando hay poco historial:
+  // con una sola sesión, chronicUA ya sale dividido por 4 semanas aunque 3 de ellas
+  // nunca existieron, e infla el ratio artificialmente (300 UA / 75 UA = 4.00, aunque
+  // el atleta recién esté empezando y no haya ningún riesgo real todavía). Exigimos un
+  // mínimo de historial antes de reportar un ACWR — si no, es más ruido que señal.
+  const MIN_DAYS_FOR_ACWR = 21;
+  const earliestDate = sessionLogs.reduce((min,l)=> l.date<min?l.date:min, sessionLogs[0].date);
+  const daysOfHistory = Math.floor((now-new Date(earliestDate))/(1000*60*60*24));
+  const hasEnoughHistory = daysOfHistory >= MIN_DAYS_FOR_ACWR;
+  const acwr = (chronicUA>0 && hasEnoughHistory) ? (acuteUA/chronicUA) : null;
   
   // Monotony: mean / stddev of daily UA in last 7 days
   const dailyUA = {};
@@ -4320,12 +4330,15 @@ function calcLoadMetrics(sessionLogs) {
   const monotony = stddev>0 ? mean/stddev : mean>0 ? 2.5 : 0;
   const strain = acuteUA * monotony;
   
-  return { acuteUA, chronicUA:Math.round(chronicUA), acwr, monotony, strain, sessions:acuteLogs.length };
+  return { acuteUA, chronicUA:Math.round(chronicUA), acwr, monotony, strain, sessions:acuteLogs.length, daysOfHistory, hasEnoughHistory };
 }
 window.calcLoadMetrics=calcLoadMetrics;
 
-function getACWRStatus(acwr) {
-  if(acwr===null) return {label:'Sin datos',color:'var(--text3)'};
+function getACWRStatus(acwr, daysOfHistory) {
+  if(acwr===null||acwr===undefined) {
+    if(daysOfHistory!=null && daysOfHistory<21) return {label:`Faltan ${21-daysOfHistory} día${21-daysOfHistory===1?'':'s'} de datos`,color:'var(--text3)'};
+    return {label:'Sin datos',color:'var(--text3)'};
+  }
   if(acwr<0.8)   return {label:'Subcarga',color:'var(--blue)'};
   if(acwr<=1.3)  return {label:'Zona óptima ✓',color:'var(--green)'};
   if(acwr<=1.5)  return {label:'Precaución',color:'var(--amber)'};
@@ -4510,7 +4523,7 @@ function renderDashboardAthleteList() {
       const todayLog = logs.filter(l=>l.date===today);
       const wToday = a._personal?.wellness?.[today];
       const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
-      const acwrStatus = getACWRStatus(metrics?.acwr??null);
+      const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
       const team = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
       return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         <div style="width:9px;height:9px;border-radius:50%;background:${a.color||'var(--text3)'};flex-shrink:0"></div>
@@ -4562,7 +4575,7 @@ function renderAthleteHome() {
   const logs = S.history?._sessionLogs||[];
   const todayLogs = logs.filter(l=>l.date===today);
   const metrics = calcLoadMetrics(logs);
-  const acwrSt = getACWRStatus(metrics?.acwr||null);
+  const acwrSt = getACWRStatus(metrics?.acwr||null, metrics?.daysOfHistory);
   const hasTodayWellness = !!S.wellness[today];
   
   const routineName = S.assignedRoutine?.name || null;
