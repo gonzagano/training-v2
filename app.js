@@ -2275,13 +2275,20 @@ function renderTeamRutina(team) {
   // (memberUids, vía código de invitación) son dos listas separadas — esto puede
   // desalinearse con muchos atletas. Marcamos qué nombres del roster tienen
   // cuenta real, y avisamos si hay cuentas vinculadas que no están en el roster.
-  const linkedMembers = (S.adminAthletes||[]).filter(a=>(team.memberUids||[]).includes(a.uid));
+  const linkedMembers = (S.adminAthletes||[]).filter(a=>(team.memberUids||[]).includes(a.uid) || a.teamId===team.id);
   const norm = s => (s||'').trim().toLowerCase();
-  const unmatchedLinked = linkedMembers.filter(a=>!(team.players||[]).some(p=>norm(p)===norm(a.name)||norm(p)===norm(a.email)));
+  // Compara nombres ignorando orden de palabras (nombre/apellido invertido),
+  // mayúsculas y espacios — "Vincent Ian" y "Ian Vincent" cuentan como la misma persona.
+  const namesLikelyMatch = (x,y) => {
+    const wx=norm(x).split(/\s+/).filter(Boolean).sort().join(' ');
+    const wy=norm(y).split(/\s+/).filter(Boolean).sort().join(' ');
+    return !!wx && !!wy && wx===wy;
+  };
+  const unmatchedLinked = linkedMembers.filter(a=>!(team.players||[]).some(p=>namesLikelyMatch(p,a.name)||norm(p)===norm(a.email)));
 
   html+=`<div class="admin-section" style="margin-top:16px"><div class="admin-section-title">Jugadores</div>
     ${(team.players||[]).map((p,pi)=>{
-      const match=linkedMembers.find(a=>norm(a.name)===norm(p)||norm(a.email)===norm(p));
+      const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||norm(a.email)===norm(p));
       return `<div class="admin-item">
         <div class="admin-item-lbl">${p} ${match?`<span style="font-size:10px;color:var(--green);font-weight:600;margin-left:6px">✓ cuenta vinculada</span>`:`<span style="font-size:10px;color:var(--amber);margin-left:6px">sin cuenta</span>`}</div>
         <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
