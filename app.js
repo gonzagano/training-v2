@@ -29,6 +29,24 @@ const INSTITUTIONS = {
   'Basquet-Club Universal': { sport: 'Basquet', categories: ['u15', 'u17', 'u21'] }
 };
 
+// Lista dinámica de equipos/categorías reales para el onboarding — en vez de
+// depender de INSTITUTIONS (fijo en el código), se arma sola en base a los
+// equipos que el admin ya haya creado en S.teams. Así, un equipo nuevo que
+// se crea desde el Panel Admin aparece automáticamente como opción para
+// cualquiera que se registre después, sin tocar código.
+function getInstitutionsFromTeams() {
+  const map = {};
+  (S.teams||[]).forEach(t=>{
+    const inst = t.institution || t.name;
+    if(!inst) return;
+    if(!map[inst]) map[inst] = {sport:t.sport||'', categories:new Set()};
+    if(t.category) map[inst].categories.add(t.category);
+    if(!map[inst].sport && t.sport) map[inst].sport = t.sport;
+  });
+  return map;
+}
+window.getInstitutionsFromTeams = getInstitutionsFromTeams;
+
 // ── TIPOS DE LESIÓN/MOLESTIA ────────────────────────────────────
 const INJURY_TYPES = { muscular: 'Muscular', articular: 'Articular', ligamentaria: 'Ligamentaria' };
 
@@ -270,7 +288,7 @@ let S = {
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
   videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [],
-  teams: [], progressView: { week: 1 },
+  teams: [], pendingAthletes: [], progressView: { week: 1 },
   myTeam: null, // solo para atletas de equipo: el doc de su propio equipo
   teamSubview: 'rutina',      // 'rutina'|'wellness'|'stats'|'evals' dentro de un equipo
   atletaView: null,           // uid del atleta individual seleccionado (o null = lista)
@@ -446,13 +464,25 @@ onAuthStateChanged(auth, async (user) => {
     }
   } catch(e) { console.error('Error cargando biblioteca/videos compartidos', e); }
 
-  if (S.isAdmin) {
-    // Load teams
+  // Equipos: los necesita el admin para todo, y también cualquier atleta
+  // durante el onboarding (para elegir a qué equipo pertenece de una lista
+  // real, no de una lista fija hardcodeada). Las reglas de Firestore ya
+  // permiten que cualquier usuario logueado los lea.
+  try {
     const tSnap = await getDocs(collection(db, 'teams'));
     S.teams = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) { console.error('Error cargando equipos', e); }
+
+  if (S.isAdmin) {
     // Load all routines
     const rSnap = await getDocs(collection(db, 'routines'));
     S.routines = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Jugadores cargados de antemano que todavía no se registraron con una
+    // cuenta real — pueden tener tests/evaluaciones ya cargados.
+    try {
+      const pSnap2 = await getDocs(collection(db, 'pendingAthletes'));
+      S.pendingAthletes = pSnap2.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch(e) { S.pendingAthletes = []; }
   } else {
     // Athlete: la rutina PERSONAL (assignedRoutine) tiene prioridad.
     // Si no tiene una personal y pertenece a un equipo, hereda los "días de
@@ -653,23 +683,31 @@ function renderOnboardingStep2(d) {
       <div><label class="eval-lbl">Posición</label><input class="auth-inp" style="margin:0" type="text" value="${d.position}" oninput="setOnboardingField('position',this.value)" placeholder="Ej: Base, Alero..."></div>
     </div>`;
   } else if (d.athleteType === 'team') {
+    const instMap = getInstitutionsFromTeams();
+    const instNames = Object.keys(instMap).sort();
     html += `<div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:12px">
-      <div><label class="eval-lbl">Institución</label>
+      <div><label class="eval-lbl">Equipo</label>
         <select class="auth-inp" style="margin:0" onchange="selectInstitution(this.value)">
           <option value="">Seleccionar...</option>
-          ${Object.keys(INSTITUTIONS).map(inst=>`<option value="${inst}" ${d.institution===inst?'selected':''}>${inst}</option>`).join('')}
+          ${instNames.map(inst=>`<option value="${inst}" ${d.institution===inst?'selected':''}>${inst}</option>`).join('')}
         </select>
       </div>
+      ${!instNames.length?`<div style="font-size:12px;color:var(--text3)">Todavía no hay ningún equipo cargado — pedile a tu entrenador que cree uno primero.</div>`:''}
       ${d.institution ? `<div><label class="eval-lbl">Categoría</label>
-        <select class="auth-inp" style="margin:0" onchange="setOnboardingField('category',this.value)">
+        <select class="auth-inp" style="margin:0" onchange="onboardingCategoryChange(this.value)">
           <option value="">Seleccionar...</option>
-          ${INSTITUTIONS[d.institution].categories.map(c=>`<option value="${c}" ${d.category===c?'selected':''}>${c}</option>`).join('')}
+          ${[...instMap[d.institution].categories].sort().map(c=>`<option value="${c}" ${d.category===c?'selected':''}>${c}</option>`).join('')}
+          <option value="__nueva__" ${d.category==='__nueva__'?'selected':''}>+ Otra categoría</option>
         </select>
+      </div>` : ''}
+      ${d.category==='__nueva__' ? `<div><label class="eval-lbl">Nombre de la categoría</label>
+        <input class="auth-inp" style="margin:0" type="text" value="${d.categoryCustom||''}" oninput="setOnboardingField('categoryCustom',this.value)" placeholder="Ej: Sub-19">
       </div>` : ''}
     </div>`;
   }
 
-  const canContinue = d.athleteType==='individual' ? !!(d.sport && d.position) : d.athleteType==='team' ? !!(d.institution && d.category) : false;
+  const teamCategoryOk = d.category && (d.category!=='__nueva__' || !!(d.categoryCustom||'').trim());
+  const canContinue = d.athleteType==='individual' ? !!(d.sport && d.position) : d.athleteType==='team' ? !!(d.institution && teamCategoryOk) : false;
   html += `<div style="padding:0 16px 16px;display:flex;gap:10px">
     <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
     <button class="wellness-submit" style="flex:2;${canContinue?'':'opacity:.4;pointer-events:none'}" onclick="onboardingNext()">Continuar</button>
@@ -719,7 +757,13 @@ window.setOnboardingField = setOnboardingField;
 function selectAthleteType(type) { S.onboardingData.athleteType = type; renderMain(); }
 window.selectAthleteType = selectAthleteType;
 
-function selectInstitution(inst) { S.onboardingData.institution = inst; S.onboardingData.category = ''; renderMain(); }
+function selectInstitution(inst) { S.onboardingData.institution = inst; S.onboardingData.category = ''; S.onboardingData.categoryCustom=''; renderMain(); }
+function onboardingCategoryChange(val) {
+  S.onboardingData.category = val;
+  if(val!=='__nueva__') S.onboardingData.categoryCustom='';
+  renderMain();
+}
+window.onboardingCategoryChange=onboardingCategoryChange;
 window.selectInstitution = selectInstitution;
 
 function onboardingNext() {
@@ -744,8 +788,7 @@ window.onboardingPrev = onboardingPrev;
 
 // Busca un equipo real ya creado para esta institución+categoría, o lo crea si es
 // la primera vez que alguien se registra en esa combinación.
-async function findOrCreateTeam(institution, category) {
-  const sport = INSTITUTIONS[institution].sport;
+async function findOrCreateTeam(institution, category, sport) {
   const tSnap = await getDocs(collection(db, 'teams'));
   const allTeams = tSnap.docs.map(dd => ({ id: dd.id, ...dd.data() }));
   // Primero por institution (el campo correcto), y si no aparece (equipos
@@ -764,7 +807,7 @@ async function findOrCreateTeam(institution, category) {
   }
   const id = genId();
   const team = {
-    id, name: institution, sport, category, institution,
+    id, name: institution, sport: sport||'', category, institution,
     players: [], memberUids: [], trainingDays: [], calendar: {}, color: '',
     createdAt: new Date().toISOString()
   };
@@ -792,11 +835,14 @@ async function finishOnboarding() {
       update.position = d.position;
       update.institution = null; update.category = null; update.teamId = null;
     } else {
+      const finalCategory = d.category==='__nueva__' ? (d.categoryCustom||'').trim() : d.category;
+      const instMap = getInstitutionsFromTeams();
+      const sport = instMap[d.institution]?.sport || '';
       update.institution = d.institution;
-      update.category = d.category;
-      update.sport = INSTITUTIONS[d.institution].sport;
+      update.category = finalCategory;
+      update.sport = sport;
       update.position = null;
-      const teamId = await findOrCreateTeam(d.institution, d.category);
+      const teamId = await findOrCreateTeam(d.institution, finalCategory, sport);
       update.teamId = teamId;
       // Vincular esta cuenta real (uid) al roster del equipo, sin romper
       // el campo `players` (nombres) que ya usa el editor de días de equipo.
@@ -808,6 +854,21 @@ async function finishOnboarding() {
       if (!memberUids.includes(S.user.uid)) memberUids.push(S.user.uid);
       if (!players.includes(update.name)) players.push(update.name);
       await updateDoc(tRef, { memberUids, players });
+
+      // Si el admin ya había cargado a este jugador de antemano (mismo
+      // nombre, mismo equipo) con tests/evaluaciones, los migramos ahora a
+      // la cuenta real recién creada, y borramos el registro pendiente.
+      try {
+        const pendSnap = await getDocs(query(collection(db,'pendingAthletes'), where('teamId','==',teamId)));
+        const norm = s => (s||'').trim().toLowerCase();
+        const match = pendSnap.docs.map(dd=>({id:dd.id, ...dd.data()})).find(p=>norm(p.name)===norm(update.name));
+        if (match) {
+          if (match.evals && Object.keys(match.evals).length) {
+            await setDoc(doc(db,'personal',S.user.uid), {evals:match.evals}, {merge:true});
+          }
+          await deleteDoc(doc(db,'pendingAthletes',match.id));
+        }
+      } catch(e) { /* no bloqueamos el registro si esto falla */ }
     }
     await setDoc(doc(db, 'users', S.user.uid), update, { merge: true });
     // Por si durante el paso de lesiones se marcó algo en el mapa corporal,
@@ -3289,12 +3350,22 @@ function deletePlayerNote(teamId,di,ni) {
 }
 window.deletePlayerNote=deletePlayerNote;
 
-function addPlayer(teamId) {
+async function addPlayer(teamId) {
   const inp=document.getElementById('new-player-inp'); if(!inp) return;
   const name=inp.value.trim(); if(!name) return;
   const t=S.teams.find(x=>x.id===teamId); if(!t) return;
   if(!t.players) t.players=[];
   t.players.push(name); inp.value=''; saveTeam(teamId); renderMain();
+  // Creamos un registro "pendiente" para este jugador — así se le pueden
+  // cargar tests/evaluaciones ya mismo, aunque todavía no se haya registrado.
+  // Si más adelante se registra con el mismo nombre en este mismo equipo,
+  // sus datos se migran solos a la cuenta real (ver finishOnboarding).
+  try {
+    const pendId = genId();
+    await setDoc(doc(db,'pendingAthletes',pendId), {name, teamId, evals:{}, createdAt:new Date().toISOString()});
+    if(!S.pendingAthletes) S.pendingAthletes=[];
+    S.pendingAthletes.push({id:pendId, name, teamId, evals:{}});
+  } catch(e) { /* no bloqueamos el flujo si esto falla */ }
 }
 window.addPlayer=addPlayer;
 
@@ -4677,11 +4748,18 @@ function renderEvals() {
   let athleteSel = '';
   if(S.isAdmin) {
     const pool = S.evalScopeUids ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid)) : S.adminAthletes;
+    // Jugadores del roster que todavía no se registraron, pero pertenecen a
+    // este mismo equipo — se pueden elegir igual para cargarles tests.
+    const pendingPool = (S.teamView && S.pendingAthletes)
+      ? S.pendingAthletes.filter(p=>p.teamId===S.teamView.id)
+      : [];
     if (S.evalScopeUids) {
       // Estamos dentro de Equipos o Atletas: sin "Yo mismo", solo el grupo acotado
-      athleteSel = pool.length
+      const registeredOpts = pool.map(a=>'<option value="'+a.uid+'" '+(S.evalAthleteId===a.uid?'selected':'')+'>'+(a.name||a.email)+'</option>').join('');
+      const pendingOpts = pendingPool.map(p=>'<option value="pending:'+p.id+'" '+(S.evalAthleteId===('pending:'+p.id)?'selected':'')+'>'+p.name+' (sin registrar)</option>').join('');
+      athleteSel = (pool.length || pendingPool.length)
         ? '<select class="eval-inp" onchange="selectEvalAthlete(this.value)" style="cursor:pointer;max-width:220px">'
-          + pool.map(a=>'<option value="'+a.uid+'" '+(S.evalAthleteId===a.uid?'selected':'')+'>'+(a.name||a.email)+'</option>').join('')
+          + registeredOpts + pendingOpts
           + '</select>'
         : '<div style="font-size:12px;color:var(--text3)">Sin atletas en este grupo todavía</div>';
     } else if (S.adminAthletes.length) {
@@ -4707,9 +4785,7 @@ function renderEvals() {
   const coord = (lCMJ&&lAbal) ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
   const asym  = (lDer&&lIzq)  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
 
-  const currentAthleteName = S.evalAthleteId==='self'
-    ? 'Yo (admin)'
-    : (S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.name || S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.email || 'Atleta');
+  const currentAthleteName = getAthleteDisplayName(S.evalAthleteId);
 
   let html = '<div class="page-header"><div class="page-title">Test de Saltabilidad</div>'
     + '<div class="page-subtitle">Valoración neuromuscular · Índices elásticos y coordinación</div></div>';
@@ -4752,9 +4828,7 @@ window.renderEvals = renderEvals;
 // ══════════════════════════════════════════════════════════════
 
 function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
-  const currentAthleteName = S.evalAthleteId==='self'
-    ? 'Yo (admin)'
-    : (S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.name || S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.email || 'Atleta');
+  const currentAthleteName = getAthleteDisplayName(S.evalAthleteId);
 
   let html = '<div class="page-header"><div class="page-title">Fuerza Máxima</div>'
     + '<div class="page-subtitle">Tests de 1RM · Banca, peso muerto, sentadilla y cargada de potencia</div></div>';
@@ -4834,7 +4908,7 @@ async function saveStrengthEvals() {
   if(!saved) { showToast('Ingresá al menos un valor'); return; }
   if(uid==='self') scheduleSave();
   else {
-    try { await setDoc(doc(db,'personal',uid), {evals:S._athleteEvalsCache[uid]}, {merge:true}); }
+    try { await saveAthleteEvalsDoc(uid, S._athleteEvalsCache[uid]); }
     catch(e) { showToast('Error al guardar'); return; }
   }
   showToast('✓ '+saved+' test'+(saved!==1?'s':'')+' guardado'+(saved!==1?'s':''));
@@ -4908,6 +4982,23 @@ function renderEvalHistory(edata, isDesktop, testList) {
     : EVAL_TESTS.concat([{id:'asym', label:'Asimetría Unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda'}]);
 
   let html = isDesktop ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">' : '';
+
+  // Los mismos índices calculados que aparecen en "Registrar test" — también
+  // acá, para no tener que ir y volver entre pestañas para verlos.
+  if(includeAsym) {
+    const lastOfH = id => { const r=(edata[id]||[]); return r.length ? r[r.length-1] : null; };
+    const lCMJ=lastOfH('cmj'), lSJ=lastOfH('sj'), lAbal=lastOfH('abalakov');
+    const lDer=lastOfH('cmj_der'), lIzq=lastOfH('cmj_izq');
+    const ice   = (lCMJ&&lSJ)   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1) : null;
+    const coord = (lCMJ&&lAbal) ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
+    const asymH = (lDer&&lIzq)  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
+    html += `<div style="grid-column:${isDesktop?'1/-1':'auto'};display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px">`
+      + metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'))
+      + metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'))
+      + metricCardHtml('ASIMETRÍA UNILAT.', '↔', asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'))
+      + metricCardHtml('MEJOR CMJ', '↑', lCMJ?lCMJ.height+' cm':'--', 'var(--text)', lCMJ?'Último registro · '+lCMJ.date:'Sin datos')
+      + '</div>';
+  }
 
   histTests.forEach(t=>{
     const isHidden = S.evalHidden.has(t.id);
@@ -5077,7 +5168,7 @@ async function saveAllEvals() {
     scheduleSave();
   } else {
     try {
-      await setDoc(doc(db,'personal',uid), {evals:S._athleteEvalsCache[uid]}, {merge:true});
+      await saveAthleteEvalsDoc(uid, S._athleteEvalsCache[uid]);
     } catch(e) { showToast('Error al guardar'); return; }
   }
 
@@ -5306,6 +5397,33 @@ function getAthleteEvals(uid) {
   return (S._athleteEvalsCache && S._athleteEvalsCache[uid]) || {};
 }
 
+// Nombre a mostrar para cualquier id de "atleta seleccionado": el admin
+// mismo, un atleta con cuenta real, o un jugador pendiente de registrarse.
+function getAthleteDisplayName(id) {
+  if(id==='self') return 'Yo (admin)';
+  if(isPendingId(id)) {
+    const p = (S.pendingAthletes||[]).find(x=>('pending:'+x.id)===id);
+    return p ? p.name+' (sin registrar)' : 'Jugador pendiente';
+  }
+  const a = S.adminAthletes.find(a=>a.uid===id);
+  return a?.name || a?.email || 'Atleta';
+}
+window.getAthleteDisplayName=getAthleteDisplayName;
+
+// Un jugador "pendiente" es alguien que el admin cargó en el roster de un
+// equipo pero que TODAVÍA no se registró con una cuenta real — se identifica
+// con un id con el prefijo "pending:" en vez de un uid de Firebase Auth.
+function isPendingId(uid) { return typeof uid==='string' && uid.startsWith('pending:'); }
+window.isPendingId=isPendingId;
+function pendingDocId(uid) { return uid.slice('pending:'.length); }
+window.pendingDocId=pendingDocId;
+
+async function saveAthleteEvalsDoc(uid, evals) {
+  const ref = isPendingId(uid) ? doc(db,'pendingAthletes',pendingDocId(uid)) : doc(db,'personal',uid);
+  await setDoc(ref, {evals}, {merge:true});
+}
+window.saveAthleteEvalsDoc=saveAthleteEvalsDoc;
+
 // Trae /personal/{uid}.evals para UN atleta puntual si todavía no está en
 // caché. Antes, solo el botón "Comparar atletas" (loadAllAthleteEvals)
 // poblaba esta caché — por eso elegir un atleta individual no mostraba
@@ -5314,7 +5432,8 @@ async function ensureAthleteEvalData(uid) {
   if (!uid || uid === 'self') return;
   if (S._athleteEvalsCache && S._athleteEvalsCache[uid]) return;
   try {
-    const snap = await getDoc(doc(db, 'personal', uid));
+    const ref = isPendingId(uid) ? doc(db,'pendingAthletes',pendingDocId(uid)) : doc(db, 'personal', uid);
+    const snap = await getDoc(ref);
     if (!S._athleteEvalsCache) S._athleteEvalsCache = {};
     S._athleteEvalsCache[uid] = snap.exists() ? (snap.data().evals || {}) : {};
   } catch (e) {}
@@ -5329,7 +5448,7 @@ async function deleteEvalRecord(testId, idx) {
   } else {
     if(S._athleteEvalsCache?.[uid]?.[testId]) {
       S._athleteEvalsCache[uid][testId].splice(idx,1);
-      try { await setDoc(doc(db,'personal',uid), {evals:S._athleteEvalsCache[uid]}, {merge:true}); } catch(e){}
+      try { await saveAthleteEvalsDoc(uid, S._athleteEvalsCache[uid]); } catch(e){}
     }
   }
   renderMain();
