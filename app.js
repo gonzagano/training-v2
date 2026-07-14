@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -969,8 +969,8 @@ function renderMain() {
     case 'progress': m.innerHTML=renderProgress(); break;
     case 'wellness': m.innerHTML=renderWellness(); setTimeout(()=>runCountUps(),30); break;
     case 'stats':    m.innerHTML=renderStats(); break;
-    case 'teams':    m.innerHTML=renderTeams(); break;
-    case 'atletas':  m.innerHTML=renderAtletas(); break;
+    case 'teams':    m.innerHTML=renderTeams(); if(S.teamView && S.teamSubview==='stats') setTimeout(()=>drawTeamInjuryChart((S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid))),80); break;
+    case 'atletas':  m.innerHTML=renderAtletas(); if(S.atletaView && S.atletaSubview==='stats') setTimeout(()=>drawTeamInjuryChart([S.atletaView]),80); break;
     case 'settings': m.innerHTML=renderSettings(); break;
     case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAthleteTrendChart,80); if(S.adminView==='compare_athletes') setTimeout(drawCompareCharts,80); setTimeout(()=>runCountUps(),30); break;
     case 'weekly_report': m.innerHTML=renderWeeklyReport(); break;
@@ -1012,16 +1012,7 @@ function renderSession() {
   </div>`;
   if (!blocks.length) {
     if (!S.isAdmin) {
-      return header + `<div class="empty-state has-custom-icon" style="padding:40px 20px">
-        <div style="margin-bottom:14px;display:flex;justify-content:center">
-          <svg width="56" height="56" viewBox="0 0 48 48" fill="none" stroke="var(--text3)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="8" cy="24" r="6"/><circle cx="8" cy="24" r="2.2"/>
-            <rect x="13" y="20" width="4" height="8" rx="1.5"/>
-            <line x1="17" y1="24" x2="31" y2="24"/>
-            <rect x="31" y="20" width="4" height="8" rx="1.5"/>
-            <circle cx="40" cy="24" r="6"/><circle cx="40" cy="24" r="2.2"/>
-          </svg>
-        </div>
+      return header + `<div class="empty-state" style="padding:40px 20px">
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">Sin rutina asignada</div>
         <div style="font-size:13px;color:var(--text3);line-height:1.6">Tu entrenador está preparando tu planificación.<br>Pronto vas a ver tu rutina acá.</div>
       </div>`;
@@ -1248,6 +1239,7 @@ const LOAD_ACTIVITIES = [
   {key:'gimnasio', label:'Gimnasio', emoji:'🏋️'},
   {key:'pelota',   label:'Pelota',   emoji:'🏀'},
   {key:'partido',  label:'Partido',  emoji:'🏆'},
+  {key:'partido2', label:'Partido 2 (mismo día)', emoji:'🏆', dualCompOnly:true},
 ];
 
 function getLoadLog(activity,date) {
@@ -1713,6 +1705,7 @@ function renderWellness() {
     <div class="wellness-sub">Cargá minutos y RPE de cada actividad (las que no correspondan, dejalas en blanco)</div>`;
 
   LOAD_ACTIVITIES.forEach(act=>{
+    if(act.dualCompOnly && !S.userData?.dualComp) return;
     const existing=getLoadLog(act.key,wKey);
     const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0});
     const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
@@ -2221,14 +2214,18 @@ function renderTeamDetail(team) {
   <div style="font-size:13px;color:var(--text3);margin-bottom:12px">${team.category||''}</div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Rutina</button>
+    <button class="snav-tab ${sub==='calendario'?'active':''}" onclick="setTeamSubview('calendario')">Calendario</button>
     <button class="snav-tab ${sub==='wellness'?'active':''}" onclick="setTeamSubview('wellness')">Wellness</button>
     <button class="snav-tab ${sub==='stats'?'active':''}" onclick="setTeamSubview('stats')">Estadísticas</button>
     <button class="snav-tab ${sub==='evals'?'active':''}" onclick="setTeamSubview('evals')">Evaluaciones</button>
+    <button class="snav-tab ${sub==='reporte'?'active':''}" onclick="setTeamSubview('reporte')">Informe</button>
   </div>`;
 
   if(sub==='wellness') html += renderGroupWellness(team.memberUids||[]);
   else if(sub==='stats') html += renderGroupStats(team.memberUids||[]);
   else if(sub==='evals') html += renderEvals();
+  else if(sub==='calendario') html += renderTeamCalendar(team);
+  else if(sub==='reporte') html += renderTeamReport(team);
   else html += renderTeamRutina(team);
   return html;
 }
@@ -2243,10 +2240,239 @@ function setTeamSubview(v) {
       .then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); });
     return;
   }
-  if (v==='wellness' || v==='stats') { ensureGroupPersonalData(S.teamView?.memberUids||[]).then(renderMain); return; }
+  if (v==='wellness' || v==='stats' || v==='reporte') { ensureGroupPersonalData(S.teamView?.memberUids||[]).then(renderMain); return; }
   renderMain();
 }
 window.setTeamSubview = setTeamSubview;
+
+// ══════════════════════════════════════════════════════════════
+// ── CALENDARIO DEL EQUIPO ────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+const CALENDAR_TYPES = [
+  {id:'fisico',   label:'Físico',       color:'#3b7dd8'},
+  {id:'pelota',   label:'Pelota',       color:'#8b5cf6'},
+  {id:'partido',  label:'Partido',      color:'#ef4444'},
+  {id:'descanso', label:'Descanso',     color:'#7a90b8'},
+];
+
+function renderTeamCalendar(team) {
+  const viewMonth = S.calendarMonth || new Date().toISOString().slice(0,7);
+  const [y,m] = viewMonth.split('-').map(Number);
+  const firstDay = new Date(y, m-1, 1);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const startWeekday = (firstDay.getDay()+6)%7; // lunes=0
+  const monthLabel = firstDay.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  const calendar = team.calendar||{};
+  const today = new Date().toISOString().split('T')[0];
+  const selected = S.calendarSelectedDate||null;
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <button class="abtn" onclick="shiftCalendarMonth(-1)">‹</button>
+    <div style="font-weight:700;font-size:15px;text-transform:capitalize">${monthLabel}</div>
+    <button class="abtn" onclick="shiftCalendarMonth(1)">›</button>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    ${CALENDAR_TYPES.map(t=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3)"><div style="width:8px;height:8px;border-radius:50%;background:${t.color}"></div>${t.label}</div>`).join('')}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">
+    ${['L','M','X','J','V','S','D'].map(d=>`<div style="text-align:center;font-size:10px;color:var(--text3);font-weight:600">${d}</div>`).join('')}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px">
+    ${Array.from({length:startWeekday}).map(()=>'<div></div>').join('')}
+    ${Array.from({length:daysInMonth},(_,i)=>i+1).map(day=>{
+      const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const entry = calendar[dateStr];
+      const typeInfo = entry ? CALENDAR_TYPES.find(t=>t.id===entry.type) : null;
+      const isToday = dateStr===today, isSelected = dateStr===selected;
+      return `<div onclick="selectCalendarDay('${dateStr}')" style="aspect-ratio:1;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:2px;font-size:12px;
+        background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
+        <span style="color:${isToday?'var(--accent)':'var(--text)'}">${day}</span>
+        ${typeInfo?`<div style="width:6px;height:6px;border-radius:50%;background:${typeInfo.color}"></div>`:''}
+      </div>`;
+    }).join('')}
+  </div>
+  ${selected ? renderCalendarDayEditor(team, selected) : `<div class="empty-state" style="padding:24px">Tocá un día del calendario para asignarle una actividad.</div>`}`;
+  return html;
+}
+window.renderTeamCalendar=renderTeamCalendar;
+
+function renderCalendarDayEditor(team, dateStr) {
+  const entry = (team.calendar||{})[dateStr] || {};
+  const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  return `<div class="admin-section">
+    <div class="admin-section-title" style="text-transform:capitalize">${dateLabel}</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${CALENDAR_TYPES.map(t=>`<button class="lib-filter ${entry.type===t.id?'active':''}" onclick="setCalendarDayType('${team.id}','${dateStr}','${t.id}')">${t.label}</button>`).join('')}
+        ${entry.type?`<button class="abtn abtn-d" onclick="clearCalendarDay('${team.id}','${dateStr}')">Quitar</button>`:''}
+      </div>
+      ${entry.type==='partido' ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input value="${entry.opponent||''}" placeholder="Rival" style="flex:1;min-width:140px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:8px 10px;color:var(--text);font-size:13px;outline:none" onblur="setCalendarGameField('${team.id}','${dateStr}','opponent',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+          <select style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:8px 10px;color:var(--text);font-size:13px;outline:none" onchange="setCalendarGameField('${team.id}','${dateStr}','homeAway',this.value)">
+            <option value="local" ${entry.homeAway==='local'?'selected':''}>Local</option>
+            <option value="visitante" ${entry.homeAway==='visitante'?'selected':''}>Visitante</option>
+          </select>
+        </div>
+        ${entry.opponent?`<div style="font-size:12px;color:var(--text3)">vs ${entry.opponent} · ${entry.homeAway==='visitante'?'Visitante':'Local'}</div>`:''}
+      `:''}
+    </div>
+  </div>`;
+}
+window.renderCalendarDayEditor=renderCalendarDayEditor;
+
+function shiftCalendarMonth(delta) {
+  const cur = S.calendarMonth || new Date().toISOString().slice(0,7);
+  const [y,m] = cur.split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  S.calendarMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  renderMain();
+}
+window.shiftCalendarMonth=shiftCalendarMonth;
+
+function selectCalendarDay(dateStr) {
+  S.calendarSelectedDate = (S.calendarSelectedDate===dateStr) ? null : dateStr;
+  renderMain();
+}
+window.selectCalendarDay=selectCalendarDay;
+
+async function setCalendarDayType(teamId, dateStr, type) {
+  const team = S.teams.find(t=>t.id===teamId); if(!team) return;
+  if(!team.calendar) team.calendar={};
+  const existing = team.calendar[dateStr]||{};
+  const turnOff = existing.type===type;
+  const entry = turnOff ? null : {...existing, type};
+  if(entry) team.calendar[dateStr]=entry; else delete team.calendar[dateStr];
+  try {
+    await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: entry||deleteField()}, {merge:true});
+    renderMain();
+  } catch(e){ showToast('Error al guardar'); }
+}
+window.setCalendarDayType=setCalendarDayType;
+
+async function setCalendarGameField(teamId, dateStr, field, value) {
+  const team = S.teams.find(t=>t.id===teamId); if(!team) return;
+  if(!team.calendar) team.calendar={};
+  if(!team.calendar[dateStr]) team.calendar[dateStr]={type:'partido'};
+  team.calendar[dateStr][field]=value;
+  try {
+    await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: team.calendar[dateStr]}, {merge:true});
+    renderMain();
+  } catch(e){ showToast('Error al guardar'); }
+}
+window.setCalendarGameField=setCalendarGameField;
+
+async function clearCalendarDay(teamId, dateStr) {
+  const team = S.teams.find(t=>t.id===teamId); if(!team) return;
+  if(team.calendar) delete team.calendar[dateStr];
+  try {
+    await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: deleteField()}, {merge:true});
+    S.calendarSelectedDate=null;
+    renderMain();
+  } catch(e){ showToast('Error al guardar'); }
+}
+window.clearCalendarDay=clearCalendarDay;
+
+// ══════════════════════════════════════════════════════════════
+// ── INFORME EXPORTABLE DEL EQUIPO ────────────────────────────
+// ══════════════════════════════════════════════════════════════
+function renderTeamReport(team) {
+  const members = (S.adminAthletes||[]).filter(a=>(team.memberUids||[]).includes(a.uid));
+  if(!members.length) return `<div class="empty-state">No hay atletas en este equipo todavía.</div>`;
+
+  const today = new Date().toISOString().split('T')[0];
+  const periodDays = 30;
+  const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
+  const periodStartStr = periodStart.toISOString().split('T')[0];
+
+  const injSum = getTeamInjurySummary(members);
+  let altas=0, bajas=0;
+  members.forEach(a=>{
+    const archive = a._personal?.injuryArchive||[];
+    altas += archive.filter(x=>x.resolvedDate>=periodStartStr).length;
+    const active = a._personal?.injuries||{};
+    Object.values(active).forEach(inj=>{
+      const start = inj.history?.length ? inj.history[0].date : null;
+      if(start && start>=periodStartStr) bajas++;
+    });
+  });
+  const injuryRate = members.length ? Math.round((injSum.total/members.length)*100) : 0;
+
+  const summaries = members.map(computeAthleteLoadSummary);
+  const avgW = avgMetric(summaries,'avgWellness');
+  const avgAcwr = avgMetric(summaries,'acwr');
+
+  const jumpRows = members.map(a=>{
+    const evals = a._personal?.evals||{};
+    const recs = evals['cmj']||[];
+    const best = recs.length?Math.max(...recs.map(r=>r.height)):null;
+    return {name:a.name||a.email, best};
+  }).filter(r=>r.best!=null).sort((a,b)=>b.best-a.best);
+
+  const positions = [...new Set(members.map(a=>a.position).filter(Boolean))];
+
+  return `<div class="no-print" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+    <div style="font-size:15px;font-weight:700;flex:1">Informe del equipo</div>
+    <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+  </div>
+
+  <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:760px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px">
+      <div>
+        <div style="font-size:20px;font-weight:800">${team.name}</div>
+        <div style="font-size:12px;color:#555;margin-top:2px">${team.sport||''}${team.category?' · '+team.category:''} · ${members.length} atletas</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.05em">G-Metrics Performance Lab</div>
+        <div style="font-size:12px;color:#555;margin-top:2px">${today}</div>
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Resumen general</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#ddd;border:1px solid #ddd;margin-bottom:20px">
+      <div style="background:#fff;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${avgW!=null?avgW+'%':'—'}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Wellness</div></div>
+      <div style="background:#fff;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${avgAcwr!=null?avgAcwr.toFixed(2):'—'}</div><div style="font-size:9px;color:#555;text-transform:uppercase">ACWR prom.</div></div>
+      <div style="background:#fff;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${injSum.total}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Lesiones activas</div></div>
+      <div style="background:#fff;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${injuryRate}%</div><div style="font-size:9px;color:#555;text-transform:uppercase">% plantel lesionado</div></div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Lesiones — últimos ${periodDays} días</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
+      <tr style="background:#f2f2f2">
+        <th style="padding:6px 10px;text-align:left">Graves</th><th style="padding:6px 10px;text-align:left">Moderadas</th>
+        <th style="padding:6px 10px;text-align:left">Leves</th><th style="padding:6px 10px;text-align:left">Altas</th><th style="padding:6px 10px;text-align:left">Bajas nuevas</th>
+      </tr>
+      <tr>
+        <td style="padding:6px 10px">${injSum.grave}</td><td style="padding:6px 10px">${injSum.moderada}</td><td style="padding:6px 10px">${injSum.leve}</td>
+        <td style="padding:6px 10px;color:#16803c">${altas}</td><td style="padding:6px 10px;color:#b91c1c">${bajas}</td>
+      </tr>
+    </table>
+    ${injSum.details.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
+      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:left">Zona</th><th style="padding:6px 10px;text-align:center">Dolor</th></tr></thead>
+      <tbody>${injSum.details.sort((a,b)=>b.pain-a.pain).map(d=>`<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.athlete}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.zoneId}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${d.pain}/10</td></tr>`).join('')}</tbody>
+    </table>`:'<div style="font-size:12px;color:#777;margin-bottom:20px">Sin lesiones activas.</div>'}
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Test de salto — mejor CMJ registrado</div>
+    ${jumpRows.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
+      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:center">CMJ (cm)</th></tr></thead>
+      <tbody>${jumpRows.map(r=>`<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${r.name}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${r.best}</td></tr>`).join('')}</tbody>
+    </table>`:'<div style="font-size:12px;color:#777;margin-bottom:20px">Sin tests de salto registrados.</div>'}
+
+    ${positions.length?`<div style="font-size:13px;font-weight:700;margin-bottom:8px">Promedios por posición</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
+      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Posición</th><th style="padding:6px 10px;text-align:center">Wellness</th><th style="padding:6px 10px;text-align:center">ACWR</th></tr></thead>
+      <tbody>${positions.map(pos=>{
+        const group=members.filter(a=>a.position===pos);
+        const s=group.map(computeAthleteLoadSummary);
+        const w=avgMetric(s,'avgWellness'); const ac=avgMetric(s,'acwr');
+        return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${pos}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${w!=null?w+'%':'—'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${ac!=null?ac.toFixed(2):'—'}</td></tr>`;
+      }).join('')}</tbody>
+    </table>`:''}
+
+    <div style="font-size:10px;color:#999;text-align:right;margin-top:20px">Generado el ${today}</div>
+  </div>`;
+}
+window.renderTeamReport=renderTeamReport;
 
 function renderTeamRutina(team) {
   const days=team.trainingDays||[];
@@ -2481,6 +2707,17 @@ async function setAthletePosition(uid, position) {
 }
 window.setAthletePosition=setAthletePosition;
 
+async function setAthleteDualComp(uid, val) {
+  try {
+    await setDoc(doc(db,'users',uid),{dualComp:!!val},{merge:true});
+    const a = S.adminAthletes.find(x=>x.uid===uid);
+    if(a) a.dualComp=!!val;
+    if(S.viewingAthlete?.userData) S.viewingAthlete.userData.dualComp=!!val;
+    renderMain();
+  } catch(e){ showToast('Error'); }
+}
+window.setAthleteDualComp=setAthleteDualComp;
+
 // ── DATOS AGRUPADOS (Wellness/Estadísticas dentro de Equipos y Atletas) ──
 // Carga la lista de atletas si todavía no está en memoria.
 async function ensureAdminAthletes() {
@@ -2653,12 +2890,102 @@ function renderGroupWellness(memberUids) {
 }
 window.renderGroupWellness = renderGroupWellness;
 
+// Lesiones activas del plantel agrupadas por gravedad — mismo criterio de
+// corte (pain>=8 grave, >=4 moderada, resto leve) que ya se usa en el resto
+// de la app para pintar las molestias individuales.
+function getTeamInjurySummary(members) {
+  let grave=0, moderada=0, leve=0;
+  const details=[];
+  members.forEach(a=>{
+    const injuries = a._personal?.injuries||{};
+    Object.entries(injuries).forEach(([zoneId,inj])=>{
+      if(!inj.pain||inj.pain<=0) return;
+      const sev = inj.pain>=8?'grave':inj.pain>=4?'moderada':'leve';
+      if(sev==='grave') grave++; else if(sev==='moderada') moderada++; else leve++;
+      details.push({athlete:a.name||a.email, zoneId, pain:inj.pain, sev});
+    });
+  });
+  return {grave, moderada, leve, total:grave+moderada+leve, details};
+}
+window.getTeamInjurySummary=getTeamInjurySummary;
+
+function renderTeamInjuryChart(members) {
+  const sum = getTeamInjurySummary(members);
+  if(!sum.total) {
+    return `<div class="admin-section">
+      <div class="admin-section-title">Lesiones activas del plantel</div>
+      <div style="padding:20px;text-align:center;font-size:13px;color:var(--green)">✓ Sin molestias activas registradas</div>
+    </div>`;
+  }
+  return `<div class="admin-section">
+    <div class="admin-section-title">Lesiones activas del plantel · ${sum.total}</div>
+    <div style="display:flex;align-items:center;gap:20px;padding:16px;flex-wrap:wrap">
+      <div style="width:160px;height:160px;position:relative;flex-shrink:0"><canvas id="team-injury-chart"></canvas></div>
+      <div style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:var(--red)"></div><span style="font-size:13px">Graves</span><span style="margin-left:auto;font-weight:700">${sum.grave}</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:var(--amber)"></div><span style="font-size:13px">Moderadas</span><span style="margin-left:auto;font-weight:700">${sum.moderada}</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:var(--green)"></div><span style="font-size:13px">Leves</span><span style="margin-left:auto;font-weight:700">${sum.leve}</span></div>
+      </div>
+    </div>
+    <div style="padding:0 16px 14px">
+      ${sum.details.sort((a,b)=>b.pain-a.pain).map(d=>{
+        const col = d.sev==='grave'?'var(--red)':d.sev==='moderada'?'var(--amber)':'var(--green)';
+        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);font-size:12px">
+          <span>${d.athlete} <span style="color:var(--text3)">— ${d.zoneId}</span></span>
+          <span style="color:${col};font-weight:600">${d.pain}/10</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+window.renderTeamInjuryChart=renderTeamInjuryChart;
+
+function drawTeamInjuryChart(members) {
+  if(typeof Chart==='undefined') return;
+  const canvas=document.getElementById('team-injury-chart');
+  if(!canvas) return;
+  const sum=getTeamInjurySummary(members);
+  if(!sum.total) return;
+  if(!S.injuryChartInstance) S.injuryChartInstance=null;
+  try{ if(S.injuryChartInstance) S.injuryChartInstance.destroy(); }catch(e){}
+
+  // Plugin chico para darle un poco de profundidad (sombra) al gráfico —
+  // Chart.js no soporta 3D real, esto es lo más honesto que se puede lograr
+  // en un canvas 2D sin sumar una librería nueva.
+  const shadowPlugin = {
+    id:'donutShadow',
+    beforeDatasetsDraw(chart){ const ctx=chart.ctx; ctx.save(); ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=16; ctx.shadowOffsetY=8; },
+    afterDatasetsDraw(chart){ chart.ctx.restore(); }
+  };
+
+  S.injuryChartInstance = new Chart(canvas, {
+    type:'doughnut',
+    data:{
+      labels:['Graves','Moderadas','Leves'],
+      datasets:[{
+        data:[sum.grave, sum.moderada, sum.leve],
+        backgroundColor:['#ef4444','#f59e0b','#22c55e'],
+        borderColor:'#0b1120', borderWidth:3,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8'} }
+    },
+    plugins:[shadowPlugin]
+  });
+}
+window.drawTeamInjuryChart=drawTeamInjuryChart;
+
 function renderGroupStats(memberUids) {
   const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
 
   // 1) Promedio general del equipo
   let html = renderTeamMetricsCard('Promedio del equipo', members);
+
+  // 1b) Lesiones activas del plantel, por gravedad
+  html += renderTeamInjuryChart(members);
 
   // 2) Desglose por posición (solo si al menos alguien tiene posición cargada)
   const withPos = members.filter(a=>a.position);
@@ -3263,7 +3590,7 @@ function renderAthletesListBody() {
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
-          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name:'Individual'}${a.position?' · '+a.position:''}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name:'Individual'}${a.position?' · '+a.position:''}${a.dualComp?' · <span style="color:var(--amber);font-weight:700">2x</span>':''}</div>
         </div>
         <span style="font-size:11px;color:${statusColor};flex-shrink:0;white-space:nowrap">${statusLbl}</span>
         <span style="color:var(--text3);font-size:18px;flex-shrink:0">›</span>
@@ -3525,6 +3852,13 @@ function renderAthleteDetail() {
         })()}
       </div>
       ${!myTeam?.sport&&myTeam?`<div style="font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
+      <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg3);border-radius:var(--rsm);width:100%;cursor:pointer" onclick="setAthleteDualComp('${uid}',!${!!userData.dualComp})">
+        <input type="checkbox" ${userData.dualComp?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();setAthleteDualComp('${uid}',this.checked)">
+        <div>
+          <div style="font-size:13px;font-weight:600">Doble competencia (juvenil + plantel superior)</div>
+          <div style="font-size:11px;color:var(--text3)">Puede jugar 2 partidos el mismo fin de semana — habilita un segundo registro de partido el mismo día</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -5214,7 +5548,7 @@ function renderDashboardAthleteList() {
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
-          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name:'Individual'}${a.position?' · '+a.position:''}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name:'Individual'}${a.position?' · '+a.position:''}${a.dualComp?' · <span style="color:var(--amber);font-weight:700">2x</span>':''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
           ${wAllFilled?sparklineSvg(getWellnessSparklineData(a._personal,7), getWellnessState(wPct).color, 36, 16):''}
@@ -5266,9 +5600,7 @@ function renderAthleteHome() {
   
   const routineName = S.assignedRoutine?.name || null;
   return `<div class="page-header">
-    <div class="page-title" style="display:flex;align-items:center;gap:10px">Hola${S.userData?.name?' '+S.userData.name.trim().split(/\s+/).slice(-1)[0]:''}!
-      <svg width="30" height="30" viewBox="0 0 48 48" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 22V9a3 3 0 0 1 6 0v11"/><path d="M24 21V6a3 3 0 0 1 6 0v15"/><path d="M30 21V9a3 3 0 0 1 6 0v14"/><path d="M36 18a3 3 0 0 1 6 0v9c0 8-5 14-14 14h-2c-6 0-9-2-12-6l-6-9c-1-1.5-.5-3.5 1-4.5s3.5-.5 4.5 1L18 24"/></svg>
-    </div>
+    <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.trim().split(/\s+/).slice(-1)[0]:''}!</div>
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
   ${routineName?`<div style="background:var(--accent-dim);border:1px solid rgba(59,125,216,0.25);border-radius:var(--rsm);padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
