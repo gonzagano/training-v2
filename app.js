@@ -950,12 +950,13 @@ function renderMain() {
     case 'dashboard': m.innerHTML=renderDashboard(); setTimeout(loadDashboard,50); break;
     case 'session':  m.innerHTML=renderSession(); break;
     case 'progress': m.innerHTML=renderProgress(); break;
-    case 'wellness': m.innerHTML=renderWellness(); break;
+    case 'wellness': m.innerHTML=renderWellness(); setTimeout(()=>runCountUps(),30); break;
     case 'stats':    m.innerHTML=renderStats(); break;
     case 'teams':    m.innerHTML=renderTeams(); break;
     case 'atletas':  m.innerHTML=renderAtletas(); break;
     case 'settings': m.innerHTML=renderSettings(); break;
-    case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAthleteTrendChart,80); break;
+    case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAthleteTrendChart,80); setTimeout(()=>runCountUps(),30); break;
+    case 'weekly_report': m.innerHTML=renderWeeklyReport(); break;
     case 'library':  m.innerHTML=renderLibraryView(); break;
     case 'evals':    m.innerHTML=renderEvals(); setTimeout(drawEvalCharts,80); break;
     case 'onboarding': m.innerHTML=renderOnboarding(); break;
@@ -1669,7 +1670,7 @@ function renderWellness() {
   html+=`<div class="hooper-score-box">
     <div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy</div>
-      <div class="hooper-score-val" style="color:${wState.color}">${allFilled?pct+'%':'—'}</div>
+      <div class="hooper-score-val" style="color:${wState.color}" ${allFilled?`data-countup="${pct}" data-suffix="%"`:''}>${allFilled?pct+'%':'—'}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">≥75% bien · ≥50% normal · &lt;50% fatigado</div>
     </div>
     <div style="text-align:right">
@@ -2312,6 +2313,91 @@ function renderTeamRutina(team) {
 
 const TEAM_COLORS = ['#d4647a','#b07ab8','#d4944a','#7ab88a','#68b4c8','#c87890','#a45870','#d4a8b0'];
 
+// Avatar circular con iniciales en vez de un simple punto de color — más fácil
+// de escanear en listas largas y le da más carácter a cada atleta.
+function getInitials(name) {
+  if(!name) return '?';
+  const parts=name.trim().split(/\s+/).filter(Boolean);
+  if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+}
+window.getInitials=getInitials;
+
+function avatarHtml(name, color, size) {
+  size = size||28;
+  const fs = Math.round(size*0.36);
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color||'var(--border2)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:${fs}px;font-weight:700;letter-spacing:-.02em">${getInitials(name)}</div>`;
+}
+window.avatarHtml=avatarHtml;
+
+// Mini-gráfico de tendencia sin ejes ni leyenda — para mostrar "hacia dónde viene
+// yendo" un número al lado del valor puntual, sin ocupar el espacio de un gráfico
+// completo. values: array ordenado de más viejo a más nuevo, con null = sin dato.
+function sparklineSvg(values, color, w, h) {
+  w=w||44; h=h||16;
+  const present = values.filter(v=>v!==null&&v!==undefined);
+  if(present.length<2) return '';
+  const min=Math.min(...present), max=Math.max(...present);
+  const range=(max-min)||1;
+  const stepX = values.length>1 ? w/(values.length-1) : 0;
+  const pad=1.5;
+  const pts = values.map((v,i)=>{
+    if(v===null||v===undefined) return null;
+    const x=i*stepX;
+    const y = pad + (h-pad*2) - ((v-min)/range)*(h-pad*2);
+    return x.toFixed(1)+','+y.toFixed(1);
+  });
+  const segments=[]; let cur=[];
+  pts.forEach(p=>{ if(p===null){ if(cur.length>1) segments.push(cur); cur=[]; } else cur.push(p); });
+  if(cur.length>1) segments.push(cur);
+  if(!segments.length) return '';
+  const polylines = segments.map(seg=>`<polyline points="${seg.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;flex-shrink:0">${polylines}</svg>`;
+}
+window.sparklineSvg=sparklineSvg;
+
+// Serie de wellness (%) de los últimos N días de un atleta, para el sparkline.
+function getWellnessSparklineData(personalData, days) {
+  days=days||7;
+  const wellness=personalData?.wellness||{};
+  const today=new Date();
+  const vals=[];
+  for(let i=days-1;i>=0;i--){
+    const d=new Date(today); d.setDate(d.getDate()-i);
+    const ds=d.toISOString().split('T')[0];
+    const {pct,allFilled}=getWellnessScore(wellness[ds]);
+    vals.push(allFilled?pct:null);
+  }
+  return vals;
+}
+window.getWellnessSparklineData=getWellnessSparklineData;
+
+// Micro-animación de conteo (0 → valor) para que los números clave se sientan
+// menos estáticos. Busca elementos con data-countup="valor" y anima el texto.
+// El textContent inicial YA es el valor final (fallback correcto si algo falla);
+// la animación solo lo sobreescribe temporalmente mientras corre.
+function runCountUps(containerId) {
+  const root = containerId ? document.getElementById(containerId) : document;
+  if(!root) return;
+  root.querySelectorAll('[data-countup]').forEach(el=>{
+    const target=parseFloat(el.getAttribute('data-countup'));
+    if(isNaN(target)) return;
+    const suffix=el.getAttribute('data-suffix')||'';
+    const decimals=el.getAttribute('data-decimals')?+el.getAttribute('data-decimals'):0;
+    const duration=500;
+    const start=performance.now();
+    function tick(now) {
+      const p=Math.min(1,(now-start)/duration);
+      const eased=1-Math.pow(1-p,3);
+      el.textContent=(target*eased).toFixed(decimals)+suffix;
+      if(p<1) requestAnimationFrame(tick);
+      else el.textContent=target.toFixed(decimals)+suffix;
+    }
+    requestAnimationFrame(tick);
+  });
+}
+window.runCountUps=runCountUps;
+
 async function createTeam() {
   const name=prompt('Nombre del equipo:'); if(!name) return;
   const sport=prompt('Deporte (ej: Handball, Básquet):','');
@@ -2458,29 +2544,29 @@ function renderTeamMetricsCard(title,members) {
     <div class="admin-section-title">${title} · ${members.length} atleta${members.length!==1?'s':''}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${wState.color}">${avgW!==null?avgW+'%':'—'}</div>
+        <div style="font-size:18px;font-weight:800;color:${wState.color}" ${avgW!==null?`data-countup="${avgW}" data-suffix="%"`:''}>${avgW!==null?avgW+'%':'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness sem.</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${acwrSt.color}">${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
+        <div style="font-size:18px;font-weight:800;color:${acwrSt.color}" ${avgAcwr!==null?`data-countup="${avgAcwr}" data-decimals="2"`:''}>${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
         <div style="font-size:9px;color:${acwrSt.color}">${acwrSt.label}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${monSt.color}">${avgMono!==null?avgMono.toFixed(1):'—'}</div>
+        <div style="font-size:18px;font-weight:800;color:${monSt.color}" ${avgMono!==null?`data-countup="${avgMono}" data-decimals="1"`:''}>${avgMono!==null?avgMono.toFixed(1):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía</div>
         <div style="font-size:9px;color:${monSt.color}">${monSt.label}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:16px;font-weight:700">${avgToday!==null?Math.round(avgToday):'—'}</div>
+        <div style="font-size:16px;font-weight:700" ${avgToday!==null?`data-countup="${Math.round(avgToday)}"`:''}>${avgToday!==null?Math.round(avgToday):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga hoy (UA)</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:16px;font-weight:700">${avgAcute!==null?Math.round(avgAcute):'—'}</div>
+        <div style="font-size:16px;font-weight:700" ${avgAcute!==null?`data-countup="${Math.round(avgAcute)}"`:''}>${avgAcute!==null?Math.round(avgAcute):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:16px;font-weight:700">${avgChronic!==null?Math.round(avgChronic):'—'}</div>
+        <div style="font-size:16px;font-weight:700" ${avgChronic!==null?`data-countup="${Math.round(avgChronic)}"`:''}>${avgChronic!==null?Math.round(avgChronic):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga crónica (UA)</div>
       </div>
     </div>
@@ -2950,6 +3036,7 @@ function renderAdmin() {
     case 'athlete_detail': return renderAthleteDetail();
     case 'routines':       return renderAdminRoutines();
     case 'routine_edit':   return renderRoutineEditor();
+    case 'compare_athletes': return renderCompareAthletes();
     default:               return renderAdminMain();
   }
 }
@@ -2962,6 +3049,10 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Ver alumnos</div><div class="admin-item-sub">Historial, wellness, molestias y asignación de rutinas</div></div>
       <button class="abtn abtn-p" onclick="adminGoAthletes()">Ver →</button>
+    </div>
+    <div class="admin-item">
+      <div><div class="admin-item-lbl">Comparar atletas</div><div class="admin-item-sub">Wellness, ACWR, saltos y fuerza lado a lado</div></div>
+      <button class="abtn abtn-p" onclick="adminGoCompare()">Comparar →</button>
     </div>
   </div>
   <div class="admin-section">
@@ -3046,7 +3137,7 @@ function renderAthletesListBody() {
       const statusLbl = assigned ? '✓ Personalizada' : myTeam ? '↳ Del equipo' : 'Sin rutina';
       const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
       return `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
-        <div style="width:9px;height:9px;border-radius:50%;background:${a.color||'var(--text3)'};flex-shrink:0"></div>
+        ${avatarHtml(a.name||a.email, a.color, 32)}
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name:'Individual'}${a.position?' · '+a.position:''}</div>
@@ -3065,6 +3156,80 @@ function setAthletesSearch(v) {
   if(el) el.innerHTML=renderAthletesListBody();
 }
 window.setAthletesSearch=setAthletesSearch;
+
+// ── COMPARAR ATLETAS ────────────────────────────────────────
+async function adminGoCompare() {
+  S.adminView='compare_athletes';
+  S.currentView='admin';
+  document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando atletas…</div>`;
+  await ensureAdminAthletes();
+  renderBottomBar();
+  renderMain();
+}
+window.adminGoCompare=adminGoCompare;
+
+async function setCompareAthlete(slot,uid) {
+  if(slot==='A') S.compareA = uid||null; else S.compareB = uid||null;
+  if(uid) await ensureGroupPersonalData([uid]);
+  renderMain();
+}
+window.setCompareAthlete=setCompareAthlete;
+
+function renderCompareAthletes() {
+  const athletes = S.adminAthletes||[];
+  const optsHtml = sel => `<option value="">— Elegir atleta —</option>` + athletes.map(a=>`<option value="${a.uid}" ${sel===a.uid?'selected':''}>${a.name||a.email}</option>`).join('');
+
+  let html = `<div class="team-detail-header">
+    <button class="back-btn" data-back="admin-main">‹</button>
+    <div class="team-detail-title">Comparar atletas</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <select class="eval-inp" onchange="setCompareAthlete('A',this.value)">${optsHtml(S.compareA)}</select>
+    <select class="eval-inp" onchange="setCompareAthlete('B',this.value)">${optsHtml(S.compareB)}</select>
+  </div>`;
+
+  if(!S.compareA || !S.compareB) return html+`<div class="empty-state">Elegí dos atletas para ver sus números lado a lado.</div>`;
+  if(S.compareA===S.compareB) return html+`<div class="empty-state">Elegí dos atletas distintos.</div>`;
+
+  const a=athletes.find(x=>x.uid===S.compareA), b=athletes.find(x=>x.uid===S.compareB);
+  if(!a||!b) return html;
+
+  const sumA=computeAthleteLoadSummary(a), sumB=computeAthleteLoadSummary(b);
+  const wA=getWellnessState(sumA.avgWellness), wB=getWellnessState(sumB.avgWellness);
+  const acwrA=getACWRStatus(sumA.acwr), acwrB=getACWRStatus(sumB.acwr);
+  const monA=getMonotonyStatus(sumA.monotony), monB=getMonotonyStatus(sumB.monotony);
+  const evalsA=a._personal?.evals||{}, evalsB=b._personal?.evals||{};
+  const bestOf=(edata,id)=>{ const r=edata?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
+
+  const rows=[
+    {label:'Wellness semanal', va:sumA.avgWellness!=null?sumA.avgWellness+'%':'—', vb:sumB.avgWellness!=null?sumB.avgWellness+'%':'—', ca:wA.color, cb:wB.color},
+    {label:'ACWR', va:sumA.acwr!=null?sumA.acwr.toFixed(2):'—', vb:sumB.acwr!=null?sumB.acwr.toFixed(2):'—', ca:acwrA.color, cb:acwrB.color},
+    {label:'Monotonía', va:sumA.monotony!=null?sumA.monotony.toFixed(1):'—', vb:sumB.monotony!=null?sumB.monotony.toFixed(1):'—', ca:monA.color, cb:monB.color},
+    {label:'Carga semana (UA)', va:sumA.acuteUA!=null?Math.round(sumA.acuteUA):'—', vb:sumB.acuteUA!=null?Math.round(sumB.acuteUA):'—'},
+    {label:'Mejor CMJ (cm)', va:bestOf(evalsA,'cmj')??'—', vb:bestOf(evalsB,'cmj')??'—'},
+    {label:'Press de banca (kg)', va:bestOf(evalsA,'rm_press_banca')??'—', vb:bestOf(evalsB,'rm_press_banca')??'—'},
+    {label:'Peso muerto (kg)', va:bestOf(evalsA,'rm_peso_muerto')??'—', vb:bestOf(evalsB,'rm_peso_muerto')??'—'},
+    {label:'Sentadilla (kg)', va:bestOf(evalsA,'rm_sentadilla')??'—', vb:bestOf(evalsB,'rm_sentadilla')??'—'},
+    {label:'Cargada de potencia (kg)', va:bestOf(evalsA,'rm_cargada_potencia')??'—', vb:bestOf(evalsB,'rm_cargada_potencia')??'—'},
+  ];
+
+  html += `<div class="admin-section">
+    <div style="display:grid;grid-template-columns:1fr 1fr;padding:12px 16px;border-bottom:1px solid var(--border);gap:8px">
+      <div style="text-align:center;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
+      <div style="text-align:center;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name||b.email}</div>
+    </div>
+    ${rows.map(r=>`
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:4px">${r.label}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr">
+          <div style="text-align:center;font-size:16px;font-weight:700;color:${r.ca||'var(--text)'}">${r.va}</div>
+          <div style="text-align:center;font-size:16px;font-weight:700;color:${r.cb||'var(--text)'}">${r.vb}</div>
+        </div>
+      </div>`).join('')}
+  </div>`;
+  return html;
+}
+window.renderCompareAthletes=renderCompareAthletes;
 
 async function adminOpenAthlete(uid) {
   S.adminView='athlete_detail';
@@ -3127,10 +3292,11 @@ function renderAthleteDetail() {
 
   let html=`<div class="team-detail-header">
     <button class="back-btn" data-back="admin-athletes">‹</button>
-    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
-      <div style="width:12px;height:12px;border-radius:50%;background:${userData.color||'var(--text3)'};flex-shrink:0"></div>
+    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1">
+      ${avatarHtml(userData.name||userData.email, userData.color, 30)}
       ${userData.name||userData.email}
     </div>
+    <button class="abtn" onclick="openWeeklyReport('${uid}')" title="Reporte semanal">📄 Reporte</button>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
     ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent)">${myTeam.name}</span>`:''}
@@ -3141,15 +3307,16 @@ function renderAthleteDetail() {
   <!-- Resumen rápido -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
     <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${wState.color}">${todayFilled?todayPct+'%':'—'}</div>
+      <div style="font-size:20px;font-weight:800;color:${wState.color}" ${todayFilled?`data-countup="${todayPct}" data-suffix="%"`:''}>${todayFilled?todayPct+'%':'—'}</div>
       <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy</div>
+      <div style="display:flex;justify-content:center;margin-top:6px">${sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 48, 16)}</div>
     </div>
     <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${acwrSt.color}">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+      <div style="font-size:20px;font-weight:800;color:${acwrSt.color}" ${m?.acwr!=null?`data-countup="${m.acwr}" data-decimals="2"`:''}>${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
       <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
     </div>
     <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${activeInjCount?'var(--red)':'var(--green)'}">${activeInjCount||'0'}</div>
+      <div style="font-size:20px;font-weight:800;color:${activeInjCount?'var(--red)':'var(--green)'}" data-countup="${activeInjCount||0}">${activeInjCount||'0'}</div>
       <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias activas</div>
     </div>
   </div>
@@ -3285,6 +3452,107 @@ function renderAthleteDetail() {
 
   return html;
 }
+
+// ── REPORTE SEMANAL EXPORTABLE ──────────────────────────────
+// Usa la función nativa de impresión del navegador (sin librerías nuevas):
+// "Imprimir" en el diálogo del navegador permite guardar como PDF directamente.
+async function openWeeklyReport(uid) {
+  await ensureGroupPersonalData([uid]);
+  S.reportAthleteUid = uid;
+  S.currentView = 'weekly_report';
+  renderMain();
+}
+window.openWeeklyReport = openWeeklyReport;
+
+function renderWeeklyReport() {
+  const uid = S.reportAthleteUid;
+  const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
+  if(!a) return `<div class="empty-state">Atleta no encontrado.</div>`;
+
+  const personal = a._personal||{};
+  const wellness = personal.wellness||{};
+  const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
+  const injuries = Object.entries(personal.injuries||{}).filter(([,v])=>v.pain>0);
+  const myTeam = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
+
+  const today = new Date();
+  const days = [];
+  for(let i=6;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i); days.push(d.toISOString().split('T')[0]); }
+  const rangeLabel = days[0]+' — '+days[6];
+
+  const m = calcLoadMetrics(logs);
+  const acwrSt = getACWRStatus(m?.acwr??null, m?.daysOfHistory);
+  const monSt = getMonotonyStatus(m?.monotony??null);
+
+  const wellnessRows = days.map(d=>{
+    const w = wellness[d];
+    const {pct,allFilled} = getWellnessScore(w);
+    const dayLogs = logs.filter(l=>l.date===d);
+    const ua = dayLogs.reduce((s,l)=>s+(l.ua||0),0);
+    const acts = dayLogs.map(l=>l.activity).join(', ');
+    return `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #ddd">${d}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #ddd;text-align:center">${allFilled?pct+'%':'—'}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #ddd;text-align:center">${ua||'—'}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #ddd">${acts||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="no-print" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+    <button class="back-btn" onclick="S.currentView='admin';renderMain()">‹</button>
+    <div style="font-size:15px;font-weight:700;flex:1">Reporte semanal</div>
+    <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+  </div>
+
+  <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:720px;margin:0 auto;font-family:inherit">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px">
+      <div>
+        <div style="font-size:20px;font-weight:800">${a.name||a.email}</div>
+        <div style="font-size:12px;color:#555;margin-top:2px">${myTeam?myTeam.name+' · ':''}${a.position||''}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.05em">G-Metrics Performance Lab</div>
+        <div style="font-size:12px;color:#555;margin-top:2px">${rangeLabel}</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#ddd;border:1px solid #ddd;margin-bottom:20px">
+      <div style="background:#fff;padding:12px;text-align:center">
+        <div style="font-size:20px;font-weight:800">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+        <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">ACWR</div>
+        <div style="font-size:10px;color:#555">${acwrSt.label}</div>
+      </div>
+      <div style="background:#fff;padding:12px;text-align:center">
+        <div style="font-size:20px;font-weight:800">${m?.monotony!=null?m.monotony.toFixed(1):'—'}</div>
+        <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">Monotonía</div>
+        <div style="font-size:10px;color:#555">${monSt.label}</div>
+      </div>
+      <div style="background:#fff;padding:12px;text-align:center">
+        <div style="font-size:20px;font-weight:800">${m?.acuteUA??'—'}</div>
+        <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Wellness y carga diaria</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
+      <thead><tr style="background:#f2f2f2">
+        <th style="padding:6px 10px;text-align:left">Fecha</th>
+        <th style="padding:6px 10px;text-align:center">Wellness</th>
+        <th style="padding:6px 10px;text-align:center">UA del día</th>
+        <th style="padding:6px 10px;text-align:left">Actividades</th>
+      </tr></thead>
+      <tbody>${wellnessRows}</tbody>
+    </table>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Molestias activas</div>
+    ${injuries.length
+      ? `<ul style="font-size:12px;margin:0 0 10px;padding-left:18px">${injuries.map(([id,inj])=>`<li>${id} — dolor ${inj.pain}/10${inj.note?' · '+inj.note:''}</li>`).join('')}</ul>`
+      : `<div style="font-size:12px;color:#777;margin-bottom:10px">Sin molestias registradas.</div>`}
+
+    <div style="font-size:10px;color:#999;text-align:right;margin-top:24px">Generado el ${new Date().toISOString().split('T')[0]}</div>
+  </div>`;
+}
+window.renderWeeklyReport = renderWeeklyReport;
 
 async function assignRoutineToAthlete(uid) {
   const sel = document.getElementById('assign-routine-sel');
@@ -3680,6 +3948,24 @@ const EVAL_TESTS = [
   { id:'cmj_izq', label:'CMJ Unilateral Izq.',     unit:'cm', desc:'CMJ una pierna izquierda' },
 ];
 
+// Tests de fuerza máxima (1RM). Reutilizan el mismo campo "height" que los tests
+// de salto por debajo (para poder reusar renderEvalHistory/drawEvalCharts sin
+// duplicar lógica) — acá representa kilos, no centímetros.
+const STRENGTH_TESTS = [
+  { id:'rm_press_banca',      label:'Press de banca',      unit:'kg', desc:'1RM' },
+  { id:'rm_peso_muerto',      label:'Peso muerto',         unit:'kg', desc:'1RM' },
+  { id:'rm_sentadilla',       label:'Sentadilla',          unit:'kg', desc:'1RM' },
+  { id:'rm_cargada_potencia', label:'Cargada de potencia', unit:'kg', desc:'1RM' },
+];
+
+function setEvalCategory(cat) {
+  S.evalCategory = cat;
+  S.evalView = 'entry';
+  renderMain();
+  setTimeout(drawEvalCharts, 80);
+}
+window.setEvalCategory = setEvalCategory;
+
 // ══════════════════════════════════════════════════════════════
 // ── TEST DE SALTABILIDAD ─────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
@@ -3725,6 +4011,15 @@ function renderEvals() {
   }
 
   const lastOf = id => { const r=(edata[id]||[]); return r.length ? r[r.length-1] : null; };
+
+  // Selector de categoría: Saltabilidad (jump tests) vs Fuerza Máxima (1RM)
+  const evalCat = S.evalCategory || 'saltabilidad';
+  const catSwitcherHtml = `<div style="display:flex;gap:6px;margin-bottom:16px">
+    <button class="snav-tab ${evalCat==='saltabilidad'?'active':''}" onclick="setEvalCategory('saltabilidad')">Saltabilidad</button>
+    <button class="snav-tab ${evalCat==='fuerza'?'active':''}" onclick="setEvalCategory('fuerza')">Fuerza Máxima</button>
+  </div>`;
+  if(evalCat==='fuerza') return renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop);
+
   const lCMJ=lastOf('cmj'), lSJ=lastOf('sj'), lAbal=lastOf('abalakov');
   const lDer=lastOf('cmj_der'), lIzq=lastOf('cmj_izq');
   const ice   = (lCMJ&&lSJ)   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1) : null;
@@ -3737,6 +4032,7 @@ function renderEvals() {
 
   let html = '<div class="page-header"><div class="page-title">Test de Saltabilidad</div>'
     + '<div class="page-subtitle">Valoración neuromuscular · Índices elásticos y coordinación</div></div>';
+  html += catSwitcherHtml;
 
   if(S.isAdmin) {
     html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
@@ -3769,6 +4065,101 @@ function renderEvals() {
   return html;
 }
 window.renderEvals = renderEvals;
+
+// ══════════════════════════════════════════════════════════════
+// ── FUERZA MÁXIMA (1RM) ──────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
+  const currentAthleteName = S.evalAthleteId==='self'
+    ? 'Yo (admin)'
+    : (S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.name || S.adminAthletes.find(a=>a.uid===S.evalAthleteId)?.email || 'Atleta');
+
+  let html = '<div class="page-header"><div class="page-title">Fuerza Máxima</div>'
+    + '<div class="page-subtitle">Tests de 1RM · Banca, peso muerto, sentadilla y cargada de potencia</div></div>';
+  html += catSwitcherHtml;
+
+  if(S.isAdmin) {
+    html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+      + '<div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
+      + athleteSel
+      + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
+      + '</div>';
+  }
+
+  const evalTabs = S.isAdmin
+    ? [{id:'entry',label:'Registrar test'},{id:'history',label:'Historial'}]
+    : [{id:'history',label:'Mi historial'}];
+  const view = S.evalView||'entry';
+  const activeView = evalTabs.find(t=>t.id===view) ? view : evalTabs[0].id;
+  if(activeView !== view) S.evalView = activeView;
+  const tabsHtml = evalTabs.map(t=>'<button class="snav-tab '+(activeView===t.id?'active':'')+'" onclick="switchEvalView(\''+t.id+'\')">'+t.label+'</button>').join('');
+  html += '<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">'+tabsHtml+'</div>';
+
+  if(activeView==='entry') html += renderStrengthEntry(edata);
+  else html += renderEvalHistory(edata, isDesktop, STRENGTH_TESTS);
+
+  return html;
+}
+window.renderStrengthEvals = renderStrengthEvals;
+
+function renderStrengthEntry(edata) {
+  const today = new Date().toISOString().split('T')[0];
+  let html = `<div class="wellness-card">
+    <div class="wellness-title">Registrar test de 1RM</div>
+    <div class="wellness-sub">Cargá el máximo levantado en cada ejercicio — dejá en blanco los que no corresponda hoy</div>
+    <div style="padding:14px 16px 0">
+      <label class="eval-lbl">Fecha</label>
+      <input class="eval-inp" type="date" id="einp-strength-date" value="${today}">
+    </div>`;
+  STRENGTH_TESTS.forEach(t=>{
+    const recs=edata[t.id]||[];
+    const last=recs.length?recs[recs.length-1]:null;
+    html += `<div class="hooper-item">
+      <div class="hooper-label">
+        <span>${t.label}</span>
+        ${last?`<span style="font-size:11px;color:var(--text3)">Último: ${last.height}kg · ${last.date}</span>`:''}
+      </div>
+      <input class="eval-inp" type="number" step="0.5" min="0" placeholder="kg" id="einp-strength-${t.id}">
+    </div>`;
+  });
+  html += `<div style="padding:14px 16px"><button class="eval-submit" style="grid-column:unset" onclick="saveStrengthEvals()">Guardar test</button></div>
+  </div>`;
+  return html;
+}
+window.renderStrengthEntry=renderStrengthEntry;
+
+async function saveStrengthEvals() {
+  const date = document.getElementById('einp-strength-date')?.value || new Date().toISOString().split('T')[0];
+  let saved=0;
+  const uid = S.evalAthleteId||'self';
+  for(const t of STRENGTH_TESTS) {
+    const el=document.getElementById('einp-strength-'+t.id);
+    if(!el||!el.value) continue;
+    const v=parseFloat(el.value);
+    if(isNaN(v)||v<=0) continue;
+    const rec={date, height:v}; // "height" reutilizado con semántica de kg acá
+    if(uid==='self') {
+      if(!S.evals[t.id]) S.evals[t.id]=[];
+      S.evals[t.id].push(rec);
+    } else {
+      if(!S._athleteEvalsCache) S._athleteEvalsCache={};
+      if(!S._athleteEvalsCache[uid]) S._athleteEvalsCache[uid]={};
+      if(!S._athleteEvalsCache[uid][t.id]) S._athleteEvalsCache[uid][t.id]=[];
+      S._athleteEvalsCache[uid][t.id].push(rec);
+    }
+    saved++;
+  }
+  if(!saved) { showToast('Ingresá al menos un valor'); return; }
+  if(uid==='self') scheduleSave();
+  else {
+    try { await setDoc(doc(db,'personal',uid), {evals:S._athleteEvalsCache[uid]}, {merge:true}); }
+    catch(e) { showToast('Error al guardar'); return; }
+  }
+  showToast('✓ '+saved+' test'+(saved!==1?'s':'')+' guardado'+(saved!==1?'s':''));
+  setTimeout(()=>{ if(S.currentView==='evals'){ renderMain(); setTimeout(drawEvalCharts,80);} }, 100);
+}
+window.saveStrengthEvals = saveStrengthEvals;
 
 async function selectEvalAthlete(uid) {
   S.evalAthleteId = uid;
@@ -3827,11 +4218,13 @@ function metricCardHtml(label, icon, value, color, sub) {
     + '<div class="metric-card-sub">'+sub+'</div></div>';
 }
 
-function renderEvalHistory(edata, isDesktop) {
+function renderEvalHistory(edata, isDesktop, testList) {
   if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
 
-  const histTests = EVAL_TESTS
-    .concat([{id:'asym', label:'Asimetría Unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda'}]);
+  const includeAsym = !testList; // la asimetría solo aplica a los tests de salto
+  const histTests = testList
+    ? testList
+    : EVAL_TESTS.concat([{id:'asym', label:'Asimetría Unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda'}]);
 
   let html = isDesktop ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">' : '';
 
@@ -4056,17 +4449,19 @@ function drawEvalCharts() {
             ctx.font = '600 10px Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
-            ctx.fillText(val+'cm', bar.x, bar.y-4);
+            ctx.fillText(val+(ds._unit||'cm'), bar.x, bar.y-4);
             ctx.restore();
           });
         });
       }
     };
 
-    const colorMap   = {cmj:'rgba(59,125,216,0.8)', sj:'rgba(34,197,94,0.8)', abalakov:'rgba(139,92,246,0.8)', saltoH:'rgba(20,184,166,0.8)', cmj_der:'rgba(245,158,11,0.8)', cmj_izq:'rgba(239,68,68,0.8)'};
-    const borderMap  = {cmj:'#3b7dd8', sj:'#22c55e', abalakov:'#8b5cf6', saltoH:'#14b8a6', cmj_der:'#f59e0b', cmj_izq:'#ef4444'};
+    const colorMap   = {cmj:'rgba(59,125,216,0.8)', sj:'rgba(34,197,94,0.8)', abalakov:'rgba(139,92,246,0.8)', saltoH:'rgba(20,184,166,0.8)', cmj_der:'rgba(245,158,11,0.8)', cmj_izq:'rgba(239,68,68,0.8)',
+      rm_press_banca:'rgba(139,92,246,0.8)', rm_peso_muerto:'rgba(20,184,166,0.8)', rm_sentadilla:'rgba(59,125,216,0.8)', rm_cargada_potencia:'rgba(239,68,68,0.8)'};
+    const borderMap  = {cmj:'#3b7dd8', sj:'#22c55e', abalakov:'#8b5cf6', saltoH:'#14b8a6', cmj_der:'#f59e0b', cmj_izq:'#ef4444',
+      rm_press_banca:'#8b5cf6', rm_peso_muerto:'#14b8a6', rm_sentadilla:'#3b7dd8', rm_cargada_potencia:'#ef4444'};
 
-    EVAL_TESTS.forEach(t=>{
+    EVAL_TESTS.concat(STRENGTH_TESTS).forEach(t=>{
       if(S.evalHidden.has(t.id)) return;
       const recs = edata[t.id]||[];
       if(!recs.length) return;
@@ -4084,7 +4479,7 @@ function drawEvalCharts() {
               data: recs.map(r=>r.height),
               backgroundColor: colorMap[t.id]||'rgba(59,125,216,0.8)',
               borderColor: borderMap[t.id]||'#3b7dd8',
-              borderWidth:1, borderRadius:4, order:2
+              borderWidth:1, borderRadius:4, order:2, _unit:t.unit
             },
             {
               type:'line', label:t.label+' (línea)',
@@ -4386,7 +4781,7 @@ function getACWRStatus(acwr, daysOfHistory) {
     if(daysOfHistory!=null && daysOfHistory<21) return {label:`Faltan ${21-daysOfHistory} día${21-daysOfHistory===1?'':'s'} de datos`,color:'var(--text3)'};
     return {label:'Sin datos',color:'var(--text3)'};
   }
-  if(acwr<0.8)   return {label:'Subcarga',color:'var(--blue)'};
+  if(acwr<0.8)   return {label:'Subcarga',color:'var(--purple)'};
   if(acwr<=1.3)  return {label:'Zona óptima ✓',color:'var(--green)'};
   if(acwr<=1.5)  return {label:'Precaución',color:'var(--amber)'};
   return {label:'Riesgo lesional ⚠',color:'var(--red)'};
@@ -4495,6 +4890,7 @@ async function loadDashboard() {
     S.dashLoaded = true;
     const el = document.getElementById('dashboard-content');
     if(el) el.innerHTML = renderDashboardContent();
+    setTimeout(()=>runCountUps(),30);
   } catch(e) {
     const el = document.getElementById('dashboard-content');
     if(el) el.innerHTML = `<div class="empty-state">Error cargando datos: ${e.message}</div>`;
@@ -4539,22 +4935,22 @@ function renderDashboardContent() {
   let html = `<div class="metric-grid" style="margin-bottom:20px">
     <div class="metric-card">
       <div class="metric-card-label">ATLETAS <span class="metric-card-icon">👥</span></div>
-      <div class="metric-card-value">${totalAthletes}</div>
+      <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
       <div class="metric-card-sub">registrados</div>
     </div>
     <div class="metric-card">
       <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">💪</span></div>
-      <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}">${trainedToday}</div>
+      <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}" data-countup="${trainedToday}">${trainedToday}</div>
       <div class="metric-card-sub">de ${totalAthletes} atletas</div>
     </div>
     <div class="metric-card">
       <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">❤️</span></div>
-      <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}">${wellnessToday}</div>
+      <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}" data-countup="${wellnessToday}">${wellnessToday}</div>
       <div class="metric-card-sub">registros enviados</div>
     </div>
     ${allAlerts.length?`<div class="metric-card" style="border-color:rgba(239,68,68,0.3)">
       <div class="metric-card-label" style="color:var(--red)">ALERTAS ⚠</div>
-      <div class="metric-card-value" style="color:var(--red)">${allAlerts.length}</div>
+      <div class="metric-card-value" style="color:var(--red)" data-countup="${allAlerts.length}">${allAlerts.length}</div>
       <div class="metric-card-sub">requieren atención</div>
     </div>`:''}
   </div>`;
@@ -4635,12 +5031,13 @@ function renderDashboardAthleteList() {
       const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
       const team = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
       return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
-        <div style="width:9px;height:9px;border-radius:50%;background:${a.color||'var(--text3)'};flex-shrink:0"></div>
+        ${avatarHtml(a.name||a.email, a.color, 32)}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name:'Individual'}${a.position?' · '+a.position:''}</div>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+          ${wAllFilled?sparklineSvg(getWellnessSparklineData(a._personal,7), getWellnessState(wPct).color, 36, 16):''}
           ${wAllFilled?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${getWellnessState(wPct).color};font-weight:600;white-space:nowrap">${wPct}%</span>`:''}
           ${metrics?.acwr!=null?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${acwrStatus.color};font-weight:600;white-space:nowrap">ACWR ${metrics.acwr.toFixed(2)}</span>`:''}
           ${todayLog.length?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:var(--green);white-space:nowrap">✓ hoy</span>`:''}
@@ -4689,7 +5086,7 @@ function renderAthleteHome() {
   
   const routineName = S.assignedRoutine?.name || null;
   return `<div class="page-header">
-    <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.split(' ')[0]:''}! 👋</div>
+    <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.trim().split(/\s+/).slice(-1)[0]:''}! 👋</div>
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
   ${routineName?`<div style="background:var(--accent-dim);border:1px solid rgba(59,125,216,0.25);border-radius:var(--rsm);padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
