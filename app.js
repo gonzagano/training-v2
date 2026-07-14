@@ -407,6 +407,11 @@ onAuthStateChanged(auth, async (user) => {
     if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     if (d.startDate) S.startDate = d.startDate;
+    // La semana SIEMPRE se recalcula a partir de la fecha de inicio real —
+    // así avanza sola con el calendario, entrene o no entrene el atleta.
+    // El valor guardado (d.currentWeek) queda solo como respaldo si por algún
+    // motivo no hay startDate.
+    if (S.startDate) S.currentWeek = computeWeekFromDate(S.startDate);
     // blocks only loaded for admin (athletes get them from assigned routine)
     if (S.isAdmin) {
       // Admin loads their own personal blocks
@@ -534,6 +539,17 @@ async function saveToFirestore() {
 
 // ── HELPERS ───────────────────────────────────────────────────
 function genId() { return 'x' + Date.now() + Math.floor(Math.random()*9999); }
+// Calcula la semana de entrenamiento a partir de la fecha real de inicio —
+// avanza sola con el calendario, sin importar si el atleta entrenó o no.
+function computeWeekFromDate(startDate) {
+  if(!startDate) return 1;
+  const start = new Date(startDate+'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diffDays = Math.floor((today-start)/86400000);
+  return Math.max(1, Math.floor(diffDays/7)+1);
+}
+window.computeWeekFromDate = computeWeekFromDate;
+
 function sessionKey(w,s) { return `w${w}-${s}`; }
 function getSD(w,s) {
   const k=sessionKey(w,s);
@@ -998,10 +1014,12 @@ function renderSession() {
     if (!S.isAdmin) {
       return header + `<div class="empty-state has-custom-icon" style="padding:40px 20px">
         <div style="margin-bottom:14px;display:flex;justify-content:center">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="1.5" y="9" width="3" height="6" rx="1"/><rect x="5" y="7" width="2.5" height="10" rx="1"/>
-            <line x1="8.5" y1="12" x2="15.5" y2="12"/>
-            <rect x="16.5" y="7" width="2.5" height="10" rx="1"/><rect x="19.5" y="9" width="3" height="6" rx="1"/>
+          <svg width="56" height="56" viewBox="0 0 48 48" fill="none" stroke="var(--text3)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="24" r="6"/><circle cx="8" cy="24" r="2.2"/>
+            <rect x="13" y="20" width="4" height="8" rx="1.5"/>
+            <line x1="17" y1="24" x2="31" y2="24"/>
+            <rect x="31" y="20" width="4" height="8" rx="1.5"/>
+            <circle cx="40" cy="24" r="6"/><circle cx="40" cy="24" r="2.2"/>
           </svg>
         </div>
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">Sin rutina asignada</div>
@@ -1227,7 +1245,7 @@ window.submitSessionFeedback=submitSessionFeedback;
 // más en S.history._sessionLogs, con el mismo modelo sRPE (UA = mins × RPE)
 // que ya usa calcLoadMetrics para ACWR / monotonía / strain.
 const LOAD_ACTIVITIES = [
-  {key:'gimnasio', label:'Gimnasio', emoji:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><rect x="1.5" y="9" width="3" height="6" rx="1"/><rect x="5" y="7" width="2.5" height="10" rx="1"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><rect x="16.5" y="7" width="2.5" height="10" rx="1"/><rect x="19.5" y="9" width="3" height="6" rx="1"/></svg>'},
+  {key:'gimnasio', label:'Gimnasio', emoji:'🏋️'},
   {key:'pelota',   label:'Pelota',   emoji:'🏀'},
   {key:'partido',  label:'Partido',  emoji:'🏆'},
 ];
@@ -3044,7 +3062,7 @@ function renderSettings() {
     </div>
     <div class="settings-item">
       <div><div class="settings-lbl">Fecha inicio</div></div>
-      <input type="date" class="abtn" value="${S.startDate}" onchange="S.startDate=this.value;scheduleSave();renderMain()" style="cursor:pointer">
+      <input type="date" class="abtn" value="${S.startDate}" onchange="S.startDate=this.value;S.currentWeek=computeWeekFromDate(S.startDate);scheduleSave();renderMain()" style="cursor:pointer">
     </div>
   </div>
   <div class="card">
@@ -3109,7 +3127,14 @@ function handleProfilePhotoUpload(input) {
 }
 window.handleProfilePhotoUpload=handleProfilePhotoUpload;
 
-function changeWeek(d) { S.currentWeek=Math.max(1,S.currentWeek+d); scheduleSave(); renderAll(); }
+function changeWeek(d) {
+  const start = new Date(S.startDate+'T00:00:00');
+  start.setDate(start.getDate() - d*7);
+  S.startDate = start.toISOString().split('T')[0];
+  S.currentWeek = computeWeekFromDate(S.startDate);
+  scheduleSave();
+  renderAll();
+}
 window.changeWeek=changeWeek;
 
 function exportData() {
@@ -3515,7 +3540,7 @@ function renderAthleteDetail() {
         ? `<div style="padding:8px 14px;font-size:12px;color:var(--accent)">↳ Hereda la rutina del equipo "${myTeam.name}" · sin personalización propia</div>`
         : `<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Semana ${personal.currentWeek||1}</div><div class="admin-item-sub">${personal.startDate?'Desde: '+personal.startDate:''}</div></div>
+      <div><div class="admin-item-lbl">Semana ${personal.startDate?computeWeekFromDate(personal.startDate):(personal.currentWeek||1)}</div><div class="admin-item-sub">${personal.startDate?'Desde: '+personal.startDate:''}</div></div>
       <div style="display:flex;gap:6px">
         <button class="abtn" onclick="changeAthleteWeek('${uid}',-1)">‹</button>
         <button class="abtn" onclick="changeAthleteWeek('${uid}',1)">›</button>
@@ -3724,12 +3749,16 @@ window.assignRoutineToAthlete=assignRoutineToAthlete;
 async function changeAthleteWeek(uid, delta) {
   const p = S.viewingAthlete?.personal;
   if(!p) return;
-  const cur = (p.currentWeek||1)+delta;
-  if(cur<1) return;
-  p.currentWeek = cur;
+  const start = new Date((p.startDate||new Date().toISOString().split('T')[0])+'T00:00:00');
+  start.setDate(start.getDate() - delta*7);
+  const newStart = start.toISOString().split('T')[0];
+  const newWeek = computeWeekFromDate(newStart);
+  if(newWeek<1) return;
+  p.startDate = newStart;
+  p.currentWeek = newWeek;
   try {
-    await setDoc(doc(db,'personal',uid),{currentWeek:cur},{merge:true});
-    showToast(`Semana actualizada: ${cur}`);
+    await setDoc(doc(db,'personal',uid),{startDate:newStart, currentWeek:newWeek},{merge:true});
+    showToast(`Semana actualizada: ${newWeek}`);
     renderMain();
   } catch(e) { showToast('Error'); }
 }
@@ -5238,7 +5267,7 @@ function renderAthleteHome() {
   const routineName = S.assignedRoutine?.name || null;
   return `<div class="page-header">
     <div class="page-title" style="display:flex;align-items:center;gap:10px">Hola${S.userData?.name?' '+S.userData.name.trim().split(/\s+/).slice(-1)[0]:''}!
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 12.5V7a1.5 1.5 0 0 0-3 0v4"/><path d="M15 11V5a1.5 1.5 0 0 0-3 0v6.5"/><path d="M12 11.5V6a1.5 1.5 0 0 0-3 0v9"/><path d="M9 13l-1.8-2.7a1.5 1.5 0 0 0-2.6 1.5L6 15c1.5 3.5 4 5.5 7.5 5.5S19 18.5 19 15v-2.5"/></svg>
+      <svg width="30" height="30" viewBox="0 0 48 48" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 22V9a3 3 0 0 1 6 0v11"/><path d="M24 21V6a3 3 0 0 1 6 0v15"/><path d="M30 21V9a3 3 0 0 1 6 0v14"/><path d="M36 18a3 3 0 0 1 6 0v9c0 8-5 14-14 14h-2c-6 0-9-2-12-6l-6-9c-1-1.5-.5-3.5 1-4.5s3.5-.5 4.5 1L18 24"/></svg>
     </div>
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
