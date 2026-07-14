@@ -747,13 +747,25 @@ window.onboardingPrev = onboardingPrev;
 async function findOrCreateTeam(institution, category) {
   const sport = INSTITUTIONS[institution].sport;
   const tSnap = await getDocs(collection(db, 'teams'));
-  const existing = tSnap.docs.map(dd => ({ id: dd.id, ...dd.data() }))
-    .find(t => t.institution === institution && t.category === category);
-  if (existing) return existing.id;
+  const allTeams = tSnap.docs.map(dd => ({ id: dd.id, ...dd.data() }));
+  // Primero por institution (el campo correcto), y si no aparece (equipos
+  // creados antes de que ese campo existiera, como los que ya tenías armados)
+  // caemos a comparar por nombre — así no se pierde ni se duplica ningún
+  // equipo ya existente.
+  const existing = allTeams.find(t => t.institution === institution && t.category === category)
+    || allTeams.find(t => t.name === institution && t.category === category);
+  if (existing) {
+    // Aprovechamos y le completamos el campo institution si le faltaba, para
+    // que la próxima vez ya matchee directo por la vía correcta.
+    if(!existing.institution) {
+      try { await updateDoc(doc(db,'teams',existing.id), {institution}); } catch(e){}
+    }
+    return existing.id;
+  }
   const id = genId();
   const team = {
     id, name: institution, sport, category, institution,
-    players: [], memberUids: [], trainingDays: [], color: '',
+    players: [], memberUids: [], trainingDays: [], calendar: {}, color: '',
     createdAt: new Date().toISOString()
   };
   await setDoc(doc(db, 'teams', id), team);
@@ -2357,31 +2369,33 @@ function renderCalendarWeekView(team) {
   const today = new Date().toISOString().split('T')[0];
   const weekLabel = `${days[0].toLocaleDateString('es-AR',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('es-AR',{day:'numeric',month:'short'})}`;
   const selected = S.calendarSelectedDate||null;
+  const dayInitials = ['L','M','X','J','V','S','D'];
 
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
     <div style="font-weight:700;font-size:14px">${weekLabel}</div>
     <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
   </div>
-  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-    ${days.map(d=>{
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    ${CALENDAR_TYPES.map(t=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3)"><div style="width:8px;height:8px;border-radius:50%;background:${t.color}"></div>${t.label}</div>`).join('')}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px">
+    ${days.map((d,i)=>{
       const dateStr=d.toISOString().split('T')[0];
       const events=getCalendarEvents(team,dateStr);
       const isToday=dateStr===today, isSelected=dateStr===selected;
-      const dayLabel=d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'short'});
-      return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer;background:${isSelected?'var(--accent-dim)':''};${isToday?'border-left:3px solid var(--accent)':''}" onclick="selectCalendarDay('${dateStr}')">
-        <div style="font-size:12px;font-weight:600;text-transform:capitalize;color:${isToday?'var(--accent)':'var(--text)'}">${dayLabel}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${events.length?events.map(e=>{
-            const t=CALENDAR_TYPES.find(x=>x.id===e.type);
-            const label=e.type==='partido'&&e.opponent?`Partido vs ${e.opponent} (${e.homeAway==='visitante'?'V':'L'})`:(t?.label||e.type);
-            return `<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${t?t.color+'22':'var(--bg3)'};color:${t?t.color:'var(--text3)'};border:1px solid ${t?t.color:'var(--border)'}">${label}</span>`;
-          }).join(''):`<span style="font-size:11px;color:var(--text3)">Sin actividad</span>`}
+      return `<div onclick="selectCalendarDay('${dateStr}')" style="aspect-ratio:1;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:3px;padding:4px 2px;
+        background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
+        <span style="font-size:9px;color:var(--text3);font-weight:600">${dayInitials[i]}</span>
+        <span style="font-size:14px;color:${isToday?'var(--accent)':'var(--text)'}">${d.getDate()}</span>
+        <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:100%">
+          ${events.slice(0,3).map(e=>{const t=CALENDAR_TYPES.find(x=>x.id===e.type);return `<div style="width:5px;height:5px;border-radius:50%;background:${t?t.color:'var(--text3)'}"></div>`;}).join('')}
+          ${events.length>3?`<span style="font-size:8px;color:var(--text3)">+${events.length-3}</span>`:''}
         </div>
       </div>`;
     }).join('')}
   </div>
-  ${selected ? renderCalendarDayEditor(team, selected) : `<div class="empty-state" style="padding:20px">Tocá un día para ver o agregar actividades.</div>`}`;
+  ${selected ? renderCalendarDayEditor(team, selected) : `<div class="empty-state" style="padding:20px">Tocá un día de la semana para ver o agregar actividades.</div>`}`;
   return html;
 }
 window.renderCalendarWeekView=renderCalendarWeekView;
@@ -2750,7 +2764,9 @@ async function createTeam() {
   const name=prompt('Nombre del equipo:'); if(!name) return;
   const sport=prompt('Deporte (ej: Handball, Básquet):','');
   const category=prompt('Categoría (ej: Liga de Honor):','');
-  const team={id:genId(),name,sport:sport||'',category:category||'',players:[],trainingDays:[],createdAt:new Date().toISOString()};
+  // institution = mismo valor que el nombre — es lo que el onboarding de un
+  // atleta de equipo usa para encontrar este equipo y no crear uno duplicado.
+  const team={id:genId(),name,institution:name,sport:sport||'',category:category||'',players:[],memberUids:[],trainingDays:[],calendar:{},color:'',createdAt:new Date().toISOString()};
   S.teams.push(team);
   await setDoc(doc(db,'teams',team.id),team);
   renderMain(); showToast('✓ Equipo creado');
@@ -5087,13 +5103,23 @@ function drawEvalCharts() {
   const gridColor = 'rgba(255,255,255,0.05)';
   const view = S.evalView||'entry';
   const chartView = (view==='team_compare') ? 'history' : view;
-  // Escalas fijas por test (pedidas explícitamente): la mayoría 10–80cm,
-  // salto horizontal mucho más largo, y unilateral en un rango bajo.
-  const scaleMap = {
-    cmj:{min:10,max:80}, sj:{min:10,max:80}, abalakov:{min:10,max:80},
-    saltoH:{min:50,max:340},
-    cmj_der:{min:0,max:40}, cmj_izq:{min:0,max:40}
-  };
+  // Escala dinámica: en vez de un rango fijo igual para todos los atletas
+  // (ej. 10-80cm), se calcula en base a los valores REALES registrados —
+  // así, si un atleta salta entre 41 y 49cm, el gráfico va de ~35 a ~55cm en
+  // vez de 10 a 80, y las diferencias entre test y test se ven de verdad.
+  function computeDynamicScale(vals) {
+    const valid = (vals||[]).filter(v=>v!=null && !isNaN(v));
+    if(!valid.length) return {min:0, max:10};
+    const dataMin=Math.min(...valid), dataMax=Math.max(...valid);
+    const range = dataMax-dataMin;
+    const pad = range>0 ? Math.max(range*0.3, 2) : Math.max(dataMax*0.15, 5);
+    let min = Math.floor((dataMin-pad)/5)*5;
+    let max = Math.ceil((dataMax+pad)/5)*5;
+    if(min<0) min=0;
+    if(max<=min) max=min+10;
+    return {min,max};
+  }
+  window.computeDynamicScale=computeDynamicScale;
 
   const tooltipStyle = {backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1};
 
@@ -5132,7 +5158,7 @@ function drawEvalCharts() {
       if(!recs.length) return;
       const c = document.getElementById('chart-hist-'+t.id);
       if(!c) return;
-      const sc = scaleMap[t.id] || {};
+      const sc = computeDynamicScale(recs.map(r=>r.height));
 
       S.evalChartInstances['chart-hist-'+t.id] = new Chart(c, {
         type:'bar',
@@ -5239,7 +5265,7 @@ function drawEvalCharts() {
     const canvasId = 'chart-compare-'+testId;
     const c = document.getElementById(canvasId);
     if(c && compData.length) {
-      const sc = scaleMap[testId] || {};
+      const sc = computeDynamicScale(compData.map(d=>d.value));
       const colors = compData.map((_,i)=>'hsl('+(210+i*35)+',65%,55%)');
       S.evalChartInstances[canvasId] = new Chart(c, {
         type:'bar',
