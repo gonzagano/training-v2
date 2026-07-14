@@ -821,7 +821,7 @@ function goHome() {
   S._routineEditorPrev=null;
   S.editingRoutine=null;
   S.viewingAthlete=null;
-  switchView(S.isAdmin ? 'session' : 'dashboard');
+  switchView('dashboard');
 }
 window.goHome=goHome;
 
@@ -3165,6 +3165,12 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Restaurar bloques propios</div><div class="admin-item-sub">Vuelve a la estructura original de tu sesión</div></div>
       <button class="abtn" onclick="resetBlocks()">Restaurar</button>
+    </div>
+  </div>
+  <div class="admin-section" style="border-color:rgba(239,68,68,0.3)">
+    <div class="admin-item" style="border-bottom:none">
+      <div><div class="admin-item-lbl" style="color:var(--red)">Cerrar sesión</div><div class="admin-item-sub">Volvés a la pantalla de inicio de sesión</div></div>
+      <button class="abtn abtn-d" onclick="signOut()">Cerrar sesión</button>
     </div>
   </div>`;
 }
