@@ -821,7 +821,7 @@ function goHome() {
   S._routineEditorPrev=null;
   S.editingRoutine=null;
   S.viewingAthlete=null;
-  switchView('session');
+  switchView(S.isAdmin ? 'session' : 'dashboard');
 }
 window.goHome=goHome;
 
@@ -853,6 +853,7 @@ function renderBottomBar() {
     {id:'atletas',  label:'Atletas',     section:null, svg:'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>'},
     {id:'admin',    label:'Panel Admin', section:null, svg:'<circle cx="12" cy="8" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4h-2a4 4 0 0 0-4 4v2"/><path d="M22 21v-1a3 3 0 0 0-2-2.83"/>'},
   ] : [
+    {id:'dashboard',label:'Inicio',      section:null, svg:'<path d="M3 9l9-7 9 7"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>'},
     {id:'session',  label:'Mi Rutina',   section:null, svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
     {id:'wellness', label:'Wellness',    section:null, svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
     {id:'evals',    label:'Mis Saltos',  section:null, svg:'<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'},
@@ -955,7 +956,7 @@ function renderMain() {
     case 'teams':    m.innerHTML=renderTeams(); break;
     case 'atletas':  m.innerHTML=renderAtletas(); break;
     case 'settings': m.innerHTML=renderSettings(); break;
-    case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAthleteTrendChart,80); setTimeout(()=>runCountUps(),30); break;
+    case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAthleteTrendChart,80); if(S.adminView==='compare_athletes') setTimeout(drawCompareCharts,80); setTimeout(()=>runCountUps(),30); break;
     case 'weekly_report': m.innerHTML=renderWeeklyReport(); break;
     case 'library':  m.innerHTML=renderLibraryView(); break;
     case 'evals':    m.innerHTML=renderEvals(); setTimeout(drawEvalCharts,80); break;
@@ -2323,8 +2324,9 @@ function getInitials(name) {
 }
 window.getInitials=getInitials;
 
-function avatarHtml(name, color, size) {
+function avatarHtml(name, color, size, photoUrl) {
   size = size||28;
+  if(photoUrl) return `<img src="${photoUrl}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;display:block" alt="">`;
   const fs = Math.round(size*0.36);
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color||'var(--border2)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:${fs}px;font-weight:700;letter-spacing:-.02em">${getInitials(name)}</div>`;
 }
@@ -2991,7 +2993,40 @@ window.renderAtletaRutina = renderAtletaRutina;
 
 // ── SETTINGS ─────────────────────────────────────────────────
 function renderSettings() {
+  const u = S.userData || {};
   return `
+  <div class="card">
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mi perfil</div>
+    <div style="padding:16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border)">
+      <div style="position:relative;cursor:pointer;flex-shrink:0" onclick="document.getElementById('profile-photo-inp').click()">
+        ${avatarHtml(u.name||S.user?.email, u.color, 64, u.photoUrl)}
+        <div style="position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;border:2px solid var(--bg2)">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </div>
+      </div>
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.name||'—'}</div>
+        <div style="font-size:12px;color:var(--text3)">Tocá la foto para cambiarla</div>
+      </div>
+      <input type="file" id="profile-photo-inp" accept="image/*" style="display:none" onchange="handleProfilePhotoUpload(this)">
+    </div>
+    <div class="settings-item">
+      <div class="settings-lbl">Nombre</div>
+      <input class="abtn" style="text-align:right;flex:1;max-width:200px" value="${u.name||''}" onblur="saveMyProfileField('name',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+    </div>
+    <div class="settings-item">
+      <div class="settings-lbl">Edad</div>
+      <input class="abtn" type="number" style="text-align:right;width:80px" value="${u.age||''}" onblur="saveMyProfileField('age',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+    </div>
+    <div class="settings-item">
+      <div class="settings-lbl">Altura (cm)</div>
+      <input class="abtn" type="number" style="text-align:right;width:80px" value="${u.height||''}" onblur="saveMyProfileField('height',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+    </div>
+    <div class="settings-item">
+      <div class="settings-lbl">Peso (kg)</div>
+      <input class="abtn" type="number" style="text-align:right;width:80px" value="${u.weight||''}" onblur="saveMyProfileField('weight',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+    </div>
+  </div>
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Semana actual</div>
     <div class="settings-item">
@@ -3013,9 +3048,54 @@ function renderSettings() {
     </div>
   </div>
   <div style="text-align:center;padding:20px;font-size:11px;color:var(--text3)">
-    Training System v2.0 · ${S.userData?.name||''} · ${S.isAdmin?'Admin':'Atleta'}
+    G-Metrics Performance Lab · ${S.userData?.name||''} · ${S.isAdmin?'Admin':'Atleta'}
   </div>`;
 }
+
+async function saveMyProfileField(field, value) {
+  if(field==='name' && !value.trim()) { showToast('El nombre no puede quedar vacío'); renderMain(); return; }
+  const numeric = ['age','height','weight'].includes(field);
+  const val = numeric ? (value===''?'':+value) : value.trim();
+  if(!S.userData) S.userData={};
+  S.userData[field]=val;
+  try {
+    await setDoc(doc(db,'users',S.user.uid), {[field]:val}, {merge:true});
+    showToast('✓ Guardado');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.saveMyProfileField=saveMyProfileField;
+
+function handleProfilePhotoUpload(input) {
+  const file = input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')) { showToast('Elegí un archivo de imagen'); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = async () => {
+      const size = 200;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const minSide = Math.min(img.width, img.height);
+      const sx = (img.width-minSide)/2, sy = (img.height-minSide)/2;
+      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      if(dataUrl.length > 700000) { showToast('La imagen es muy pesada, probá con otra'); return; }
+      if(!S.userData) S.userData={};
+      S.userData.photoUrl = dataUrl;
+      try {
+        await setDoc(doc(db,'users',S.user.uid), {photoUrl:dataUrl}, {merge:true});
+        showToast('✓ Foto actualizada');
+        renderMain();
+      } catch(e) { showToast('Error al guardar la foto'); }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+window.handleProfilePhotoUpload=handleProfilePhotoUpload;
 
 function changeWeek(d) { S.currentWeek=Math.max(1,S.currentWeek+d); scheduleSave(); renderAll(); }
 window.changeWeek=changeWeek;
@@ -3137,7 +3217,7 @@ function renderAthletesListBody() {
       const statusLbl = assigned ? '✓ Personalizada' : myTeam ? '↳ Del equipo' : 'Sin rutina';
       const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
       return `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
-        ${avatarHtml(a.name||a.email, a.color, 32)}
+        ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name:'Individual'}${a.position?' · '+a.position:''}</div>
@@ -3226,10 +3306,63 @@ function renderCompareAthletes() {
           <div style="text-align:center;font-size:16px;font-weight:700;color:${r.cb||'var(--text)'}">${r.vb}</div>
         </div>
       </div>`).join('')}
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Wellness semanal — en gráfico</div>
+    <div style="padding:14px 16px;height:180px;position:relative"><canvas id="compare-chart-wellness"></canvas></div>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Marcas de salto y fuerza — en gráfico</div>
+    <div style="padding:14px 16px;height:220px;position:relative"><canvas id="compare-chart-strength"></canvas></div>
   </div>`;
   return html;
 }
 window.renderCompareAthletes=renderCompareAthletes;
+
+function drawCompareCharts() {
+  if(typeof Chart==='undefined') return;
+  if(!S.compareChartInstances) S.compareChartInstances={};
+  Object.keys(S.compareChartInstances).forEach(k=>{
+    try{S.compareChartInstances[k].destroy();}catch(e){}
+    delete S.compareChartInstances[k];
+  });
+  if(!S.compareA || !S.compareB || S.compareA===S.compareB) return;
+  const athletes=S.adminAthletes||[];
+  const a=athletes.find(x=>x.uid===S.compareA), b=athletes.find(x=>x.uid===S.compareB);
+  if(!a||!b) return;
+
+  const sumA=computeAthleteLoadSummary(a), sumB=computeAthleteLoadSummary(b);
+  const evalsA=a._personal?.evals||{}, evalsB=b._personal?.evals||{};
+  const bestOf=(edata,id)=>{ const r=edata?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):0; };
+  const gridColor='rgba(255,255,255,0.05)';
+  const nameA=a.name||a.email, nameB=b.name||b.email;
+
+  const c1=document.getElementById('compare-chart-wellness');
+  if(c1) {
+    S.compareChartInstances['wellness']=new Chart(c1,{
+      type:'bar',
+      data:{ labels:[nameA,nameB], datasets:[{ data:[sumA.avgWellness||0, sumB.avgWellness||0], backgroundColor:['#3b7dd8','#22c55e'], borderRadius:6 }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+        scales:{ y:{min:0,max:100,ticks:{color:'#7a90b8',font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:'#a8b8d8',font:{size:11}},grid:{display:false}} } }
+    });
+  }
+  const c2=document.getElementById('compare-chart-strength');
+  if(c2) {
+    const labels=['CMJ (cm)','Banca (kg)','Muerto (kg)','Sentadilla (kg)','Cargada (kg)'];
+    const ids=['cmj','rm_press_banca','rm_peso_muerto','rm_sentadilla','rm_cargada_potencia'];
+    S.compareChartInstances['strength']=new Chart(c2,{
+      type:'bar',
+      data:{ labels, datasets:[
+        {label:nameA, data:ids.map(id=>bestOf(evalsA,id)), backgroundColor:'#3b7dd8', borderRadius:4},
+        {label:nameB, data:ids.map(id=>bestOf(evalsB,id)), backgroundColor:'#22c55e', borderRadius:4},
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#a8b8d8',font:{size:11}}}},
+        scales:{ y:{ticks:{color:'#7a90b8',font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:'#a8b8d8',font:{size:9}},grid:{display:false}} } }
+    });
+  }
+}
+window.drawCompareCharts=drawCompareCharts;
 
 async function adminOpenAthlete(uid) {
   S.adminView='athlete_detail';
@@ -3293,7 +3426,7 @@ function renderAthleteDetail() {
   let html=`<div class="team-detail-header">
     <button class="back-btn" data-back="admin-athletes">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1">
-      ${avatarHtml(userData.name||userData.email, userData.color, 30)}
+      ${avatarHtml(userData.name||userData.email, userData.color, 30, userData.photoUrl)}
       ${userData.name||userData.email}
     </div>
     <button class="abtn" onclick="openWeeklyReport('${uid}')" title="Reporte semanal">📄 Reporte</button>
@@ -5031,7 +5164,7 @@ function renderDashboardAthleteList() {
       const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
       const team = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
       return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
-        ${avatarHtml(a.name||a.email, a.color, 32)}
+        ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name:'Individual'}${a.position?' · '+a.position:''}</div>

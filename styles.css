@@ -39,7 +39,7 @@
 html,body{height:100%;font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5;overflow:hidden}
 
 /* ── MOBILE BASE (athletes) ──────────────────── */
-body{background:var(--bg);color:var(--text);font-size:15px}
+body{background:var(--bg);color:var(--text);font-size:16px}
 
 #app{height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
 #app-inner{display:flex;flex-direction:column;flex:1;min-height:0;width:100%;max-width:600px;margin:0 auto;position:relative}
@@ -119,14 +119,14 @@ body{background:var(--bg);color:var(--text);font-size:15px}
   .desktop-week-btns{display:flex;gap:4px}
   /* Desktop content header */
   .page-header{margin-bottom:28px}
-  .page-title{font-size:28px;font-weight:800;letter-spacing:-.02em;color:var(--text);line-height:1.2}
+  .page-title{font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.01em;color:var(--text);line-height:1.2}
   .page-subtitle{font-size:14px;color:var(--text2);margin-top:4px}
   /* Desktop metric cards */
   .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 @media(min-width:900px){.metric-grid{grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}}
   .metric-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px}
   .metric-card-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
-  .metric-card-value{font-size:32px;font-weight:800;color:var(--text);line-height:1}
+  .metric-card-value{font-family:'Space Grotesk',sans-serif;font-size:34px;font-weight:700;color:var(--text);line-height:1}
   .metric-card-sub{font-size:12px;color:var(--text3);margin-top:6px}
   .metric-card-icon{opacity:.6}
   /* Desktop two-column layout */
@@ -240,7 +240,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 
 /* ── TEAM DETAIL ─────────────────────────────── */
 .team-detail-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
-.team-detail-title{font-size:18px;font-weight:700;flex:1}
+.team-detail-title{font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;flex:1}
 .team-sport-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(59,125,216,0.2)}
 .back-btn{width:34px;height:34px;border-radius:50%;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-family:inherit}
 .back-btn:hover{background:var(--bg4);color:var(--text)}
@@ -272,7 +272,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .hooper-dot{flex:1;height:38px;border-radius:var(--rxs);border:1px solid var(--border);cursor:pointer;transition:all .15s;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:16px}
 .hooper-dot.sel{border-color:transparent}
 .hooper-score-box{display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px}
-.hooper-score-val{font-size:40px;font-weight:800;line-height:1}
+.hooper-score-val{font-family:'Space Grotesk',sans-serif;font-size:42px;font-weight:700;line-height:1}
 .hooper-score-label{font-size:13px;color:var(--text2)}
 .load-item{padding:14px 16px;border-bottom:1px solid var(--border)}
 .load-item:last-child{border-bottom:none}
