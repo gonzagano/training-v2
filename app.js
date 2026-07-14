@@ -1236,10 +1236,10 @@ window.submitSessionFeedback=submitSessionFeedback;
 // más en S.history._sessionLogs, con el mismo modelo sRPE (UA = mins × RPE)
 // que ya usa calcLoadMetrics para ACWR / monotonía / strain.
 const LOAD_ACTIVITIES = [
-  {key:'gimnasio', label:'Gimnasio', emoji:'🏋️'},
-  {key:'pelota',   label:'Pelota',   emoji:'🏀'},
-  {key:'partido',  label:'Partido',  emoji:'🏆'},
-  {key:'partido2', label:'Partido 2 (mismo día)', emoji:'🏆', dualCompOnly:true},
+  {key:'gimnasio', label:'Gimnasio',  emoji:'🏋️'},
+  {key:'pelota',   label:'Pelota',    emoji:'🏀'},
+  {key:'partido',  label:'Partido 1', emoji:'🏆', isGame:true},
+  {key:'partido2', label:'Partido 2 (si jugaste doble ese día)', emoji:'🏆', isGame:true},
 ];
 
 function getLoadLog(activity,date) {
@@ -1253,9 +1253,11 @@ function updateLoadDraft(date,activity,field,value) {
   if(!S.loadDraft[date]) S.loadDraft[date]={};
   if(!S.loadDraft[date][activity]) {
     const existing=getLoadLog(activity,date);
-    S.loadDraft[date][activity]=existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0};
+    S.loadDraft[date][activity]=existing?{mins:existing.mins,rpe:existing.rpe,note:existing.note||''}:{mins:'',rpe:0,note:''};
   }
-  S.loadDraft[date][activity][field]= field==='mins' ? (value===''?'':Math.max(0,+value)) : +value;
+  if(field==='mins') S.loadDraft[date][activity][field]= value===''?'':Math.max(0,+value);
+  else if(field==='rpe') S.loadDraft[date][activity][field]= +value;
+  else S.loadDraft[date][activity][field]= value; // note: texto libre, no numérico
   renderMain();
 }
 window.updateLoadDraft=updateLoadDraft;
@@ -1271,10 +1273,11 @@ function saveLoadLog(date) {
     const existing=getLoadLog(act.key,date);
     const mins = draft ? draft.mins : existing?.mins;
     const rpe  = draft ? draft.rpe  : existing?.rpe;
+    const note = draft ? (draft.note||'') : (existing?.note||'');
     if(mins && rpe) {
       // saca cualquier log previo de esta actividad en esa fecha, para no duplicar carga
       S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity===act.key));
-      S.history._sessionLogs.push({date, activity:act.key, session:act.label, week:S.currentWeek, rpe, mins, ua:mins*rpe});
+      S.history._sessionLogs.push({date, activity:act.key, session:act.label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe});
       savedAny=true;
     }
   });
@@ -1705,12 +1708,12 @@ function renderWellness() {
     <div class="wellness-sub">Cargá minutos y RPE de cada actividad (las que no correspondan, dejalas en blanco)</div>`;
 
   LOAD_ACTIVITIES.forEach(act=>{
-    if(act.dualCompOnly && !S.userData?.dualComp) return;
     const existing=getLoadLog(act.key,wKey);
-    const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe}:{mins:'',rpe:0});
+    const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe,note:existing.note||''}:{mins:'',rpe:0,note:''});
     const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
     html+=`<div class="load-item">
       <div class="load-item-label"><span>${act.emoji}</span><span>${act.label}</span></div>
+      ${act.isGame?`<input type="text" maxlength="60" class="load-mins-inp" style="width:100%;text-align:left;margin-bottom:8px" placeholder="Rival / categoría (opcional, ej: vs Club X — Juvenil)" value="${draft.note||''}" onblur="updateLoadDraft('${wKey}','${act.key}','note',this.value)">`:''}
       <div class="load-item-row">
         <input type="number" min="0" max="300" class="load-mins-inp" placeholder="min" value="${draft.mins||''}" oninput="updateLoadDraft('${wKey}','${act.key}','mins',this.value)">
         <div class="load-rpe-scale">
@@ -2246,7 +2249,7 @@ function setTeamSubview(v) {
 window.setTeamSubview = setTeamSubview;
 
 // ══════════════════════════════════════════════════════════════
-// ── CALENDARIO DEL EQUIPO ────────────────────────────────────
+// ── CALENDARIO DEL EQUIPO (estilo Google Calendar) ───────────
 // ══════════════════════════════════════════════════════════════
 const CALENDAR_TYPES = [
   {id:'fisico',   label:'Físico',       color:'#3b7dd8'},
@@ -2255,21 +2258,69 @@ const CALENDAR_TYPES = [
   {id:'descanso', label:'Descanso',     color:'#7a90b8'},
 ];
 
+// team.calendar[fecha] es un ARRAY de eventos (no un solo tipo) — un mismo
+// día puede tener Pelota Y Físico a la vez, por ejemplo. Si hay datos viejos
+// guardados como un objeto suelto (formato anterior), los tratamos como
+// lista de un elemento para no perder nada.
+function getCalendarEvents(team, dateStr) {
+  const raw = (team.calendar||{})[dateStr];
+  if(!raw) return [];
+  if(Array.isArray(raw)) return raw;
+  return raw.type ? [raw] : [];
+}
+window.getCalendarEvents=getCalendarEvents;
+
+function setCalendarViewMode(mode) {
+  S.calendarViewMode = mode;
+  renderMain();
+}
+window.setCalendarViewMode=setCalendarViewMode;
+
+function shiftCalendarRef(delta) {
+  const mode = S.calendarViewMode||'month';
+  const ref = new Date((S.calendarRefDate||new Date().toISOString().split('T')[0])+'T00:00:00');
+  if(mode==='day') ref.setDate(ref.getDate()+delta);
+  else if(mode==='week') ref.setDate(ref.getDate()+delta*7);
+  else ref.setMonth(ref.getMonth()+delta);
+  S.calendarRefDate = ref.toISOString().split('T')[0];
+  renderMain();
+}
+window.shiftCalendarRef=shiftCalendarRef;
+
+function selectCalendarDay(dateStr) {
+  S.calendarSelectedDate = (S.calendarSelectedDate===dateStr) ? null : dateStr;
+  renderMain();
+}
+window.selectCalendarDay=selectCalendarDay;
+
 function renderTeamCalendar(team) {
-  const viewMonth = S.calendarMonth || new Date().toISOString().slice(0,7);
-  const [y,m] = viewMonth.split('-').map(Number);
-  const firstDay = new Date(y, m-1, 1);
-  const daysInMonth = new Date(y, m, 0).getDate();
-  const startWeekday = (firstDay.getDay()+6)%7; // lunes=0
+  const mode = S.calendarViewMode||'month';
+  let html = `<div style="display:flex;gap:6px;margin-bottom:14px">
+    <button class="lib-filter ${mode==='day'?'active':''}" onclick="setCalendarViewMode('day')">Día</button>
+    <button class="lib-filter ${mode==='week'?'active':''}" onclick="setCalendarViewMode('week')">Semana</button>
+    <button class="lib-filter ${mode==='month'?'active':''}" onclick="setCalendarViewMode('month')">Mes</button>
+  </div>`;
+  if(mode==='day') html += renderCalendarDayView(team);
+  else if(mode==='week') html += renderCalendarWeekView(team);
+  else html += renderCalendarMonthView(team);
+  return html;
+}
+window.renderTeamCalendar=renderTeamCalendar;
+
+function renderCalendarMonthView(team) {
+  const refDate = new Date((S.calendarRefDate||new Date().toISOString().split('T')[0])+'T00:00:00');
+  const y=refDate.getFullYear(), m=refDate.getMonth();
+  const firstDay = new Date(y,m,1);
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const startWeekday = (firstDay.getDay()+6)%7;
   const monthLabel = firstDay.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
-  const calendar = team.calendar||{};
   const today = new Date().toISOString().split('T')[0];
   const selected = S.calendarSelectedDate||null;
 
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-    <button class="abtn" onclick="shiftCalendarMonth(-1)">‹</button>
+    <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
     <div style="font-weight:700;font-size:15px;text-transform:capitalize">${monthLabel}</div>
-    <button class="abtn" onclick="shiftCalendarMonth(1)">›</button>
+    <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
     ${CALENDAR_TYPES.map(t=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3)"><div style="width:8px;height:8px;border-radius:50%;background:${t.color}"></div>${t.label}</div>`).join('')}
@@ -2280,98 +2331,143 @@ function renderTeamCalendar(team) {
   <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px">
     ${Array.from({length:startWeekday}).map(()=>'<div></div>').join('')}
     ${Array.from({length:daysInMonth},(_,i)=>i+1).map(day=>{
-      const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      const entry = calendar[dateStr];
-      const typeInfo = entry ? CALENDAR_TYPES.find(t=>t.id===entry.type) : null;
+      const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const events = getCalendarEvents(team,dateStr);
       const isToday = dateStr===today, isSelected = dateStr===selected;
-      return `<div onclick="selectCalendarDay('${dateStr}')" style="aspect-ratio:1;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:2px;font-size:12px;
+      return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:42px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:3px;font-size:12px;padding:4px 2px;
         background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
         <span style="color:${isToday?'var(--accent)':'var(--text)'}">${day}</span>
-        ${typeInfo?`<div style="width:6px;height:6px;border-radius:50%;background:${typeInfo.color}"></div>`:''}
+        <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:100%">
+          ${events.slice(0,3).map(e=>{const t=CALENDAR_TYPES.find(x=>x.id===e.type);return `<div style="width:5px;height:5px;border-radius:50%;background:${t?t.color:'var(--text3)'}"></div>`;}).join('')}
+          ${events.length>3?`<span style="font-size:8px;color:var(--text3)">+${events.length-3}</span>`:''}
+        </div>
       </div>`;
     }).join('')}
   </div>
-  ${selected ? renderCalendarDayEditor(team, selected) : `<div class="empty-state" style="padding:24px">Tocá un día del calendario para asignarle una actividad.</div>`}`;
+  ${selected ? renderCalendarDayEditor(team, selected) : `<div class="empty-state" style="padding:24px">Tocá un día del calendario para ver o agregar actividades.</div>`}`;
   return html;
 }
-window.renderTeamCalendar=renderTeamCalendar;
+window.renderCalendarMonthView=renderCalendarMonthView;
 
+function renderCalendarWeekView(team) {
+  const refDate = new Date((S.calendarRefDate||new Date().toISOString().split('T')[0])+'T00:00:00');
+  const dow = (refDate.getDay()+6)%7;
+  const monday = new Date(refDate); monday.setDate(monday.getDate()-dow);
+  const days = Array.from({length:7},(_,i)=>{ const d=new Date(monday); d.setDate(d.getDate()+i); return d; });
+  const today = new Date().toISOString().split('T')[0];
+  const weekLabel = `${days[0].toLocaleDateString('es-AR',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('es-AR',{day:'numeric',month:'short'})}`;
+  const selected = S.calendarSelectedDate||null;
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
+    <div style="font-weight:700;font-size:14px">${weekLabel}</div>
+    <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+    ${days.map(d=>{
+      const dateStr=d.toISOString().split('T')[0];
+      const events=getCalendarEvents(team,dateStr);
+      const isToday=dateStr===today, isSelected=dateStr===selected;
+      const dayLabel=d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'short'});
+      return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer;background:${isSelected?'var(--accent-dim)':''};${isToday?'border-left:3px solid var(--accent)':''}" onclick="selectCalendarDay('${dateStr}')">
+        <div style="font-size:12px;font-weight:600;text-transform:capitalize;color:${isToday?'var(--accent)':'var(--text)'}">${dayLabel}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${events.length?events.map(e=>{
+            const t=CALENDAR_TYPES.find(x=>x.id===e.type);
+            const label=e.type==='partido'&&e.opponent?`Partido vs ${e.opponent} (${e.homeAway==='visitante'?'V':'L'})`:(t?.label||e.type);
+            return `<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${t?t.color+'22':'var(--bg3)'};color:${t?t.color:'var(--text3)'};border:1px solid ${t?t.color:'var(--border)'}">${label}</span>`;
+          }).join(''):`<span style="font-size:11px;color:var(--text3)">Sin actividad</span>`}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+  ${selected ? renderCalendarDayEditor(team, selected) : `<div class="empty-state" style="padding:20px">Tocá un día para ver o agregar actividades.</div>`}`;
+  return html;
+}
+window.renderCalendarWeekView=renderCalendarWeekView;
+
+function renderCalendarDayView(team) {
+  const refDate = S.calendarRefDate || new Date().toISOString().split('T')[0];
+  const dateLabel = new Date(refDate+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
+    <div style="font-weight:700;font-size:14px;text-transform:capitalize">${dateLabel}</div>
+    <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
+  </div>`;
+  html += renderCalendarDayEditor(team, refDate);
+  return html;
+}
+window.renderCalendarDayView=renderCalendarDayView;
+
+// Lista de eventos de un día puntual, con alta/baja y edición inline de
+// rival/local-visitante para los eventos de tipo "Partido".
 function renderCalendarDayEditor(team, dateStr) {
-  const entry = (team.calendar||{})[dateStr] || {};
+  const events = getCalendarEvents(team, dateStr);
   const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   return `<div class="admin-section">
     <div class="admin-section-title" style="text-transform:capitalize">${dateLabel}</div>
-    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${CALENDAR_TYPES.map(t=>`<button class="lib-filter ${entry.type===t.id?'active':''}" onclick="setCalendarDayType('${team.id}','${dateStr}','${t.id}')">${t.label}</button>`).join('')}
-        ${entry.type?`<button class="abtn abtn-d" onclick="clearCalendarDay('${team.id}','${dateStr}')">Quitar</button>`:''}
-      </div>
-      ${entry.type==='partido' ? `
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <input value="${entry.opponent||''}" placeholder="Rival" style="flex:1;min-width:140px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:8px 10px;color:var(--text);font-size:13px;outline:none" onblur="setCalendarGameField('${team.id}','${dateStr}','opponent',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
-          <select style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:8px 10px;color:var(--text);font-size:13px;outline:none" onchange="setCalendarGameField('${team.id}','${dateStr}','homeAway',this.value)">
-            <option value="local" ${entry.homeAway==='local'?'selected':''}>Local</option>
-            <option value="visitante" ${entry.homeAway==='visitante'?'selected':''}>Visitante</option>
-          </select>
+    ${events.length?events.map((e,i)=>{
+      const t=CALENDAR_TYPES.find(x=>x.id===e.type);
+      return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${t?t.color:'var(--text3)'};flex-shrink:0"></div>
+          <div style="font-size:13px;font-weight:600;flex:1">${t?t.label:e.type}</div>
+          <button class="abtn abtn-d" onclick="removeCalendarEvent('${team.id}','${dateStr}',${i})">Quitar</button>
         </div>
-        ${entry.opponent?`<div style="font-size:12px;color:var(--text3)">vs ${entry.opponent} · ${entry.homeAway==='visitante'?'Visitante':'Local'}</div>`:''}
-      `:''}
+        ${e.type==='partido'?`<div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:16px">
+          <input value="${e.opponent||''}" placeholder="Rival" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:12px;outline:none" onblur="setCalendarEventField('${team.id}','${dateStr}',${i},'opponent',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+          <select style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:12px;outline:none" onchange="setCalendarEventField('${team.id}','${dateStr}',${i},'homeAway',this.value)">
+            <option value="local" ${e.homeAway==='local'?'selected':''}>Local</option>
+            <option value="visitante" ${e.homeAway==='visitante'?'selected':''}>Visitante</option>
+          </select>
+        </div>`:''}
+      </div>`;
+    }).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin actividades este día.</div>`}
+    <div style="padding:14px 16px;border-top:1px solid var(--border)">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Agregar actividad (podés combinar varias el mismo día)</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${CALENDAR_TYPES.map(t=>`<button class="lib-filter" onclick="addCalendarEvent('${team.id}','${dateStr}','${t.id}')">+ ${t.label}</button>`).join('')}
+      </div>
     </div>
   </div>`;
 }
 window.renderCalendarDayEditor=renderCalendarDayEditor;
 
-function shiftCalendarMonth(delta) {
-  const cur = S.calendarMonth || new Date().toISOString().slice(0,7);
-  const [y,m] = cur.split('-').map(Number);
-  const d = new Date(y, m-1+delta, 1);
-  S.calendarMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  renderMain();
-}
-window.shiftCalendarMonth=shiftCalendarMonth;
-
-function selectCalendarDay(dateStr) {
-  S.calendarSelectedDate = (S.calendarSelectedDate===dateStr) ? null : dateStr;
-  renderMain();
-}
-window.selectCalendarDay=selectCalendarDay;
-
-async function setCalendarDayType(teamId, dateStr, type) {
+async function addCalendarEvent(teamId, dateStr, type) {
   const team = S.teams.find(t=>t.id===teamId); if(!team) return;
   if(!team.calendar) team.calendar={};
-  const existing = team.calendar[dateStr]||{};
-  const turnOff = existing.type===type;
-  const entry = turnOff ? null : {...existing, type};
-  if(entry) team.calendar[dateStr]=entry; else delete team.calendar[dateStr];
-  try {
-    await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: entry||deleteField()}, {merge:true});
-    renderMain();
-  } catch(e){ showToast('Error al guardar'); }
+  const events = getCalendarEvents(team,dateStr);
+  const newEvent = type==='partido' ? {type,opponent:'',homeAway:'local'} : {type};
+  const updated = [...events, newEvent];
+  team.calendar[dateStr]=updated;
+  try { await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: updated}, {merge:true}); renderMain(); }
+  catch(e){ showToast('Error al guardar'); }
 }
-window.setCalendarDayType=setCalendarDayType;
+window.addCalendarEvent=addCalendarEvent;
 
-async function setCalendarGameField(teamId, dateStr, field, value) {
+async function removeCalendarEvent(teamId, dateStr, idx) {
   const team = S.teams.find(t=>t.id===teamId); if(!team) return;
-  if(!team.calendar) team.calendar={};
-  if(!team.calendar[dateStr]) team.calendar[dateStr]={type:'partido'};
-  team.calendar[dateStr][field]=value;
+  const events = getCalendarEvents(team,dateStr);
+  events.splice(idx,1);
+  team.calendar[dateStr] = events;
   try {
-    await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: team.calendar[dateStr]}, {merge:true});
+    if(events.length) await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: events}, {merge:true});
+    else await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: deleteField()}, {merge:true});
     renderMain();
   } catch(e){ showToast('Error al guardar'); }
 }
-window.setCalendarGameField=setCalendarGameField;
+window.removeCalendarEvent=removeCalendarEvent;
 
-async function clearCalendarDay(teamId, dateStr) {
+async function setCalendarEventField(teamId, dateStr, idx, field, value) {
   const team = S.teams.find(t=>t.id===teamId); if(!team) return;
-  if(team.calendar) delete team.calendar[dateStr];
-  try {
-    await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: deleteField()}, {merge:true});
-    S.calendarSelectedDate=null;
-    renderMain();
-  } catch(e){ showToast('Error al guardar'); }
+  const events = getCalendarEvents(team,dateStr);
+  if(!events[idx]) return;
+  events[idx][field]=value;
+  team.calendar[dateStr]=events;
+  try { await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: events}, {merge:true}); }
+  catch(e){ showToast('Error al guardar'); }
 }
-window.clearCalendarDay=clearCalendarDay;
+window.setCalendarEventField=setCalendarEventField;
 
 // ══════════════════════════════════════════════════════════════
 // ── INFORME EXPORTABLE DEL EQUIPO ────────────────────────────
@@ -2707,16 +2803,18 @@ async function setAthletePosition(uid, position) {
 }
 window.setAthletePosition=setAthletePosition;
 
-async function setAthleteDualComp(uid, val) {
-  try {
-    await setDoc(doc(db,'users',uid),{dualComp:!!val},{merge:true});
-    const a = S.adminAthletes.find(x=>x.uid===uid);
-    if(a) a.dualComp=!!val;
-    if(S.viewingAthlete?.userData) S.viewingAthlete.userData.dualComp=!!val;
-    renderMain();
-  } catch(e){ showToast('Error'); }
+// Doble competencia ya no es un flag fijo en el perfil — se detecta solo,
+// mirando si el atleta cargó 2+ partidos en los últimos 7 días. Así, si una
+// semana juega doble y la siguiente no, la marca "2x" aparece y desaparece
+// sola, sin que nadie tenga que tildar/destildar nada a mano.
+function hasPlayedTwoGamesThisWeek(personal) {
+  const logs = personal?.history?._sessionLogs || personal?.sessionLogs || [];
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+  const gameLogs = logs.filter(l=>(l.activity==='partido'||l.activity==='partido2') && new Date(l.date)>=weekAgo);
+  const gameDates = new Set(gameLogs.map(l=>l.date));
+  return gameLogs.length>=2 || gameDates.size>=2;
 }
-window.setAthleteDualComp=setAthleteDualComp;
+window.hasPlayedTwoGamesThisWeek=hasPlayedTwoGamesThisWeek;
 
 // ── DATOS AGRUPADOS (Wellness/Estadísticas dentro de Equipos y Atletas) ──
 // Carga la lista de atletas si todavía no está en memoria.
@@ -3474,6 +3572,65 @@ window.exportData=exportData;
 
 // ── ADMIN PANEL ───────────────────────────────────────────────
 // ── ADMIN PANEL ───────────────────────────────────────────────
+// Ver cómo respondió un atleta puntualmente un día de wellness — para
+// entender SI un % bajo fue por sueño, estrés, dolor muscular, etc., no solo
+// el número final.
+function viewWellnessDay(uid, date) {
+  S.wellnessDetailUid = uid;
+  S.wellnessDetailDate = date;
+  S._wellnessDetailReturnView = S.adminView;
+  S.adminView = 'wellness_detail';
+  renderMain();
+}
+window.viewWellnessDay=viewWellnessDay;
+
+function renderWellnessDetail() {
+  const uid = S.wellnessDetailUid, date = S.wellnessDetailDate;
+  const a = (S.adminAthletes||[]).find(x=>x.uid===uid)
+    || (S.dashAthletes||[]).find(x=>x.uid===uid)
+    || (S.viewingAthlete?.uid===uid ? {name:S.viewingAthlete.userData?.name, email:S.viewingAthlete.userData?.email, _personal:S.viewingAthlete.personal} : null);
+  if(!a) return `<div class="empty-state">Atleta no encontrado.</div>`;
+
+  const w = a._personal?.wellness?.[date] || {};
+  const {pct, allFilled} = getWellnessScore(w);
+  const state = getWellnessState(allFilled?pct:null);
+  const dateLabel = new Date(date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+
+  let html = `<div class="team-detail-header">
+    <button class="back-btn" onclick="S.adminView='${S._wellnessDetailReturnView||'athlete_detail'}';renderMain()">‹</button>
+    <div class="team-detail-title">Wellness · ${a.name||a.email}</div>
+  </div>
+  <div style="font-size:13px;color:var(--text3);margin-bottom:16px;text-transform:capitalize">${dateLabel}</div>
+  <div class="hooper-score-box">
+    <div>
+      <div class="hooper-score-val" style="color:${state.color}">${allFilled?pct+'%':'—'}</div>
+    </div>
+    <div class="hooper-score-label" style="color:${state.color};font-weight:700">${allFilled?state.label:'Registro incompleto'}</div>
+  </div>`;
+
+  if(!Object.keys(w).length) {
+    return html + `<div class="empty-state">Sin datos de wellness cargados este día.</div>`;
+  }
+
+  html += `<div class="wellness-card">`;
+  WELLNESS_ITEMS.forEach(item=>{
+    const val = w[item.key];
+    const opt = item.options.find(o=>o.v===val);
+    const color = val ? `hsl(${Math.round((val-1)/4*120)},65%,45%)` : 'var(--text3)';
+    html += `<div class="hooper-item">
+      <div class="hooper-label"><span>${item.label}</span><span style="color:${color};font-weight:700;font-size:13px">${opt?opt.emoji+' '+opt.label:'— sin dato'}</span></div>
+    </div>`;
+  });
+  const hours = w.sueño_horas;
+  const cat = (hours!==undefined && hours!==null && hours!=='') ? sleepHoursCategory(hours) : null;
+  html += `<div class="hooper-item">
+    <div class="hooper-label"><span>Horas de sueño</span><span style="color:${cat?cat.color:'var(--text3)'};font-weight:700;font-size:13px">${cat?hours+'h · '+cat.label:'— sin dato'}</span></div>
+  </div>
+  </div>`;
+  return html;
+}
+window.renderWellnessDetail=renderWellnessDetail;
+
 function renderAdmin() {
   switch(S.adminView) {
     case 'athletes':       return renderAdminAthletes();
@@ -3481,6 +3638,7 @@ function renderAdmin() {
     case 'routines':       return renderAdminRoutines();
     case 'routine_edit':   return renderRoutineEditor();
     case 'compare_athletes': return renderCompareAthletes();
+    case 'wellness_detail': return renderWellnessDetail();
     default:               return renderAdminMain();
   }
 }
@@ -3590,7 +3748,7 @@ function renderAthletesListBody() {
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
-          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name:'Individual'}${a.position?' · '+a.position:''}${a.dualComp?' · <span style="color:var(--amber);font-weight:700">2x</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name:'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <span style="font-size:11px;color:${statusColor};flex-shrink:0;white-space:nowrap">${statusLbl}</span>
         <span style="color:var(--text3);font-size:18px;flex-shrink:0">›</span>
@@ -3809,7 +3967,7 @@ function renderAthleteDetail() {
 
   <!-- Resumen rápido -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
-    <div style="background:var(--bg2);padding:14px;text-align:center">
+    <div style="background:var(--bg2);padding:14px;text-align:center${todayFilled?';cursor:pointer':''}" ${todayFilled?`onclick="viewWellnessDay('${uid}','${today}')"`:''}>
       <div style="font-size:20px;font-weight:800;color:${wState.color}" ${todayFilled?`data-countup="${todayPct}" data-suffix="%"`:''}>${todayFilled?todayPct+'%':'—'}</div>
       <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy</div>
       <div style="display:flex;justify-content:center;margin-top:6px">${sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 48, 16)}</div>
@@ -3852,13 +4010,6 @@ function renderAthleteDetail() {
         })()}
       </div>
       ${!myTeam?.sport&&myTeam?`<div style="font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
-      <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg3);border-radius:var(--rsm);width:100%;cursor:pointer" onclick="setAthleteDualComp('${uid}',!${!!userData.dualComp})">
-        <input type="checkbox" ${userData.dualComp?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();setAthleteDualComp('${uid}',this.checked)">
-        <div>
-          <div style="font-size:13px;font-weight:600">Doble competencia (juvenil + plantel superior)</div>
-          <div style="font-size:11px;color:var(--text3)">Puede jugar 2 partidos el mismo fin de semana — habilita un segundo registro de partido el mismo día</div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -3938,9 +4089,9 @@ function renderAthleteDetail() {
       const {pct,allFilled}=getWellnessScore(w);
       if(!allFilled) return '';
       const col=getWellnessState(pct).color;
-      return `<div class="admin-item">
+      return `<div class="admin-item" style="cursor:pointer" onclick="viewWellnessDay('${uid}','${date}')">
         <span style="font-size:12px;color:var(--text3)">${date}</span>
-        <span style="font-size:14px;font-weight:600;color:${col}">${pct}%</span>
+        <span style="font-size:14px;font-weight:600;color:${col}">${pct}% ›</span>
       </div>`;
     }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div>`}
   </div>
@@ -5548,7 +5699,7 @@ function renderDashboardAthleteList() {
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
-          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name:'Individual'}${a.position?' · '+a.position:''}${a.dualComp?' · <span style="color:var(--amber);font-weight:700">2x</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name:'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
           ${wAllFilled?sparklineSvg(getWellnessSparklineData(a._personal,7), getWellnessState(wPct).color, 36, 16):''}
