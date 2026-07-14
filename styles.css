@@ -117,19 +117,21 @@ body{background:var(--bg);color:var(--text);font-size:16px}
   .desktop-week-label{font-size:13px;font-weight:600;color:var(--text)}
   .desktop-week-sub{font-size:11px;color:var(--text3)}
   .desktop-week-btns{display:flex;gap:4px}
-  /* Desktop content header */
-  .page-header{margin-bottom:28px}
-  .page-title{font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.01em;color:var(--text);line-height:1.2}
-  .page-subtitle{font-size:14px;color:var(--text2);margin-top:4px}
-  /* Desktop metric cards */
-  .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+}
+/* Desktop content header — universal, aplica en cualquier tamaño de pantalla */
+.page-header{margin-bottom:28px}
+.page-title{font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.01em;color:var(--text);line-height:1.2}
+.page-subtitle{font-size:14px;color:var(--text2);margin-top:4px}
+/* Metric cards — universales, con override de columnas para escritorio más abajo */
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 @media(min-width:900px){.metric-grid{grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}}
-  .metric-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px}
-  .metric-card-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
-  .metric-card-value{font-family:'Space Grotesk',sans-serif;font-size:34px;font-weight:700;color:var(--text);line-height:1}
-  .metric-card-sub{font-size:12px;color:var(--text3);margin-top:6px}
-  .metric-card-icon{opacity:.6}
-  /* Desktop two-column layout */
+.metric-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px}
+.metric-card-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.metric-card-value{font-family:'Space Grotesk',sans-serif;font-size:34px;font-weight:700;color:var(--text);line-height:1}
+.metric-card-sub{font-size:12px;color:var(--text3);margin-top:6px}
+.metric-card-icon{opacity:.6}
+/* Desktop two-column layout — este sí es exclusivo de escritorio */
+@media(min-width:900px){
   .desktop-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
   .desktop-cols.single{grid-template-columns:1fr}
   .desktop-cols.wide{grid-template-columns:2fr 1fr}
