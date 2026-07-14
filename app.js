@@ -3047,6 +3047,12 @@ function renderSettings() {
       <button class="abtn" onclick="exportData()">Exportar</button>
     </div>
   </div>
+  <div class="card">
+    <div class="settings-item" style="border-bottom:none">
+      <div><div class="settings-lbl" style="color:var(--red)">Cerrar sesión</div><div class="settings-sub">Volvés a la pantalla de inicio de sesión</div></div>
+      <button class="abtn abtn-d" onclick="signOut()">Cerrar sesión</button>
+    </div>
+  </div>
   <div style="text-align:center;padding:20px;font-size:11px;color:var(--text3)">
     G-Metrics Performance Lab · ${S.userData?.name||''} · ${S.isAdmin?'Admin':'Atleta'}
   </div>`;
