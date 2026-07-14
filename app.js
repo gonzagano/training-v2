@@ -996,8 +996,14 @@ function renderSession() {
   </div>`;
   if (!blocks.length) {
     if (!S.isAdmin) {
-      return header + `<div class="empty-state" style="padding:40px 20px">
-        <div style="font-size:32px;margin-bottom:12px">🏋️</div>
+      return header + `<div class="empty-state has-custom-icon" style="padding:40px 20px">
+        <div style="margin-bottom:14px;display:flex;justify-content:center">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1.5" y="9" width="3" height="6" rx="1"/><rect x="5" y="7" width="2.5" height="10" rx="1"/>
+            <line x1="8.5" y1="12" x2="15.5" y2="12"/>
+            <rect x="16.5" y="7" width="2.5" height="10" rx="1"/><rect x="19.5" y="9" width="3" height="6" rx="1"/>
+          </svg>
+        </div>
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">Sin rutina asignada</div>
         <div style="font-size:13px;color:var(--text3);line-height:1.6">Tu entrenador está preparando tu planificación.<br>Pronto vas a ver tu rutina acá.</div>
       </div>`;
@@ -1221,7 +1227,7 @@ window.submitSessionFeedback=submitSessionFeedback;
 // más en S.history._sessionLogs, con el mismo modelo sRPE (UA = mins × RPE)
 // que ya usa calcLoadMetrics para ACWR / monotonía / strain.
 const LOAD_ACTIVITIES = [
-  {key:'gimnasio', label:'Gimnasio', emoji:'🏋️'},
+  {key:'gimnasio', label:'Gimnasio', emoji:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><rect x="1.5" y="9" width="3" height="6" rx="1"/><rect x="5" y="7" width="2.5" height="10" rx="1"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><rect x="16.5" y="7" width="2.5" height="10" rx="1"/><rect x="19.5" y="9" width="3" height="6" rx="1"/></svg>'},
   {key:'pelota',   label:'Pelota',   emoji:'🏀'},
   {key:'partido',  label:'Partido',  emoji:'🏆'},
 ];
@@ -5231,7 +5237,9 @@ function renderAthleteHome() {
   
   const routineName = S.assignedRoutine?.name || null;
   return `<div class="page-header">
-    <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.trim().split(/\s+/).slice(-1)[0]:''}! 👋</div>
+    <div class="page-title" style="display:flex;align-items:center;gap:10px">Hola${S.userData?.name?' '+S.userData.name.trim().split(/\s+/).slice(-1)[0]:''}!
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 12.5V7a1.5 1.5 0 0 0-3 0v4"/><path d="M15 11V5a1.5 1.5 0 0 0-3 0v6.5"/><path d="M12 11.5V6a1.5 1.5 0 0 0-3 0v9"/><path d="M9 13l-1.8-2.7a1.5 1.5 0 0 0-2.6 1.5L6 15c1.5 3.5 4 5.5 7.5 5.5S19 18.5 19 15v-2.5"/></svg>
+    </div>
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
   ${routineName?`<div style="background:var(--accent-dim);border:1px solid rgba(59,125,216,0.25);border-radius:var(--rsm);padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
