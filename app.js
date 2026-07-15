@@ -3682,23 +3682,66 @@ function renderAtletaRutina(a) {
     <div class="admin-section-title">${routine.name}</div>
     ${sessionNames.map(sName => {
       const blocks = routine.sessions[sName] || [];
-      return `<div style="padding:10px 16px;border-top:1px solid var(--border)">
-        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${sName}</div>
-        ${blocks.length ? blocks.map(b=>`
-          <div style="margin-bottom:10px">
-            <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px">${b.label?b.label+' · ':''}${b.title||''}</div>
-            ${(b.categories||[]).map(cat=>`
-              ${cat.label?`<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:4px 0 2px">${cat.label}</div>`:''}
-              ${(cat.exercises||[]).map((ex,i)=>`<div style="font-size:13px;padding:4px 0;padding-left:8px;${i>0?'border-top:1px solid var(--border)':''}"><span style="color:var(--text)">${ex.name}</span> <span style="color:var(--text3)">— ${formatExSummary(ex)}</span></div>`).join('')}
-            `).join('')}
-          </div>`).join('')
-          : `<div style="font-size:12px;color:var(--text3)">Sin ejercicios cargados</div>`}
+      const dayCollapsed = S._atletaRoutineCollapsedDays?.has(sName);
+      return `<div style="border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer" onclick="toggleAtletaRoutineDay('${sName}')">
+          <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em">${sName}</div>
+          <span style="color:var(--text3);font-size:16px;transition:transform .15s;transform:rotate(${dayCollapsed?'-90':'0'}deg)">›</span>
+        </div>
+        ${dayCollapsed ? '' : (blocks.length ? blocks.map(b=>{
+          const blockOpen = !S._atletaRoutineCollapsedBlocks?.has(b.id);
+          return `<div class="card block ${b.colorKey||'bx'} ${blockOpen?'open':''}" style="margin:0 16px 10px">
+            <div class="block-header" onclick="toggleAtletaRoutineBlock('${b.id}')">
+              <span class="block-badge">${b.label}</span>
+              <div class="block-title-wrap"><span class="block-title">${b.title||''}</span></div>
+              <span class="block-chevron">›</span>
+            </div>
+            <div class="block-body">
+              ${(b.categories||[]).map(cat=>`
+                ${cat.label?`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label">${cat.label}</span></div></div>`:''}
+                ${(cat.exercises||[]).map(ex=>`
+                  <div class="ex-row">
+                    <div class="ex-main">
+                      <div class="ex-name-row"><span class="ex-name">${ex.name}</span></div>
+                      <div class="ex-fields">
+                        <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:14px;padding:4px 0">${ex.series||'—'}</div></div>
+                        <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:14px;padding:4px 0">${ex.reps||'—'}</div></div>
+                        <div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:14px;padding:4px 0">${ex.pct||'—'}</div></div>
+                        <div class="field-box"><span class="field-lbl">${ex.intensityType||'RPE'}</span><div style="font-size:14px;padding:4px 0">${ex.rpe||'—'}</div></div>
+                        <div class="field-box"><span class="field-lbl">Nota</span><div style="font-size:14px;padding:4px 0">${ex.note||'—'}</div></div>
+                      </div>
+                    </div>
+                  </div>`).join('')}
+              `).join('')}
+            </div>
+          </div>`;
+        }).join('') : `<div style="padding:0 16px 12px;font-size:12px;color:var(--text3)">Sin ejercicios cargados</div>`)}
       </div>`;
     }).join('')}
   </div>`;
   return html;
 }
 window.renderAtletaRutina = renderAtletaRutina;
+
+// Colapsar/desplegar días y bloques en la VISTA PREVIA de la rutina asignada
+// (ficha del atleta) — a propósito usa su propio estado (S._atletaRoutine...),
+// separado del que usa el editor real de rutinas, para no arriesgar mezclar
+// ediciones de una rutina con la vista de otra.
+function toggleAtletaRoutineDay(sName) {
+  if(!S._atletaRoutineCollapsedDays) S._atletaRoutineCollapsedDays = new Set();
+  const set = S._atletaRoutineCollapsedDays;
+  if(set.has(sName)) set.delete(sName); else set.add(sName);
+  renderMain();
+}
+window.toggleAtletaRoutineDay = toggleAtletaRoutineDay;
+
+function toggleAtletaRoutineBlock(blockId) {
+  if(!S._atletaRoutineCollapsedBlocks) S._atletaRoutineCollapsedBlocks = new Set();
+  const set = S._atletaRoutineCollapsedBlocks;
+  if(set.has(blockId)) set.delete(blockId); else set.add(blockId);
+  renderMain();
+}
+window.toggleAtletaRoutineBlock = toggleAtletaRoutineBlock;
 
 // ── SETTINGS ─────────────────────────────────────────────────
 // Fuerza a bajar la última versión de la app, saltando cualquier caché del
@@ -4393,6 +4436,8 @@ window.drawCompareCharts=drawCompareCharts;
 async function adminOpenAthlete(uid) {
   S.adminView='athlete_detail';
   S.currentView='admin';
+  S._atletaRoutineCollapsedDays = null;
+  S._atletaRoutineCollapsedBlocks = null;
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
   try {
     const uSnap = await getDoc(doc(db,'users',uid));
