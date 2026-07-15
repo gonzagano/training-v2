@@ -297,7 +297,7 @@ let S = {
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
   videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [],
-  teams: [], pendingAthletes: [], progressView: { week: 1 },
+  teams: [], pendingAthletes: [], notifications: [], progressView: { week: 1 },
   myTeam: null, // solo para atletas de equipo: el doc de su propio equipo
   teamSubview: 'rutina',      // 'rutina'|'wellness'|'stats'|'evals' dentro de un equipo
   atletaView: null,           // uid del atleta individual seleccionado (o null = lista)
@@ -432,6 +432,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.wellness) S.wellness = d.wellness;
     if (d.injuries) S.injuries = d.injuries;
     if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
+    if (d.notifications) S.notifications = d.notifications;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     if (d.startDate) S.startDate = d.startDate;
     // La semana SIEMPRE se recalcula a partir de la fecha de inicio real —
@@ -544,6 +545,7 @@ onAuthStateChanged(auth, async (user) => {
   if (S.isAdmin) {
     document.getElementById('pm-admin').style.display = 'block';
   }
+  updateNotifBadge();
 
   renderBottomBar();
   renderAll();
@@ -597,6 +599,14 @@ function namesLikelyMatch(x,y) {
   return !!wx && !!wy && wx===wy;
 }
 window.namesLikelyMatch=namesLikelyMatch;
+
+// Pone en mayúscula la primera letra de cada palabra (y el resto en minúscula)
+// — "GANORA" o "ganora" se guardan siempre como "Ganora".
+function capitalizeName(s) {
+  return (s||'').trim().split(/\s+/).filter(Boolean)
+    .map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+}
+window.capitalizeName=capitalizeName;
 // Calcula la semana de entrenamiento a partir de la fecha real de inicio —
 // avanza sola con el calendario, sin importar si el atleta entrenó o no.
 function computeWeekFromDate(startDate) {
@@ -674,9 +684,9 @@ function renderOnboardingStep1(d) {
     <div class="wellness-title">Datos personales</div>
     <div class="wellness-sub">Completá tu información básica</div>
     <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
-      <div>
-        <label class="eval-lbl">Apellido y nombre</label>
-        <input class="auth-inp" style="margin:0;display:block" type="text" value="${d.fullName || S.userData?.name || ''}" oninput="setOnboardingField('fullName',this.value)" placeholder="Ej: Pérez, Juan">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="eval-lbl">Apellido</label><input class="auth-inp" style="margin:0" type="text" value="${d.lastName||''}" oninput="setOnboardingField('lastName',this.value)" onblur="this.value=capitalizeName(this.value);setOnboardingField('lastName',this.value)" placeholder="Ej: Pérez"></div>
+        <div><label class="eval-lbl">Nombre</label><input class="auth-inp" style="margin:0" type="text" value="${d.firstName||''}" oninput="setOnboardingField('firstName',this.value)" onblur="this.value=capitalizeName(this.value);setOnboardingField('firstName',this.value)" placeholder="Ej: Juan"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
         <div><label class="eval-lbl">Edad</label><input class="auth-inp" style="margin:0" type="number" min="1" value="${d.age}" oninput="setOnboardingField('age',this.value)" placeholder="años"></div>
@@ -766,7 +776,7 @@ function renderOnboardingStep4(d) {
   return `<div class="wellness-card">
     <div class="wellness-title">Confirmá tus datos</div>
     <div style="padding:16px;display:flex;flex-direction:column;gap:10px;font-size:13px">
-      <div><b>Nombre:</b> ${d.fullName || '—'}</div>
+      <div><b>Nombre:</b> ${(d.lastName&&d.firstName) ? capitalizeName(d.lastName)+' '+capitalizeName(d.firstName) : '—'}</div>
       <div><b>Edad:</b> ${d.age||'—'} · <b>Altura:</b> ${d.height||'—'} cm · <b>Peso:</b> ${d.weight||'—'} kg</div>
       <div><b>Perfil:</b> ${typeLabel}</div>
       <div><b>Lesiones registradas:</b> ${injCount ? injCount : 'Ninguna'}</div>
@@ -808,7 +818,7 @@ window.selectInstitution = selectInstitution;
 
 function onboardingNext() {
   const d = S.onboardingData;
-  if (S.onboardingStep === 1 && (!d.fullName || !d.age || !d.height || !d.weight)) {
+  if (S.onboardingStep === 1 && (!d.lastName || !d.firstName || !d.age || !d.height || !d.weight)) {
     showToast('Completá todos los campos'); return;
   }
   if (S.onboardingStep === 2) {
@@ -862,8 +872,9 @@ async function finishOnboarding() {
   if (errEl) errEl.textContent = '';
   if (btn) { btn.textContent = 'Guardando...'; btn.style.pointerEvents = 'none'; }
   try {
+    const finalName = (d.lastName&&d.firstName) ? capitalizeName(d.lastName)+' '+capitalizeName(d.firstName) : (d.fullName||S.userData.name);
     const update = {
-      name: d.fullName || S.userData.name,
+      name: finalName,
       age: Number(d.age) || null,
       height: Number(d.height) || null,
       weight: Number(d.weight) || null,
@@ -1088,6 +1099,7 @@ function renderMain() {
     case 'teams':    m.innerHTML=renderTeams(); if(S.teamView && S.teamSubview==='stats') setTimeout(()=>drawTeamInjuryChart((S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid))),80); break;
     case 'atletas':  m.innerHTML=renderAtletas(); if(S.atletaView && S.atletaSubview==='stats') setTimeout(()=>drawTeamInjuryChart([S.atletaView]),80); break;
     case 'settings': m.innerHTML=renderSettings(); break;
+    case 'notifications': m.innerHTML=renderNotifications(); break;
     case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAthleteTrendChart,80); if(S.adminView==='compare_athletes') setTimeout(drawCompareCharts,80); setTimeout(()=>runCountUps(),30); break;
     case 'weekly_report': m.innerHTML=renderWeeklyReport(); break;
     case 'library':  m.innerHTML=renderLibraryView(); break;
@@ -3690,6 +3702,115 @@ async function forceAppUpdate() {
 }
 window.forceAppUpdate = forceAppUpdate;
 
+// ── NOTIFICACIONES DENTRO DE LA APP (sin WhatsApp, sin push nativo) ──────
+function updateNotifBadge() {
+  const unread = (S.notifications||[]).filter(n=>!n.read).length;
+  ['notif-badge-mobile','notif-badge-desk'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(unread>0) { el.textContent = unread>9?'9+':unread; el.style.display='flex'; }
+    else el.style.display='none';
+  });
+}
+window.updateNotifBadge = updateNotifBadge;
+
+function renderNotifications() {
+  const list = [...(S.notifications||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  let html = `<div class="page-header">
+    <div class="page-title">Notificaciones</div>
+    <div class="page-subtitle">${list.length?list.filter(n=>!n.read).length+' sin leer':'Nada nuevo por acá'}</div>
+  </div>`;
+  if(!list.length) {
+    html += `<div class="empty-state">No tenés notificaciones todavía.</div>`;
+    return html;
+  }
+  html += `<div class="wellness-card">
+    ${list.map((n,i)=>`
+      <div class="hooper-item" style="background:${n.read?'transparent':'var(--accent-dim)'}">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+          <div style="font-size:13px;line-height:1.5">${n.message}</div>
+          ${!n.read?`<button class="abtn" style="flex-shrink:0;font-size:11px" onclick="markNotificationRead(${i})">Marcar leído</button>`:''}
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">${n.date||''}</div>
+      </div>`).join('')}
+  </div>`;
+  return html;
+}
+window.renderNotifications = renderNotifications;
+
+async function markNotificationRead(idx) {
+  if(!S.notifications || !S.notifications[idx]) return;
+  S.notifications[idx].read = true;
+  try { await setDoc(doc(db,'personal',S.user.uid), {notifications:S.notifications}, {merge:true}); } catch(e){}
+  updateNotifBadge();
+  renderMain();
+}
+window.markNotificationRead = markNotificationRead;
+
+async function markAllNotificationsRead() {
+  if(!S.notifications) return;
+  S.notifications.forEach(n=>n.read=true);
+  try { await setDoc(doc(db,'personal',S.user.uid), {notifications:S.notifications}, {merge:true}); } catch(e){}
+  updateNotifBadge();
+  renderMain();
+}
+window.markAllNotificationsRead = markAllNotificationsRead;
+
+// Corrige de una sola vez la capitalización de TODOS los nombres: atletas
+// registrados, su entrada en el roster de su equipo, y los jugadores
+// pendientes (sin cuenta todavía). Útil para arreglar de golpe los nombres
+// que algunos cargaron en mayúscula o minúscula.
+async function fixAllNameCapitalization() {
+  if(!confirm('¿Corregir mayúsculas de todos los nombres registrados? Esto no se puede deshacer.')) return;
+  showToast('Corrigiendo…');
+  await ensureAdminAthletes();
+  let fixedCount = 0;
+
+  for(const a of S.adminAthletes) {
+    const oldName = a.name;
+    const newName = capitalizeName(oldName);
+    if(newName && newName!==oldName) {
+      try {
+        await setDoc(doc(db,'users',a.uid), {name:newName}, {merge:true});
+        // Actualizamos también su entrada en el roster del equipo, si tiene.
+        if(a.teamId) {
+          const team = S.teams.find(t=>t.id===a.teamId);
+          if(team && team.players) {
+            const idx = team.players.findIndex(p=>namesLikelyMatch(p,oldName));
+            if(idx>=0 && team.players[idx]!==newName) {
+              team.players[idx] = newName;
+              await updateDoc(doc(db,'teams',team.id), {players:team.players});
+            }
+          }
+        }
+        a.name = newName;
+        fixedCount++;
+      } catch(e) { /* seguimos con el resto aunque uno falle */ }
+    }
+  }
+
+  // Jugadores pendientes (sin cuenta todavía)
+  for(const p of (S.pendingAthletes||[])) {
+    const newName = capitalizeName(p.name);
+    if(newName && newName!==p.name) {
+      try {
+        await setDoc(doc(db,'pendingAthletes',p.id), {name:newName}, {merge:true});
+        const team = S.teams.find(t=>t.id===p.teamId);
+        if(team && team.players) {
+          const idx = team.players.findIndex(pl=>namesLikelyMatch(pl,p.name));
+          if(idx>=0) { team.players[idx]=newName; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
+        }
+        p.name = newName;
+        fixedCount++;
+      } catch(e) {}
+    }
+  }
+
+  showToast(`✓ ${fixedCount} nombre${fixedCount!==1?'s':''} corregido${fixedCount!==1?'s':''}`);
+  renderMain();
+}
+window.fixAllNameCapitalization = fixAllNameCapitalization;
+
 function renderSettings() {
   const u = S.userData || {};
   return `
@@ -3927,14 +4048,15 @@ function renderReminderScreen() {
   });
 
   const names = pending.map(p=>'• '+(p.a.name||p.a.email)).join('\n');
-  const msg = `Hola! Recordatorio de G-Metrics: todavía no completaste el wellness y/o la carga de hoy (${today}). Por favor cargalo en la app apenas puedas. Gracias!`;
+  const msg = `Recordatorio de G-Metrics: todavía no completaste el wellness y/o la carga de hoy (${today}). Por favor cargalo en la app apenas puedas. Gracias!`;
+  S._reminderPendingUids = pending.map(p=>p.a.uid);
 
   let html = `<div class="team-detail-header">
     <button class="back-btn" data-back="admin-main">‹</button>
     <div class="team-detail-title">Recordatorios de hoy</div>
   </div>
   <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
-    No tenemos números de teléfono guardados ni notificaciones push todavía — este mensaje lo mandás vos, eligiendo a quién, desde tu propio WhatsApp.
+    El recordatorio se manda DENTRO de la app — les va a aparecer en su campanita de notificaciones la próxima vez que entren.
   </div>
   <div class="admin-section">
     <div class="admin-section-title" style="color:var(--amber)">⚠ Faltan ${pending.length} de ${athletes.length}</div>
@@ -3950,11 +4072,8 @@ function renderReminderScreen() {
     <div class="wellness-title">Mensaje de recordatorio</div>
     <div style="padding:14px 16px">
       <textarea id="reminder-msg-txt" style="width:100%;min-height:90px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:10px;color:var(--text);font-size:13px;outline:none;font-family:inherit;resize:vertical">${msg}</textarea>
-      <div style="font-size:11px;color:var(--text3);margin:8px 0">Faltan:\n${names}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="abtn" onclick="copyReminderMsg()">📋 Copiar mensaje</button>
-        <button class="abtn abtn-p" onclick="shareReminderWhatsApp()">Enviar por WhatsApp</button>
-      </div>
+      <div style="font-size:11px;color:var(--text3);margin:8px 0">Se les manda a estos ${pending.length}:\n${names}</div>
+      <button class="wellness-submit" onclick="sendInAppReminder()">Enviar recordatorio en la app (${pending.length})</button>
     </div>
   </div>`:''}
   <div class="admin-section" style="margin-top:12px">
@@ -3965,19 +4084,28 @@ function renderReminderScreen() {
 }
 window.renderReminderScreen = renderReminderScreen;
 
-function copyReminderMsg() {
+async function sendInAppReminder() {
   const txt = document.getElementById('reminder-msg-txt');
-  if(!txt) return;
-  navigator.clipboard?.writeText(txt.value).then(()=>showToast('✓ Mensaje copiado')).catch(()=>showToast('No se pudo copiar'));
+  const msg = txt ? txt.value.trim() : '';
+  if(!msg) { showToast('Escribí un mensaje'); return; }
+  const pendingUids = S._reminderPendingUids || [];
+  if(!pendingUids.length) { showToast('No hay nadie pendiente'); return; }
+  const today = new Date().toISOString().split('T')[0];
+  showToast('Enviando…');
+  let sentCount = 0;
+  for(const uid of pendingUids) {
+    try {
+      const ref = doc(db,'personal',uid);
+      const snap = await getDoc(ref);
+      const existing = snap.exists() ? (snap.data().notifications||[]) : [];
+      existing.push({message:msg, date:today, read:false});
+      await setDoc(ref, {notifications:existing}, {merge:true});
+      sentCount++;
+    } catch(e) {}
+  }
+  showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}`);
 }
-window.copyReminderMsg = copyReminderMsg;
-
-function shareReminderWhatsApp() {
-  const txt = document.getElementById('reminder-msg-txt');
-  const msg = txt ? txt.value : '';
-  window.open('https://wa.me/?text='+encodeURIComponent(msg), '_blank');
-}
-window.shareReminderWhatsApp = shareReminderWhatsApp;
+window.sendInAppReminder = sendInAppReminder;
 
 function renderAdmin() {
   switch(S.adminView) {
@@ -4030,6 +4158,10 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Restaurar bloques propios</div><div class="admin-item-sub">Vuelve a la estructura original de tu sesión</div></div>
       <button class="abtn" onclick="resetBlocks()">Restaurar</button>
+    </div>
+    <div class="admin-item">
+      <div><div class="admin-item-lbl">Corregir mayúsculas de nombres</div><div class="admin-item-sub">Pasa "GANORA gonzalo" → "Ganora Gonzalo" para todos los atletas de una</div></div>
+      <button class="abtn" onclick="fixAllNameCapitalization()">Corregir</button>
     </div>
   </div>
   <div class="admin-section" style="border-color:rgba(239,68,68,0.3)">
