@@ -4909,12 +4909,21 @@ function renderRoutineBlock(b, sessionName) {
 }
 
 function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx) {
+  // Mismo criterio que en el resto de la app: el video se busca por libId
+  // (el vínculo con la biblioteca), y si el ejercicio es viejo y no lo
+  // tiene, se intenta igual por nombre exacto para no perder el video.
+  const libMatch = ex.libId ? null : S.library.find(l=>l.name.trim().toLowerCase()===(ex.name||'').trim().toLowerCase());
+  const videoKey = ex.libId || (libMatch&&libMatch.id) || ex.id;
+  const hasV = !!S.videos[videoKey];
   return `<div class="ex-row" id="rexrow-${ex.id}">
     <div class="ex-main">
       <div class="ex-name-row">
         <span class="ex-name" ondblclick="editRExName(this,'${ex.id}','${blockId}','${sessionName}',${catIdx})">${ex.name}</span>
         <input class="ex-name-inp" id="rexinp-${ex.id}" onblur="saveRExName('${ex.id}','${blockId}','${sessionName}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()">
         <div class="ex-actions">
+          <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',true)" title="Video">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
           <div class="ex-icon-btn del-ex" onclick="deleteRExercise('${ex.id}','${blockId}','${sessionName}',${catIdx})" title="Eliminar">×</div>
         </div>
       </div>
