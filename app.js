@@ -36,6 +36,15 @@ const INSTITUTIONS = {
 // cualquiera que se registre después, sin tocar código.
 function getInstitutionsFromTeams() {
   const map = {};
+  // Base: instituciones/categorías conocidas de antemano — SIEMPRE aparecen,
+  // sin importar si ya existe o no un equipo creado a mano para esa
+  // categoría puntual (antes dependía 100% de que el equipo ya existiera,
+  // y por eso "Juniors" no aparecía si vos todavía no lo habías cargado).
+  Object.entries(INSTITUTIONS).forEach(([inst,info])=>{
+    map[inst] = {sport:info.sport, categories:new Set(info.categories)};
+  });
+  // Se suma cualquier equipo real que ya exista, por si hay instituciones o
+  // categorías nuevas (fuera de esta lista fija) que vos hayas creado.
   (S.teams||[]).forEach(t=>{
     const inst = t.institution || t.name;
     if(!inst) return;
@@ -2299,11 +2308,11 @@ function renderTeams() {
       <div class="team-card-header">
         <div style="display:flex;align-items:center;gap:8px">
           <div style="width:10px;height:10px;border-radius:50%;background:${t.color||'var(--purple)'};flex-shrink:0"></div>
-          <div class="team-name">${t.name}</div>
+          <div class="team-name">${t.name}${t.category?` / ${t.category}`:''}</div>
         </div>
         <span class="team-sport-badge">${t.sport||'Deporte'}</span>
       </div>
-      <div class="team-meta">${t.category||''} · ${(t.players||[]).length} jugadores · ${(t.trainingDays||[]).length} días de entrenamiento</div>
+      <div class="team-meta">${(t.players||[]).length} jugadores · ${(t.trainingDays||[]).length} días de entrenamiento</div>
     </div>`).join('');
   return html;
 }
@@ -2317,11 +2326,10 @@ function renderTeamDetail(team) {
     <button class="back-btn" data-back="team-list">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
       <div style="width:12px;height:12px;border-radius:50%;background:${team.color||'var(--purple)'}"></div>
-      ${team.name}
+      ${team.name}${team.category?` / ${team.category}`:''}
     </div>
     <span class="team-sport-badge">${team.sport||''}</span>
   </div>
-  <div style="font-size:13px;color:var(--text3);margin-bottom:12px">${team.category||''}</div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Rutina</button>
     <button class="snav-tab ${sub==='calendario'?'active':''}" onclick="setTeamSubview('calendario')">Calendario</button>
@@ -2739,7 +2747,7 @@ function renderTeamRutina(team) {
     ${(team.players||[]).map((p,pi)=>{
       const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
       return `<div class="admin-item">
-        <div class="admin-item-lbl">${p} ${match?`<span style="font-size:10px;color:var(--green);font-weight:600;margin-left:6px">✓ cuenta vinculada</span>`:`<span style="font-size:10px;color:var(--amber);margin-left:6px">sin cuenta</span>`}</div>
+        <div class="admin-item-lbl" ${match?`style="cursor:pointer" onclick="adminOpenAthlete('${match.uid}')"`:''}>${p} ${match?`<span style="font-size:10px;color:var(--green);font-weight:600;margin-left:6px">✓ cuenta vinculada</span>`:`<span style="font-size:10px;color:var(--amber);margin-left:6px">sin cuenta</span>`}</div>
         <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
       </div>`;
     }).join('')}
@@ -2750,7 +2758,7 @@ function renderTeamRutina(team) {
   ${unmatchedLinked.length?`<div class="admin-section" style="margin-top:12px;border-color:var(--amber)">
     <div class="admin-section-title" style="color:var(--amber)">⚠ ${unmatchedLinked.length} atleta${unmatchedLinked.length===1?'':'s'} con cuenta vinculada pero fuera del roster</div>
     ${unmatchedLinked.map(a=>`<div class="admin-item">
-      <div class="admin-item-lbl">${a.name||a.email}</div>
+      <div class="admin-item-lbl" style="cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">${a.name||a.email}</div>
       <button class="abtn abtn-p" onclick="addLinkedPlayerToRoster('${team.id}','${(a.name||a.email).replace(/'/g,"\\'")}')">+ Agregar al roster</button>
     </div>`).join('')}
   </div>`:''}
@@ -2906,6 +2914,33 @@ async function setAthletePosition(uid, position) {
 }
 window.setAthletePosition=setAthletePosition;
 
+async function setAthleteName(uid, newName) {
+  newName = (newName||'').trim();
+  if(!newName) { showToast('El nombre no puede quedar vacío'); renderMain(); return; }
+  const a = S.adminAthletes.find(x=>x.uid===uid);
+  const oldName = a?.name;
+  try {
+    await setDoc(doc(db,'users',uid), {name:newName}, {merge:true});
+    if(a) a.name = newName;
+    if(S.viewingAthlete?.userData) S.viewingAthlete.userData.name = newName;
+    // Si pertenece a un equipo, actualizamos también su entrada en el roster
+    // de texto, para que no quede un nombre viejo dando vueltas.
+    if(a?.teamId) {
+      const team = S.teams.find(t=>t.id===a.teamId);
+      if(team && team.players) {
+        const idx = team.players.findIndex(p=>oldName && namesLikelyMatch(p,oldName));
+        if(idx>=0) {
+          team.players[idx] = newName;
+          await updateDoc(doc(db,'teams',team.id), {players:team.players});
+        }
+      }
+    }
+    showToast('✓ Nombre actualizado');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.setAthleteName=setAthleteName;
+
 // Mueve a un atleta de un equipo a otro (o lo saca a "individual" si value
 // queda vacío) — lo saca del roster/memberUids del equipo viejo y lo agrega
 // al nuevo. Pensado para corregir cargas erróneas o fusionar equipos que
@@ -2937,7 +2972,16 @@ async function reassignAthleteTeam(uid, newTeamId) {
       }
     }
     const update = { teamId: newTeamId||null };
-    if(newTeam) { update.institution = newTeam.institution||newTeam.name; update.category = newTeam.category||''; }
+    if(newTeam) {
+      update.athleteType = 'team';
+      update.institution = newTeam.institution||newTeam.name;
+      update.category = newTeam.category||'';
+    } else {
+      // Pasa a individual: limpiamos los campos de equipo que ya no aplican.
+      update.athleteType = 'individual';
+      update.institution = null;
+      update.category = null;
+    }
     await setDoc(doc(db,'users',uid), update, {merge:true});
     a.teamId = newTeamId||null;
     if(S.viewingAthlete?.userData) Object.assign(S.viewingAthlete.userData, update);
@@ -2946,6 +2990,29 @@ async function reassignAthleteTeam(uid, newTeamId) {
   } catch(e) { showToast('Error al mover de equipo'); }
 }
 window.reassignAthleteTeam=reassignAthleteTeam;
+
+// Botón "Guardar" del selector de equipo: si la categoría elegida todavía no
+// tiene un equipo creado (por ejemplo "Junior" si nunca armaste ese equipo a
+// mano), lo crea en este momento antes de mover al atleta ahí.
+async function saveReassignAthleteTeam(uid) {
+  const sel = document.getElementById('reassign-sel-'+uid);
+  if(!sel) return;
+  const val = sel.value;
+  if(!val) { await reassignAthleteTeam(uid, ''); return; }
+  const [inst, cat] = val.split('|||');
+  showToast('Guardando…');
+  try {
+    const instMap = getInstitutionsFromTeams();
+    const sport = instMap[inst]?.sport || '';
+    const teamId = await findOrCreateTeam(inst, cat, sport);
+    if(!S.teams.find(t=>t.id===teamId)) {
+      const tSnap = await getDocs(collection(db,'teams'));
+      S.teams = tSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    }
+    await reassignAthleteTeam(uid, teamId);
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.saveReassignAthleteTeam=saveReassignAthleteTeam;
 
 // Doble competencia ya no es un flag fijo en el perfil — se detecta solo,
 // mirando si el atleta cargó 2+ partidos en los últimos 7 días. Así, si una
@@ -3144,7 +3211,7 @@ function getTeamInjurySummary(members) {
       if(!inj.pain||inj.pain<=0) return;
       const sev = inj.pain>=8?'grave':inj.pain>=4?'moderada':'leve';
       if(sev==='grave') grave++; else if(sev==='moderada') moderada++; else leve++;
-      details.push({athlete:a.name||a.email, zoneId, pain:inj.pain, sev});
+      details.push({uid:a.uid, athlete:a.name||a.email, zoneId, pain:inj.pain, sev});
     });
   });
   return {grave, moderada, leve, total:grave+moderada+leve, details};
@@ -3172,7 +3239,7 @@ function renderTeamInjuryChart(members) {
     <div style="padding:0 16px 14px">
       ${sum.details.sort((a,b)=>b.pain-a.pain).map(d=>{
         const col = d.sev==='grave'?'var(--red)':d.sev==='moderada'?'var(--amber)':'var(--green)';
-        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);font-size:12px">
+        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);font-size:12px;cursor:pointer" onclick="adminOpenAthlete('${d.uid}')">
           <span>${d.athlete} <span style="color:var(--text3)">— ${d.zoneId}</span></span>
           <span style="color:${col};font-weight:600">${d.pain}/10</span>
         </div>`;
@@ -3354,7 +3421,17 @@ window.saveTeamDayBlocks=saveTeamDayBlocks;
 
 
 
-function openTeam(id) { S.teamView=S.teams.find(t=>t.id===id)||null; S.teamSubview='rutina'; S.currentView='teams'; renderBottomBar(); renderMain(); }
+async function openTeam(id) {
+  S.teamView=S.teams.find(t=>t.id===id)||null;
+  S.teamSubview='rutina';
+  S.currentView='teams';
+  renderBottomBar(); renderMain();
+  // Sin esto, si entrás a Equipos sin haber pasado antes por "Atletas",
+  // S.adminAthletes queda vacío y el roster no puede reconocer a NADIE como
+  // "cuenta vinculada" aunque estén perfectamente registrados.
+  await ensureAdminAthletes();
+  renderMain();
+}
 window.openTeam=openTeam;
 
 function addTrainingDay(teamId) {
@@ -3595,6 +3672,24 @@ function renderAtletaRutina(a) {
 window.renderAtletaRutina = renderAtletaRutina;
 
 // ── SETTINGS ─────────────────────────────────────────────────
+// Fuerza a bajar la última versión de la app, saltando cualquier caché del
+// navegador o del service worker — botón "Actualizar app" en Ajustes.
+async function forceAppUpdate() {
+  showToast('Actualizando…');
+  try {
+    if('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k=>caches.delete(k)));
+    }
+    if('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+  } catch(e) {}
+  location.reload(true);
+}
+window.forceAppUpdate = forceAppUpdate;
+
 function renderSettings() {
   const u = S.userData || {};
   return `
@@ -3642,6 +3737,12 @@ function renderSettings() {
     <div class="settings-item">
       <div><div class="settings-lbl">Fecha inicio</div></div>
       <input type="date" class="abtn" value="${S.startDate}" onchange="S.startDate=this.value;S.currentWeek=computeWeekFromDate(S.startDate);scheduleSave();renderMain()" style="cursor:pointer">
+    </div>
+  </div>
+  <div class="card">
+    <div class="settings-item">
+      <div><div class="settings-lbl">Actualizar app</div><div class="settings-sub">Bajá la última versión ahora mismo (por si el celular guardó una copia vieja)</div></div>
+      <button class="abtn abtn-p" onclick="forceAppUpdate()">↻ Actualizar</button>
     </div>
   </div>
   <div class="card">
@@ -3763,9 +3864,8 @@ function renderWellnessDetail() {
   </div>`;
 
   if(!Object.keys(w).length) {
-    return html + `<div class="empty-state">Sin datos de wellness cargados este día.</div>`;
-  }
-
+    html += `<div class="empty-state">Sin datos de wellness cargados este día.</div>`;
+  } else {
   html += `<div class="wellness-card">`;
   WELLNESS_ITEMS.forEach(item=>{
     const val = w[item.key];
@@ -3781,9 +3881,103 @@ function renderWellnessDetail() {
     <div class="hooper-label"><span>Horas de sueño</span><span style="color:${cat?cat.color:'var(--text3)'};font-weight:700;font-size:13px">${cat?hours+'h · '+cat.label:'— sin dato'}</span></div>
   </div>
   </div>`;
+  }
+
+  // Carga del día: Gimnasio / Pelota / Partido — para ver si un wellness bajo
+  // coincide con un día de mucho volumen o RPE alto.
+  const logs = (a._personal?.history?._sessionLogs || a._personal?.sessionLogs || []).filter(l=>l.date===date);
+  html += `<div class="admin-section">
+    <div class="admin-section-title">Carga de ese día</div>
+    ${logs.length ? logs.map(l=>{
+      const act = LOAD_ACTIVITIES.find(x=>x.key===l.activity);
+      return `<div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div style="display:flex;justify-content:space-between;width:100%">
+          <span style="font-size:13px;font-weight:600">${act?act.emoji+' '+act.label:l.activity}</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent)">${l.ua} UA</span>
+        </div>
+        <div style="font-size:12px;color:var(--text3)">${l.mins} min · RPE ${l.rpe}${l.note?' · '+l.note:''}</div>
+      </div>`;
+    }).join('') : `<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin carga registrada este día.</div>`}
+  </div>`;
   return html;
 }
 window.renderWellnessDetail=renderWellnessDetail;
+
+// ── RECORDATORIOS: quién falta completar wellness/carga hoy ─────────────
+function openReminderScreen() {
+  S.adminView = 'reminders';
+  S.currentView = 'admin';
+  renderBottomBar();
+  renderMain();
+}
+window.openReminderScreen = openReminderScreen;
+
+function renderReminderScreen() {
+  const today = new Date().toISOString().split('T')[0];
+  const athletes = S.dashAthletes || [];
+  const pending = [];
+  const done = [];
+  athletes.forEach(a=>{
+    const w = a._personal?.wellness?.[today];
+    const {allFilled} = getWellnessScore(w);
+    const logs = (a._personal?.history?._sessionLogs || a._personal?.sessionLogs || []).filter(l=>l.date===today);
+    const hasLoad = logs.length>0;
+    if(allFilled && hasLoad) done.push(a);
+    else pending.push({a, wellnessOk:allFilled, loadOk:hasLoad});
+  });
+
+  const names = pending.map(p=>'• '+(p.a.name||p.a.email)).join('\n');
+  const msg = `Hola! Recordatorio de G-Metrics: todavía no completaste el wellness y/o la carga de hoy (${today}). Por favor cargalo en la app apenas puedas. Gracias!`;
+
+  let html = `<div class="team-detail-header">
+    <button class="back-btn" data-back="admin-main">‹</button>
+    <div class="team-detail-title">Recordatorios de hoy</div>
+  </div>
+  <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
+    No tenemos números de teléfono guardados ni notificaciones push todavía — este mensaje lo mandás vos, eligiendo a quién, desde tu propio WhatsApp.
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title" style="color:var(--amber)">⚠ Faltan ${pending.length} de ${athletes.length}</div>
+    ${pending.length?pending.map(p=>`<div class="admin-item" style="cursor:pointer" onclick="adminOpenAthleteDash('${p.a.uid}')">
+      <div class="admin-item-lbl">${p.a.name||p.a.email}</div>
+      <div style="font-size:11px;color:var(--text3);display:flex;gap:8px">
+        <span style="color:${p.wellnessOk?'var(--green)':'var(--amber)'}">${p.wellnessOk?'✓':'✗'} wellness</span>
+        <span style="color:${p.loadOk?'var(--green)':'var(--amber)'}">${p.loadOk?'✓':'✗'} carga</span>
+      </div>
+    </div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--green)">✓ Completaron todos.</div>`}
+  </div>
+  ${pending.length?`<div class="wellness-card">
+    <div class="wellness-title">Mensaje de recordatorio</div>
+    <div style="padding:14px 16px">
+      <textarea id="reminder-msg-txt" style="width:100%;min-height:90px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:10px;color:var(--text);font-size:13px;outline:none;font-family:inherit;resize:vertical">${msg}</textarea>
+      <div style="font-size:11px;color:var(--text3);margin:8px 0">Faltan:\n${names}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="abtn" onclick="copyReminderMsg()">📋 Copiar mensaje</button>
+        <button class="abtn abtn-p" onclick="shareReminderWhatsApp()">Enviar por WhatsApp</button>
+      </div>
+    </div>
+  </div>`:''}
+  <div class="admin-section" style="margin-top:12px">
+    <div class="admin-section-title" style="color:var(--green)">✓ Completaron todo (${done.length})</div>
+    ${done.length?done.map(a=>`<div class="admin-item" style="cursor:pointer" onclick="adminOpenAthleteDash('${a.uid}')"><div class="admin-item-lbl">${a.name||a.email}</div></div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Nadie completó todo todavía.</div>`}
+  </div>`;
+  return html;
+}
+window.renderReminderScreen = renderReminderScreen;
+
+function copyReminderMsg() {
+  const txt = document.getElementById('reminder-msg-txt');
+  if(!txt) return;
+  navigator.clipboard?.writeText(txt.value).then(()=>showToast('✓ Mensaje copiado')).catch(()=>showToast('No se pudo copiar'));
+}
+window.copyReminderMsg = copyReminderMsg;
+
+function shareReminderWhatsApp() {
+  const txt = document.getElementById('reminder-msg-txt');
+  const msg = txt ? txt.value : '';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg), '_blank');
+}
+window.shareReminderWhatsApp = shareReminderWhatsApp;
 
 function renderAdmin() {
   switch(S.adminView) {
@@ -3793,6 +3987,7 @@ function renderAdmin() {
     case 'routine_edit':   return renderRoutineEditor();
     case 'compare_athletes': return renderCompareAthletes();
     case 'wellness_detail': return renderWellnessDetail();
+    case 'reminders': return renderReminderScreen();
     default:               return renderAdminMain();
   }
 }
@@ -4146,6 +4341,10 @@ function renderAthleteDetail() {
   <div class="admin-section">
     <div class="admin-section-title">Perfil</div>
     <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:10px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Nombre</span>
+        <input id="edit-name-${uid}" value="${userData.name||''}" placeholder="Apellido y nombre" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+      </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <span style="font-size:11px;color:var(--text3);min-width:50px">Color</span>
         ${TEAM_COLORS.map(c=>`<div onclick="setAthleteColor('${uid}','${c}')" style="width:20px;height:20px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${userData.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
@@ -4166,12 +4365,21 @@ function renderAthleteDetail() {
       ${!myTeam?.sport&&myTeam?`<div style="font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
         <span style="font-size:11px;color:var(--text3);min-width:50px">Equipo</span>
-        <select style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="reassignAthleteTeam('${uid}',this.value)">
-          <option value="">— Sin equipo (individual) —</option>
-          ${S.teams.map(t=>`<option value="${t.id}" ${myTeam?.id===t.id?'selected':''}>${t.name}${t.category?' · '+t.category:''}</option>`).join('')}
-        </select>
+        ${(()=>{
+          const instMap = getInstitutionsFromTeams();
+          const opts = [];
+          Object.keys(instMap).sort().forEach(inst=>{
+            [...instMap[inst].categories].sort().forEach(cat=>opts.push({inst,cat}));
+          });
+          const curVal = (userData.institution && userData.category) ? (userData.institution+'|||'+userData.category) : '';
+          return `<select id="reassign-sel-${uid}" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
+            <option value="">— Sin equipo (individual) —</option>
+            ${opts.map(o=>`<option value="${o.inst}|||${o.cat}" ${curVal===(o.inst+'|||'+o.cat)?'selected':''}>${o.inst} / ${o.cat}</option>`).join('')}
+          </select>
+          <button class="abtn abtn-p" onclick="saveReassignAthleteTeam('${uid}')">Guardar</button>`;
+        })()}
       </div>
-      <div style="font-size:11px;color:var(--text3)">Usalo para corregir si alguien quedó cargado en el equipo equivocado, o para fusionar equipos duplicados moviendo a los jugadores.</div>
+      <div style="font-size:11px;color:var(--text3)">Se ven TODAS las categorías conocidas (existan o no como equipo todavía) — si elegís una que no existe aún, se crea sola. Sirve para mover a alguien de categoría, fusionar equipos duplicados, o pasarlo de individual a equipo (y viceversa).</div>
     </div>
   </div>
 
@@ -5828,10 +6036,10 @@ function renderDashboardContent() {
       <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}" data-countup="${trainedToday}">${trainedToday}</div>
       <div class="metric-card-sub">de ${totalAthletes} atletas</div>
     </div>
-    <div class="metric-card">
+    <div class="metric-card" style="cursor:pointer" onclick="openReminderScreen()">
       <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">❤️</span></div>
       <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}" data-countup="${wellnessToday}">${wellnessToday}</div>
-      <div class="metric-card-sub">registros enviados</div>
+      <div class="metric-card-sub">registros enviados · tocá para recordar</div>
     </div>
     ${allAlerts.length?`<div class="metric-card" style="border-color:rgba(239,68,68,0.3)">
       <div class="metric-card-label" style="color:var(--red)">ALERTAS ⚠</div>
@@ -6187,3 +6395,72 @@ document.getElementById('auth-pass').addEventListener('keydown',e=>{ if(e.key===
 document.getElementById('auth-email').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('auth-pass').focus(); });
 
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+// ── GESTOS DE CELULAR: deslizar hacia abajo para refrescar, y hacia los
+// costados para cambiar de sección — igual que cualquier app nativa. ──────
+(function setupTouchGestures(){
+  const main = document.getElementById('main');
+  if(!main) return;
+
+  // Pull-to-refresh
+  const ptr = document.createElement('div');
+  ptr.id='ptr-indicator';
+  ptr.style.cssText='position:fixed;top:0;left:0;right:0;display:flex;justify-content:center;align-items:center;height:0;overflow:hidden;transition:height .15s;z-index:600;color:var(--text3,#7a90b8);font-size:12px;background:var(--bg2,#111827);pointer-events:none';
+  document.body.appendChild(ptr);
+
+  let pStartY=0, pulling=false;
+  const PTR_THRESHOLD=70;
+
+  main.addEventListener('touchstart', e=>{
+    if(main.scrollTop<=0) { pStartY=e.touches[0].clientY; pulling=true; }
+  }, {passive:true});
+
+  main.addEventListener('touchmove', e=>{
+    if(!pulling) return;
+    const diff=e.touches[0].clientY-pStartY;
+    if(diff>0 && main.scrollTop<=0) {
+      const h=Math.min(diff*0.5, PTR_THRESHOLD);
+      ptr.style.height=h+'px';
+      ptr.textContent = h>=PTR_THRESHOLD ? '↑ Soltá para actualizar' : '↓ Deslizá para actualizar';
+    } else { pulling=false; ptr.style.height='0px'; }
+  }, {passive:true});
+
+  main.addEventListener('touchend', ()=>{
+    if(!pulling) return;
+    pulling=false;
+    if(parseInt(ptr.style.height||'0')>=PTR_THRESHOLD) {
+      ptr.textContent='Actualizando…';
+      setTimeout(()=>location.reload(), 150);
+    } else {
+      ptr.style.height='0px';
+    }
+  });
+
+  // Swipe horizontal entre secciones de la barra inferior
+  let sStartX=0, sStartY=0, swiping=false;
+  main.addEventListener('touchstart', e=>{
+    sStartX=e.touches[0].clientX; sStartY=e.touches[0].clientY; swiping=true;
+  }, {passive:true});
+  main.addEventListener('touchend', e=>{
+    if(!swiping) return; swiping=false;
+    const dx=e.changedTouches[0].clientX-sStartX;
+    const dy=e.changedTouches[0].clientY-sStartY;
+    if(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*2) navigateSwipe(dx<0?1:-1);
+  });
+})();
+
+function navigateSwipe(dir) {
+  // Solo cambia de sección si estamos en una pantalla "de primer nivel" de
+  // la barra inferior — si hay un detalle abierto (un atleta, un equipo,
+  // etc.) el swipe no hace nada, para no navegar por sorpresa.
+  const tabs = S.isAdmin ? ['dashboard','teams','atletas','admin'] : ['dashboard','session','wellness','evals','stats'];
+  const idx = tabs.indexOf(S.currentView);
+  if(idx<0) return;
+  if(S.isAdmin && S.currentView==='admin' && S.adminView && S.adminView!=='main') return;
+  if(S.isAdmin && S.currentView==='teams' && S.teamView) return;
+  if(S.isAdmin && S.currentView==='atletas' && S.atletaView) return;
+  const next = idx+dir;
+  if(next<0||next>=tabs.length) return;
+  switchView(tabs[next]);
+}
+window.navigateSwipe=navigateSwipe;
