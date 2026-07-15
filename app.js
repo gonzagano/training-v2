@@ -3710,16 +3710,14 @@ function renderAtletaRutina(a) {
               ${(b.categories||[]).map(cat=>`
                 ${cat.label?`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label">${cat.label}</span></div></div>`:''}
                 ${(cat.exercises||[]).map(ex=>`
-                  <div class="ex-row">
-                    <div class="ex-main">
-                      <div class="ex-name-row"><span class="ex-name">${ex.name}</span></div>
-                      <div class="ex-fields">
-                        <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:14px;padding:4px 0">${ex.series||'—'}</div></div>
-                        <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:14px;padding:4px 0">${ex.reps||'—'}</div></div>
-                        <div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:14px;padding:4px 0">${ex.pct||'—'}</div></div>
-                        <div class="field-box"><span class="field-lbl">${ex.intensityType||'RPE'}</span><div style="font-size:14px;padding:4px 0">${ex.rpe||'—'}</div></div>
-                        <div class="field-box"><span class="field-lbl">Nota</span><div style="font-size:14px;padding:4px 0">${ex.note||'—'}</div></div>
-                      </div>
+                  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                      <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${ex.series||'—'}</div></div>
+                      <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${ex.reps||'—'}</div></div>
+                      <div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${ex.pct||'—'}</div></div>
+                      <div class="field-box"><span class="field-lbl">${ex.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${ex.rpe||'—'}</div></div>
+                      ${ex.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${ex.note}</div></div>`:''}
                     </div>
                   </div>`).join('')}
               `).join('')}
