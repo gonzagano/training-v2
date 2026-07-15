@@ -620,6 +620,16 @@ function sortSessionNames(names) {
   });
 }
 window.sortSessionNames=sortSessionNames;
+
+// Los registros de un test (salto o fuerza) tienen que quedar SIEMPRE
+// ordenados por la fecha real del test, no por el orden en que se cargaron
+// — si cargás hoy un salto de hace 3 meses, tiene que aparecer donde
+// corresponde cronológicamente, no al final de la lista.
+function sortEvalRecsByDate(arr) {
+  arr.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  return arr;
+}
+window.sortEvalRecsByDate=sortEvalRecsByDate;
 // Calcula la semana de entrenamiento a partir de la fecha real de inicio —
 // avanza sola con el calendario, sin importar si el atleta entrenó o no.
 function computeWeekFromDate(startDate) {
@@ -5279,7 +5289,7 @@ function renderEvals() {
     }
   }
 
-  const lastOf = id => { const r=(edata[id]||[]); return r.length ? r[r.length-1] : null; };
+  const lastOf = id => { const r=sortEvalRecsByDate([...(edata[id]||[])]); return r.length ? r[r.length-1] : null; };
 
   // Selector de categoría: Saltabilidad (jump tests) vs Fuerza Máxima (1RM)
   const evalCat = S.evalCategory || 'saltabilidad';
@@ -5378,7 +5388,7 @@ function renderStrengthEntry(edata) {
       <input class="eval-inp" type="date" id="einp-strength-date" value="${today}">
     </div>`;
   STRENGTH_TESTS.forEach(t=>{
-    const recs=edata[t.id]||[];
+    const recs=sortEvalRecsByDate([...(edata[t.id]||[])]);
     const last=recs.length?recs[recs.length-1]:null;
     html += `<div class="hooper-item">
       <div class="hooper-label">
@@ -5407,11 +5417,13 @@ async function saveStrengthEvals() {
     if(uid==='self') {
       if(!S.evals[t.id]) S.evals[t.id]=[];
       S.evals[t.id].push(rec);
+      sortEvalRecsByDate(S.evals[t.id]);
     } else {
       if(!S._athleteEvalsCache) S._athleteEvalsCache={};
       if(!S._athleteEvalsCache[uid]) S._athleteEvalsCache[uid]={};
       if(!S._athleteEvalsCache[uid][t.id]) S._athleteEvalsCache[uid][t.id]=[];
       S._athleteEvalsCache[uid][t.id].push(rec);
+      sortEvalRecsByDate(S._athleteEvalsCache[uid][t.id]);
     }
     saved++;
   }
@@ -5496,7 +5508,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
   // Los mismos índices calculados que aparecen en "Registrar test" — también
   // acá, para no tener que ir y volver entre pestañas para verlos.
   if(includeAsym) {
-    const lastOfH = id => { const r=(edata[id]||[]); return r.length ? r[r.length-1] : null; };
+    const lastOfH = id => { const r=sortEvalRecsByDate([...(edata[id]||[])]); return r.length ? r[r.length-1] : null; };
     const lCMJ=lastOfH('cmj'), lSJ=lastOfH('sj'), lAbal=lastOfH('abalakov');
     const lDer=lastOfH('cmj_der'), lIzq=lastOfH('cmj_izq');
     const ice   = (lCMJ&&lSJ)   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1) : null;
@@ -5585,7 +5597,7 @@ function renderEvalCompare() {
     : [{uid:'self', name:'Yo (admin)', email:''}].concat(S.adminAthletes);
   const allData = athletes.map(a=>{
     const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
-    const recs = ed[testId]||[];
+    const recs = sortEvalRecsByDate([...(ed[testId]||[])]);
     const last = recs.length ? recs[recs.length-1] : null;
     return {name: a.name||a.email||'Atleta', value: last?last.height:null};
   });
@@ -5663,11 +5675,13 @@ async function saveAllEvals() {
     if(uid==='self') {
       if(!S.evals[t.id]) S.evals[t.id]=[];
       S.evals[t.id].push(rec);
+      sortEvalRecsByDate(S.evals[t.id]);
     } else {
       if(!S._athleteEvalsCache) S._athleteEvalsCache={};
       if(!S._athleteEvalsCache[uid]) S._athleteEvalsCache[uid]={};
       if(!S._athleteEvalsCache[uid][t.id]) S._athleteEvalsCache[uid][t.id]=[];
       S._athleteEvalsCache[uid][t.id].push(rec);
+      sortEvalRecsByDate(S._athleteEvalsCache[uid][t.id]);
     }
     saved++;
   }
@@ -5755,7 +5769,7 @@ function drawEvalCharts() {
 
     EVAL_TESTS.concat(STRENGTH_TESTS).forEach(t=>{
       if(S.evalHidden.has(t.id)) return;
-      const recs = edata[t.id]||[];
+      const recs = sortEvalRecsByDate([...(edata[t.id]||[])]);
       if(!recs.length) return;
       const c = document.getElementById('chart-hist-'+t.id);
       if(!c) return;
@@ -5858,7 +5872,7 @@ function drawEvalCharts() {
       : [{uid:'self',name:'Yo (admin)'}].concat(S.adminAthletes);
     const compData = athletes.map(a=>{
       const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
-      const recs = ed[testId]||[];
+      const recs = sortEvalRecsByDate([...(ed[testId]||[])]);
       const last = recs.length ? recs[recs.length-1] : null;
       return {name: a.name||a.email||'Admin', value: last?last.height:null};
     }).filter(x=>x.value!==null);
