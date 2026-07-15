@@ -569,6 +569,25 @@ async function saveToFirestore() {
 
 // ── HELPERS ───────────────────────────────────────────────────
 function genId() { return 'x' + Date.now() + Math.floor(Math.random()*9999); }
+
+// Comparación de nombres de persona usada en TODOS los lugares donde hay que
+// reconciliar "texto escrito a mano" con "cuenta real" (roster del equipo,
+// migración de tests de jugadores pendientes, etc.) — ignora mayúsculas,
+// espacios de más, Y el orden de las palabras ("Flores Joaquín" y "Joaquín
+// Flores" cuentan como la misma persona). Antes existían DOS versiones de
+// esta comparación en distintas partes del código: una flexible (para
+// mostrar "cuenta vinculada" en el roster) y otra estricta (para migrar
+// tests de jugadores pendientes) — esa inconsistencia hacía que la
+// migración fallara justo cuando alguien se registraba con el nombre en
+// otro orden. Ahora es una sola función, usada en los dos lugares.
+function normPersonName(s) { return (s||'').trim().toLowerCase(); }
+window.normPersonName=normPersonName;
+function namesLikelyMatch(x,y) {
+  const wx=normPersonName(x).split(/\s+/).filter(Boolean).sort().join(' ');
+  const wy=normPersonName(y).split(/\s+/).filter(Boolean).sort().join(' ');
+  return !!wx && !!wy && wx===wy;
+}
+window.namesLikelyMatch=namesLikelyMatch;
 // Calcula la semana de entrenamiento a partir de la fecha real de inicio —
 // avanza sola con el calendario, sin importar si el atleta entrenó o no.
 function computeWeekFromDate(startDate) {
@@ -754,7 +773,19 @@ function renderOnboardingStep4(d) {
 function setOnboardingField(key, val) { S.onboardingData[key] = val; }
 window.setOnboardingField = setOnboardingField;
 
-function selectAthleteType(type) { S.onboardingData.athleteType = type; renderMain(); }
+async function selectAthleteType(type) {
+  S.onboardingData.athleteType = type;
+  renderMain();
+  if(type==='team') {
+    // Recargamos los equipos justo en este momento (no solo al loguearse),
+    // por si el admin acaba de crear o editar un equipo hace instantes.
+    try {
+      const tSnap = await getDocs(collection(db,'teams'));
+      S.teams = tSnap.docs.map(d=>({id:d.id, ...d.data()}));
+      renderMain();
+    } catch(e) {}
+  }
+}
 window.selectAthleteType = selectAthleteType;
 
 function selectInstitution(inst) { S.onboardingData.institution = inst; S.onboardingData.category = ''; S.onboardingData.categoryCustom=''; renderMain(); }
@@ -852,16 +883,19 @@ async function finishOnboarding() {
       const memberUids = tData.memberUids || [];
       const players = tData.players || [];
       if (!memberUids.includes(S.user.uid)) memberUids.push(S.user.uid);
-      if (!players.includes(update.name)) players.push(update.name);
+      if (!players.some(p=>namesLikelyMatch(p,update.name))) players.push(update.name);
       await updateDoc(tRef, { memberUids, players });
 
       // Si el admin ya había cargado a este jugador de antemano (mismo
       // nombre, mismo equipo) con tests/evaluaciones, los migramos ahora a
       // la cuenta real recién creada, y borramos el registro pendiente.
+      // IMPORTANTE: usa namesLikelyMatch (ignora orden de palabras) — antes
+      // usaba una comparación estricta que fallaba si alguien se registraba
+      // como "Joaquín Flores" cuando el admin lo había cargado como
+      // "Flores Joaquín".
       try {
         const pendSnap = await getDocs(query(collection(db,'pendingAthletes'), where('teamId','==',teamId)));
-        const norm = s => (s||'').trim().toLowerCase();
-        const match = pendSnap.docs.map(dd=>({id:dd.id, ...dd.data()})).find(p=>norm(p.name)===norm(update.name));
+        const match = pendSnap.docs.map(dd=>({id:dd.id, ...dd.data()})).find(p=>namesLikelyMatch(p.name,update.name));
         if (match) {
           if (match.evals && Object.keys(match.evals).length) {
             await setDoc(doc(db,'personal',S.user.uid), {evals:match.evals}, {merge:true});
@@ -2699,19 +2733,11 @@ function renderTeamRutina(team) {
   // desalinearse con muchos atletas. Marcamos qué nombres del roster tienen
   // cuenta real, y avisamos si hay cuentas vinculadas que no están en el roster.
   const linkedMembers = (S.adminAthletes||[]).filter(a=>(team.memberUids||[]).includes(a.uid) || a.teamId===team.id);
-  const norm = s => (s||'').trim().toLowerCase();
-  // Compara nombres ignorando orden de palabras (nombre/apellido invertido),
-  // mayúsculas y espacios — "Vincent Ian" y "Ian Vincent" cuentan como la misma persona.
-  const namesLikelyMatch = (x,y) => {
-    const wx=norm(x).split(/\s+/).filter(Boolean).sort().join(' ');
-    const wy=norm(y).split(/\s+/).filter(Boolean).sort().join(' ');
-    return !!wx && !!wy && wx===wy;
-  };
-  const unmatchedLinked = linkedMembers.filter(a=>!(team.players||[]).some(p=>namesLikelyMatch(p,a.name)||norm(p)===norm(a.email)));
+  const unmatchedLinked = linkedMembers.filter(a=>!(team.players||[]).some(p=>namesLikelyMatch(p,a.name)||normPersonName(p)===normPersonName(a.email)));
 
   html+=`<div class="admin-section" style="margin-top:16px"><div class="admin-section-title">Jugadores</div>
     ${(team.players||[]).map((p,pi)=>{
-      const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||norm(a.email)===norm(p));
+      const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
       return `<div class="admin-item">
         <div class="admin-item-lbl">${p} ${match?`<span style="font-size:10px;color:var(--green);font-weight:600;margin-left:6px">✓ cuenta vinculada</span>`:`<span style="font-size:10px;color:var(--amber);margin-left:6px">sin cuenta</span>`}</div>
         <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
@@ -2879,6 +2905,47 @@ async function setAthletePosition(uid, position) {
   } catch(e){ showToast('Error'); }
 }
 window.setAthletePosition=setAthletePosition;
+
+// Mueve a un atleta de un equipo a otro (o lo saca a "individual" si value
+// queda vacío) — lo saca del roster/memberUids del equipo viejo y lo agrega
+// al nuevo. Pensado para corregir cargas erróneas o fusionar equipos que
+// quedaron duplicados por una diferencia de nombre en la categoría.
+async function reassignAthleteTeam(uid, newTeamId) {
+  const a = S.adminAthletes.find(x=>x.uid===uid);
+  if(!a) return;
+  const oldTeamId = a.teamId;
+  try {
+    if(oldTeamId && oldTeamId!==newTeamId) {
+      const oldTeam = S.teams.find(t=>t.id===oldTeamId);
+      if(oldTeam) {
+        const memberUids = (oldTeam.memberUids||[]).filter(id=>id!==uid);
+        const players = (oldTeam.players||[]).filter(p=>!namesLikelyMatch(p,a.name));
+        await updateDoc(doc(db,'teams',oldTeamId), {memberUids, players});
+        oldTeam.memberUids=memberUids; oldTeam.players=players;
+      }
+    }
+    let newTeam = null;
+    if(newTeamId) {
+      newTeam = S.teams.find(t=>t.id===newTeamId);
+      if(newTeam) {
+        const memberUids = newTeam.memberUids||[];
+        if(!memberUids.includes(uid)) memberUids.push(uid);
+        const players = newTeam.players||[];
+        if(!players.some(p=>namesLikelyMatch(p,a.name))) players.push(a.name);
+        await updateDoc(doc(db,'teams',newTeamId), {memberUids, players});
+        newTeam.memberUids=memberUids; newTeam.players=players;
+      }
+    }
+    const update = { teamId: newTeamId||null };
+    if(newTeam) { update.institution = newTeam.institution||newTeam.name; update.category = newTeam.category||''; }
+    await setDoc(doc(db,'users',uid), update, {merge:true});
+    a.teamId = newTeamId||null;
+    if(S.viewingAthlete?.userData) Object.assign(S.viewingAthlete.userData, update);
+    showToast('✓ Equipo actualizado');
+    renderMain();
+  } catch(e) { showToast('Error al mover de equipo'); }
+}
+window.reassignAthleteTeam=reassignAthleteTeam;
 
 // Doble competencia ya no es un flag fijo en el perfil — se detecta solo,
 // mirando si el atleta cargó 2+ partidos en los últimos 7 días. Así, si una
@@ -4097,6 +4164,14 @@ function renderAthleteDetail() {
         })()}
       </div>
       ${!myTeam?.sport&&myTeam?`<div style="font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Equipo</span>
+        <select style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="reassignAthleteTeam('${uid}',this.value)">
+          <option value="">— Sin equipo (individual) —</option>
+          ${S.teams.map(t=>`<option value="${t.id}" ${myTeam?.id===t.id?'selected':''}>${t.name}${t.category?' · '+t.category:''}</option>`).join('')}
+        </select>
+      </div>
+      <div style="font-size:11px;color:var(--text3)">Usalo para corregir si alguien quedó cargado en el equipo equivocado, o para fusionar equipos duplicados moviendo a los jugadores.</div>
     </div>
   </div>
 
