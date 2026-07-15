@@ -502,7 +502,7 @@ onAuthStateChanged(auth, async (user) => {
       const rSnap = await getDoc(doc(db, 'routines', assignedId));
       if (rSnap.exists()) {
         S.assignedRoutine = { id: assignedId, ...rSnap.data() };
-        S.currentRoutineSessions = Object.keys(S.assignedRoutine.sessions || {});
+        S.currentRoutineSessions = sortSessionNames(Object.keys(S.assignedRoutine.sessions || {}));
         if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
         // blocks are read-only from routine; don't overwrite with personal
       }
@@ -521,7 +521,7 @@ onAuthStateChanged(auth, async (user) => {
         // Se arma como si fuera una rutina más — así toda la lógica de
         // sesión/semana/historial que ya existe funciona sin cambios.
         S.assignedRoutine = { id: null, name: team.category ? `${team.name} · ${team.category}` : team.name, sessions, fromTeam: true };
-        S.currentRoutineSessions = Object.keys(sessions);
+        S.currentRoutineSessions = sortSessionNames(Object.keys(sessions));
         if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
       }
     }
@@ -607,6 +607,19 @@ function capitalizeName(s) {
     .map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
 }
 window.capitalizeName=capitalizeName;
+
+// Ordena nombres de sesión/día ("Día 1","Día 2"...) de forma numérica en vez
+// de por orden de inserción (que es lo que da Object.keys por default, y por
+// eso a veces aparecían como "Día 2, Día 3, Día 4, Día 1").
+function sortSessionNames(names) {
+  return [...names].sort((a,b)=>{
+    const na=parseInt((a.match(/\d+/)||[])[0],10);
+    const nb=parseInt((b.match(/\d+/)||[])[0],10);
+    if(!isNaN(na)&&!isNaN(nb)) return na-nb;
+    return a.localeCompare(b);
+  });
+}
+window.sortSessionNames=sortSessionNames;
 // Calcula la semana de entrenamiento a partir de la fecha real de inicio —
 // avanza sola con el calendario, sin importar si el atleta entrenó o no.
 function computeWeekFromDate(startDate) {
@@ -3664,17 +3677,21 @@ function renderAtletaRutina(a) {
     return html;
   }
 
-  const sessionNames = Object.keys(routine.sessions || {});
+  const sessionNames = sortSessionNames(Object.keys(routine.sessions || {}));
   html += `<div class="admin-section">
     <div class="admin-section-title">${routine.name}</div>
     ${sessionNames.map(sName => {
       const blocks = routine.sessions[sName] || [];
-      const exRows = [];
-      blocks.forEach(b => (b.categories || []).forEach(cat => (cat.exercises || []).forEach(ex => exRows.push(ex))));
       return `<div style="padding:10px 16px;border-top:1px solid var(--border)">
-        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${sName}</div>
-        ${exRows.length
-          ? exRows.map((ex,i) => `<div style="font-size:13px;padding:5px 0;${i>0?'border-top:1px solid var(--border)':''}"><span style="color:var(--text)">${ex.name}</span> <span style="color:var(--text3)">— ${formatExSummary(ex)}</span></div>`).join('')
+        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${sName}</div>
+        ${blocks.length ? blocks.map(b=>`
+          <div style="margin-bottom:10px">
+            <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px">${b.label?b.label+' · ':''}${b.title||''}</div>
+            ${(b.categories||[]).map(cat=>`
+              ${cat.label?`<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:4px 0 2px">${cat.label}</div>`:''}
+              ${(cat.exercises||[]).map((ex,i)=>`<div style="font-size:13px;padding:4px 0;padding-left:8px;${i>0?'border-top:1px solid var(--border)':''}"><span style="color:var(--text)">${ex.name}</span> <span style="color:var(--text3)">— ${formatExSummary(ex)}</span></div>`).join('')}
+            `).join('')}
+          </div>`).join('')
           : `<div style="font-size:12px;color:var(--text3)">Sin ejercicios cargados</div>`}
       </div>`;
     }).join('')}
@@ -4777,7 +4794,7 @@ function renderAdminRoutines() {
           </div>
         </div>
         <div style="font-size:12px;color:var(--text3)">
-          ${Object.keys(r.sessions||{}).join(' · ')||'Sin sesiones'}
+          ${sortSessionNames(Object.keys(r.sessions||{})).join(' · ')||'Sin sesiones'}
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">
           Asignada a: ${S.adminAthletes.filter(a=>a.assignedRoutine===r.id).map(a=>a.name||a.email).join(', ')||'nadie'}
@@ -4816,7 +4833,7 @@ function editRoutine(id) {
   S.editingRoutine = JSON.parse(JSON.stringify(r));
   S._routineEditorPrev = 'routines';
   S.adminView='routine_edit';
-  const sessions = Object.keys(S.editingRoutine.sessions||{});
+  const sessions = sortSessionNames(Object.keys(S.editingRoutine.sessions||{}));
   S._routineEditSession = sessions[0]||null;
   renderMain();
 }
@@ -4837,7 +4854,7 @@ window.deleteRoutine=deleteRoutine;
 function renderRoutineEditor() {
   const r = S.editingRoutine;
   if(!r) return `<div class="empty-state">Error: no hay rutina en edición.</div>`;
-  const sessionNames = Object.keys(r.sessions||{});
+  const sessionNames = sortSessionNames(Object.keys(r.sessions||{}));
   if(!S._routineEditSession || !r.sessions[S._routineEditSession]) {
     S._routineEditSession = sessionNames[0]||null;
   }
@@ -4881,7 +4898,7 @@ function renderRoutineBlock(b, sessionName) {
       <span class="cat-del" onclick="deleteRCat('${b.id}','${sessionName}',${ci})">− cat</span>
     </div>`;
     cat.exercises.forEach((ex,ei)=>{
-      inner+=renderRoutineExRow(ex,b.id,sessionName,ci,ei);
+      inner+=renderRoutineExRow(ex,b.id,sessionName,ci,ei,cat.exercises.length);
     });
     inner+=`<button class="add-btn" onclick="openRoutineLib('${b.id}','${sessionName}',${ci})">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -4908,16 +4925,25 @@ function renderRoutineBlock(b, sessionName) {
   </div>`;
 }
 
-function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx) {
+function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
   // Mismo criterio que en el resto de la app: el video se busca por libId
   // (el vínculo con la biblioteca), y si el ejercicio es viejo y no lo
   // tiene, se intenta igual por nombre exacto para no perder el video.
   const libMatch = ex.libId ? null : S.library.find(l=>l.name.trim().toLowerCase()===(ex.name||'').trim().toLowerCase());
   const videoKey = ex.libId || (libMatch&&libMatch.id) || ex.id;
   const hasV = !!S.videos[videoKey];
+  const isFirst = exIdx===0, isLast = exIdx===(totalEx-1);
   return `<div class="ex-row" id="rexrow-${ex.id}">
     <div class="ex-main">
       <div class="ex-name-row">
+        <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">
+          <button class="ex-icon-btn" style="${isFirst?'opacity:.3;pointer-events:none':''}" onclick="moveRExercise('${ex.id}','${blockId}','${sessionName}',${catIdx},-1)" title="Subir">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+          <button class="ex-icon-btn" style="${isLast?'opacity:.3;pointer-events:none':''}" onclick="moveRExercise('${ex.id}','${blockId}','${sessionName}',${catIdx},1)" title="Bajar">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
         <span class="ex-name" ondblclick="editRExName(this,'${ex.id}','${blockId}','${sessionName}',${catIdx})">${ex.name}</span>
         <input class="ex-name-inp" id="rexinp-${ex.id}" onblur="saveRExName('${ex.id}','${blockId}','${sessionName}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()">
         <div class="ex-actions">
@@ -4970,7 +4996,7 @@ window.addRoutineSession=addRoutineSession;
 function deleteRoutineSession(sessionName) {
   if(!confirm(`¿Eliminar la sesión "${sessionName}"?`)) return;
   delete S.editingRoutine.sessions[sessionName];
-  const remaining=Object.keys(S.editingRoutine.sessions);
+  const remaining=sortSessionNames(Object.keys(S.editingRoutine.sessions));
   S._routineEditSession=remaining[0]||null;
   renderMain();
 }
@@ -5080,6 +5106,21 @@ function deleteRExercise(exId,blockId,sessionName,catIdx) {
   renderMain();
 }
 window.deleteRExercise=deleteRExercise;
+
+// Reordena un ejercicio dentro de la misma categoría, subiéndolo o
+// bajándolo una posición — para no tener que borrar y volver a escribir
+// si te confundiste con el orden.
+function moveRExercise(exId,blockId,sessionName,catIdx,direction) {
+  const b=getRBlock(blockId,sessionName); if(!b) return;
+  const arr=b.categories[catIdx].exercises;
+  const idx=arr.findIndex(e=>e.id===exId);
+  if(idx<0) return;
+  const newIdx=idx+direction;
+  if(newIdx<0||newIdx>=arr.length) return;
+  [arr[idx],arr[newIdx]]=[arr[newIdx],arr[idx]];
+  renderMain();
+}
+window.moveRExercise=moveRExercise;
 
 function openRoutineLib(blockId,sessionName,catIdx) {
   S.libTarget={blockId,catIdx,sessionName,isRoutine:true};
