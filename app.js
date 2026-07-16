@@ -764,6 +764,16 @@ function renderOnboardingStep2(d) {
       ${d.category==='__nueva__' ? `<div><label class="eval-lbl">Nombre de la categoría</label>
         <input class="auth-inp" style="margin:0" type="text" value="${d.categoryCustom||''}" oninput="setOnboardingField('categoryCustom',this.value)" placeholder="Ej: Sub-19">
       </div>` : ''}
+      ${d.institution ? (()=>{
+        const sport = instMap[d.institution]?.sport||'';
+        const posOpts = getPositionOptionsForSport(sport);
+        return `<div><label class="eval-lbl">Posición (opcional)</label>
+          ${posOpts ? `<select class="auth-inp" style="margin:0" onchange="setOnboardingField('position',this.value)">
+            <option value="">— Sin posición —</option>
+            ${posOpts.map(p=>`<option value="${p}" ${d.position===p?'selected':''}>${p}</option>`).join('')}
+          </select>` : `<input class="auth-inp" style="margin:0" type="text" value="${d.position||''}" oninput="setOnboardingField('position',this.value)" placeholder="Ej: Base, Alero...">`}
+        </div>`;
+      })() : ''}
     </div>`;
   }
 
@@ -915,7 +925,7 @@ async function finishOnboarding() {
       update.institution = d.institution;
       update.category = finalCategory;
       update.sport = sport;
-      update.position = null;
+      update.position = d.position || null;
       const teamId = await findOrCreateTeam(d.institution, finalCategory, sport);
       update.teamId = teamId;
       // Vincular esta cuenta real (uid) al roster del equipo, sin romper
@@ -1387,10 +1397,11 @@ window.submitSessionFeedback=submitSessionFeedback;
 // más en S.history._sessionLogs, con el mismo modelo sRPE (UA = mins × RPE)
 // que ya usa calcLoadMetrics para ACWR / monotonía / strain.
 const LOAD_ACTIVITIES = [
-  {key:'gimnasio', label:'Gimnasio',  emoji:'🏋️'},
-  {key:'pelota',   label:'Pelota',    emoji:'🏀'},
-  {key:'partido',  label:'Partido 1', emoji:'🏆', isGame:true},
-  {key:'partido2', label:'Partido 2 (si jugaste doble ese día)', emoji:'🏆', isGame:true},
+  {key:'gimnasio',  label:'Gimnasio (club)', emoji:'🏋️'},
+  {key:'gimnasio2', label:'Gimnasio individual (fuera del club)', emoji:'🏋️', isExtraGym:true},
+  {key:'pelota',    label:'Pelota',    emoji:'🏀'},
+  {key:'partido',   label:'Partido 1', emoji:'🏆', isGame:true},
+  {key:'partido2',  label:'Partido 2 (si jugaste doble ese día)', emoji:'🏆', isGame:true},
 ];
 
 function getLoadLog(activity,date) {
@@ -1758,6 +1769,36 @@ window.shiftWellnessDate=shiftWellnessDate;
 function goToTodayWellness() { S.wellnessViewDate=null; renderMain(); }
 window.goToTodayWellness=goToTodayWellness;
 
+function renderLoadItemRow(act, wKey) {
+  const existing=getLoadLog(act.key,wKey);
+  const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe,note:existing.note||''}:{mins:'',rpe:0,note:''});
+  const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
+  return `<div class="load-item">
+    <div class="load-item-label"><span>${act.emoji}</span><span>${act.label}</span></div>
+    ${act.isGame?`<input type="text" maxlength="60" class="load-mins-inp" style="width:100%;text-align:left;margin-bottom:8px" placeholder="Rival / categoría (opcional, ej: vs Club X — Juvenil)" value="${draft.note||''}" onblur="updateLoadDraft('${wKey}','${act.key}','note',this.value)">`:''}
+    <div class="load-item-row">
+      <input type="number" min="0" max="300" class="load-mins-inp" placeholder="min" value="${draft.mins||''}" oninput="updateLoadDraft('${wKey}','${act.key}','mins',this.value)">
+      <div class="load-rpe-scale">
+        ${Array.from({length:11},(_,i)=>i).map(v=>{
+          const color=v===0?'var(--text3)':`hsl(${Math.round((10-v)/10*120)},65%,45%)`;
+          return `<div class="load-rpe-dot ${draft.rpe===v?'sel':''}" style="${draft.rpe===v?`background:${color}`:''}" onclick="updateLoadDraft('${wKey}','${act.key}','rpe',${v})" title="RPE ${v}">${v}</div>`;
+        }).join('')}
+      </div>
+    </div>
+    ${ua?`<div class="load-ua-preview">${draft.mins} min × RPE ${draft.rpe} = ${ua} UA</div>`:''}
+  </div>`;
+}
+window.renderLoadItemRow = renderLoadItemRow;
+
+// Mostrar/ocultar el segundo Gimnasio (entrenamiento individual fuera del
+// club) — queda a criterio del atleta, arranca oculto salvo que ya tenga
+// datos cargados ese día.
+function toggleExtraGym() {
+  S.showExtraGym = !S.showExtraGym;
+  renderMain();
+}
+window.toggleExtraGym = toggleExtraGym;
+
 function renderWellness() {
   const today=new Date().toISOString().split('T')[0];
   const wKey=S.wellnessViewDate||today;
@@ -1859,23 +1900,21 @@ function renderWellness() {
     <div class="wellness-sub">Cargá minutos y RPE de cada actividad (las que no correspondan, dejalas en blanco)</div>`;
 
   LOAD_ACTIVITIES.forEach(act=>{
-    const existing=getLoadLog(act.key,wKey);
-    const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe,note:existing.note||''}:{mins:'',rpe:0,note:''});
-    const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
-    html+=`<div class="load-item">
-      <div class="load-item-label"><span>${act.emoji}</span><span>${act.label}</span></div>
-      ${act.isGame?`<input type="text" maxlength="60" class="load-mins-inp" style="width:100%;text-align:left;margin-bottom:8px" placeholder="Rival / categoría (opcional, ej: vs Club X — Juvenil)" value="${draft.note||''}" onblur="updateLoadDraft('${wKey}','${act.key}','note',this.value)">`:''}
-      <div class="load-item-row">
-        <input type="number" min="0" max="300" class="load-mins-inp" placeholder="min" value="${draft.mins||''}" oninput="updateLoadDraft('${wKey}','${act.key}','mins',this.value)">
-        <div class="load-rpe-scale">
-          ${Array.from({length:11},(_,i)=>i).map(v=>{
-            const color=v===0?'var(--text3)':`hsl(${Math.round((10-v)/10*120)},65%,45%)`;
-            return `<div class="load-rpe-dot ${draft.rpe===v?'sel':''}" style="${draft.rpe===v?`background:${color}`:''}" onclick="updateLoadDraft('${wKey}','${act.key}','rpe',${v})" title="RPE ${v}">${v}</div>`;
-          }).join('')}
-        </div>
-      </div>
-      ${ua?`<div class="load-ua-preview">${draft.mins} min × RPE ${draft.rpe} = ${ua} UA</div>`:''}
-    </div>`;
+    if(act.isExtraGym) return; // se muestra aparte, como desplegable, justo después de Gimnasio
+    html += renderLoadItemRow(act, wKey);
+    if(act.key==='gimnasio') {
+      const extraAct = LOAD_ACTIVITIES.find(a=>a.key==='gimnasio2');
+      const hasExtraData = !!getLoadLog('gimnasio2', wKey);
+      const showExtra = S.showExtraGym || hasExtraData;
+      html += showExtra
+        ? `<div style="position:relative">
+             <button class="abtn" style="position:absolute;top:8px;right:0;font-size:11px;z-index:1" onclick="toggleExtraGym()">Ocultar</button>
+             ${renderLoadItemRow(extraAct, wKey)}
+           </div>`
+        : `<div style="text-align:center;padding:2px 0 12px">
+             <button class="abtn" style="font-size:12px" onclick="toggleExtraGym()">+ Agregar entrenamiento individual (fuera del club)</button>
+           </div>`;
+    }
   });
 
   html += `<button class="wellness-submit" style="margin-top:12px" onclick="saveLoadLog('${wKey}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar carga${isToday?' de hoy':' de ese día'}</button>
