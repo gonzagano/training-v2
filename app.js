@@ -3982,6 +3982,20 @@ function renderSettings() {
       <div class="settings-lbl">Peso (kg)</div>
       <input class="abtn" type="number" style="text-align:right;width:80px" value="${u.weight||''}" onblur="saveMyProfileField('weight',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>
+    ${(()=>{
+      if(u.athleteType!=='team') return '';
+      const myTeam = u.teamId ? S.teams.find(t=>t.id===u.teamId) : null;
+      const posOpts = getPositionOptionsForSport(myTeam?.sport||u.sport);
+      return `<div class="settings-item">
+        <div class="settings-lbl">Posición</div>
+        ${posOpts
+          ? `<select class="abtn" style="text-align:right" onchange="saveMyProfileField('position',this.value)">
+              <option value="">— Sin posición —</option>
+              ${posOpts.map(p=>`<option value="${p}" ${u.position===p?'selected':''}>${p}</option>`).join('')}
+            </select>`
+          : `<input class="abtn" style="text-align:right;flex:1;max-width:200px" value="${u.position||''}" placeholder="Ej: Base, Alero..." onblur="saveMyProfileField('position',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`}
+      </div>`;
+    })()}
   </div>
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Semana actual</div>
