@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged }
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3049,6 +3049,36 @@ async function saveReassignAthleteTeam(uid) {
 }
 window.saveReassignAthleteTeam=saveReassignAthleteTeam;
 
+// Borra TODOS los datos del atleta (perfil + datos personales) y lo saca del
+// roster de su equipo — no borra la cuenta de Firebase en sí (eso solo lo
+// puede hacer la persona misma, ver deleteMyAccount), pero la próxima vez
+// que entre con el mismo mail, la app la manda al registro de cero.
+async function resetAthleteAccount(uid) {
+  const a = S.adminAthletes.find(x=>x.uid===uid);
+  const name = a?.name || 'este atleta';
+  if(!confirm(`¿Resetear la cuenta de ${name}? Se borran todos sus datos (tests, wellness, rutina, equipo). La próxima vez que entre va a tener que registrarse de cero con el mismo mail. Esto no se puede deshacer.`)) return;
+  showToast('Reseteando…');
+  try {
+    if(a?.teamId) {
+      const team = S.teams.find(t=>t.id===a.teamId);
+      if(team) {
+        const memberUids = (team.memberUids||[]).filter(id=>id!==uid);
+        const players = (team.players||[]).filter(p=>!namesLikelyMatch(p,a.name));
+        await updateDoc(doc(db,'teams',team.id), {memberUids, players});
+        team.memberUids=memberUids; team.players=players;
+      }
+    }
+    await deleteDoc(doc(db,'users',uid));
+    await deleteDoc(doc(db,'personal',uid));
+    S.adminAthletes = S.adminAthletes.filter(x=>x.uid!==uid);
+    S.viewingAthlete = null;
+    S.adminView = 'athletes';
+    showToast('✓ Cuenta reseteada');
+    renderMain();
+  } catch(e) { showToast('Error al resetear'); }
+}
+window.resetAthleteAccount = resetAthleteAccount;
+
 // Doble competencia ya no es un flag fijo en el perfil — se detecta solo,
 // mirando si el atleta cargó 2+ partidos en los últimos 7 días. Así, si una
 // semana juega doble y la siguiente no, la marca "2x" aparece y desaparece
@@ -3946,10 +3976,65 @@ function renderSettings() {
       <button class="abtn abtn-d" onclick="signOut()">Cerrar sesión</button>
     </div>
   </div>
+  <div class="card">
+    <div class="settings-item" style="border-bottom:none">
+      <div><div class="settings-lbl" style="color:var(--red)">Eliminar mi cuenta</div><div class="settings-sub">Borra tu cuenta y todos tus datos definitivamente — el mail queda libre para registrarse de nuevo</div></div>
+      <button class="abtn abtn-d" onclick="deleteMyAccount()">Eliminar cuenta</button>
+    </div>
+  </div>
   <div style="text-align:center;padding:20px;font-size:11px;color:var(--text3)">
     G-Metrics Performance Lab · ${S.userData?.name||''} · ${S.isAdmin?'Admin':'Atleta'}
   </div>`;
 }
+
+// Elimina la cuenta propia por completo: datos de Firestore + la cuenta real
+// de Firebase (esto sí libera el mail para un registro nuevo). Solo la puede
+// hacer la persona misma, logueada — es la única forma real de "borrar el
+// mail", Firebase no permite que un admin borre la cuenta de otro.
+async function deleteMyAccount() {
+  if(S.isAdmin) {
+    alert('Por seguridad, la cuenta de administrador no se puede eliminar desde acá. Si necesitás cambiarla, avisale a quien armó la app.');
+    return;
+  }
+  if(!confirm('¿Eliminar tu cuenta definitivamente? Se borran todos tus datos (wellness, tests, rutina) y tu mail queda libre para registrarte de nuevo si hace falta. Esto NO se puede deshacer.')) return;
+  if(!confirm('Confirmá una vez más: esto borra tu cuenta para siempre. ¿Seguro?')) return;
+
+  const uid = S.user.uid;
+  showToast('Eliminando cuenta…');
+
+  const wipeFirestoreAndAuth = async () => {
+    try {
+      // Sacarlo del roster de su equipo, si tiene
+      if(S.userData?.teamId) {
+        const tSnap = await getDoc(doc(db,'teams',S.userData.teamId));
+        if(tSnap.exists()) {
+          const team = tSnap.data();
+          const memberUids = (team.memberUids||[]).filter(id=>id!==uid);
+          const players = (team.players||[]).filter(p=>!namesLikelyMatch(p,S.userData.name));
+          await updateDoc(doc(db,'teams',S.userData.teamId), {memberUids, players});
+        }
+      }
+      await deleteDoc(doc(db,'users',uid)).catch(()=>{});
+      await deleteDoc(doc(db,'personal',uid)).catch(()=>{});
+      await deleteUser(auth.currentUser);
+      showToast('✓ Cuenta eliminada');
+    } catch(e) {
+      if(e.code==='auth/requires-recent-login') {
+        const pass = prompt('Por seguridad, Firebase te pide confirmar tu contraseña antes de eliminar la cuenta:');
+        if(!pass) { showToast('Cancelado'); return; }
+        try {
+          const cred = EmailAuthProvider.credential(S.user.email, pass);
+          await reauthenticateWithCredential(auth.currentUser, cred);
+          await wipeFirestoreAndAuth();
+        } catch(e2) { showToast('Contraseña incorrecta o error al reautenticar'); }
+      } else {
+        showToast('Error al eliminar la cuenta');
+      }
+    }
+  };
+  await wipeFirestoreAndAuth();
+}
+window.deleteMyAccount = deleteMyAccount;
 
 async function saveMyProfileField(field, value) {
   if(field==='name' && !value.trim()) { showToast('El nombre no puede quedar vacío'); renderMain(); return; }
@@ -4028,23 +4113,43 @@ function viewWellnessDay(uid, date) {
 }
 window.viewWellnessDay=viewWellnessDay;
 
+function shiftWellnessDetailDate(delta) {
+  const d = new Date(S.wellnessDetailDate+'T00:00:00');
+  d.setDate(d.getDate()+delta);
+  const today = new Date(); today.setHours(0,0,0,0);
+  if(d>today) return; // no tiene sentido navegar a futuro
+  S.wellnessDetailDate = d.toISOString().split('T')[0];
+  renderMain();
+}
+window.shiftWellnessDetailDate = shiftWellnessDetailDate;
+
 function renderWellnessDetail() {
   const uid = S.wellnessDetailUid, date = S.wellnessDetailDate;
-  const a = (S.adminAthletes||[]).find(x=>x.uid===uid)
-    || (S.dashAthletes||[]).find(x=>x.uid===uid)
-    || (S.viewingAthlete?.uid===uid ? {name:S.viewingAthlete.userData?.name, email:S.viewingAthlete.userData?.email, _personal:S.viewingAthlete.personal} : null);
+  // OJO: priorizamos S.viewingAthlete porque SIEMPRE trae el documento
+  // personal completo (se carga entero al abrir la ficha) — S.adminAthletes
+  // y S.dashAthletes son listas livianas que muchas veces NO tienen el
+  // historial de wellness cargado, y por eso a veces parecía que un día que
+  // sí estaba completo "no tenía datos".
+  const a = (S.viewingAthlete?.uid===uid ? {name:S.viewingAthlete.userData?.name, email:S.viewingAthlete.userData?.email, _personal:S.viewingAthlete.personal} : null)
+    || (S.adminAthletes||[]).find(x=>x.uid===uid)
+    || (S.dashAthletes||[]).find(x=>x.uid===uid);
   if(!a) return `<div class="empty-state">Atleta no encontrado.</div>`;
 
   const w = a._personal?.wellness?.[date] || {};
   const {pct, allFilled} = getWellnessScore(w);
   const state = getWellnessState(allFilled?pct:null);
   const dateLabel = new Date(date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  const isToday = date===new Date().toISOString().split('T')[0];
 
   let html = `<div class="team-detail-header">
     <button class="back-btn" onclick="S.adminView='${S._wellnessDetailReturnView||'athlete_detail'}';renderMain()">‹</button>
     <div class="team-detail-title">Wellness · ${a.name||a.email}</div>
   </div>
-  <div style="font-size:13px;color:var(--text3);margin-bottom:16px;text-transform:capitalize">${dateLabel}</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <button class="abtn" onclick="shiftWellnessDetailDate(-1)">‹ Día anterior</button>
+    <div style="font-size:13px;color:var(--text3);text-transform:capitalize">${dateLabel}</div>
+    <button class="abtn" style="${isToday?'opacity:.3;pointer-events:none':''}" onclick="shiftWellnessDetailDate(1)">Día siguiente ›</button>
+  </div>
   <div class="hooper-score-box">
     <div>
       <div class="hooper-score-val" style="color:${state.color}">${allFilled?pct+'%':'—'}</div>
@@ -4222,10 +4327,6 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Biblioteca de ejercicios</div><div class="admin-item-sub">${S.library.length} ejercicios guardados</div></div>
       <button class="abtn abtn-p" onclick="switchView('library')">Gestionar →</button>
-    </div>
-    <div class="admin-item">
-      <div><div class="admin-item-lbl">Restaurar bloques propios</div><div class="admin-item-sub">Vuelve a la estructura original de tu sesión</div></div>
-      <button class="abtn" onclick="resetBlocks()">Restaurar</button>
     </div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Corregir mayúsculas de nombres</div><div class="admin-item-sub">Pasa "GANORA gonzalo" → "Ganora Gonzalo" para todos los atletas de una</div></div>
@@ -4442,6 +4543,12 @@ function drawCompareCharts() {
 window.drawCompareCharts=drawCompareCharts;
 
 async function adminOpenAthlete(uid) {
+  // Guardamos desde dónde se abrió esta ficha (Dashboard, un equipo, la
+  // lista de Atletas...) para que "volver" te lleve ahí y no siempre al
+  // mismo lugar fijo.
+  if(S.adminView !== 'athlete_detail') {
+    S._athleteDetailReturnCtx = {currentView:S.currentView, adminView:S.adminView, teamView:S.teamView, teamSubview:S.teamSubview};
+  }
   S.adminView='athlete_detail';
   S.currentView='admin';
   S._atletaRoutineCollapsedDays = null;
@@ -4459,6 +4566,25 @@ async function adminOpenAthlete(uid) {
   renderMain();
 }
 window.adminOpenAthlete=adminOpenAthlete;
+
+// "Volver" desde la ficha de un atleta — te lleva de nuevo a donde estabas
+// parado antes de entrar (Dashboard, un equipo, la lista de Atletas...), en
+// vez de siempre mandarte al mismo lugar fijo.
+function goBackFromAthleteDetail() {
+  const ctx = S._athleteDetailReturnCtx;
+  S._athleteDetailReturnCtx = null;
+  S.viewingAthlete = null;
+  if(ctx) {
+    S.currentView = ctx.currentView;
+    S.adminView = ctx.adminView;
+    S.teamView = ctx.teamView;
+    S.teamSubview = ctx.teamSubview;
+    renderBottomBar(); renderMain();
+  } else {
+    S.adminView='athletes'; S.currentView='admin'; adminGoAthletes();
+  }
+}
+window.goBackFromAthleteDetail = goBackFromAthleteDetail;
 
 function renderAthleteDetail() {
   if(!S.viewingAthlete) return `<div class="empty-state">Error cargando perfil.</div>`;
@@ -4503,7 +4629,7 @@ function renderAthleteDetail() {
   const activeInjCount = activeInj.length;
 
   let html=`<div class="team-detail-header">
-    <button class="back-btn" data-back="admin-athletes">‹</button>
+    <button class="back-btn" onclick="goBackFromAthleteDetail()">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1">
       ${avatarHtml(userData.name||userData.email, userData.color, 30, userData.photoUrl)}
       ${userData.name||userData.email}
@@ -4582,6 +4708,13 @@ function renderAthleteDetail() {
         })()}
       </div>
       <div style="font-size:11px;color:var(--text3)">Se ven TODAS las categorías conocidas (existan o no como equipo todavía) — si elegís una que no existe aún, se crea sola. Sirve para mover a alguien de categoría, fusionar equipos duplicados, o pasarlo de individual a equipo (y viceversa).</div>
+    </div>
+  </div>
+
+  <div class="admin-section" style="border-color:rgba(239,68,68,0.3)">
+    <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:8px">
+      <div><div class="admin-item-lbl" style="color:var(--red)">Resetear cuenta</div><div class="admin-item-sub">Borra todo (nombre, equipo, tests, wellness) y lo manda al registro de cero la próxima vez que entre con el mismo mail. No borra el mail en sí — para eso, esa persona tiene que entrar y usar "Eliminar mi cuenta" en Ajustes.</div></div>
+      <button class="abtn abtn-d" onclick="resetAthleteAccount('${uid}')">Resetear cuenta</button>
     </div>
   </div>
 
@@ -6394,6 +6527,9 @@ function setDashTeamFilter(v) { S.dashTeamFilter=v; updateDashboardAthleteList()
 window.setDashTeamFilter=setDashTeamFilter;
 
 async function adminOpenAthleteDash(uid) {
+  if(S.adminView !== 'athlete_detail') {
+    S._athleteDetailReturnCtx = {currentView:S.currentView, adminView:S.adminView, teamView:S.teamView, teamSubview:S.teamSubview};
+  }
   S.adminView='athlete_detail';
   S.currentView='admin';
   renderBottomBar();
