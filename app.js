@@ -6088,6 +6088,8 @@ async function selectEvalAthlete(uid) {
 window.selectEvalAthlete = selectEvalAthlete;
 
 function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, isDesktop) {
+  const cmjRecsEntry = edata['cmj']||[];
+  const bestCMJ = cmjRecsEntry.length ? cmjRecsEntry.reduce((best,r)=>r.height>best.height?r:best, cmjRecsEntry[0]) : null;
   const sec = S.evalShowSecondary;
   let html = isDesktop ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">' : '';
 
