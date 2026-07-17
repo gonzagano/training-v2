@@ -2722,6 +2722,8 @@ function renderTeamReport(team) {
   const periodDays = 30;
   const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
   const periodStartStr = periodStart.toISOString().split('T')[0];
+  const prevPeriodStart = new Date(); prevPeriodStart.setDate(prevPeriodStart.getDate()-periodDays*2);
+  const prevPeriodStartStr = prevPeriodStart.toISOString().split('T')[0];
 
   const injSum = getTeamInjurySummary(members);
   let altas=0, bajas=0;
@@ -2740,21 +2742,70 @@ function renderTeamReport(team) {
   const avgW = avgMetric(summaries,'avgWellness');
   const avgAcwr = avgMetric(summaries,'acwr');
 
+  // Tendencia: wellness promedio de este período vs el período anterior —
+  // reconstruido día a día a partir de lo que cada atleta cargó, para poder
+  // decir "subiendo/bajando", no solo la foto de hoy.
+  const wellnessAvgForRange = (startStr, endStr) => {
+    let total=0, count=0;
+    members.forEach(a=>{
+      const w = a._personal?.wellness||{};
+      Object.entries(w).forEach(([date,entry])=>{
+        if(date>=startStr && date<endStr) {
+          const {pct,allFilled} = getWellnessScore(entry);
+          if(allFilled) { total+=pct; count++; }
+        }
+      });
+    });
+    return count?Math.round(total/count):null;
+  };
+  const wellnessPrev = wellnessAvgForRange(prevPeriodStartStr, periodStartStr);
+  const wellnessNow  = wellnessAvgForRange(periodStartStr, today);
+  const wellnessTrend = (wellnessPrev!=null && wellnessNow!=null)
+    ? (wellnessNow>wellnessPrev+2 ? {arrow:'↑',color:'#16803c',txt:'mejorando'} : wellnessNow<wellnessPrev-2 ? {arrow:'↓',color:'#b91c1c',txt:'bajando'} : {arrow:'→',color:'#6b6b6b',txt:'estable'})
+    : null;
+
   const jumpRows = members.map(a=>{
     const evals = a._personal?.evals||{};
     const recs = evals['cmj']||[];
     const best = recs.length?Math.max(...recs.map(r=>r.height)):null;
     return {name:a.name||a.email, best};
   }).filter(r=>r.best!=null).sort((a,b)=>b.best-a.best);
+  const teamAvgCMJ = jumpRows.length ? Math.round(jumpRows.reduce((s,r)=>s+r.best,0)/jumpRows.length) : null;
 
   const positions = [...new Set(members.map(a=>a.position).filter(Boolean))];
+
+  // ── Semáforo (RAG) — mismos umbrales que ya usa el resto de la app, para
+  // que el informe diga lo mismo que la pantalla en vivo. ──────────────────
+  const wellnessRag = avgW==null ? {c:'#9aa0a6',bg:'#f2f2f2',label:'Sin datos'}
+    : avgW>=75 ? {c:'#16803c',bg:'#e7f5ec',label:'Bien'}
+    : avgW>=50 ? {c:'#a16207',bg:'#fdf3e3',label:'Normal'}
+    : {c:'#b91c1c',bg:'#fdecea',label:'Fatigado'};
+  const acwrRag = avgAcwr==null ? {c:'#9aa0a6',bg:'#f2f2f2',label:'Sin datos'}
+    : avgAcwr<0.8 ? {c:'#6b4fc7',bg:'#f0ecfb',label:'Subcarga'}
+    : avgAcwr<=1.3 ? {c:'#16803c',bg:'#e7f5ec',label:'Zona óptima'}
+    : avgAcwr<=1.5 ? {c:'#a16207',bg:'#fdf3e3',label:'Precaución'}
+    : {c:'#b91c1c',bg:'#fdecea',label:'Riesgo'};
+  const injRag = injSum.grave>0 ? {c:'#b91c1c',bg:'#fdecea',label:'Atención'}
+    : injSum.total>0 ? {c:'#a16207',bg:'#fdf3e3',label:'Vigilar'}
+    : {c:'#16803c',bg:'#e7f5ec',label:'Sin novedad'};
+
+  // ── Puntos clave automáticos — lo que de verdad cambia una decisión, no
+  // todos los números crudos (así lo recomiendan los propios fabricantes:
+  // Catapult, por ejemplo, aconseja entregar un subconjunto chico y accionable). ──
+  const highlights = [];
+  if(injSum.grave>0) highlights.push(`⚠ ${injSum.grave} lesión${injSum.grave===1?'':'es'} grave${injSum.grave===1?'':'es'} activa${injSum.grave===1?'':'s'} — revisar antes de la próxima sesión.`);
+  const riskyAthletes = summaries.filter(s=>s.acwr!=null && s.acwr>1.5).length;
+  if(riskyAthletes>0) highlights.push(`⚠ ${riskyAthletes} atleta${riskyAthletes===1?'':'s'} en zona de riesgo por ACWR alto (>1.5).`);
+  if(wellnessTrend && wellnessTrend.txt!=='estable') highlights.push(`${wellnessTrend.arrow} El wellness del plantel viene ${wellnessTrend.txt} respecto a los ${periodDays} días previos (${wellnessPrev}% → ${wellnessNow}%).`);
+  if(bajas>altas && bajas>0) highlights.push(`${bajas} lesiones nuevas contra ${altas} altas en los últimos ${periodDays} días — el balance es negativo.`);
+  if(!highlights.length) highlights.push('Sin alertas relevantes — el plantel está estable en wellness, carga y lesiones.');
 
   return `<div class="no-print" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
     <div style="font-size:15px;font-weight:700;flex:1">Informe del equipo</div>
     <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
   </div>
 
-  <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:760px;margin:0 auto">
+  <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:760px;margin:0 auto;font-family:'Inter',-apple-system,sans-serif">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px">
       <div>
         <div style="font-size:20px;font-weight:800">${team.name}</div>
@@ -2762,39 +2813,62 @@ function renderTeamReport(team) {
       </div>
       <div style="text-align:right">
         <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.05em">G-Metrics Performance Lab</div>
-        <div style="font-size:12px;color:#555;margin-top:2px">${today}</div>
+        <div style="font-size:12px;color:#555;margin-top:2px">Período: últimos ${periodDays} días · Generado ${today}</div>
       </div>
     </div>
 
-    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Resumen general</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#ddd;border:1px solid #ddd;margin-bottom:20px">
-      <div style="background:#fff;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${avgW!=null?avgW+'%':'—'}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Wellness</div></div>
-      <div style="background:#fff;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${avgAcwr!=null?avgAcwr.toFixed(2):'—'}</div><div style="font-size:9px;color:#555;text-transform:uppercase">ACWR prom.</div></div>
-      <div style="background:#fff;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${injSum.total}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Lesiones activas</div></div>
-      <div style="background:#fff;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${injuryRate}%</div><div style="font-size:9px;color:#555;text-transform:uppercase">% plantel lesionado</div></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      <div style="background:${wellnessRag.bg};border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:9px;color:${wellnessRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Wellness</div>
+        <div style="font-size:20px;font-weight:800;color:${wellnessRag.c}">${avgW!=null?avgW+'%':'—'}</div>
+        <div style="font-size:10px;color:${wellnessRag.c};font-weight:600">${wellnessRag.label}${wellnessTrend?' '+wellnessTrend.arrow:''}</div>
+      </div>
+      <div style="background:${acwrRag.bg};border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:9px;color:${acwrRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Carga (ACWR)</div>
+        <div style="font-size:20px;font-weight:800;color:${acwrRag.c}">${avgAcwr!=null?avgAcwr.toFixed(2):'—'}</div>
+        <div style="font-size:10px;color:${acwrRag.c};font-weight:600">${acwrRag.label}</div>
+      </div>
+      <div style="background:${injRag.bg};border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:9px;color:${injRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Lesiones</div>
+        <div style="font-size:20px;font-weight:800;color:${injRag.c}">${injSum.total}</div>
+        <div style="font-size:10px;color:${injRag.c};font-weight:600">${injRag.label} · ${injuryRate}% plantel</div>
+      </div>
     </div>
 
-    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Lesiones — últimos ${periodDays} días</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
-      <tr style="background:#f2f2f2">
-        <th style="padding:6px 10px;text-align:left">Graves</th><th style="padding:6px 10px;text-align:left">Moderadas</th>
-        <th style="padding:6px 10px;text-align:left">Leves</th><th style="padding:6px 10px;text-align:left">Altas</th><th style="padding:6px 10px;text-align:left">Bajas nuevas</th>
-      </tr>
-      <tr>
-        <td style="padding:6px 10px">${injSum.grave}</td><td style="padding:6px 10px">${injSum.moderada}</td><td style="padding:6px 10px">${injSum.leve}</td>
-        <td style="padding:6px 10px;color:#16803c">${altas}</td><td style="padding:6px 10px;color:#b91c1c">${bajas}</td>
-      </tr>
-    </table>
+    <div style="background:#f7f7f5;border-left:3px solid #111;border-radius:0 6px 6px 0;padding:12px 14px;margin-bottom:22px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#555;margin-bottom:6px">Puntos clave</div>
+      ${highlights.map(h=>`<div style="font-size:12px;line-height:1.6">${h}</div>`).join('')}
+    </div>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Lesiones activas por gravedad</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="flex:1;background:#fdecea;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#b91c1c">${injSum.grave}</div><div style="font-size:9px;color:#b91c1c;text-transform:uppercase">Graves</div></div>
+      <div style="flex:1;background:#fdf3e3;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#a16207">${injSum.moderada}</div><div style="font-size:9px;color:#a16207;text-transform:uppercase">Moderadas</div></div>
+      <div style="flex:1;background:#e7f5ec;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#16803c">${injSum.leve}</div><div style="font-size:9px;color:#16803c;text-transform:uppercase">Leves</div></div>
+      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#16803c">${altas}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Altas (${periodDays}d)</div></div>
+      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#b91c1c">${bajas}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Bajas nuevas</div></div>
+    </div>
     ${injSum.details.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
-      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:left">Zona</th><th style="padding:6px 10px;text-align:center">Dolor</th></tr></thead>
-      <tbody>${injSum.details.sort((a,b)=>b.pain-a.pain).map(d=>`<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.athlete}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.zoneId}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${d.pain}/10</td></tr>`).join('')}</tbody>
+      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:left">Zona</th><th style="padding:6px 10px;text-align:center">Dolor</th><th style="padding:6px 10px;text-align:center">Gravedad</th></tr></thead>
+      <tbody>${injSum.details.sort((a,b)=>b.pain-a.pain).map(d=>{
+        const col = d.sev==='grave'?'#b91c1c':d.sev==='moderada'?'#a16207':'#16803c';
+        const bg = d.sev==='grave'?'#fdecea':d.sev==='moderada'?'#fdf3e3':'#e7f5ec';
+        const lbl = d.sev==='grave'?'Grave':d.sev==='moderada'?'Moderada':'Leve';
+        return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.athlete}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.zoneId}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${d.pain}/10</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:${bg};color:${col};font-weight:700;font-size:10px;padding:2px 8px;border-radius:10px">${lbl}</span></td></tr>`;
+      }).join('')}</tbody>
     </table>`:'<div style="font-size:12px;color:#777;margin-bottom:20px">Sin lesiones activas.</div>'}
 
     <div style="font-size:13px;font-weight:700;margin-bottom:8px">Test de salto — mejor CMJ registrado</div>
-    ${jumpRows.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
-      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:center">CMJ (cm)</th></tr></thead>
-      <tbody>${jumpRows.map(r=>`<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${r.name}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${r.best}</td></tr>`).join('')}</tbody>
-    </table>`:'<div style="font-size:12px;color:#777;margin-bottom:20px">Sin tests de salto registrados.</div>'}
+    ${jumpRows.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">
+      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:center">CMJ (cm)</th><th style="padding:6px 10px;text-align:center">vs. promedio</th></tr></thead>
+      <tbody>${jumpRows.map(r=>{
+        const diff = teamAvgCMJ!=null ? Math.round(r.best-teamAvgCMJ) : null;
+        const diffTxt = diff==null?'—':diff===0?'≈ promedio':(diff>0?'+':'')+diff+'cm';
+        const diffCol = diff==null?'#777':diff>0?'#16803c':diff<0?'#b91c1c':'#777';
+        return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${r.name}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;font-weight:700">${r.best}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;color:${diffCol}">${diffTxt}</td></tr>`;
+      }).join('')}</tbody>
+    </table>
+    <div style="font-size:11px;color:#777;margin-bottom:20px">Promedio del equipo: ${teamAvgCMJ}cm</div>`:'<div style="font-size:12px;color:#777;margin-bottom:20px">Sin tests de salto registrados.</div>'}
 
     ${positions.length?`<div style="font-size:13px;font-weight:700;margin-bottom:8px">Promedios por posición</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
@@ -2807,7 +2881,7 @@ function renderTeamReport(team) {
       }).join('')}</tbody>
     </table>`:''}
 
-    <div style="font-size:10px;color:#999;text-align:right;margin-top:20px">Generado el ${today}</div>
+    <div style="font-size:10px;color:#999;text-align:right;margin-top:20px">Generado el ${today} · G-Metrics Performance Lab</div>
   </div>`;
 }
 window.renderTeamReport=renderTeamReport;
@@ -3454,12 +3528,13 @@ function drawTeamInjuryChart(members) {
   if(!S.injuryChartInstance) S.injuryChartInstance=null;
   try{ if(S.injuryChartInstance) S.injuryChartInstance.destroy(); }catch(e){}
 
-  // Plugin chico para darle un poco de profundidad (sombra) al gráfico —
-  // Chart.js no soporta 3D real, esto es lo más honesto que se puede lograr
-  // en un canvas 2D sin sumar una librería nueva.
+  // Sombra sutil para dar sensación de profundidad — mucho más suave que
+  // antes, porque una sombra pensada para fondo oscuro se ve como una mancha
+  // sucia sobre un fondo claro. Acá el objetivo es un efecto de "tarjeta
+  // apenas levantada", no un halo marcado.
   const shadowPlugin = {
     id:'donutShadow',
-    beforeDatasetsDraw(chart){ const ctx=chart.ctx; ctx.save(); ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=16; ctx.shadowOffsetY=8; },
+    beforeDatasetsDraw(chart){ const ctx=chart.ctx; ctx.save(); ctx.shadowColor='rgba(18,21,28,0.18)'; ctx.shadowBlur=10; ctx.shadowOffsetY=4; },
     afterDatasetsDraw(chart){ chart.ctx.restore(); }
   };
 
@@ -3469,13 +3544,14 @@ function drawTeamInjuryChart(members) {
       labels:['Graves','Moderadas','Leves'],
       datasets:[{
         data:[sum.grave, sum.moderada, sum.leve],
-        backgroundColor:['#ef4444','#f59e0b','#22c55e'],
-        borderColor:'#FFFFFF', borderWidth:3,
+        backgroundColor:['#C33A2C','#C67C0F','#1F7A4D'],
+        borderColor:'#F5F6F8', borderWidth:2,
+        hoverOffset:4,
       }]
     },
     options:{
       responsive:true, maintainAspectRatio:false, cutout:'62%',
-      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8'} }
+      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#12151C',titleColor:'#fff',bodyColor:'#C7CDD6'} }
     },
     plugins:[shadowPlugin]
   });
@@ -5595,6 +5671,11 @@ function renderEvals() {
   const ice   = (lCMJ&&lSJ)   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1) : null;
   const coord = (lCMJ&&lAbal) ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
   const asym  = (lDer&&lIzq)  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
+  // "Mejor CMJ" tiene que ser el máximo histórico, no el último cargado —
+  // son cosas distintas (el índice elástico sí usa el último, porque refleja
+  // el estado actual; esta tarjeta puntual es un récord personal).
+  const cmjRecs = edata['cmj']||[];
+  const bestCMJ = cmjRecs.length ? cmjRecs.reduce((best,r)=>r.height>best.height?r:best, cmjRecs[0]) : null;
 
   const currentAthleteName = getAthleteDisplayName(S.evalAthleteId);
 
@@ -5747,7 +5828,7 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
     + '<div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px">';
 
   EVAL_TESTS.forEach(t=>{
-    const last = (edata[t.id]||[]).slice(-1)[0];
+    const last = sortEvalRecsByDate([...(edata[t.id]||[])]).slice(-1)[0];
     const fullWidth = (t.id==='saltoH'||t.id==='abalakov') ? 'full' : '';
     html += '<div class="eval-field '+fullWidth+'">'
       + '<label class="eval-lbl">'+t.label+' ('+t.unit+')</label>'
@@ -5771,7 +5852,7 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
   html += metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'));
   html += metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'));
   html += metricCardHtml('ASIMETRÍA UNILAT.', '↔', asym!==null?asym+'%':'-- %', asym?(parseFloat(asym)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'));
-  html += metricCardHtml('MEJOR CMJ', '↑', lCMJ?lCMJ.height+' cm':'--', 'var(--text)', lCMJ?'Último registro · '+lCMJ.date:'Sin datos');
+  html += metricCardHtml('MEJOR CMJ', '↑', bestCMJ?bestCMJ.height+' cm':'--', 'var(--text)', bestCMJ?'Récord personal · '+bestCMJ.date:'Sin datos');
   html += '</div>';
 
   html += '</div>';
@@ -5805,11 +5886,13 @@ function renderEvalHistory(edata, isDesktop, testList) {
     const ice   = (lCMJ&&lSJ)   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1) : null;
     const coord = (lCMJ&&lAbal) ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
     const asymH = (lDer&&lIzq)  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
+    const cmjRecsH = edata['cmj']||[];
+    const bestCMJH = cmjRecsH.length ? cmjRecsH.reduce((best,r)=>r.height>best.height?r:best, cmjRecsH[0]) : null;
     html += `<div style="grid-column:${isDesktop?'1/-1':'auto'};display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px">`
       + metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'))
       + metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'))
       + metricCardHtml('ASIMETRÍA UNILAT.', '↔', asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'))
-      + metricCardHtml('MEJOR CMJ', '↑', lCMJ?lCMJ.height+' cm':'--', 'var(--text)', lCMJ?'Último registro · '+lCMJ.date:'Sin datos')
+      + metricCardHtml('MEJOR CMJ', '↑', bestCMJH?bestCMJH.height+' cm':'--', 'var(--text)', bestCMJH?'Récord personal · '+bestCMJH.date:'Sin datos')
       + '</div>';
   }
 
@@ -5828,7 +5911,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
       }).filter(Boolean);
       recs = recsFwd.slice().reverse();
     } else {
-      recsFwd = edata[t.id]||[];
+      recsFwd = sortEvalRecsByDate([...(edata[t.id]||[])]);
       recs = recsFwd.slice().reverse();
     }
     last = recs[0]||null;
@@ -6042,7 +6125,7 @@ function drawEvalCharts() {
             const val = ds.data[idx];
             if(val===null||val===undefined) return;
             ctx.save();
-            ctx.fillStyle = '#a8b8d8';
+            ctx.fillStyle = '#1A1D26';
             ctx.font = '600 10px Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
@@ -6143,7 +6226,7 @@ function drawEvalCharts() {
                 const val=chart.data.datasets[0].data[idx];
                 if(val===null||val===undefined) return;
                 ctx.save();
-                ctx.fillStyle='#a8b8d8';
+                ctx.fillStyle='#1A1D26';
                 ctx.font='600 10px Inter, sans-serif';
                 ctx.textAlign='center';
                 ctx.textBaseline='bottom';
@@ -6192,7 +6275,7 @@ function drawEvalCharts() {
               const val=chart.data.datasets[0].data[idx];
               if(!val) return;
               ctx.save();
-              ctx.fillStyle='#e8edf8';
+              ctx.fillStyle='#1A1D26';
               ctx.font='700 11px Inter, sans-serif';
               ctx.textAlign='center';
               ctx.textBaseline='bottom';
