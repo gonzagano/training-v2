@@ -2818,13 +2818,51 @@ function renderTeamRutina(team) {
   const unmatchedLinked = linkedMembers.filter(a=>!(team.players||[]).some(p=>namesLikelyMatch(p,a.name)||normPersonName(p)===normPersonName(a.email)));
 
   html+=`<div class="admin-section" style="margin-top:16px"><div class="admin-section-title">Jugadores</div>
+    <div style="padding:12px 16px 4px">
     ${(team.players||[]).map((p,pi)=>{
       const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
-      return `<div class="admin-item">
-        <div class="admin-item-lbl" ${match?`style="cursor:pointer" onclick="adminOpenAthlete('${match.uid}')"`:''}>${p} ${match?`<span style="font-size:10px;color:var(--green);font-weight:600;margin-left:6px">✓ cuenta vinculada</span>`:`<span style="font-size:10px;color:var(--amber);margin-left:6px">sin cuenta</span>`}</div>
-        <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
+      if(!match) {
+        return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:14px;font-weight:600">${p} <span style="font-size:10px;color:var(--amber);font-weight:500;margin-left:6px">sin cuenta todavía</span></div>
+          <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
+        </div>`;
+      }
+      const today = new Date().toISOString().split('T')[0];
+      const w = match._personal?.wellness?.[today];
+      const {pct, allFilled} = getWellnessScore(w);
+      const wState = getWellnessState(allFilled?pct:null);
+      const injuries = getActiveInjuriesSummary(match._personal);
+      const worstInjury = injuries.length ? injuries.reduce((worst,i)=>i.pain>worst.pain?i:worst, injuries[0]) : null;
+      const injColor = worstInjury ? (worstInjury.pain>=8?'var(--red)':worstInjury.pain>=4?'var(--amber)':'var(--green)') : null;
+
+      // Alertas puntuales de HOY: estrés, sueño y dolor muscular reportados bajos.
+      const alerts = [];
+      if(w?.estres!==undefined && w.estres<=2) alerts.push({emoji:'😩',label:'Estresado'});
+      if(w?.sueño_calidad!==undefined && w.sueño_calidad<=2) alerts.push({emoji:'😴',label:'Durmió mal'});
+      if(w?.dolor_muscular!==undefined && w.dolor_muscular<=2) alerts.push({emoji:'💪',label:'Dolor muscular'});
+      if(w?.sueño_horas!==undefined && w.sueño_horas!=='' && +w.sueño_horas<=5) alerts.push({emoji:'⏰',label:`Poco sueño (${w.sueño_horas}h)`});
+
+      return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="cursor:pointer;flex-shrink:0" onclick="adminOpenAthlete('${match.uid}')">${avatarHtml(match.name||p, match.color, 36, match.photoUrl)}</div>
+          <div style="flex:1;min-width:0;cursor:pointer" onclick="adminOpenAthlete('${match.uid}')">
+            <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${match.name||p}</div>
+            <div style="font-size:11px;color:var(--text3)">${match.position||'Sin posición cargada'}</div>
+          </div>
+          <div style="text-align:center;flex-shrink:0;cursor:pointer" onclick="adminOpenAthlete('${match.uid}')">
+            <div style="font-size:16px;font-weight:800;color:${wState.color}">${allFilled?pct+'%':'—'}</div>
+            <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Wellness</div>
+          </div>
+          <div style="flex-shrink:0">${sparklineSvg(getWellnessSparklineData(match._personal,14), wState.color, 44, 20)}</div>
+          <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
+        </div>
+        ${(worstInjury || alerts.length) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          ${worstInjury?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${injColor}22;color:${injColor};border:1px solid ${injColor}">🩹 ${worstInjury.zoneLabel} · ${worstInjury.pain}/10</span>`:''}
+          ${alerts.map(al=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${al.emoji} ${al.label}</span>`).join('')}
+        </div>`:''}
       </div>`;
     }).join('')}
+    </div>
     <div class="admin-item">
       <input id="new-player-inp" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" placeholder="Nombre del jugador">
       <button class="abtn abtn-p" onclick="addPlayer('${team.id}')">Agregar</button>
@@ -3534,6 +3572,9 @@ async function openTeam(id) {
   // S.adminAthletes queda vacío y el roster no puede reconocer a NADIE como
   // "cuenta vinculada" aunque estén perfectamente registrados.
   await ensureAdminAthletes();
+  // Wellness y lesiones de cada jugador, para mostrarlas directamente en el
+  // roster (no solo en la ficha individual de cada uno).
+  if(S.teamView) await ensureGroupPersonalData(S.teamView.memberUids||[]);
   renderMain();
 }
 window.openTeam=openTeam;
