@@ -153,7 +153,7 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 
 /* ── SUBNAV TABS ─────────────────────────────── */
 .snav-tab{flex-shrink:0;font-size:12px;padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
-.snav-tab.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(30,42,82,0.3)}
+.snav-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .snav-tab.done{border-color:rgba(52,201,122,0.3);color:var(--green)}
 
 /* ── CARDS ──────────────────────────────────── */
@@ -218,13 +218,13 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 /* ── INTENSITY SELECTOR (RPE/RIR) ────────────── */
 .intensity-sel{display:flex;gap:4px;align-items:center}
 .intensity-type-btn{font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;font-family:inherit}
-.intensity-type-btn.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(30,42,82,0.3)}
+.intensity-type-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* ── ADD BUTTONS ─────────────────────────────── */
 .add-btn{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);cursor:pointer;padding:8px 2px 0;background:none;border:none;width:100%;transition:color .15s;font-family:inherit}
 .add-btn:hover{color:var(--text2)}
-.add-block-btn{width:100%;padding:13px;background:transparent;border:1px dashed var(--border2);border-radius:var(--r);color:var(--text3);font-size:13px;cursor:pointer;margin-bottom:12px;transition:all .15s;font-family:inherit}
-.add-block-btn:hover{border-color:var(--accent);color:var(--accent)}
+.add-block-btn{width:100%;padding:13px;background:transparent;border:1.5px dashed var(--accent);border-radius:var(--r);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;transition:all .15s;font-family:inherit}
+.add-block-btn:hover{background:var(--accent-dim)}
 
 /* ── RPE SLIDER ──────────────────────────────── */
 .rpe-row{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
@@ -371,7 +371,7 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 .lib-filters{display:flex;gap:6px;padding:8px 16px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);flex-shrink:0}
 .lib-filters::-webkit-scrollbar{display:none}
 .lib-filter{font-size:11px;padding:4px 11px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
-.lib-filter.active{background:var(--accent-dim);color:var(--accent);border-color:rgba(30,42,82,0.3)}
+.lib-filter.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .lib-list{overflow-y:auto;flex:1;padding:8px 0}
 .lib-item{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;cursor:pointer;transition:background .15s;font-size:14px}
 .lib-item:hover{background:var(--bg3)}
