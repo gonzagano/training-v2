@@ -1281,7 +1281,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
           <div class="field-box"><span class="field-lbl" style="color:var(--green)">Carga real (kg)</span>
             <input class="field-inp load" type="text" placeholder="—" value="${d.load||''}" onchange="setField('${ex.id}','load',this.value)" style="border-color:rgba(212,100,122,0.35)"></div>
           <div class="field-box"><span class="field-lbl" style="color:var(--amber)">RPE ejercicio</span>
-            <input class="field-inp" type="number" min="1" max="10" placeholder="—" value="${d.rpe||''}" onchange="setField('${ex.id}','rpe',this.value);this.style.borderColor=getRPEColor(+this.value)" style="border-color:${d.rpe?getRPEColor(+d.rpe):'rgba(245,158,11,0.4)'}"></div>
+            <input class="field-inp" type="number" min="1" max="10" placeholder="—" value="${d.rpe||''}" onchange="setField('${ex.id}','rpe',this.value);this.style.borderColor=getRPEColor(+this.value)" style="border-color:${d.rpe?getRPEColor(+d.rpe):'rgba(198,124,15,0.4)'}"></div>
           ${vbtF}
         ` : `
           <div class="field-box"><span class="field-lbl">Series</span>
@@ -2946,7 +2946,7 @@ function avatarHtml(name, color, size, photoUrl) {
   size = size||28;
   if(photoUrl) return `<img src="${photoUrl}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;display:block" alt="">`;
   const fs = Math.round(size*0.36);
-  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color||'var(--border2)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:${fs}px;font-weight:700;letter-spacing:-.02em">${getInitials(name)}</div>`;
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color||'var(--accent)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:${fs}px;font-weight:700;letter-spacing:-.02em">${getInitials(name)}</div>`;
 }
 window.avatarHtml=avatarHtml;
 
@@ -3470,7 +3470,7 @@ function drawTeamInjuryChart(members) {
       datasets:[{
         data:[sum.grave, sum.moderada, sum.leve],
         backgroundColor:['#ef4444','#f59e0b','#22c55e'],
-        borderColor:'#0b1120', borderWidth:3,
+        borderColor:'#FFFFFF', borderWidth:3,
       }]
     },
     options:{
@@ -4493,7 +4493,7 @@ function renderAdminMain() {
       <button class="abtn" onclick="fixAllNameCapitalization()">Corregir</button>
     </div>
   </div>
-  <div class="admin-section" style="border-color:rgba(239,68,68,0.3)">
+  <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
     <div class="admin-item" style="border-bottom:none">
       <div><div class="admin-item-lbl" style="color:var(--red)">Cerrar sesión</div><div class="admin-item-sub">Volvés a la pantalla de inicio de sesión</div></div>
       <button class="abtn abtn-d" onclick="signOut()">Cerrar sesión</button>
@@ -4673,7 +4673,7 @@ function drawCompareCharts() {
   const sumA=computeAthleteLoadSummary(a), sumB=computeAthleteLoadSummary(b);
   const evalsA=a._personal?.evals||{}, evalsB=b._personal?.evals||{};
   const bestOf=(edata,id)=>{ const r=edata?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):0; };
-  const gridColor='rgba(255,255,255,0.05)';
+  const gridColor='rgba(18,21,28,0.08)';
   const nameA=a.name||a.email, nameB=b.name||b.email;
 
   const c1=document.getElementById('compare-chart-wellness');
@@ -4682,7 +4682,7 @@ function drawCompareCharts() {
       type:'bar',
       data:{ labels:[nameA,nameB], datasets:[{ data:[sumA.avgWellness||0, sumB.avgWellness||0], backgroundColor:['#3b7dd8','#22c55e'], borderRadius:6 }] },
       options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
-        scales:{ y:{min:0,max:100,ticks:{color:'#7a90b8',font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:'#a8b8d8',font:{size:11}},grid:{display:false}} } }
+        scales:{ y:{min:0,max:100,ticks:{color:'#1A1D26',font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:'#1A1D26',font:{size:11}},grid:{display:false}} } }
     });
   }
   const c2=document.getElementById('compare-chart-strength');
@@ -4695,8 +4695,8 @@ function drawCompareCharts() {
         {label:nameA, data:ids.map(id=>bestOf(evalsA,id)), backgroundColor:'#3b7dd8', borderRadius:4},
         {label:nameB, data:ids.map(id=>bestOf(evalsB,id)), backgroundColor:'#22c55e', borderRadius:4},
       ]},
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#a8b8d8',font:{size:11}}}},
-        scales:{ y:{ticks:{color:'#7a90b8',font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:'#a8b8d8',font:{size:9}},grid:{display:false}} } }
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#1A1D26',font:{size:11}}}},
+        scales:{ y:{ticks:{color:'#1A1D26',font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:'#1A1D26',font:{size:9}},grid:{display:false}} } }
     });
   }
 }
@@ -4871,7 +4871,7 @@ function renderAthleteDetail() {
     </div>
   </div>
 
-  <div class="admin-section" style="border-color:rgba(239,68,68,0.3)">
+  <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
     <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:8px">
       <div><div class="admin-item-lbl" style="color:var(--red)">Resetear cuenta</div><div class="admin-item-sub">Borra todo (nombre, equipo, tests, wellness) y lo manda al registro de cero la próxima vez que entre con el mismo mail. No borra el mail en sí — para eso, esa persona tiene que entrar y usar "Eliminar mi cuenta" en Ajustes.</div></div>
       <button class="abtn abtn-d" onclick="resetAthleteAccount('${uid}')">Resetear cuenta</button>
@@ -6006,7 +6006,7 @@ function drawEvalCharts() {
   const edata = S.evalScopeUids
     ? getAthleteEvals(S.evalAthleteId || '')
     : getAthleteEvals(S.evalAthleteId || 'self');
-  const gridColor = 'rgba(255,255,255,0.05)';
+  const gridColor = 'rgba(18,21,28,0.08)';
   const view = S.evalView||'entry';
   const chartView = (view==='team_compare') ? 'history' : view;
   // Escala dinámica: en vez de un rango fijo igual para todos los atletas
@@ -6094,8 +6094,8 @@ function drawEvalCharts() {
             tooltip:{...tooltipStyle, filter:item=>item.datasetIndex===0}
           },
           scales:{
-            x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}, maxRotation:30}},
-            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:'#3d5070',font:{size:9}}}
+            x:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:9}, maxRotation:30}},
+            y:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:9}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:'#1A1D26',font:{size:9}}}
           }
         },
         plugins:[barLabelsPlugin]
@@ -6121,7 +6121,7 @@ function drawEvalCharts() {
             labels:validDates,
             datasets:[{
               label:'Asimetría %', data:validVals,
-              borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)',
+              borderColor:'#c67c0f', backgroundColor:'rgba(198,124,15,0.08)',
               tension:.3, pointRadius:5,
               pointBackgroundColor:validVals.map(v=>v>10?'#ef4444':v>5?'#f59e0b':'#22c55e'),
               fill:true
@@ -6131,8 +6131,8 @@ function drawEvalCharts() {
             responsive:true, maintainAspectRatio:true, aspectRatio:2.3,
             plugins:{legend:{display:false}, tooltip:tooltipStyle},
             scales:{
-              x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}, maxRotation:30}},
-              y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:9}}, min:0, title:{display:true,text:'% asimetría',color:'#3d5070',font:{size:9}}}
+              x:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:9}, maxRotation:30}},
+              y:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:9}}, min:0, title:{display:true,text:'% asimetría',color:'#1A1D26',font:{size:9}}}
             }
           },
           plugins:[{
@@ -6180,8 +6180,8 @@ function drawEvalCharts() {
           responsive:true, maintainAspectRatio:true, aspectRatio:2,
           plugins:{legend:{display:false}, tooltip:{...tooltipStyle, callbacks:{label:ctx=>' '+ctx.raw+' cm'}}},
           scales:{
-            x:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:11}}},
-            y:{grid:{color:gridColor}, ticks:{color:'#3d5070', font:{size:10}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:'#3d5070',font:{size:10}}}
+            x:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:11}}},
+            y:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:10}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:'#1A1D26',font:{size:10}}}
           }
         },
         plugins:[{
@@ -6447,13 +6447,13 @@ function drawAthleteTrendChart() {
 
   if(acwrData.every(v=>v===null) && wellnessData.every(v=>v===null)) return; // nada que graficar
 
-  const gridColor='rgba(255,255,255,0.05)';
+  const gridColor='rgba(18,21,28,0.08)';
   S.athleteChartInstances['trend']=new Chart(canvas,{
     type:'line',
     data:{
       labels,
       datasets:[
-        {label:'Wellness %',data:wellnessData,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,0.08)',yAxisID:'y',spanGaps:true,tension:.3,pointRadius:2,fill:true},
+        {label:'Wellness %',data:wellnessData,borderColor:'#1f7a4d',backgroundColor:'rgba(31,122,77,0.08)',yAxisID:'y',spanGaps:true,tension:.3,pointRadius:2,fill:true},
         {label:'ACWR',data:acwrData,borderColor:'#3b7dd8',backgroundColor:'rgba(59,125,216,0.08)',yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:2,fill:false},
       ]
     },
@@ -6461,13 +6461,13 @@ function drawAthleteTrendChart() {
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{labels:{color:'#a8b8d8',font:{size:11},boxWidth:12}},
+        legend:{labels:{color:'#1A1D26',font:{size:11},boxWidth:12}},
         tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
       },
       scales:{
-        x:{ ticks:{color:'#7a90b8',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8}, grid:{color:gridColor} },
-        y:{ position:'left', min:0, max:100, ticks:{color:'#22c55e',font:{size:10},stepSize:25}, grid:{color:gridColor} },
-        y1:{ position:'right', min:0, suggestedMax:2, ticks:{color:'#3b7dd8',font:{size:10}}, grid:{drawOnChartArea:false} },
+        x:{ ticks:{color:'#1A1D26',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8}, grid:{color:gridColor} },
+        y:{ position:'left', min:0, max:100, ticks:{color:'#1f7a4d',font:{size:10},stepSize:25}, grid:{color:gridColor} },
+        y1:{ position:'right', min:0, suggestedMax:2, ticks:{color:'#2f5fd8',font:{size:10}}, grid:{drawOnChartArea:false} },
       }
     }
   });
@@ -6558,22 +6558,22 @@ function renderDashboardContent() {
   const alertAthletes = acwrAlerts.map(x=>x.athlete); // keep for backward compat in metric card
 
   let html = `<div class="metric-grid" style="margin-bottom:20px">
-    <div class="metric-card">
+    <div class="metric-card" style="border-left:3px solid var(--accent)">
       <div class="metric-card-label">ATLETAS <span class="metric-card-icon">👥</span></div>
       <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
       <div class="metric-card-sub">registrados</div>
     </div>
-    <div class="metric-card">
+    <div class="metric-card" style="border-left:3px solid var(--warm)">
       <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">💪</span></div>
       <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}" data-countup="${trainedToday}">${trainedToday}</div>
       <div class="metric-card-sub">de ${totalAthletes} atletas</div>
     </div>
-    <div class="metric-card" style="cursor:pointer" onclick="openReminderScreen()">
+    <div class="metric-card" style="border-left:3px solid var(--green);cursor:pointer" onclick="openReminderScreen()">
       <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">❤️</span></div>
       <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}" data-countup="${wellnessToday}">${wellnessToday}</div>
       <div class="metric-card-sub">registros enviados · tocá para recordar</div>
     </div>
-    ${allAlerts.length?`<div class="metric-card" style="border-color:rgba(239,68,68,0.3)">
+    ${allAlerts.length?`<div class="metric-card" style="border-left:3px solid var(--red);border-color:rgba(195,58,44,0.3)">
       <div class="metric-card-label" style="color:var(--red)">ALERTAS ⚠</div>
       <div class="metric-card-value" style="color:var(--red)" data-countup="${allAlerts.length}">${allAlerts.length}</div>
       <div class="metric-card-sub">requieren atención</div>
