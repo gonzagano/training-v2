@@ -1129,7 +1129,7 @@ function renderMain() {
     case 'progress': m.innerHTML=renderProgress(); break;
     case 'wellness': m.innerHTML=renderWellness(); setTimeout(()=>runCountUps(),30); break;
     case 'stats':    m.innerHTML=renderStats(); break;
-    case 'teams':    m.innerHTML=renderTeams(); if(S.teamView && S.teamSubview==='stats') setTimeout(()=>drawTeamInjuryChart((S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid))),80); break;
+    case 'teams':    m.innerHTML=renderTeams(); if(S.teamView && S.teamSubview==='stats') { const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid)); setTimeout(()=>{drawTeamInjuryChart(mem);drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); } break;
     case 'atletas':  m.innerHTML=renderAtletas(); if(S.atletaView && S.atletaSubview==='stats') setTimeout(()=>drawTeamInjuryChart([S.atletaView]),80); break;
     case 'settings': m.innerHTML=renderSettings(); break;
     case 'notifications': m.innerHTML=renderNotifications(); break;
@@ -2806,13 +2806,13 @@ function renderTeamReport(team) {
   </div>
 
   <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:760px;margin:0 auto;font-family:'Inter',-apple-system,sans-serif">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #243B6B;padding-bottom:14px;margin-bottom:18px">
       <div>
-        <div style="font-size:20px;font-weight:800">${team.name}</div>
+        <div style="font-size:20px;font-weight:800;color:#243B6B">${team.name}</div>
         <div style="font-size:12px;color:#555;margin-top:2px">${team.sport||''}${team.category?' · '+team.category:''} · ${members.length} atletas</div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.05em">G-Metrics Performance Lab</div>
+        <div style="font-size:11px;color:#243B6B;text-transform:uppercase;letter-spacing:.05em;font-weight:700">G-Metrics Performance Lab</div>
         <div style="font-size:12px;color:#555;margin-top:2px">Período: últimos ${periodDays} días · Generado ${today}</div>
       </div>
     </div>
@@ -2835,8 +2835,8 @@ function renderTeamReport(team) {
       </div>
     </div>
 
-    <div style="background:#f7f7f5;border-left:3px solid #111;border-radius:0 6px 6px 0;padding:12px 14px;margin-bottom:22px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#555;margin-bottom:6px">Puntos clave</div>
+    <div style="background:#F0F3F9;border-left:3px solid #243B6B;border-radius:0 6px 6px 0;padding:12px 14px;margin-bottom:22px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#243B6B;margin-bottom:6px">Puntos clave</div>
       ${highlights.map(h=>`<div style="font-size:12px;line-height:1.6">${h}</div>`).join('')}
     </div>
 
@@ -3558,6 +3558,206 @@ function drawTeamInjuryChart(members) {
 }
 window.drawTeamInjuryChart=drawTeamInjuryChart;
 
+// ══════════════════════════════════════════════════════════════
+// ── RANKING, RADAR Y CUADRANTE DEL EQUIPO (inspirado en Hawkin
+// Dynamics / TeamBuildr / VALD) — todas colapsables por separado ──
+// ══════════════════════════════════════════════════════════════
+const LEADERBOARD_TESTS = [
+  {id:'cmj', label:'CMJ', unit:'cm'},
+  {id:'sj', label:'SJ', unit:'cm'},
+  {id:'abalakov', label:'Abalakov', unit:'cm'},
+  {id:'rm_press_banca', label:'Press banca', unit:'kg'},
+  {id:'rm_peso_muerto', label:'Peso muerto', unit:'kg'},
+  {id:'rm_sentadilla', label:'Sentadilla', unit:'kg'},
+];
+
+function collapsibleHeader(key, title) {
+  const collapsed = S.collapsedSections?.has(key);
+  return `<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleSection('${key}')">
+    <div class="admin-section-title" style="padding:0;margin:0">${title}</div>
+    <span style="color:var(--text3);font-size:15px;transform:rotate(${collapsed?'-90':'0'}deg);transition:transform .15s;display:inline-block">›</span>
+  </div>`;
+}
+window.collapsibleHeader = collapsibleHeader;
+
+function renderTeamLeaderboard(members) {
+  const key = 'team-leaderboard';
+  const collapsed = S.collapsedSections?.has(key);
+  const testId = S.leaderboardTest || 'cmj';
+  const testDef = LEADERBOARD_TESTS.find(t=>t.id===testId);
+  let html = `<div class="admin-section">${collapsibleHeader(key,'🏆 Ranking del equipo')}`;
+  if(!collapsed) {
+    const rows = members.map(a=>{
+      const recs = a._personal?.evals?.[testId]||[];
+      const best = recs.length ? Math.max(...recs.map(r=>r.height)) : null;
+      return {name:a.name||a.email, uid:a.uid, best};
+    }).filter(r=>r.best!=null).sort((a,b)=>b.best-a.best);
+
+    html += `<div style="padding:0 16px 12px;display:flex;gap:6px;flex-wrap:wrap">
+      ${LEADERBOARD_TESTS.map(t=>`<button class="lib-filter ${testId===t.id?'active':''}" onclick="setLeaderboardTest('${t.id}')">${t.label}</button>`).join('')}
+    </div>`;
+    html += rows.length ? rows.map((r,i)=>`
+      <div class="admin-item" style="cursor:pointer" onclick="adminOpenAthlete('${r.uid}')">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:20px;text-align:center;font-size:13px;font-weight:700;color:${i===0?'var(--warm)':'var(--text3)'}">${i+1}</div>
+          <div style="font-size:13px;font-weight:600">${r.name}</div>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:var(--accent)">${r.best}${testDef.unit}</div>
+      </div>`).join('') : `<div style="padding:4px 16px 14px;font-size:13px;color:var(--text3)">Sin registros de ${testDef.label} todavía.</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+window.renderTeamLeaderboard = renderTeamLeaderboard;
+
+function setLeaderboardTest(id) { S.leaderboardTest = id; renderMain(); }
+window.setLeaderboardTest = setLeaderboardTest;
+
+const RADAR_METRICS = [
+  {id:'cmj', label:'CMJ'}, {id:'sj', label:'SJ'}, {id:'abalakov', label:'Abalakov'},
+  {id:'rm_press_banca', label:'Banca'}, {id:'rm_peso_muerto', label:'Muerto'}, {id:'rm_sentadilla', label:'Sentadilla'},
+];
+
+function renderTeamRadarSection(members) {
+  const key = 'team-radar';
+  const collapsed = S.collapsedSections?.has(key);
+  const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
+  let html = `<div class="admin-section">${collapsibleHeader(key,'📡 Perfil de atleta (radar)')}`;
+  if(!collapsed) {
+    html += `<div style="padding:0 16px 12px">
+      <select class="abtn" style="width:100%;text-align:left" onchange="setRadarAthlete(this.value)">
+        ${members.map(a=>`<option value="${a.uid}" ${athleteId===a.uid?'selected':''}>${a.name||a.email}</option>`).join('')}
+      </select>
+    </div>
+    <div style="padding:0 16px 8px;height:270px;position:relative"><canvas id="team-radar-chart"></canvas></div>
+    <div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">Cada eje es el % respecto al mejor valor del equipo en esa métrica — así se pueden comparar cm y kg en un mismo gráfico.</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+window.renderTeamRadarSection = renderTeamRadarSection;
+
+function setRadarAthlete(uid) { S.radarAthleteId = uid; renderMain(); }
+window.setRadarAthlete = setRadarAthlete;
+
+function drawTeamRadarChart(members) {
+  if(typeof Chart==='undefined') return;
+  const canvas = document.getElementById('team-radar-chart');
+  if(!canvas) return;
+  const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
+  const athlete = members.find(a=>a.uid===athleteId);
+  if(!athlete) return;
+
+  const bestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
+  const teamMax = {};
+  RADAR_METRICS.forEach(m=>{ teamMax[m.id] = Math.max(0.01, ...members.map(a=>bestOf(a,m.id)||0)); });
+  const values = RADAR_METRICS.map(m=>{
+    const v = bestOf(athlete,m.id);
+    return v!=null ? Math.round((v/teamMax[m.id])*100) : 0;
+  });
+
+  try{ S.radarChartInstance?.destroy(); }catch(e){}
+  S.radarChartInstance = new Chart(canvas, {
+    type:'radar',
+    data:{
+      labels: RADAR_METRICS.map(m=>m.label),
+      datasets:[{
+        label: athlete.name||athlete.email,
+        data: values,
+        backgroundColor:'rgba(36,59,107,0.15)',
+        borderColor:'#243B6B', borderWidth:2,
+        pointBackgroundColor:'#243B6B', pointRadius:3,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{ r:{ min:0, max:100, ticks:{color:'#4B5160', backdropColor:'transparent', font:{size:9}, stepSize:25},
+        grid:{color:'rgba(18,21,28,0.1)'}, angleLines:{color:'rgba(18,21,28,0.1)'},
+        pointLabels:{color:'#1A1D26', font:{size:11,weight:600}} } }
+    }
+  });
+}
+window.drawTeamRadarChart = drawTeamRadarChart;
+
+function renderTeamQuadrantSection(members) {
+  const key = 'team-quadrant';
+  const collapsed = S.collapsedSections?.has(key);
+  let html = `<div class="admin-section">${collapsibleHeader(key,'🎯 Cuadrante de entrenamiento')}`;
+  if(!collapsed) {
+    html += `<div style="padding:0 16px 8px;font-size:12px;color:var(--text3)">Altura de CMJ vs. Índice Elástico — agrupa a tus atletas por lo que más necesitan entrenar.</div>
+    <div style="padding:0 16px 16px;height:280px;position:relative"><canvas id="team-quadrant-chart"></canvas></div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+window.renderTeamQuadrantSection = renderTeamQuadrantSection;
+
+function drawTeamQuadrantChart(members) {
+  if(typeof Chart==='undefined') return;
+  const canvas = document.getElementById('team-quadrant-chart');
+  if(!canvas) return;
+
+  const points = members.map(a=>{
+    const cmjRecs = a._personal?.evals?.['cmj']||[];
+    const sjRecs = a._personal?.evals?.['sj']||[];
+    if(!cmjRecs.length || !sjRecs.length) return null;
+    const cmj = Math.max(...cmjRecs.map(r=>r.height));
+    const sjLast = sortEvalRecsByDate([...sjRecs]).slice(-1)[0];
+    const cmjLast = sortEvalRecsByDate([...cmjRecs]).slice(-1)[0];
+    if(!sjLast || !cmjLast) return null;
+    const ice = ((cmjLast.height-sjLast.height)/sjLast.height)*100;
+    return {x:cmj, y:parseFloat(ice.toFixed(1)), name:a.name||a.email};
+  }).filter(Boolean);
+
+  try{ S.quadrantChartInstance?.destroy(); }catch(e){}
+  if(!points.length) return;
+
+  const xs = points.map(p=>p.x), ys = points.map(p=>p.y);
+  const xMid = (Math.min(...xs)+Math.max(...xs))/2;
+  const yMid = (Math.min(...ys)+Math.max(...ys))/2;
+
+  const quadrantLinesPlugin = {
+    id:'quadrantLines',
+    afterDraw(chart) {
+      const {ctx, chartArea, scales} = chart;
+      const xPix = scales.x.getPixelForValue(xMid), yPix = scales.y.getPixelForValue(yMid);
+      ctx.save();
+      ctx.strokeStyle='rgba(18,21,28,0.15)'; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(xPix, chartArea.top); ctx.lineTo(xPix, chartArea.bottom); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(chartArea.left, yPix); ctx.lineTo(chartArea.right, yPix); ctx.stroke();
+      ctx.restore();
+    }
+  };
+  const pointLabelsPlugin = {
+    id:'quadrantLabels',
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx;
+      chart.getDatasetMeta(0).data.forEach((pt,i)=>{
+        ctx.save();
+        ctx.fillStyle='#1A1D26'; ctx.font='600 10px Inter, sans-serif'; ctx.textAlign='center';
+        ctx.fillText(points[i].name.split(' ')[0], pt.x, pt.y-8);
+        ctx.restore();
+      });
+    }
+  };
+
+  S.quadrantChartInstance = new Chart(canvas, {
+    type:'scatter',
+    data:{ datasets:[{ data:points, backgroundColor:'#243B6B', pointRadius:5, pointHoverRadius:7 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>points[ctx.dataIndex].name+': '+ctx.parsed.x+'cm, '+ctx.parsed.y+'%'}} },
+      scales:{
+        x:{ title:{display:true,text:'Altura CMJ (cm)',color:'#1A1D26',font:{size:10}}, ticks:{color:'#1A1D26',font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
+        y:{ title:{display:true,text:'Índice Elástico (%)',color:'#1A1D26',font:{size:10}}, ticks:{color:'#1A1D26',font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
+      }
+    },
+    plugins:[quadrantLinesPlugin, pointLabelsPlugin]
+  });
+}
+window.drawTeamQuadrantChart = drawTeamQuadrantChart;
+
 function renderGroupStats(memberUids) {
   const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
@@ -3567,6 +3767,12 @@ function renderGroupStats(memberUids) {
 
   // 1b) Lesiones activas del plantel, por gravedad
   html += renderTeamInjuryChart(members);
+
+  // 1c) Ranking del equipo, perfil de radar y cuadrante de entrenamiento —
+  // las tres colapsables, para que no molesten si todavía no hay datos.
+  html += renderTeamLeaderboard(members);
+  html += renderTeamRadarSection(members);
+  html += renderTeamQuadrantSection(members);
 
   // 2) Desglose por posición (solo si al menos alguien tiene posición cargada)
   const withPos = members.filter(a=>a.position);
@@ -5935,9 +6141,11 @@ function renderEvalHistory(edata, isDesktop, testList) {
       html += '<div style="margin:12px 0 10px;position:relative"><canvas id="chart-hist-'+t.id+'"></canvas></div>';
     }
     if(recs.length) {
+      const maxHeight = (!isAsym && recsFwd.length) ? Math.max(...recsFwd.map(r=>r.height)) : null;
       recs.slice(0,5).forEach((r,i)=>{
+        const isPR = maxHeight!==null && r.height===maxHeight;
         html += '<div class="eval-record"><div>'
-          + '<div class="eval-record-main">'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+'</div>'
+          + '<div class="eval-record-main">'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+(isPR?' <span style="color:var(--warm);font-size:11px;font-weight:700">🏆 PR</span>':'')+'</div>'
           + '<div class="eval-record-date">'+r.date+(r.tof?' · '+r.tof+'ms':'')+'</div></div>';
         if(!isAsym) html += '<span class="eval-record-del" onclick="deleteEvalRecord(\''+t.id+'\','+(recsFwd.length-1-i)+')">×</span>';
         html += '</div>';
