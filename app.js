@@ -791,8 +791,8 @@ function renderOnboardingStep3(d) {
     <div class="wellness-title">Lesiones o molestias</div>
     <div class="wellness-sub">Si tenés alguna lesión pasada o actual, marcala en el mapa (es opcional)</div>
     <div class="body-map-wrap">
-      <div class="body-svg-wrap">${renderBodySVG('front')}<div class="body-svg-label">Frente</div></div>
-      <div class="body-svg-wrap">${renderBodySVG('back')}<div class="body-svg-label">Espalda</div></div>
+      <div class="body-svg-wrap"><div class="body-svg-label">Frente</div>${renderBodySVG('front')}</div>
+      <div class="body-svg-wrap"><div class="body-svg-label">Espalda</div>${renderBodySVG('back')}</div>
     </div>
     ${S.selectedZone ? renderZoneDetail() : ''}
     ${renderInjuryList()}
@@ -1420,7 +1420,23 @@ function updateLoadDraft(date,activity,field,value) {
   if(field==='mins') S.loadDraft[date][activity][field]= value===''?'':Math.max(0,+value);
   else if(field==='rpe') S.loadDraft[date][activity][field]= +value;
   else S.loadDraft[date][activity][field]= value; // note: texto libre, no numérico
-  renderMain();
+
+  // El input de minutos tiene foco de teclado activo — un renderMain()
+  // completo reconstruye el <input> y en el celular eso cierra el teclado y
+  // tira el scroll para arriba a mitad de tipeo. Actualizamos el numerito de
+  // UA a mano en su lugar, sin reconstruir nada. Para RPE (son botones, sin
+  // foco de texto) sí se puede re-renderizar entero sin problema.
+  if(field==='mins') {
+    const draft=S.loadDraft[date][activity];
+    const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
+    const el=document.getElementById(`load-ua-preview-${date}-${activity}`);
+    if(el) {
+      if(ua) { el.textContent=`${draft.mins} min × RPE ${draft.rpe} = ${ua} UA`; el.style.display=''; }
+      else { el.textContent=''; el.style.display='none'; }
+    }
+  } else {
+    renderMain();
+  }
 }
 window.updateLoadDraft=updateLoadDraft;
 
@@ -1785,7 +1801,7 @@ function renderLoadItemRow(act, wKey) {
         }).join('')}
       </div>
     </div>
-    ${ua?`<div class="load-ua-preview">${draft.mins} min × RPE ${draft.rpe} = ${ua} UA</div>`:''}
+    ${ua?`<div class="load-ua-preview" id="load-ua-preview-${wKey}-${act.key}">${draft.mins} min × RPE ${draft.rpe} = ${ua} UA</div>`:`<div class="load-ua-preview" id="load-ua-preview-${wKey}-${act.key}" style="display:none"></div>`}
   </div>`;
 }
 window.renderLoadItemRow = renderLoadItemRow;
@@ -1879,7 +1895,8 @@ function renderWellness() {
     <div style="font-size:10px;color:var(--text3);margin-top:2px">0-3h insuficiente · 4-5h poco · 6-7h suficiente · 8h+ excelente</div>
   </div>`;
 
-  html+=`<div class="hooper-score-box">
+  html+=`<div id="wellness-score-section-${wKey}">
+  <div class="hooper-score-box">
     <div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy</div>
       <div class="hooper-score-val" style="color:${wState.color}" ${allFilled?`data-countup="${pct}" data-suffix="%"`:''}>${allFilled?pct+'%':'—'}</div>
@@ -1890,6 +1907,7 @@ function renderWellness() {
     </div>
   </div>
   ${allFilled?`<button class="wellness-submit" onclick="submitWellness('${wKey}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar registro${isToday?' de hoy':''}</button>`:''}
+  </div>
   </div>`;
 
   // Carga del día: Gimnasio / Pelota / Partido — siempre disponible, tenga o no
@@ -1930,12 +1948,12 @@ function renderWellness() {
     <div class="wellness-sub">Tocá la zona donde sentís molestia</div>
     <div class="body-map-wrap">
       <div class="body-svg-wrap">
-        ${renderBodySVG('front')}
         <div class="body-svg-label">Frente</div>
+        ${renderBodySVG('front')}
       </div>
       <div class="body-svg-wrap">
-        ${renderBodySVG('back')}
         <div class="body-svg-label">Espalda</div>
+        ${renderBodySVG('back')}
       </div>
     </div>
     ${S.selectedZone ? renderZoneDetail() : ''}
@@ -1954,7 +1972,8 @@ function renderBodySVG(side) {
   const shapes=zones.map(z=>{
     const inj=S.injuries[z.id];
     let cls='body-zone';
-    if(inj) { const p=inj.pain; cls+=p>=8?' sel-high':p>=4?' sel-med':' sel-low'; }
+    if(inj && inj.pain>0) { const p=inj.pain; cls+=p>=8?' sel-high':p>=4?' sel-med':' sel-low'; }
+    if(S.selectedZone===z.id) cls+=' is-selected';
     const click=`onclick="selectZone('${z.id}')"`;
     const tip=`<title>${z.label}</title>`;
     if(z.type==='circle') {
@@ -2063,6 +2082,35 @@ function updateUAPreview() {
 }
 window.updateUAPreview=updateUAPreview;
 
+// Recalcula y refresca SOLO la caja de score + botón de guardar — se usa
+// en vez de un renderMain() completo cuando el cambio viene de un slider en
+// pleno arrastre (el slider de horas de sueño), porque un re-render entero
+// reconstruye el <input type="range"> a mitad de gesto y el arrastre se
+// siente trabado/roto en el celular.
+function refreshWellnessScoreSection(wKey) {
+  const w = S.wellness[wKey] || {};
+  const {pct, allFilled} = getWellnessScore(w);
+  const wState = getWellnessState(allFilled?pct:null);
+  const isToday = wKey === new Date().toISOString().split('T')[0];
+  const el = document.getElementById(`wellness-score-section-${wKey}`);
+  if(!el) return;
+  el.innerHTML = `
+    <div class="hooper-score-box">
+      <div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy</div>
+        <div class="hooper-score-val" style="color:${wState.color}" ${allFilled?`data-countup="${pct}" data-suffix="%"`:''}>${allFilled?pct+'%':'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">≥75% bien · ≥50% normal · &lt;50% fatigado</div>
+      </div>
+      <div style="text-align:right">
+        <div class="hooper-score-label" style="color:${wState.color};font-weight:700">${allFilled?wState.label:'Completá todos los ítems'}</div>
+      </div>
+    </div>
+    ${allFilled?`<button class="wellness-submit" onclick="submitWellness('${wKey}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Guardar registro${isToday?' de hoy':''}</button>`:''}
+  `;
+  if(allFilled) runCountUps();
+}
+window.refreshWellnessScoreSection = refreshWellnessScoreSection;
+
 function updateSleepHours(wKey,input) {
   const h=+input.value;
   const cat=sleepHoursCategory(h);
@@ -2071,7 +2119,10 @@ function updateSleepHours(wKey,input) {
   input.style.accentColor=cat.color;
   const wrap=input.closest('.hooper-item');
   if(wrap){const sp=wrap.querySelector('.hooper-label span:last-child');if(sp){sp.textContent=`${h}h · ${cat.label}`;sp.style.color=cat.color;}}
-  setHooper(wKey,'sueño_horas',h);
+  if(!S.wellness[wKey]) S.wellness[wKey]={};
+  S.wellness[wKey]['sueño_horas']=h;
+  scheduleSave();
+  refreshWellnessScoreSection(wKey);
 }
 window.updateSleepHours=updateSleepHours;
 
@@ -3378,15 +3429,18 @@ function renderTeamInjuryChart(members) {
         <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:var(--green)"></div><span style="font-size:13px">Leves</span><span style="margin-left:auto;font-weight:700">${sum.leve}</span></div>
       </div>
     </div>
-    <div style="padding:0 16px 14px">
+    <div style="padding:2px 16px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text2);font-size:12px;font-weight:600" onclick="toggleSection('team-injury-detail')">
+      <span>${S.collapsedSections?.has('team-injury-detail')?'Mostrar':'Ocultar'} detalle por jugador</span>
+      <span style="transition:transform .15s;display:inline-block;transform:rotate(${S.collapsedSections?.has('team-injury-detail')?'-90':'0'}deg)">›</span>
+    </div>
+    ${S.collapsedSections?.has('team-injury-detail')?'':`<div style="padding:0 16px 14px">
       ${sum.details.sort((a,b)=>b.pain-a.pain).map(d=>{
         const col = d.sev==='grave'?'var(--red)':d.sev==='moderada'?'var(--amber)':'var(--green)';
         return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);font-size:12px;cursor:pointer" onclick="adminOpenAthlete('${d.uid}')">
           <span>${d.athlete} <span style="color:var(--text3)">— ${d.zoneId}</span></span>
           <span style="color:${col};font-weight:600">${d.pain}/10</span>
         </div>`;
-      }).join('')}
-    </div>
+      }).join('')}</div>`}
   </div>`;
 }
 window.renderTeamInjuryChart=renderTeamInjuryChart;
@@ -4300,6 +4354,18 @@ function openReminderScreen() {
 }
 window.openReminderScreen = openReminderScreen;
 
+// Mecanismo genérico para ocultar/mostrar cualquier lista de la app —
+// reutilizable en cualquier sección (Atención requerida, lesiones del
+// plantel, etc.), sin guardar nada en Firestore (es solo preferencia visual
+// de la sesión actual).
+function toggleSection(key) {
+  if(!S.collapsedSections) S.collapsedSections = new Set();
+  if(S.collapsedSections.has(key)) S.collapsedSections.delete(key);
+  else S.collapsedSections.add(key);
+  renderMain();
+}
+window.toggleSection = toggleSection;
+
 function renderReminderScreen() {
   const today = new Date().toISOString().split('T')[0];
   const athletes = S.dashAthletes || [];
@@ -4492,7 +4558,7 @@ function renderAthletesListBody() {
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
-          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name:'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <span style="font-size:11px;color:${statusColor};flex-shrink:0;white-space:nowrap">${statusLbl}</span>
         <span style="color:var(--text3);font-size:18px;flex-shrink:0">›</span>
@@ -6516,12 +6582,14 @@ function renderDashboardContent() {
 
   // Dedicated alerts panel
   if(allAlerts.length) {
-    html += `<div style="background:var(--bg2);border:1px solid rgba(239,68,68,0.25);border-radius:var(--r);margin-bottom:20px;overflow:hidden">
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+    const collapsed = S.collapsedSections?.has('dash-alerts');
+    html += `<div style="background:var(--bg2);border:1px solid rgba(195,58,44,0.25);border-radius:var(--r);margin-bottom:20px;overflow:hidden">
+      <div style="padding:14px 16px;${collapsed?'':'border-bottom:1px solid var(--border);'}display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleSection('dash-alerts')">
         <span style="color:var(--red);font-size:16px">⚠</span>
-        <span style="font-size:14px;font-weight:600">Atención requerida</span>
+        <span style="font-size:14px;font-weight:600;flex:1">Atención requerida (${allAlerts.length})</span>
+        <span style="color:var(--text3);font-size:14px;transition:transform .15s;transform:rotate(${collapsed?'-90':'0'}deg);display:inline-block">›</span>
       </div>
-      ${allAlerts.map(({athlete,type,detail})=>`
+      ${collapsed?'':allAlerts.map(({athlete,type,detail})=>`
         <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
           <div style="display:flex;align-items:center;gap:10px">
             <div style="width:8px;height:8px;border-radius:50%;background:${type==='acwr'?'var(--red)':'var(--amber)'}"></div>
@@ -6552,7 +6620,7 @@ function renderDashboardContent() {
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
     <button class="lib-filter ${!S.dashTeamFilter?'active':''}" onclick="setDashTeamFilter(null)">Todos (${athletes.length})</button>
     <button class="lib-filter ${S.dashTeamFilter==='individual'?'active':''}" onclick="setDashTeamFilter('individual')">Individuales</button>
-    ${teamsWithAthletes.map(t=>`<button class="lib-filter ${S.dashTeamFilter===t.id?'active':''}" onclick="setDashTeamFilter('${t.id}')">${t.name}</button>`).join('')}
+    ${teamsWithAthletes.map(t=>`<button class="lib-filter ${S.dashTeamFilter===t.id?'active':''}" onclick="setDashTeamFilter('${t.id}')">${t.name}${t.category?' · '+t.category:''}</button>`).join('')}
   </div>
   <div id="dash-athlete-list">${renderDashboardAthleteList()}</div>`;
 
@@ -6593,7 +6661,7 @@ function renderDashboardAthleteList() {
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
-          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name:'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name+(team.category?' · '+team.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
           ${wAllFilled?sparklineSvg(getWellnessSparklineData(a._personal,7), getWellnessState(wPct).color, 36, 16):''}
