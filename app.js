@@ -2529,13 +2529,13 @@ function setTeamSubview(v) {
     ensureAdminAthletes()
       .then(()=>ensureAthleteEvalData(S.evalAthleteId))
       .then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); })
-      .catch((e)=>{ console.error('Error al cargar Evaluaciones del equipo', e); showToast('Error al cargar — probá de nuevo'); renderMain(); });
+      .catch((e)=>{ console.error('Error al cargar Evaluaciones del equipo', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
   }
   if (v==='wellness' || v==='stats' || v==='reporte') {
     ensureGroupPersonalData(S.teamView?.memberUids||[])
       .then(renderMain)
-      .catch((e)=>{ console.error('Error al cargar datos del equipo', e); showToast('Error al cargar — probá de nuevo'); renderMain(); });
+      .catch((e)=>{ console.error('Error al cargar datos del equipo', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
   }
   renderMain();
