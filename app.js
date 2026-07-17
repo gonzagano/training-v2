@@ -59,6 +59,19 @@ window.getInstitutionsFromTeams = getInstitutionsFromTeams;
 // ── TIPOS DE LESIÓN/MOLESTIA ────────────────────────────────────
 const INJURY_TYPES = { muscular: 'Muscular', articular: 'Articular', ligamentaria: 'Ligamentaria' };
 
+// Gravedad CLÍNICA de la lesión — a propósito separada del dolor 0-10 del
+// día. El dolor fluctúa día a día (un golpe puede doler un 8 y ser leve; una
+// cirugía de menisco en rehabilitación puede no doler nada y seguir siendo
+// grave). La gravedad la fija conscientemente el entrenador/atleta, no se
+// deriva automáticamente del número de dolor.
+const SEVERITY_LEVELS = [
+  {id:'leve', label:'Leve', color:'#1F7A4D'},
+  {id:'moderada', label:'Moderada', color:'#C67C0F'},
+  {id:'grave', label:'Grave', color:'#C33A2C'},
+];
+function severityInfo(id) { return SEVERITY_LEVELS.find(s=>s.id===id) || null; }
+window.severityInfo = severityInfo;
+
 // ── DEFAULT DATA ─────────────────────────────────────────────
 const DEFAULT_BLOCKS = [
   { id:'b1', label:'Bloque 1', title:'Activación y movilidad', time:'5–10 min', colorKey:'b1',
@@ -1972,7 +1985,7 @@ function renderBodySVG(side) {
   const shapes=zones.map(z=>{
     const inj=S.injuries[z.id];
     let cls='body-zone';
-    if(inj && inj.pain>0) { const p=inj.pain; cls+=p>=8?' sel-high':p>=4?' sel-med':' sel-low'; }
+    if(inj && inj.pain>0) { cls+= inj.severity==='grave'?' sel-high':inj.severity==='moderada'?' sel-med':' sel-low'; }
     if(S.selectedZone===z.id) cls+=' is-selected';
     const click=`onclick="selectZone('${z.id}')"`;
     const tip=`<title>${z.label}</title>`;
@@ -1989,7 +2002,7 @@ function renderZoneDetail() {
   const zid=S.selectedZone;
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   const zone=allZones.find(z=>z.id===zid); if(!zone) return '';
-  const inj=S.injuries[zid]||{pain:0,note:'',type:'',history:[]};
+  const inj=S.injuries[zid]||{pain:0,note:'',type:'',severity:'',history:[]};
   const painBtns=Array.from({length:11},(_,i)=>{
     const cls=inj.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn';
     return `<button class="${cls}" onclick="setPain('${zid}',${i})">${i}</button>`;
@@ -1998,14 +2011,20 @@ function renderZoneDetail() {
     const active=inj.type===k;
     return `<button onclick="setInjuryType('${zid}','${k}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?'var(--accent)':'var(--border2)'};background:${active?'var(--bg3)':'transparent'};color:${active?'var(--text)':'var(--text3)'};font-size:12px;cursor:pointer">${label}</button>`;
   }).join('');
+  const sevBtns=SEVERITY_LEVELS.map(s=>{
+    const active=(inj.severity||'')===s.id;
+    return `<button onclick="setInjurySeverity('${zid}','${s.id}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?s.color:'var(--border2)'};background:${active?s.color+'1a':'transparent'};color:${active?s.color:'var(--text3)'};font-weight:${active?'700':'400'};font-size:12px;cursor:pointer">${s.label}</button>`;
+  }).join('');
   const isExisting = !!S.injuries[zid];
   return `<div class="zone-detail">
     <div class="zone-detail-title">${zone.label}
       <span class="zone-close" onclick="S.selectedZone=null;renderMain()">×</span>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Nivel de la molestia</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Tipo de molestia</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">${typeBtns}</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dolor 0–10</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Gravedad — esto lo evalúa tu entrenador, marcá lo que te haya dicho (o dejalo en "Leve" si es algo nuevo/sin evaluar)</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">${sevBtns}</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dolor de HOY 0–10</div>
     <div class="pain-scale" style="display:flex;gap:4px;margin:8px 0;flex-wrap:wrap">${painBtns}</div>
     <textarea class="pain-note-inp" placeholder="Observaciones..." onchange="setPainNote('${zid}',this.value)">${inj.note||''}</textarea>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -2022,16 +2041,16 @@ function renderInjuryList() {
     ? `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Sin molestias activas</div>`
     : `<div class="injury-list">${active.map(([id,inj])=>{
         const zone=allZones.find(z=>z.id===id);
-        const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
-        const lbl=inj.pain>=8?'Dolor':inj.pain>=4?'Molestia':'Leve';
+        const sev = severityInfo(inj.severity) || severityInfo('leve');
+        const col = sev.color;
         const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
         const hist=inj.history||[];
         const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
         return `<div class="injury-item">
           <div class="injury-dot" style="background:${col}"></div>
           <div class="injury-info">
-            <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''}</div>
-            <div class="injury-pain">Dolor: ${inj.pain}/10 · ${lbl}${inj.note?' · '+inj.note.slice(0,30):''}</div>
+            <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''} · <span style="color:${col};font-weight:700">${sev.label}</span></div>
+            <div class="injury-pain">Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,30):''}</div>
           </div>
           <div class="injury-trend" style="color:${col}">${trend}</div>
         </div>`;
@@ -2146,22 +2165,51 @@ function selectZone(zid) { S.selectedZone=zid; renderMain(); }
 window.selectZone=selectZone;
 
 function setPain(zid,val) {
-  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',history:[]};
+  if(!S.injuries[zid]) {
+    // Al crear una molestia nueva, arrancamos con una gravedad sugerida en
+    // base al dolor inicial — es solo un punto de partida razonable, no
+    // queda pegada a este valor: se puede cambiar en cualquier momento,
+    // independiente de cómo evolucione el dolor día a día.
+    const suggestedSeverity = val>=8?'grave':val>=4?'moderada':'leve';
+    S.injuries[zid]={pain:0,note:'',type:'',severity:suggestedSeverity,history:[]};
+  }
   S.injuries[zid].pain=val; renderMain();
 }
 window.setPain=setPain;
 
 function setPainNote(zid,val) {
-  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',history:[]};
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'leve',history:[]};
   S.injuries[zid].note=val;
 }
 window.setPainNote=setPainNote;
 
 function setInjuryType(zid,type) {
-  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',history:[]};
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',history:[]};
   S.injuries[zid].type=type; renderMain();
 }
 window.setInjuryType=setInjuryType;
+
+function setInjurySeverity(zid,severity) {
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',history:[]};
+  S.injuries[zid].severity=severity; renderMain();
+}
+window.setInjurySeverity=setInjurySeverity;
+
+// El admin corrige/fija la gravedad clínica real de una molestia desde la
+// ficha del atleta — independiente de lo que el dolor de hoy muestre. Es
+// justo el caso de "meniscos operado, en rehab, sin dolor hoy, pero sigue
+// siendo grave": esto es lo que lo resuelve.
+async function adminSetInjurySeverity(uid, zoneId, severity) {
+  const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
+  if(!personal || !personal.injuries || !personal.injuries[zoneId]) return;
+  personal.injuries[zoneId].severity = severity;
+  try {
+    await setDoc(doc(db,'personal',uid), {injuries:personal.injuries}, {merge:true});
+    showToast('✓ Gravedad actualizada');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.adminSetInjurySeverity = adminSetInjurySeverity;
 
 // Copia una lesión activa al historial permanente antes de que desaparezca
 // de la lista de "activas". No se pierde nada: queda disponible para
@@ -2457,10 +2505,10 @@ function renderTeamDetail(team) {
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Rutina</button>
-    <button class="snav-tab ${sub==='calendario'?'active':''}" onclick="setTeamSubview('calendario')">Calendario</button>
-    <button class="snav-tab ${sub==='wellness'?'active':''}" onclick="setTeamSubview('wellness')">Wellness</button>
-    <button class="snav-tab ${sub==='stats'?'active':''}" onclick="setTeamSubview('stats')">Estadísticas</button>
     <button class="snav-tab ${sub==='evals'?'active':''}" onclick="setTeamSubview('evals')">Evaluaciones</button>
+    <button class="snav-tab ${sub==='wellness'?'active':''}" onclick="setTeamSubview('wellness')">Wellness</button>
+    <button class="snav-tab ${sub==='calendario'?'active':''}" onclick="setTeamSubview('calendario')">Calendario</button>
+    <button class="snav-tab ${sub==='stats'?'active':''}" onclick="setTeamSubview('stats')">Estadísticas</button>
     <button class="snav-tab ${sub==='reporte'?'active':''}" onclick="setTeamSubview('reporte')">Informe</button>
   </div>`;
 
@@ -2480,10 +2528,16 @@ function setTeamSubview(v) {
     if (!S.evalScopeUids.includes(S.evalAthleteId)) S.evalAthleteId = S.evalScopeUids[0] || null;
     ensureAdminAthletes()
       .then(()=>ensureAthleteEvalData(S.evalAthleteId))
-      .then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); });
+      .then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); })
+      .catch((e)=>{ console.error('Error al cargar Evaluaciones del equipo', e); showToast('Error al cargar — probá de nuevo'); renderMain(); });
     return;
   }
-  if (v==='wellness' || v==='stats' || v==='reporte') { ensureGroupPersonalData(S.teamView?.memberUids||[]).then(renderMain); return; }
+  if (v==='wellness' || v==='stats' || v==='reporte') {
+    ensureGroupPersonalData(S.teamView?.memberUids||[])
+      .then(renderMain)
+      .catch((e)=>{ console.error('Error al cargar datos del equipo', e); showToast('Error al cargar — probá de nuevo'); renderMain(); });
+    return;
+  }
   renderMain();
 }
 window.setTeamSubview = setTeamSubview;
@@ -2850,7 +2904,7 @@ function renderTeamReport(team) {
     </div>
     ${injSum.details.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
       <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:left">Zona</th><th style="padding:6px 10px;text-align:center">Dolor</th><th style="padding:6px 10px;text-align:center">Gravedad</th></tr></thead>
-      <tbody>${injSum.details.sort((a,b)=>b.pain-a.pain).map(d=>{
+      <tbody>${injSum.details.sort((a,b)=>{const r={grave:3,moderada:2,leve:1}; return (r[b.sev]||1)-(r[a.sev]||1) || b.pain-a.pain;}).map(d=>{
         const col = d.sev==='grave'?'#b91c1c':d.sev==='moderada'?'#a16207':'#16803c';
         const bg = d.sev==='grave'?'#fdecea':d.sev==='moderada'?'#fdf3e3':'#e7f5ec';
         const lbl = d.sev==='grave'?'Grave':d.sev==='moderada'?'Moderada':'Leve';
@@ -2957,8 +3011,9 @@ function renderTeamRutina(team) {
       const {pct, allFilled} = getWellnessScore(w);
       const wState = getWellnessState(allFilled?pct:null);
       const injuries = getActiveInjuriesSummary(match._personal);
-      const worstInjury = injuries.length ? injuries.reduce((worst,i)=>i.pain>worst.pain?i:worst, injuries[0]) : null;
-      const injColor = worstInjury ? (worstInjury.pain>=8?'var(--red)':worstInjury.pain>=4?'var(--amber)':'var(--green)') : null;
+      const sevRank = {grave:3, moderada:2, leve:1};
+      const worstInjury = injuries.length ? injuries.reduce((worst,i)=>(sevRank[i.severity]||1)>(sevRank[worst.severity]||1)?i:worst, injuries[0]) : null;
+      const injColor = worstInjury ? (severityInfo(worstInjury.severity)||severityInfo('leve')).color : null;
 
       // Alertas puntuales de HOY: estrés, sueño y dolor muscular reportados bajos.
       const alerts = [];
@@ -2982,7 +3037,7 @@ function renderTeamRutina(team) {
           <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
         </div>
         ${(worstInjury || alerts.length) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-          ${worstInjury?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${injColor}22;color:${injColor};border:1px solid ${injColor}">🩹 ${worstInjury.zoneLabel} · ${worstInjury.pain}/10</span>`:''}
+          ${worstInjury?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${injColor}22;color:${injColor};border:1px solid ${injColor}">🩹 ${worstInjury.zoneLabel} · ${severityInfo(worstInjury.severity)?.label||'Leve'} · dolor ${worstInjury.pain}/10</span>`:''}
           ${alerts.map(al=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${al.emoji} ${al.label}</span>`).join('')}
         </div>`:''}
       </div>`;
@@ -3334,7 +3389,7 @@ function getActiveInjuriesSummary(personal) {
   const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
   return Object.entries(inj).filter(([, v]) => v.pain > 0).map(([zid, v]) => {
     const zone = allZones.find(z => z.id === zid);
-    return { zoneLabel: zone ? zone.label : zid, pain: v.pain, type: v.type || '' };
+    return { zoneLabel: zone ? zone.label : zid, pain: v.pain, type: v.type || '', severity: v.severity||'leve' };
   });
 }
 
@@ -3467,7 +3522,8 @@ function renderGroupWellness(memberUids) {
 window.renderGroupWellness = renderGroupWellness;
 
 // Lesiones activas del plantel agrupadas por gravedad — mismo criterio de
-// corte (pain>=8 grave, >=4 moderada, resto leve) que ya se usa en el resto
+// gravedad clínica que el entrenador fija manualmente (independiente del
+// dolor del día — ver SEVERITY_LEVELS/setInjurySeverity) que ya se usa en el resto
 // de la app para pintar las molestias individuales.
 function getTeamInjurySummary(members) {
   let grave=0, moderada=0, leve=0;
@@ -3476,7 +3532,7 @@ function getTeamInjurySummary(members) {
     const injuries = a._personal?.injuries||{};
     Object.entries(injuries).forEach(([zoneId,inj])=>{
       if(!inj.pain||inj.pain<=0) return;
-      const sev = inj.pain>=8?'grave':inj.pain>=4?'moderada':'leve';
+      const sev = inj.severity || 'leve';
       if(sev==='grave') grave++; else if(sev==='moderada') moderada++; else leve++;
       details.push({uid:a.uid, athlete:a.name||a.email, zoneId, pain:inj.pain, sev});
     });
@@ -3508,11 +3564,12 @@ function renderTeamInjuryChart(members) {
       <span style="transition:transform .15s;display:inline-block;transform:rotate(${S.collapsedSections?.has('team-injury-detail')?'-90':'0'}deg)">›</span>
     </div>
     ${S.collapsedSections?.has('team-injury-detail')?'':`<div style="padding:0 16px 14px">
-      ${sum.details.sort((a,b)=>b.pain-a.pain).map(d=>{
+      ${sum.details.sort((a,b)=>{const r={grave:3,moderada:2,leve:1}; return (r[b.sev]||1)-(r[a.sev]||1) || b.pain-a.pain;}).map(d=>{
         const col = d.sev==='grave'?'var(--red)':d.sev==='moderada'?'var(--amber)':'var(--green)';
+        const sevLabel = severityInfo(d.sev)?.label||'Leve';
         return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);font-size:12px;cursor:pointer" onclick="adminOpenAthlete('${d.uid}')">
           <span>${d.athlete} <span style="color:var(--text3)">— ${d.zoneId}</span></span>
-          <span style="color:${col};font-weight:600">${d.pain}/10</span>
+          <span style="color:${col};font-weight:600">${sevLabel} · dolor ${d.pain}/10</span>
         </div>`;
       }).join('')}</div>`}
   </div>`;
@@ -5245,14 +5302,20 @@ function renderAthleteDetail() {
 
   <div class="admin-section">
     <div class="admin-section-title">Molestias activas</div>
-    ${activeInj.length?`<div class="injury-list" style="padding:10px 14px">${activeInj.map(([id,inj])=>{
+    ${activeInj.length?`<div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px">${activeInj.map(([id,inj])=>{
       const zone=allZones.find(z=>z.id===id);
-      const col=inj.pain>=8?'var(--red)':inj.pain>=4?'var(--amber)':'var(--green)';
-      return `<div class="injury-item">
-        <div class="injury-dot" style="background:${col}"></div>
-        <div class="injury-info">
-          <div class="injury-zone">${zone?.label||id}</div>
-          <div class="injury-pain">Dolor: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}</div>
+      const sev = severityInfo(inj.severity) || severityInfo('leve');
+      return `<div style="background:var(--bg);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${sev.color};flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${zone?.label||id}${inj.type?' · '+INJURY_TYPES[inj.type]:''}</div>
+            <div style="font-size:11px;color:var(--text3)">Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica (la fijás vos, no depende del dolor del día)</div>
+        <div style="display:flex;gap:6px">
+          ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.color+'1a':'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
         </div>
       </div>`;
     }).join('')}</div>`:`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin molestias registradas.</div>`}
@@ -5354,7 +5417,7 @@ function renderWeeklyReport() {
 
     <div style="font-size:13px;font-weight:700;margin-bottom:8px">Molestias activas</div>
     ${injuries.length
-      ? `<ul style="font-size:12px;margin:0 0 10px;padding-left:18px">${injuries.map(([id,inj])=>`<li>${id} — dolor ${inj.pain}/10${inj.note?' · '+inj.note:''}</li>`).join('')}</ul>`
+      ? `<ul style="font-size:12px;margin:0 0 10px;padding-left:18px">${injuries.map(([id,inj])=>`<li>${id} — ${severityInfo(inj.severity)?.label||'Leve'} · dolor de hoy ${inj.pain}/10${inj.note?' · '+inj.note:''}</li>`).join('')}</ul>`
       : `<div style="font-size:12px;color:#777;margin-bottom:10px">Sin molestias registradas.</div>`}
 
     <div style="font-size:10px;color:#999;text-align:right;margin-top:24px">Generado el ${new Date().toISOString().split('T')[0]}</div>
