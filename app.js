@@ -2014,7 +2014,7 @@ function renderWellness() {
     <div class="page-title">Wellness</div>
     <div class="page-subtitle">${wKey} · Check-in diario</div>
   </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:8px 12px">
     <button class="abtn" onclick="shiftWellnessDate(-1)" ${canGoBack?'':'disabled style="opacity:.3;cursor:not-allowed"'}>‹</button>
     <div style="text-align:center">
       <div style="font-size:14px;font-weight:700;text-transform:capitalize">${dateLabel}</div>
@@ -2506,7 +2506,7 @@ function renderProgress() {
 
   if(w>1) {
     const c=countChecked(w), p=countChecked(w-1), diff=c-p;
-    html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-top:10px;font-size:13px;color:var(--text2)">
+    html+=`<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:14px;margin-top:10px;font-size:13px;color:var(--text2)">
       vs semana ${w-1}: <b style="color:var(--purple)">${c}</b> ejercicios realizados
       ${diff>0?`<span style="color:var(--green)"> +${diff} ↑</span>`:diff<0?`<span style="color:var(--red)"> ${diff} ↓</span>`:'<span style="color:var(--text3)"> sin cambios</span>'}
     </div>`;
@@ -2552,22 +2552,22 @@ function renderStats() {
 
   // Metric cards — 2x2 grid, no emojis, proper card styling
   html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px">
+    <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Semanas</div>
       <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${S.currentWeek}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">ciclo actual</div>
     </div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px">
+    <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Sesiones</div>
       <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${totalS}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">completadas</div>
     </div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px">
+    <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Racha semanal</div>
       <div style="font-size:30px;font-weight:800;line-height:1;color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}<span style="font-size:16px;font-weight:400;color:var(--text3)">/7</span></div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">días activos</div>
     </div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px">
+    <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Ejerc./sesión</div>
       <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${totalS>0?Math.round(totalC/totalS):0}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">promedio</div>
@@ -2575,7 +2575,7 @@ function renderStats() {
   </div>`;
 
   // Last 7 days activity strip
-  html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 14px;margin-bottom:16px">
+  html+=`<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px 14px;margin-bottom:16px">
     <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.06em">Actividad — últimos 7 días</div>
     <div style="display:flex;gap:4px;justify-content:space-between">
       ${last7.map(d=>{
@@ -2593,7 +2593,7 @@ function renderStats() {
   if(isDesktop) html+=`<div class="desktop-cols">`;
 
   // Top exercises
-  if(topEx.length) html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden">
+  if(topEx.length) html+=`<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);margin-bottom:16px;overflow:hidden">
     <div style="font-size:14px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Ejercicios más frecuentes</div>
     <div style="padding:8px 16px 14px">
       ${topEx.map(([id,f],i)=>`
@@ -2627,7 +2627,7 @@ function renderStats() {
       }).join('')}
     </div>
   </div>`;
-  else html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px"><div style="font-size:14px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Bienestar semanal</div><div class="empty-state" style="padding:24px">Sin registros de wellness aún.</div></div>`;
+  else html+=`<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);margin-bottom:16px"><div style="font-size:14px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Bienestar semanal</div><div class="empty-state" style="padding:24px">Sin registros de wellness aún.</div></div>`;
 
   if(isDesktop) html+=`</div>`;
   return html;
@@ -2714,7 +2714,7 @@ const CALENDAR_TYPES = [
   {id:'fisico',   label:'Físico',       color:'#3b7dd8'},
   {id:'pelota',   label:'Pelota',       color:'#8b5cf6'},
   {id:'partido',  label:'Partido',      color:'#ef4444'},
-  {id:'descanso', label:'Descanso',     color:'#7a90b8'},
+  {id:'descanso', label:'Descanso',     color:'#7A8394'},
 ];
 
 // team.calendar[fecha] es un ARRAY de eventos (no un solo tipo) — un mismo
@@ -3166,7 +3166,7 @@ function renderTeamRutina(team) {
     ${(team.players||[]).map((p,pi)=>{
       const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
       if(!match) {
-        return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+        return `<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:14px;font-weight:600">${p} <span style="font-size:10px;color:var(--amber);font-weight:500;margin-left:6px">sin cuenta todavía</span></div>
           <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
         </div>`;
@@ -3187,7 +3187,7 @@ function renderTeamRutina(team) {
       if(w?.dolor_muscular!==undefined && w.dolor_muscular<=2) alerts.push({emoji:'💪',label:'Dolor muscular'});
       if(w?.sueño_horas!==undefined && w.sueño_horas!=='' && +w.sueño_horas<=5) alerts.push({emoji:'⏰',label:`Poco sueño (${w.sueño_horas}h)`});
 
-      return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
+      return `<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:10px">
           <div style="cursor:pointer;flex-shrink:0" onclick="adminOpenAthlete('${match.uid}')">${avatarHtml(match.name||p, match.color, 36, match.photoUrl)}</div>
           <div style="flex:1;min-width:0;cursor:pointer" onclick="adminOpenAthlete('${match.uid}')">
@@ -4392,7 +4392,7 @@ function renderAtletaRutina(a) {
                   const doneData = (S.viewingAthlete?.personal?.history?.[sessionKey(athletePreviewWeek, sName)]?.exercises?.[ex.id]) || {};
                   const hasCompletion = !!(doneData.load || doneData.rpe);
                   return `
-                  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
+                  <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
                     <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}${ex.progression&&ex.progression.length>1?` <span style="font-size:10px;color:var(--accent);font-weight:600">· Semana ${athletePreviewWeek}</span>`:''}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
@@ -4455,7 +4455,12 @@ async function forceAppUpdate() {
       await Promise.all(regs.map(r=>r.unregister()));
     }
   } catch(e) {}
-  location.reload(true);
+  // location.reload(true) es un parámetro viejo que la mayoría de los
+  // navegadores modernos (Safari en iPhone incluido) ignoran en silencio —
+  // hace un refresco normal, no uno que fuerce bajar todo de cero. En vez de
+  // eso, navegamos a una URL con un parámetro nuevo cada vez, para que el
+  // navegador la trate como una página distinta y no pueda reusar nada viejo.
+  location.href = location.pathname + '?_fresh=' + Date.now();
 }
 window.forceAppUpdate = forceAppUpdate;
 
@@ -6465,7 +6470,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
     }
     last = recs[0]||null;
 
-    html += '<div id="eval-card-'+t.id+'" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:'+(isDesktop?'0':'12px')+';overflow:hidden">';
+    html += '<div id="eval-card-'+t.id+'" style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);margin-bottom:'+(isDesktop?'0':'12px')+';overflow:hidden">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">';
     html += '<div><div style="font-size:14px;font-weight:600">'+t.label+'</div>';
     if(last) {
@@ -6530,7 +6535,7 @@ function renderEvalCompare() {
   const withoutData = allData.filter(x=>x.value===null);
   const testLabel = (EVAL_TESTS.find(t=>t.id===testId)||{}).label || testId;
 
-  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">';
+  html += '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
   html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
   html += '<div style="font-size:15px;font-weight:600">Comparación — '+testLabel+'</div>';
   html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro por atleta</div></div>';
@@ -6555,7 +6560,7 @@ function renderEvalCompare() {
 
 function renderAthleteTeamCompare(myData) {
   const myTeam = (S.teams||[]).find(t=>(t.players||[]).some(p=>p===S.userData?.name || p===S.userData?.email));
-  let html = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px">'
+  let html = '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px;margin-bottom:16px">'
     + '<div style="font-size:14px;font-weight:600;margin-bottom:4px">Comparación con el equipo</div>';
 
   if(!myTeam) {
@@ -7088,7 +7093,7 @@ function drawAthleteTrendChart() {
       labels,
       datasets:[
         {label:'Wellness %',data:wellnessData,borderColor:'#1f7a4d',backgroundColor:'rgba(31,122,77,0.08)',yAxisID:'y',spanGaps:true,tension:.3,pointRadius:2,fill:true},
-        {label:'ACWR',data:acwrData,borderColor:'#3b7dd8',backgroundColor:'rgba(59,125,216,0.08)',yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:2,fill:false},
+        {label:'ACWR',data:acwrData,borderColor:'#2f5fd8',backgroundColor:'rgba(47,95,216,0.08)',yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:2,fill:false},
       ]
     },
     options:{
@@ -7353,7 +7358,7 @@ function renderAthleteHome() {
     <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.trim().split(/\s+/).slice(-1)[0]:''}!</div>
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
-  ${routineName?`<div style="background:var(--accent-dim);border:1px solid rgba(59,125,216,0.25);border-radius:var(--rsm);padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
+  ${routineName?`<div style="background:var(--accent-dim);border:1.5px solid rgba(36,59,107,0.25);border-radius:var(--rsm);padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
     <span style="color:var(--accent);font-weight:600">Rutina activa:</span>
     <span style="color:var(--text)">${routineName}</span>
@@ -7461,7 +7466,7 @@ function renderLibViewBody() {
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}</div>
           <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-            ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(59,125,216,0.2)">${t}</span>`).join('')}
+            ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(36,59,107,0.2)">${t}</span>`).join('')}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
