@@ -4387,7 +4387,15 @@ function renderAtletaRutina(a) {
                 ${cat.label?`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label">${cat.label}</span></div></div>`:''}
                 ${(cat.exercises||[]).map(ex=>{
                   const wp = getExPrescriptionForWeek(ex, athletePreviewWeek);
-                  const doneData = (S.viewingAthlete?.personal?.history?.[sessionKey(athletePreviewWeek, sName)]?.exercises?.[ex.id]) || {};
+                  // Buscamos hacia atrás desde la semana actual del atleta —
+                  // así, si completó este ejercicio en una semana anterior
+                  // pero no en la actual, lo seguimos mostrando (aclarando de
+                  // qué semana es), en vez de decir "no completó" a secas.
+                  let doneData = {}, doneWeek = null;
+                  for(let w=athletePreviewWeek; w>=1; w--) {
+                    const d = S.viewingAthlete?.personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id];
+                    if(d && (d.load || d.rpe || d.checked || d.athleteNote)) { doneData = d; doneWeek = w; break; }
+                  }
                   const hasCompletion = !!(doneData.load || doneData.rpe);
                   return `
                   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
@@ -4395,17 +4403,17 @@ function renderAtletaRutina(a) {
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
-                      <div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct||'—'}</div></div>
+                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}</div></div>`:''}
                       <div class="field-box"><span class="field-lbl">${wp.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.rpe||'—'}</div></div>
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
+                    ${(hasCompletion || doneData.checked) ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó${doneWeek&&doneWeek!==athletePreviewWeek?' (Semana '+doneWeek+')':''}</span>
                       ${hasCompletion?`
                         <span style="font-size:12px;font-weight:700;color:var(--green)">${doneData.load?doneData.load+'kg':''}${doneData.load&&doneData.rpe?' · ':''}${doneData.rpe?'RPE '+doneData.rpe:''}</span>
                         ${doneData.checked?`<span style="font-size:10px;color:var(--green)">✓ marcado</span>`:''}
-                      `:`<span style="font-size:12px;color:var(--text3)">${doneData.checked?'✓ marcado, sin carga/RPE cargado':'Todavía no completó este ejercicio'}</span>`}
-                    </div>
+                      `:`<span style="font-size:12px;color:var(--text3)">✓ marcado, sin carga/RPE cargado</span>`}
+                    </div>` : ''}
                     ${doneData.athleteNote?`<div style="margin-top:6px;background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--rxs);padding:8px 10px;font-size:12px;color:var(--text)">
                       <span style="font-weight:700;color:var(--amber)">📝 Nota del atleta:</span> ${doneData.athleteNote}
                     </div>`:''}
