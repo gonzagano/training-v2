@@ -5489,25 +5489,6 @@ function renderAthleteDetail() {
   })()}
 
   <div class="admin-section">
-    <div class="admin-section-title">Últimas sesiones completadas</div>
-    ${sessions.length?sessions.map(([key,sd])=>{
-      const exEntries=Object.entries(sd.exercises||{}).filter(([,e])=>e.load||e.rpe||e.checked);
-      return `<div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:6px">
-        <div style="display:flex;justify-content:space-between;width:100%">
-          <span style="font-size:13px;font-weight:500">${key}</span>
-          <span style="font-size:11px;color:var(--text3)">${sd.date||''} · RPE ${sd.rpe||'—'}</span>
-        </div>
-        ${exEntries.slice(0,4).map(([id,e])=>`
-          <div style="font-size:12px;color:var(--text2);display:flex;gap:10px">
-            <span style="color:var(--text3);min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${id}</span>
-            ${e.load?`<span style="color:var(--green)">${e.load}kg</span>`:''}
-            ${e.rpe?`<span style="color:var(--amber)">RPE ${e.rpe}</span>`:''}
-          </div>`).join('')}
-      </div>`;
-    }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin sesiones registradas aún.</div>`}
-  </div>
-
-  <div class="admin-section">
     <div class="admin-section-title">Wellness — últimos 7 días</div>
     ${wEntries.length?wEntries.map(([date,w])=>{
       const {pct,allFilled}=getWellnessScore(w);
