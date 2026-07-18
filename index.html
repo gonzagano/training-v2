@@ -224,6 +224,17 @@
   </div>
 </div>
 
+<!-- Progresión semanal Modal -->
+<div class="video-modal" id="progression-overlay" onclick="closeProgressionIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="progression-modal-title">Progresión</div>
+    <div id="progression-modal-body" style="max-height:50vh;overflow-y:auto"></div>
+    <div class="video-modal-btns">
+      <button class="abtn" onclick="closeProgressionModal()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- Chart.js for evaluations -->

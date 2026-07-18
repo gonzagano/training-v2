@@ -678,6 +678,28 @@ function getED(w,s,id) {
   if(!sd.exercises[id]) sd.exercises[id]={series:'',reps:'',pct:'',ms:'',load:'',rpe:'',checked:false};
   return sd.exercises[id];
 }
+// Resuelve qué le corresponde a un ejercicio en una semana puntual. Si el
+// ejercicio tiene progresión semanal cargada (ex.progression), usa el valor
+// de esa semana (repitiendo la última semana definida si la rutina dura más
+// de lo que se cargó explícitamente). Si NO tiene progresión (todas las
+// rutinas ya existentes), cae en los campos planos de siempre — así ninguna
+// rutina vieja se rompe ni cambia de comportamiento.
+function getExPrescriptionForWeek(ex, week) {
+  if(ex.progression && ex.progression.length) {
+    const idx = Math.min(week, ex.progression.length) - 1;
+    const wk = ex.progression[idx] || {};
+    return {
+      series: wk.series||'', reps: wk.reps||'', pct: wk.pct||'',
+      rpe: wk.rpe||'', intensityType: wk.intensityType||'RPE', note: wk.note||''
+    };
+  }
+  return {
+    series: ex.series||'', reps: ex.reps||'', pct: ex.pct||'',
+    rpe: ex.rpe||'', intensityType: ex.intensityType||'RPE', note: ex.note||''
+  };
+}
+window.getExPrescriptionForWeek = getExPrescriptionForWeek;
+
 function weekLabel(w) {
   const base=new Date(S.startDate);
   base.setDate(base.getDate()+(w-1)*7);
@@ -1058,17 +1080,18 @@ function renderBottomBar() {
     {id:'dashboard',label:'Inicio',      section:null, svg:'<path d="M3 9l9-7 9 7"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>'},
     {id:'session',  label:'Mi Rutina',   section:null, svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
     {id:'wellness', label:'Wellness',    section:null, svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
-    {id:'evals',    label:'Mis Saltos',  section:null, svg:'<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'},
+    {id:'evals',    label:'Tests',       section:null, svg:'<path d="M6 3v4l-3 8a3 3 0 0 0 3 4h12a3 3 0 0 0 3-4l-3-8V3"/><line x1="6" y1="3" x2="18" y2="3"/><line x1="8" y1="12" x2="16" y2="12"/>'},
     {id:'stats',    label:'Stats',       section:null, svg:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>'},
   ];
 
   // Mobile bottom bar
   const bb = document.getElementById('bottombar');
-  if(bb) bb.innerHTML = tabs.map(t=>`
+  if(bb) bb.innerHTML = `<div id="bb-indicator"></div>` + tabs.map(t=>`
     <button class="bb-btn ${S.currentView===t.id?'active':''}" id="bb-${t.id}" onclick="switchView('${t.id}')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${t.svg}</svg>
       ${t.label}
     </button>`).join('');
+  requestAnimationFrame(updateBottomBarIndicator);
 
   // Desktop sidebar nav
   const sn = document.getElementById('sidebar-nav');
@@ -1281,11 +1304,13 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const hasV=!!S.videos[videoKey];
   const canEdit=S.isAdmin && !forceReadOnly;
   const isAthleteMode=!S.isAdmin && !!S.assignedRoutine;
-  // Routine prescription values (from routine definition or admin-set in exercise)
-  const prescSeries = ex.series||'';
-  const prescReps   = ex.reps||'';
-  const prescPct    = ex.pct||'';
-  const prescNote   = ex.note||'';
+  // Routine prescription values — resueltas según la semana actual, con
+  // progresión/regresión si la rutina la tiene cargada.
+  const wp = getExPrescriptionForWeek(ex, S.currentWeek);
+  const prescSeries = wp.series;
+  const prescReps   = wp.reps;
+  const prescPct    = wp.pct;
+  const prescNote   = wp.note;
   // If athlete mode: show prescribed values as read-only, only allow editing load + rpe actual
   const vbtF=ex.vbt?`<div class="field-box"><span class="field-lbl">m/s</span>
     <input class="field-inp vbt" type="number" step="0.01" placeholder="0.00" value="${d.ms||''}"
@@ -1297,11 +1322,12 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const suggestedKg = (prescPct && rmValue) ? Math.round((parseFloat(prescPct)/100) * rmValue) : null;
   // Prescription display for athlete (read-only pill row above fields)
   const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct) ? `
-    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer" onclick="openProgressionModal('${ex.id}','${ex.name.replace(/'/g,"\\'")}')" title="Ver progresión semana a semana">
       ${prescSeries?`<span style="font-size:11px;background:var(--purple-dim);color:var(--purple);padding:2px 8px;border-radius:20px;border:1px solid rgba(212,100,122,0.3)">${prescSeries} series</span>`:''}
       ${prescReps?`<span style="font-size:11px;background:var(--blue-dim);color:var(--blue);padding:2px 8px;border-radius:20px;border:1px solid rgba(96,165,250,0.3)">${prescReps} reps</span>`:''}
       ${prescPct?`<span style="font-size:11px;background:var(--teal-dim);color:var(--teal);padding:2px 8px;border-radius:20px;border:1px solid rgba(45,212,191,0.3)">${prescPct}%RM${suggestedKg?' ≈ '+suggestedKg+'kg':''}</span>`:''}
       ${(prescPct && ex.rmLift && !rmValue)?`<span style="font-size:11px;color:var(--amber)">Cargá tu RM de ${RM_LIFTS.find(r=>r.id===ex.rmLift)?.label||''} en Ajustes para ver los kilos</span>`:''}
+      <span style="font-size:10px;color:var(--text3)">📈</span>
     </div>` : '';
   const prescNoteRow = prescNote ? `<div style="font-size:12px;color:var(--text3);font-style:italic;margin:2px 0 6px">${prescNote}</div>` : '';
   return `<div class="ex-row" id="exrow-${ex.id}">
@@ -1844,6 +1870,51 @@ function saveAthleteNote() {
   showToast('✓ Nota guardada');
 }
 window.saveAthleteNote = saveAthleteNote;
+
+// ── PROGRESIÓN SEMANAL (prescripto vs completado, semana a semana) ──────
+function findExInAssignedRoutine(exId) {
+  const routine = S.assignedRoutine;
+  if(!routine || !routine.sessions) return null;
+  for(const sName in routine.sessions) {
+    for(const b of (routine.sessions[sName]||[])) {
+      for(const cat of (b.categories||[])) {
+        const found = (cat.exercises||[]).find(e=>e.id===exId);
+        if(found) return found;
+      }
+    }
+  }
+  return null;
+}
+window.findExInAssignedRoutine = findExInAssignedRoutine;
+
+function openProgressionModal(exId, exName) {
+  const ex = findExInAssignedRoutine(exId);
+  const routine = S.assignedRoutine;
+  const durationWeeks = routine?.durationWeeks || 1;
+  const lastWeek = Math.max(durationWeeks, S.currentWeek);
+  document.getElementById('progression-modal-title').textContent = 'Progresión · ' + exName;
+  let rows = '';
+  for(let w=1; w<=lastWeek; w++) {
+    const wp = ex ? getExPrescriptionForWeek(ex, w) : {series:'',reps:'',pct:'',rpe:''};
+    const d = (S.history[sessionKey(w,S.currentSession)]||{}).exercises?.[exId] || {};
+    const isCurrent = w===S.currentWeek;
+    const prescTxt = [wp.series&&wp.series+' series', wp.reps&&wp.reps+' reps', wp.pct&&wp.pct+'%RM', wp.rpe&&(wp.intensityType||'RPE')+' '+wp.rpe].filter(Boolean).join(' · ') || '—';
+    const doneTxt = d.load||d.rpe ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?'RPE '+d.rpe:'') : (d.checked?'Hecho, sin datos':'—');
+    rows += `<div style="padding:10px 0;border-top:1px solid var(--border);${isCurrent?'background:var(--accent-dim);margin:0 -4px;padding-left:4px;padding-right:4px;border-radius:6px':''}">
+      <div style="font-size:11px;font-weight:700;color:${isCurrent?'var(--accent)':'var(--text3)'};text-transform:uppercase;margin-bottom:3px">Semana ${w}${isCurrent?' · actual':''}</div>
+      <div style="font-size:13px;color:var(--text)">Prescripto: ${prescTxt}</div>
+      <div style="font-size:13px;color:${(d.load||d.rpe)?'var(--green)':'var(--text3)'}">Completado: ${doneTxt}</div>
+    </div>`;
+  }
+  document.getElementById('progression-modal-body').innerHTML = rows || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
+  document.getElementById('progression-overlay').classList.add('open');
+}
+window.openProgressionModal = openProgressionModal;
+
+function closeProgressionModal() { document.getElementById('progression-overlay').classList.remove('open'); }
+window.closeProgressionModal = closeProgressionModal;
+function closeProgressionIfOutside(e) { if(e.target===document.getElementById('progression-overlay')) closeProgressionModal(); }
+window.closeProgressionIfOutside = closeProgressionIfOutside;
 
 function saveVideoUrl() {
   if(!S.videoEditable) return; // el atleta no puede guardar aunque manipule el DOM
@@ -3910,8 +3981,9 @@ function renderGroupStats(memberUids) {
   const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
 
-  // 1) Promedio general del equipo
-  let html = renderTeamMetricsCard('Promedio del equipo', members);
+  // 1) Promedio general del equipo — no tiene sentido para un solo atleta
+  // (sería literalmente la misma tarjeta repetida dos veces)
+  let html = members.length > 1 ? renderTeamMetricsCard('Promedio del equipo', members) : '';
 
   // 1b) Lesiones activas del plantel, por gravedad
   html += renderTeamInjuryChart(members);
@@ -3934,6 +4006,8 @@ function renderGroupStats(memberUids) {
       const group = members.filter(a=>(a.position||'Sin posición')===pos);
       return renderTeamMetricsCard(pos, group);
     }).join('');
+  } else if (members.length === 1) {
+    html += renderTeamMetricsCard(members[0].name||members[0].email, members);
   }
 
   // 3) Detalle semanal por atleta (como antes)
@@ -4284,6 +4358,9 @@ function renderAtletaRutina(a) {
     html += `<div class="empty-state">Este atleta no tiene una rutina asignada todavía.</div>`;
     return html;
   }
+  // La vista previa muestra la semana REAL del atleta (según su fecha de
+  // inicio), no la del admin — así se ve exactamente lo que él está viendo hoy.
+  const athletePreviewWeek = S.viewingAthlete?.personal?.startDate ? computeWeekFromDate(S.viewingAthlete.personal.startDate) : 1;
 
   const sessionNames = sortSessionNames(Object.keys(routine.sessions || {}));
   html += `<div class="admin-section">
@@ -4307,17 +4384,28 @@ function renderAtletaRutina(a) {
             <div class="block-body">
               ${(b.categories||[]).map(cat=>`
                 ${cat.label?`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label">${cat.label}</span></div></div>`:''}
-                ${(cat.exercises||[]).map(ex=>`
+                ${(cat.exercises||[]).map(ex=>{
+                  const wp = getExPrescriptionForWeek(ex, athletePreviewWeek);
+                  const doneData = (S.viewingAthlete?.personal?.history?.[sessionKey(athletePreviewWeek, sName)]?.exercises?.[ex.id]) || {};
+                  const hasCompletion = !!(doneData.load || doneData.rpe);
+                  return `
                   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}</div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}${ex.progression&&ex.progression.length>1?` <span style="font-size:10px;color:var(--accent);font-weight:600">· Semana ${athletePreviewWeek}</span>`:''}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
-                      <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${ex.series||'—'}</div></div>
-                      <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${ex.reps||'—'}</div></div>
-                      <div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${ex.pct||'—'}</div></div>
-                      <div class="field-box"><span class="field-lbl">${ex.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${ex.rpe||'—'}</div></div>
-                      ${ex.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${ex.note}</div></div>`:''}
+                      <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
+                      <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
+                      <div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct||'—'}</div></div>
+                      <div class="field-box"><span class="field-lbl">${wp.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.rpe||'—'}</div></div>
+                      ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
-                  </div>`).join('')}
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px">
+                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
+                      ${hasCompletion?`
+                        <span style="font-size:12px;font-weight:700;color:var(--green)">${doneData.load?doneData.load+'kg':''}${doneData.load&&doneData.rpe?' · ':''}${doneData.rpe?'RPE '+doneData.rpe:''}</span>
+                        ${doneData.checked?`<span style="font-size:10px;color:var(--green)">✓ marcado</span>`:''}
+                      `:`<span style="font-size:12px;color:var(--text3)">${doneData.checked?'✓ marcado, sin carga/RPE cargado':'Todavía no completó este ejercicio'}</span>`}
+                    </div>
+                  </div>`;}).join('')}
               `).join('')}
             </div>
           </div>`;
@@ -5657,6 +5745,13 @@ async function deleteRoutine(id) {
 window.deleteRoutine=deleteRoutine;
 
 // ── ROUTINE EDITOR ────────────────────────────────────────────
+function setRoutineDuration(val) {
+  if(!S.editingRoutine) return;
+  S.editingRoutine.durationWeeks = Math.max(1, +val||4);
+  renderMain();
+}
+window.setRoutineDuration = setRoutineDuration;
+
 function renderRoutineEditor() {
   const r = S.editingRoutine;
   if(!r) return `<div class="empty-state">Error: no hay rutina en edición.</div>`;
@@ -5676,6 +5771,11 @@ function renderRoutineEditor() {
     <button class="back-btn" data-back="routine-editor">‹</button>
     <div class="team-detail-title" style="flex:1">${r.name}</div>
     <button class="abtn abtn-p" onclick="saveRoutineToFirestore()">Guardar</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--accent-dim);border-radius:var(--rsm)">
+    <span style="font-size:12px;font-weight:600;color:var(--accent)">Duración de esta planificación</span>
+    <input type="number" min="1" max="52" value="${r.durationWeeks||4}" style="width:56px;text-align:center;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px;color:var(--text);font-size:13px" onchange="setRoutineDuration(this.value)">
+    <span style="font-size:12px;color:var(--text3)">semanas</span>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
     ${sessionTabs}
@@ -5739,6 +5839,9 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
   const videoKey = ex.libId || (libMatch&&libMatch.id) || ex.id;
   const hasV = !!S.videos[videoKey];
   const isFirst = exIdx===0, isLast = exIdx===(totalEx-1);
+  const durationWeeks = S.editingRoutine?.durationWeeks || 4;
+  const editWeek = Math.min((S._routineEditWeek && S._routineEditWeek[ex.id]) || 1, durationWeeks);
+  const wp = (ex.progression && ex.progression[editWeek-1]) ? ex.progression[editWeek-1] : {series:ex.series||'',reps:ex.reps||'',pct:ex.pct||'',rpe:ex.rpe||'',intensityType:ex.intensityType||'RPE',note:ex.note||''};
   return `<div class="ex-row" id="rexrow-${ex.id}">
     <div class="ex-main">
       <div class="ex-name-row">
@@ -5759,13 +5862,23 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
           <div class="ex-icon-btn del-ex" onclick="deleteRExercise('${ex.id}','${blockId}','${sessionName}',${catIdx})" title="Eliminar">×</div>
         </div>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;background:var(--accent-dim);border-radius:var(--rxs)">
+        <button class="ex-icon-btn" onclick="setRExEditWeek('${ex.id}',${editWeek-1})" style="${editWeek<=1?'opacity:.3;pointer-events:none':''}" title="Semana anterior">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span style="font-size:11px;font-weight:700;color:var(--accent);flex:1;text-align:center">Semana ${editWeek} de ${durationWeeks}${(ex.progression&&ex.progression.length>1)?'':' · sin progresión cargada'}</span>
+        <button class="ex-icon-btn" onclick="setRExEditWeek('${ex.id}',${editWeek+1})" style="${editWeek>=durationWeeks?'opacity:.3;pointer-events:none':''}" title="Semana siguiente">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        ${durationWeeks>1?`<button class="abtn" style="font-size:10px;padding:4px 8px" onclick="copyRExWeekForward('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek})" title="Copiar estos valores a todas las semanas siguientes">Copiar →</button>`:''}
+      </div>
       <div class="ex-fields">
         <div class="field-box"><span class="field-lbl">Series</span>
-          <input class="field-inp" type="text" placeholder="3x" value="${ex.series||''}" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'series',this.value)"></div>
+          <input class="field-inp" type="text" placeholder="3x" value="${wp.series||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'series',this.value)"></div>
         <div class="field-box"><span class="field-lbl">Reps</span>
-          <input class="field-inp" type="text" placeholder="6–8" value="${ex.reps||''}" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'reps',this.value)"></div>
+          <input class="field-inp" type="text" placeholder="6–8" value="${wp.reps||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'reps',this.value)"></div>
         <div class="field-box"><span class="field-lbl">%RM</span>
-          <input class="field-inp" type="text" placeholder="—" value="${ex.pct||''}" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'pct',this.value)"></div>
+          <input class="field-inp" type="text" placeholder="—" value="${wp.pct||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'pct',this.value)"></div>
         <div class="field-box"><span class="field-lbl">De qué RM</span>
           <select class="field-inp" style="width:auto;padding:6px 4px;font-size:11px" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'rmLift',this.value)">
             <option value="">—</option>
@@ -5775,12 +5888,12 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
         <div class="field-box" style="gap:3px">
           <span class="field-lbl">Intensidad</span>
           <div class="intensity-sel">
-            <button class="intensity-type-btn ${(ex.intensityType||'RPE')==='RPE'?'active':''}" onclick="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
-            <button class="intensity-type-btn ${ex.intensityType==='RIR'?'active':''}" onclick="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'intensityType','RIR');this.classList.add('active');this.previousElementSibling.classList.remove('active')">RIR</button>
+            <button class="intensity-type-btn ${(wp.intensityType||'RPE')==='RPE'?'active':''}" onclick="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
+            <button class="intensity-type-btn ${wp.intensityType==='RIR'?'active':''}" onclick="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'intensityType','RIR');this.classList.add('active');this.previousElementSibling.classList.remove('active')">RIR</button>
           </div>
-          <input class="field-inp" type="text" placeholder="—" value="${ex.rpe||''}" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'rpe',this.value)" style="width:48px"></div>
+          <input class="field-inp" type="text" placeholder="—" value="${wp.rpe||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'rpe',this.value)" style="width:48px"></div>
         <div class="field-box"><span class="field-lbl">Nota</span>
-          <input class="field-inp" style="width:90px" type="text" placeholder="—" value="${ex.note||''}" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'note',this.value)"></div>
+          <input class="field-inp" style="width:90px" type="text" placeholder="—" value="${wp.note||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'note',this.value)"></div>
       </div>
     </div>
   </div>`;
@@ -5911,6 +6024,47 @@ function setRExField(exId,blockId,sessionName,catIdx,field,val) {
   ex[field]=val;
 }
 window.setRExField=setRExField;
+
+function setRExEditWeek(exId, week) {
+  if(!S._routineEditWeek) S._routineEditWeek = {};
+  S._routineEditWeek[exId] = Math.max(1, week);
+  renderMain();
+}
+window.setRExEditWeek = setRExEditWeek;
+
+// Si el ejercicio todavía no tiene progresión cargada, la inicializa con
+// los campos planos que ya tenía (semana 1) — así nunca se pierde nada de
+// lo que ya estaba cargado.
+function ensureExProgression(ex) {
+  if(!ex.progression || !ex.progression.length) {
+    ex.progression = [{series:ex.series||'', reps:ex.reps||'', pct:ex.pct||'', rpe:ex.rpe||'', intensityType:ex.intensityType||'RPE', note:ex.note||''}];
+  }
+  return ex.progression;
+}
+window.ensureExProgression = ensureExProgression;
+
+function setRExWeekField(exId, blockId, sessionName, catIdx, week, field, val) {
+  const b = getRBlock(blockId, sessionName); if(!b) return;
+  const ex = b.categories[catIdx].exercises.find(e=>e.id===exId); if(!ex) return;
+  const prog = ensureExProgression(ex);
+  // Si se edita una semana más adelante de lo cargado hasta ahora, se
+  // extiende repitiendo la última semana definida (progresión por defecto).
+  while(prog.length < week) prog.push({...prog[prog.length-1]});
+  prog[week-1][field] = val;
+}
+window.setRExWeekField = setRExWeekField;
+
+function copyRExWeekForward(exId, blockId, sessionName, catIdx, week) {
+  const b = getRBlock(blockId, sessionName); if(!b) return;
+  const ex = b.categories[catIdx].exercises.find(e=>e.id===exId); if(!ex) return;
+  const durationWeeks = S.editingRoutine?.durationWeeks || 4;
+  const prog = ensureExProgression(ex);
+  const base = {...prog[week-1]};
+  for(let w=week+1; w<=durationWeeks; w++) prog[w-1] = {...base};
+  renderMain();
+  showToast('✓ Copiado a las semanas siguientes');
+}
+window.copyRExWeekForward = copyRExWeekForward;
 
 function deleteRExercise(exId,blockId,sessionName,catIdx) {
   const b=getRBlock(blockId,sessionName); if(!b) return;
@@ -7532,6 +7686,20 @@ function updateRestTimerFabVisibility() {
   if(!show) { const p=document.getElementById('rest-timer-panel'); if(p) p.style.display='none'; }
 }
 window.updateRestTimerFabVisibility = updateRestTimerFabVisibility;
+
+// Desliza el recuadro azul de la barra inferior hasta la pestaña activa —
+// mismo tipo de transición suave que usan los números animados (countup).
+function updateBottomBarIndicator() {
+  const bb = document.getElementById('bottombar');
+  const indicator = document.getElementById('bb-indicator');
+  if(!bb || !indicator) return;
+  const activeBtn = bb.querySelector('.bb-btn.active');
+  if(!activeBtn) { indicator.style.width='0px'; return; }
+  const inset = 6;
+  indicator.style.left = (activeBtn.offsetLeft+inset)+'px';
+  indicator.style.width = (activeBtn.offsetWidth-inset*2)+'px';
+}
+window.updateBottomBarIndicator = updateBottomBarIndicator;
 
 function navigateSwipe(dir) {
   // Solo cambia de sección si estamos en una pantalla "de primer nivel" de
