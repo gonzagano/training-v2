@@ -4399,13 +4399,16 @@ function renderAtletaRutina(a) {
                       <div class="field-box"><span class="field-lbl">${wp.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.rpe||'—'}</div></div>
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px">
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
                       ${hasCompletion?`
                         <span style="font-size:12px;font-weight:700;color:var(--green)">${doneData.load?doneData.load+'kg':''}${doneData.load&&doneData.rpe?' · ':''}${doneData.rpe?'RPE '+doneData.rpe:''}</span>
                         ${doneData.checked?`<span style="font-size:10px;color:var(--green)">✓ marcado</span>`:''}
                       `:`<span style="font-size:12px;color:var(--text3)">${doneData.checked?'✓ marcado, sin carga/RPE cargado':'Todavía no completó este ejercicio'}</span>`}
                     </div>
+                    ${doneData.athleteNote?`<div style="margin-top:6px;background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--rxs);padding:8px 10px;font-size:12px;color:var(--text)">
+                      <span style="font-weight:700;color:var(--amber)">📝 Nota del atleta:</span> ${doneData.athleteNote}
+                    </div>`:''}
                   </div>`;}).join('')}
               `).join('')}
             </div>
@@ -5846,8 +5849,8 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
   const hasV = !!S.videos[videoKey];
   const isFirst = exIdx===0, isLast = exIdx===(totalEx-1);
   const durationWeeks = S.editingRoutine?.durationWeeks || 4;
-  const editWeek = Math.min((S._routineEditWeek && S._routineEditWeek[ex.id]) || 1, durationWeeks);
-  const wp = (ex.progression && ex.progression[editWeek-1]) ? ex.progression[editWeek-1] : {series:ex.series||'',reps:ex.reps||'',pct:ex.pct||'',rpe:ex.rpe||'',intensityType:ex.intensityType||'RPE',note:ex.note||''};
+  const weeksArr = Array.from({length:durationWeeks}, (_,i)=>i+1);
+  const getWP = (w) => (ex.progression && ex.progression[w-1]) ? ex.progression[w-1] : {series:ex.series||'',reps:ex.reps||'',pct:ex.pct||'',rpe:ex.rpe||'',intensityType:ex.intensityType||'RPE',note:ex.note||''};
   return `<div class="ex-row" id="rexrow-${ex.id}">
     <div class="ex-main">
       <div class="ex-name-row">
@@ -5868,38 +5871,49 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
           <div class="ex-icon-btn del-ex" onclick="deleteRExercise('${ex.id}','${blockId}','${sessionName}',${catIdx})" title="Eliminar">×</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;background:var(--accent-dim);border-radius:var(--rxs)">
-        <button class="ex-icon-btn" onclick="setRExEditWeek('${ex.id}',${editWeek-1})" style="${editWeek<=1?'opacity:.3;pointer-events:none':''}" title="Semana anterior">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <span style="font-size:11px;font-weight:700;color:var(--accent);flex:1;text-align:center">Semana ${editWeek} de ${durationWeeks}${(ex.progression&&ex.progression.length>1)?'':' · sin progresión cargada'}</span>
-        <button class="ex-icon-btn" onclick="setRExEditWeek('${ex.id}',${editWeek+1})" style="${editWeek>=durationWeeks?'opacity:.3;pointer-events:none':''}" title="Semana siguiente">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        ${durationWeeks>1?`<button class="abtn" style="font-size:10px;padding:4px 8px" onclick="copyRExWeekForward('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek})" title="Copiar estos valores a todas las semanas siguientes">Copiar →</button>`:''}
-      </div>
-      <div class="ex-fields">
-        <div class="field-box"><span class="field-lbl">Series</span>
-          <input class="field-inp" type="text" placeholder="3x" value="${wp.series||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'series',this.value)"></div>
-        <div class="field-box"><span class="field-lbl">Reps</span>
-          <input class="field-inp" type="text" placeholder="6–8" value="${wp.reps||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'reps',this.value)"></div>
-        <div class="field-box"><span class="field-lbl">%RM</span>
-          <input class="field-inp" type="text" placeholder="—" value="${wp.pct||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'pct',this.value)"></div>
-        <div class="field-box"><span class="field-lbl">De qué RM</span>
-          <select class="field-inp" style="width:auto;padding:6px 4px;font-size:11px" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'rmLift',this.value)">
-            <option value="">—</option>
-            ${RM_LIFTS.map(rm=>`<option value="${rm.id}" ${ex.rmLift===rm.id?'selected':''}>${rm.label}</option>`).join('')}
-          </select>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--text3);font-weight:600">De qué RM:</span>
+        <select class="field-inp" style="width:auto;padding:5px 4px;font-size:11px" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'rmLift',this.value)">
+          <option value="">—</option>
+          ${RM_LIFTS.map(rm=>`<option value="${rm.id}" ${ex.rmLift===rm.id?'selected':''}>${rm.label}</option>`).join('')}
+        </select>
+        <span style="font-size:10px;color:var(--text3);font-weight:600;margin-left:8px">Intensidad:</span>
+        <div class="intensity-sel">
+          <button class="intensity-type-btn ${(ex.intensityType||'RPE')==='RPE'?'active':''}" onclick="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
+          <button class="intensity-type-btn ${ex.intensityType==='RIR'?'active':''}" onclick="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'intensityType','RIR');this.classList.add('active');this.previousElementSibling.classList.remove('active')">RIR</button>
         </div>
-        <div class="field-box" style="gap:3px">
-          <span class="field-lbl">Intensidad</span>
-          <div class="intensity-sel">
-            <button class="intensity-type-btn ${(wp.intensityType||'RPE')==='RPE'?'active':''}" onclick="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
-            <button class="intensity-type-btn ${wp.intensityType==='RIR'?'active':''}" onclick="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'intensityType','RIR');this.classList.add('active');this.previousElementSibling.classList.remove('active')">RIR</button>
-          </div>
-          <input class="field-inp" type="text" placeholder="—" value="${wp.rpe||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'rpe',this.value)" style="width:48px"></div>
-        <div class="field-box"><span class="field-lbl">Nota</span>
-          <input class="field-inp" style="width:90px" type="text" placeholder="—" value="${wp.note||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${editWeek},'note',this.value)"></div>
+      </div>
+      <div style="overflow-x:auto;margin-bottom:8px;border:1px solid var(--border2);border-radius:var(--rsm)">
+        <table style="border-collapse:collapse;width:100%">
+          <thead>
+            <tr style="background:var(--accent-dim)">
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:var(--accent);font-weight:700;position:sticky;left:0;background:var(--accent-dim);min-width:64px;z-index:1"></th>
+              ${weeksArr.map(w=>`<th style="padding:6px 8px;text-align:center;font-size:11px;color:var(--accent);font-weight:700;min-width:76px;white-space:nowrap">Semana ${w}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Series</td>
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="3x" value="${getWP(w).series||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'series',this.value)"></td>`).join('')}
+            </tr>
+            <tr>
+              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Reps</td>
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="6–8" value="${getWP(w).reps||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'reps',this.value)"></td>`).join('')}
+            </tr>
+            <tr>
+              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">%RM</td>
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="—" value="${getWP(w).pct||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'pct',this.value)"></td>`).join('')}
+            </tr>
+            <tr>
+              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">${ex.intensityType||'RPE'}</td>
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="—" value="${getWP(w).rpe||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'rpe',this.value)"></td>`).join('')}
+            </tr>
+            <tr>
+              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Nota</td>
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:90px" type="text" placeholder="—" value="${getWP(w).note||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'note',this.value)"></td>`).join('')}
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>`;
