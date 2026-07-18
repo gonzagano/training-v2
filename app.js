@@ -6357,6 +6357,7 @@ async function saveStrengthEvals() {
     try { await saveAthleteEvalsDoc(uid, S._athleteEvalsCache[uid]); }
     catch(e) { showToast('Error al guardar'); return; }
   }
+  syncEvalsToAthleteObject(uid);
   showToast('✓ '+saved+' test'+(saved!==1?'s':'')+' guardado'+(saved!==1?'s':''));
   setTimeout(()=>{ if(S.currentView==='evals'){ renderMain(); setTimeout(drawEvalCharts,80);} }, 100);
 }
@@ -6625,6 +6626,7 @@ async function saveAllEvals() {
       await saveAthleteEvalsDoc(uid, S._athleteEvalsCache[uid]);
     } catch(e) { showToast('Error al guardar'); return; }
   }
+  syncEvalsToAthleteObject(uid);
 
   showToast('✓ '+saved+' test'+(saved!==1?'s':'')+' guardado'+(saved!==1?'s':''));
   setTimeout(()=>{ if(S.currentView==='evals'){ renderMain(); setTimeout(drawEvalCharts,80);} }, 100);
@@ -6851,6 +6853,22 @@ function getAthleteEvals(uid) {
   return (S._athleteEvalsCache && S._athleteEvalsCache[uid]) || {};
 }
 
+// El sistema de Evaluaciones guarda los tests en S._athleteEvalsCache (una
+// caché aparte, pensada solo para esa pantalla). Pero el Ranking/Radar/
+// Cuadrante del equipo leen los tests desde a._personal.evals (el objeto del
+// atleta en S.adminAthletes). Sin esta sincronización, un test recién
+// cargado no aparecía ahí hasta recargar toda la app — quedaban dos copias
+// de los mismos datos desconectadas entre sí.
+function syncEvalsToAthleteObject(uid) {
+  if(isPendingId(uid)) return;
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  if(a) {
+    if(!a._personal) a._personal = {};
+    a._personal.evals = S._athleteEvalsCache?.[uid] || {};
+  }
+}
+window.syncEvalsToAthleteObject = syncEvalsToAthleteObject;
+
 // Nombre a mostrar para cualquier id de "atleta seleccionado": el admin
 // mismo, un atleta con cuenta real, o un jugador pendiente de registrarse.
 function getAthleteDisplayName(id) {
@@ -6903,6 +6921,7 @@ async function deleteEvalRecord(testId, idx) {
     if(S._athleteEvalsCache?.[uid]?.[testId]) {
       S._athleteEvalsCache[uid][testId].splice(idx,1);
       try { await saveAthleteEvalsDoc(uid, S._athleteEvalsCache[uid]); } catch(e){}
+      syncEvalsToAthleteObject(uid);
     }
   }
   renderMain();
