@@ -1087,9 +1087,7 @@ function renderBottomBar() {
   // Mobile bottom bar
   const bb = document.getElementById('bottombar');
   if(bb) {
-    const activeIdx = Math.max(0, tabs.findIndex(t=>t.id===S.currentView));
-    const pct = 100/tabs.length;
-    bb.innerHTML = `<div id="bb-indicator" style="left:calc(${activeIdx*pct}% + 6px);width:calc(${pct}% - 12px)"></div>` + tabs.map(t=>`
+    bb.innerHTML = tabs.map(t=>`
       <button class="bb-btn ${S.currentView===t.id?'active':''}" id="bb-${t.id}" onclick="switchView('${t.id}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${t.svg}</svg>
         ${t.label}
