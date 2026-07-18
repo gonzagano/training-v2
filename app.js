@@ -72,6 +72,17 @@ const SEVERITY_LEVELS = [
 function severityInfo(id) { return SEVERITY_LEVELS.find(s=>s.id===id) || null; }
 window.severityInfo = severityInfo;
 
+// Los 5 levantamientos con RM registrable — usados para linkear el %RM de
+// la rutina con el peso real de cada atleta.
+const RM_LIFTS = [
+  {id:'press_plano', label:'Press Plano'},
+  {id:'sentadilla_barra', label:'Sentadilla con Barra'},
+  {id:'peso_muerto', label:'Peso Muerto'},
+  {id:'cargada_potencia', label:'Cargada de Potencia'},
+  {id:'arranque_potencia', label:'Arranque de Potencia'},
+];
+window.RM_LIFTS = RM_LIFTS;
+
 // ── DEFAULT DATA ─────────────────────────────────────────────
 const DEFAULT_BLOCKS = [
   { id:'b1', label:'Bloque 1', title:'Activación y movilidad', time:'5–10 min', colorKey:'b1',
@@ -329,6 +340,7 @@ let S = {
   feedbackSession: null, // {week, session}
   // ── EVALUATIONS ──
   evals: {},            // { athleteId: { cmj:[{date,height,tof,vel}], sj:[], abalakov:[], saltoH:[], cmj_der:[], cmj_izq:[] } }
+  oneRM: {},            // {press_plano, sentadilla_barra, peso_muerto, cargada_potencia, arranque_potencia} en kg
   evalView: 'entry',    // 'entry' | 'history' | 'compare'
   evalHidden: new Set(), // tests hidden in history view
   _evalAthletesLoading: false,
@@ -440,6 +452,7 @@ onAuthStateChanged(auth, async (user) => {
   if (pSnap.exists()) {
     const d = pSnap.data();
     if (d.evals) S.evals = d.evals;
+    if (d.oneRM) S.oneRM = d.oneRM;
     if (d.sessionLogs) { if(!S.history) S.history={}; S.history._sessionLogs=d.sessionLogs; }
     if (d.history) S.history = d.history;
     if (d.wellness) S.wellness = d.wellness;
@@ -1155,6 +1168,7 @@ function renderMain() {
   }
   // re-draw charts if needed
   if(S.currentView==='evals') setTimeout(drawEvalCharts,50);
+  updateRestTimerFabVisibility();
 }
 
 
@@ -1201,6 +1215,15 @@ function renderBlock(b) {
   const cc=b.colorKey||'bx';
   const open=b._open!==false;
   const exampleColors = {b1:'var(--teal)',b2:'var(--blue)',b3:'var(--purple)',b4:'var(--amber)',bx:'var(--text2)'};
+  // Si TODOS los ejercicios de este bloque están tildados, mostramos un
+  // check verde en el encabezado — así se ve el progreso aunque el bloque
+  // esté colapsado.
+  let totalEx=0, doneEx=0;
+  b.categories.forEach(cat=>cat.exercises.forEach(ex=>{
+    totalEx++;
+    if(getED(S.currentWeek,S.currentSession,ex.id).checked) doneEx++;
+  }));
+  const blockAllDone = totalEx>0 && doneEx===totalEx;
   let inner=`<p class="block-note">${b.note||''}</p>`;
   b.categories.forEach((cat,ci)=>{
     inner+=`<div class="cat-header">
@@ -1241,6 +1264,7 @@ function renderBlock(b) {
         <input class="block-title-inp" id="btinp-${b.id}" onblur="saveBlockTitle('${b.id}',this)" onkeydown="if(event.key==='Enter')this.blur()">
       </div>
       <span class="block-time">${b.time}</span>
+      ${blockAllDone?`<span class="block-done-badge" title="Bloque completo" style="width:20px;height:20px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>`:''}
       ${S.isAdmin?`<span class="block-del" onclick="deleteBlock(event,'${b.id}')">×</span>`:''}
       <span class="block-chevron">›</span>
     </div>
@@ -1267,27 +1291,36 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
     <input class="field-inp vbt" type="number" step="0.01" placeholder="0.00" value="${d.ms||''}"
       ${isAthleteMode?'readonly style="opacity:.5;pointer-events:none"':''}
       onchange="setField('${ex.id}','ms',this.value)"></div>`:'';
+  // Si el ejercicio tiene %RM y está vinculado a uno de los levantamientos
+  // con RM cargado, calculamos el kilaje sugerido para hoy.
+  const rmValue = ex.rmLift ? S.oneRM?.[ex.rmLift] : null;
+  const suggestedKg = (prescPct && rmValue) ? Math.round((parseFloat(prescPct)/100) * rmValue) : null;
   // Prescription display for athlete (read-only pill row above fields)
   const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct) ? `
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
       ${prescSeries?`<span style="font-size:11px;background:var(--purple-dim);color:var(--purple);padding:2px 8px;border-radius:20px;border:1px solid rgba(212,100,122,0.3)">${prescSeries} series</span>`:''}
       ${prescReps?`<span style="font-size:11px;background:var(--blue-dim);color:var(--blue);padding:2px 8px;border-radius:20px;border:1px solid rgba(96,165,250,0.3)">${prescReps} reps</span>`:''}
-      ${prescPct?`<span style="font-size:11px;background:var(--teal-dim);color:var(--teal);padding:2px 8px;border-radius:20px;border:1px solid rgba(45,212,191,0.3)">${prescPct}%RM</span>`:''}
-      ${prescNote?`<span style="font-size:11px;color:var(--text3);font-style:italic">${prescNote}</span>`:''}
+      ${prescPct?`<span style="font-size:11px;background:var(--teal-dim);color:var(--teal);padding:2px 8px;border-radius:20px;border:1px solid rgba(45,212,191,0.3)">${prescPct}%RM${suggestedKg?' ≈ '+suggestedKg+'kg':''}</span>`:''}
+      ${(prescPct && ex.rmLift && !rmValue)?`<span style="font-size:11px;color:var(--amber)">Cargá tu RM de ${RM_LIFTS.find(r=>r.id===ex.rmLift)?.label||''} en Ajustes para ver los kilos</span>`:''}
     </div>` : '';
+  const prescNoteRow = prescNote ? `<div style="font-size:12px;color:var(--text3);font-style:italic;margin:2px 0 6px">${prescNote}</div>` : '';
   return `<div class="ex-row" id="exrow-${ex.id}">
     <div class="ex-check ${d.checked?'checked':''}" onclick="toggleCheck('${ex.id}')"></div>
     <div class="ex-main">
       <div class="ex-name-row">
         <span class="ex-name" ${canEdit?`ondblclick="editExName(this,'${ex.id}','${blockId}',${catIdx})"`:''}>${ex.name}</span>
         <input class="ex-name-inp" id="exinp-${ex.id}" ${canEdit?`onblur="saveExName('${ex.id}','${blockId}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"`:''}>
-        <div class="ex-actions">
+        <div class="ex-actions" style="flex-direction:column">
           <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',${canEdit})" title="${canEdit?'Video':'Ver video'}">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+          <div class="ex-icon-btn ex-note-btn ${d.athleteNote?'has-note':''}" onclick="openAthleteNoteModal('${ex.id}','${ex.name.replace(/'/g,"\\'")}')" title="Mi nota">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </div>
           ${canEdit?`<div class="ex-icon-btn del-ex" onclick="deleteExercise('${ex.id}','${blockId}',${catIdx})" title="Eliminar">×</div>`:''}
         </div>
       </div>
+      ${prescNoteRow}
       ${prescRow}
       <div class="ex-fields">
         ${isAthleteMode ? `
@@ -1327,13 +1360,41 @@ window.toggleBlock=toggleBlock;
 function toggleCheck(exId) {
   const d=getED(S.currentWeek,S.currentSession,exId);
   d.checked=!d.checked;
-  const el=document.querySelector(`#exrow-${exId} .ex-check`);
+  const rowEl=document.querySelector(`#exrow-${exId}`);
+  const el=rowEl?.querySelector('.ex-check');
   if(el) el.classList.toggle('checked',d.checked);
   if(!getSD(S.currentWeek,S.currentSession).date)
     getSD(S.currentWeek,S.currentSession).date=new Date().toISOString().split('T')[0];
   scheduleSave();
+  updateBlockCheckmark(rowEl);
 }
 window.toggleCheck=toggleCheck;
+
+// Actualiza a mano el tilde verde de "bloque completo" en el encabezado,
+// sin re-renderizar toda la pantalla (evita perder foco en otros campos).
+function updateBlockCheckmark(rowEl) {
+  const blockEl = rowEl?.closest('.card.block');
+  if(!blockEl) return;
+  const checks = blockEl.querySelectorAll('.ex-check');
+  const total = checks.length;
+  const done = blockEl.querySelectorAll('.ex-check.checked').length;
+  const header = blockEl.querySelector('.block-header');
+  if(!header) return;
+  let badge = header.querySelector('.block-done-badge');
+  const allDone = total>0 && done===total;
+  if(allDone && !badge) {
+    badge = document.createElement('span');
+    badge.className='block-done-badge';
+    badge.title='Bloque completo';
+    badge.style.cssText='width:20px;height:20px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0';
+    badge.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+    const timeEl = header.querySelector('.block-time');
+    if(timeEl) timeEl.insertAdjacentElement('afterend', badge); else header.appendChild(badge);
+  } else if(!allDone && badge) {
+    badge.remove();
+  }
+}
+window.updateBlockCheckmark = updateBlockCheckmark;
 
 function setField(exId,field,val) {
   const d=getED(S.currentWeek,S.currentSession,exId);
@@ -1753,6 +1814,36 @@ window.closeVideoModal=closeVideoModal;
 
 function closeVideoIfOutside(e) { if(e.target===document.getElementById('video-overlay')) closeVideoModal(); }
 window.closeVideoIfOutside=closeVideoIfOutside;
+
+// ── NOTA PROPIA DEL ATLETA POR EJERCICIO (pizarra) ───────────────
+function openAthleteNoteModal(exId, exName) {
+  S._noteModalExId = exId;
+  const d = getED(S.currentWeek, S.currentSession, exId);
+  document.getElementById('note-modal-title').textContent = 'Mi nota · ' + exName;
+  document.getElementById('note-modal-textarea').value = d.athleteNote || '';
+  document.getElementById('note-overlay').classList.add('open');
+}
+window.openAthleteNoteModal = openAthleteNoteModal;
+
+function closeNoteModal() {
+  document.getElementById('note-overlay').classList.remove('open');
+}
+window.closeNoteModal = closeNoteModal;
+
+function closeNoteIfOutside(e) { if(e.target===document.getElementById('note-overlay')) closeNoteModal(); }
+window.closeNoteIfOutside = closeNoteIfOutside;
+
+function saveAthleteNote() {
+  const exId = S._noteModalExId;
+  if(!exId) return;
+  const val = document.getElementById('note-modal-textarea').value;
+  setField(exId, 'athleteNote', val);
+  const btn = document.querySelector(`#exrow-${exId} .ex-note-btn`);
+  if(btn) btn.classList.toggle('has-note', !!val.trim());
+  closeNoteModal();
+  showToast('✓ Nota guardada');
+}
+window.saveAthleteNote = saveAthleteNote;
 
 function saveVideoUrl() {
   if(!S.videoEditable) return; // el atleta no puede guardar aunque manipule el DOM
@@ -3898,6 +3989,7 @@ function renderTeamDayBlock(b,teamId,dayIdx){
         <div class="field-box"><span class="field-lbl">Series</span><input class="field-inp" type="text" placeholder="3x" value="${ex.series||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'series',this.value)"></div>
         <div class="field-box"><span class="field-lbl">Reps</span><input class="field-inp" type="text" placeholder="6–8" value="${ex.reps||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'reps',this.value)"></div>
         <div class="field-box"><span class="field-lbl">%RM</span><input class="field-inp" type="text" placeholder="—" value="${ex.pct||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'pct',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">De qué RM</span><select class="field-inp" style="width:auto;padding:6px 4px;font-size:11px" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'rmLift',this.value)"><option value="">—</option>${RM_LIFTS.map(rm=>`<option value="${rm.id}" ${ex.rmLift===rm.id?'selected':''}>${rm.label}</option>`).join('')}</select></div>
         <div class="field-box" style="gap:3px"><span class="field-lbl">Intensidad</span>
           <div class="intensity-sel">
             <button class="intensity-type-btn ${(ex.intensityType||'RPE')==='RPE'?'active':''}" onclick="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
@@ -4122,7 +4214,7 @@ function openAtleta(uid) {
   if (!a) return;
   S.atletaView = a;
   S.atletaSubview = 'rutina';
-  ensureGroupPersonalData([uid]).then(renderMain);
+  ensureGroupPersonalData([uid]).then(renderMain).catch((e)=>{ console.error('Error al abrir atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
   renderMain();
 }
 window.openAtleta = openAtleta;
@@ -4156,11 +4248,14 @@ function setAtletaSubview(v) {
     S.evalAthleteId = S.atletaView?.uid || null;
     ensureAdminAthletes()
       .then(()=>ensureAthleteEvalData(S.evalAthleteId))
-      .then(() => { renderMain(); setTimeout(drawEvalCharts, 80); });
+      .then(() => { renderMain(); setTimeout(drawEvalCharts, 80); })
+      .catch((e)=>{ console.error('Error al cargar Evaluaciones del atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
   }
   if (v === 'wellness' || v === 'stats') {
-    ensureGroupPersonalData(S.atletaView ? [S.atletaView.uid] : []).then(renderMain);
+    ensureGroupPersonalData(S.atletaView ? [S.atletaView.uid] : [])
+      .then(renderMain)
+      .catch((e)=>{ console.error('Error al cargar datos del atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
   }
   renderMain();
@@ -4432,6 +4527,14 @@ function renderSettings() {
     })()}
   </div>
   <div class="card">
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mis marcas (1RM)</div>
+    <div style="padding:4px 14px 12px;font-size:11px;color:var(--text3)">Cargá tu máximo en cada levantamiento — la rutina va a calcular sola los kilos cuando el entrenador te prescriba un %RM.</div>
+    ${RM_LIFTS.map(rm=>`<div class="settings-item">
+      <div class="settings-lbl">${rm.label}</div>
+      <input class="abtn" type="number" style="text-align:right;width:80px" value="${S.oneRM?.[rm.id]||''}" placeholder="kg" onblur="saveOneRM('${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+    </div>`).join('')}
+  </div>
+  <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Semana actual</div>
     <div class="settings-item">
       <div><div class="settings-lbl">Semana ${S.currentWeek}</div><div class="settings-sub">${weekLabel(S.currentWeek)}</div></div>
@@ -4522,6 +4625,18 @@ async function deleteMyAccount() {
   await wipeFirestoreAndAuth();
 }
 window.deleteMyAccount = deleteMyAccount;
+
+async function saveOneRM(liftId, value) {
+  const val = value===''?null:Math.max(0,+value);
+  if(!S.oneRM) S.oneRM={};
+  S.oneRM[liftId]=val;
+  try {
+    await setDoc(doc(db,'personal',S.user.uid), {oneRM:S.oneRM}, {merge:true});
+    showToast('✓ Marca guardada');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.saveOneRM = saveOneRM;
 
 async function saveMyProfileField(field, value) {
   if(field==='name' && !value.trim()) { showToast('El nombre no puede quedar vacío'); renderMain(); return; }
@@ -5651,6 +5766,12 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
           <input class="field-inp" type="text" placeholder="6–8" value="${ex.reps||''}" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'reps',this.value)"></div>
         <div class="field-box"><span class="field-lbl">%RM</span>
           <input class="field-inp" type="text" placeholder="—" value="${ex.pct||''}" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'pct',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">De qué RM</span>
+          <select class="field-inp" style="width:auto;padding:6px 4px;font-size:11px" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'rmLift',this.value)">
+            <option value="">—</option>
+            ${RM_LIFTS.map(rm=>`<option value="${rm.id}" ${ex.rmLift===rm.id?'selected':''}>${rm.label}</option>`).join('')}
+          </select>
+        </div>
         <div class="field-box" style="gap:3px">
           <span class="field-lbl">Intensidad</span>
           <div class="intensity-sel">
@@ -7341,6 +7462,76 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
     if(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*2) navigateSwipe(dx<0?1:-1);
   });
 })();
+
+// ── CRONÓMETRO DE DESCANSO (botón flotante en Mi Rutina) ─────────────────
+function toggleRestTimerPanel() {
+  const panel = document.getElementById('rest-timer-panel');
+  if(!panel) return;
+  panel.style.display = panel.style.display==='none' ? 'block' : 'none';
+}
+window.toggleRestTimerPanel = toggleRestTimerPanel;
+
+function updateRestTimerDisplay() {
+  const el = document.getElementById('rest-timer-display');
+  if(!el) return;
+  const s = S._restTimerRemaining ?? 90;
+  const m = Math.floor(Math.abs(s)/60), r = Math.abs(s)%60;
+  el.textContent = (s<0?'-':'')+m+':'+String(r).padStart(2,'0');
+  el.classList.toggle('rest-timer-done', s<=0);
+}
+window.updateRestTimerDisplay = updateRestTimerDisplay;
+
+function setRestTimerPreset(sec) {
+  clearInterval(S._restTimerInterval);
+  S._restTimerRunning = false;
+  S._restTimerRemaining = sec;
+  updateRestTimerDisplay();
+  const btn = document.getElementById('rest-timer-startpause');
+  if(btn) btn.textContent = '▶ Iniciar';
+}
+window.setRestTimerPreset = setRestTimerPreset;
+
+function toggleRestTimerRun() {
+  if(S._restTimerRemaining===undefined) S._restTimerRemaining = 90;
+  const btn = document.getElementById('rest-timer-startpause');
+  if(S._restTimerRunning) {
+    clearInterval(S._restTimerInterval);
+    S._restTimerRunning = false;
+    if(btn) btn.textContent = '▶ Continuar';
+  } else {
+    S._restTimerRunning = true;
+    if(btn) btn.textContent = '⏸ Pausar';
+    S._restTimerInterval = setInterval(()=>{
+      S._restTimerRemaining--;
+      updateRestTimerDisplay();
+      if(S._restTimerRemaining===0) {
+        if(navigator.vibrate) navigator.vibrate([200,100,200,100,200]);
+      }
+    }, 1000);
+  }
+}
+window.toggleRestTimerRun = toggleRestTimerRun;
+
+function resetRestTimer() {
+  clearInterval(S._restTimerInterval);
+  S._restTimerRunning = false;
+  S._restTimerRemaining = 90;
+  updateRestTimerDisplay();
+  const btn = document.getElementById('rest-timer-startpause');
+  if(btn) btn.textContent = '▶ Iniciar';
+}
+window.resetRestTimer = resetRestTimer;
+
+// Solo tiene sentido mostrar el cronómetro en la sesión de entrenamiento de
+// un atleta (no en el resto de la app, ni para el admin).
+function updateRestTimerFabVisibility() {
+  const fab = document.getElementById('rest-timer-fab');
+  if(!fab) return;
+  const show = !S.isAdmin && S.currentView==='session';
+  fab.style.display = show ? 'flex' : 'none';
+  if(!show) { const p=document.getElementById('rest-timer-panel'); if(p) p.style.display='none'; }
+}
+window.updateRestTimerFabVisibility = updateRestTimerFabVisibility;
 
 function navigateSwipe(dir) {
   // Solo cambia de sección si estamos en una pantalla "de primer nivel" de

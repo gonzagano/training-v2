@@ -204,6 +204,7 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 .ex-actions{display:flex;gap:4px;flex-shrink:0}
 .ex-icon-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);cursor:pointer;color:var(--text3);font-size:11px;transition:all .15s;flex-shrink:0}
 .ex-icon-btn.has-video{background:rgba(255,0,0,0.08);border-color:rgba(255,60,60,0.25);color:#ff6b6b}
+.ex-icon-btn.has-note{background:var(--accent-dim);border-color:rgba(30,42,82,0.25);color:var(--accent)}
 .ex-icon-btn.del-ex:hover{background:var(--red-dim);border-color:rgba(195,58,44,0.35);color:var(--red)}
 .ex-fields{display:flex;gap:5px;flex-wrap:wrap}
 .field-box{display:flex;flex-direction:column;gap:3px}
@@ -303,6 +304,18 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 .body-zone.sel-med{fill:rgba(240,160,48,0.25);stroke:var(--amber)}
 .body-zone.sel-high{fill:rgba(195,58,44,0.28);stroke:var(--red)}
 .body-zone.is-selected{stroke-width:3;stroke:var(--accent);filter:drop-shadow(0 0 0 transparent)}
+
+/* Cronómetro de descanso flotante */
+#rest-timer-fab{position:fixed;right:18px;bottom:86px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.25);cursor:pointer;z-index:150}
+#rest-timer-panel{position:fixed;right:18px;bottom:148px;width:210px;background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--r);padding:16px;box-shadow:0 4px 20px rgba(0,0,0,0.18);z-index:150;text-align:center}
+#rest-timer-display{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:700;color:var(--text);margin-bottom:10px;transition:color .2s}
+#rest-timer-display.rest-timer-done{color:var(--red)}
+#rest-timer-presets{display:flex;gap:5px;margin-bottom:10px}
+#rest-timer-presets button{flex:1;font-size:11px;font-weight:600;padding:6px 0;border-radius:var(--rxs);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer}
+#rest-timer-controls{display:flex;gap:6px}
+#rest-timer-controls button{flex:1;font-size:12px;font-weight:700;padding:8px 0;border-radius:var(--rsm);border:none;cursor:pointer}
+#rest-timer-startpause{background:var(--accent);color:#fff}
+#rest-timer-controls button:last-child{background:var(--bg3);color:var(--text2);border:1px solid var(--border2)}
 .body-map-wrap{display:flex;gap:14px}
 .body-svg-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;min-width:0}
 .body-svg-label{font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-dim);padding:5px 16px;border-radius:20px;text-transform:uppercase;letter-spacing:.06em;border:1px solid rgba(30,42,82,0.18)}
