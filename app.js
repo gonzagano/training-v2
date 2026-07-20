@@ -463,9 +463,16 @@ onAuthStateChanged(auth, async (user) => {
     if (d.startDate) S.startDate = d.startDate;
     // La semana SIEMPRE se recalcula a partir de la fecha de inicio real —
     // así avanza sola con el calendario, entrene o no entrene el atleta.
+    // Si tiene una rutina asignada, la semana se cuenta desde el día que se
+    // la asignaron (no desde que se registró) — es lo que corresponde a la
+    // planificación real que está corriendo.
     // El valor guardado (d.currentWeek) queda solo como respaldo si por algún
-    // motivo no hay startDate.
-    if (S.startDate) S.currentWeek = computeWeekFromDate(S.startDate);
+    // motivo no hay ninguna fecha disponible.
+    if (S.userData?.assignedRoutine && S.userData?.routineAssignedDate) {
+      S.currentWeek = computeWeekFromDate(S.userData.routineAssignedDate);
+    } else if (S.startDate) {
+      S.currentWeek = computeWeekFromDate(S.startDate);
+    }
     // blocks only loaded for admin (athletes get them from assigned routine)
     if (S.isAdmin) {
       // Admin loads their own personal blocks
@@ -666,6 +673,20 @@ function computeWeekFromDate(startDate) {
   return Math.max(1, Math.floor(diffDays/7)+1);
 }
 window.computeWeekFromDate = computeWeekFromDate;
+
+// Rango lunes-domingo de la semana calendario REAL de hoy — para el admin,
+// que gestiona muchos atletas cada uno en una semana distinta de su propia
+// planificación, mostrar "Semana 3" era ambiguo (¿semana 3 de quién?). Esto
+// no depende de ningún atleta puntual.
+function getCurrentWeekRangeLabel() {
+  const now = new Date();
+  const dow = (now.getDay()+6)%7; // lunes=0
+  const monday = new Date(now); monday.setDate(now.getDate()-dow);
+  const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+  const fmt = (d) => d.toLocaleDateString('es-AR',{day:'numeric',month:'short'});
+  return `${fmt(monday)} – ${fmt(sunday)}`;
+}
+window.getCurrentWeekRangeLabel = getCurrentWeekRangeLabel;
 
 function sessionKey(w,s) { return `w${w}-${s}`; }
 function getSD(w,s) {
@@ -1114,10 +1135,10 @@ function renderBottomBar() {
 
   // Desktop week widget
   const dw = document.getElementById('desktop-week');
-  const dwl = document.getElementById('desktop-week-label');
+  const dwr = document.getElementById('desktop-week-range');
   const sf = document.getElementById('sidebar-footer');
   if(dw) dw.style.display = isDesktop ? 'flex' : 'none';
-  if(dwl) dwl.textContent = `Semana ${S.currentWeek}`;
+  if(dwr) dwr.textContent = S.isAdmin ? getCurrentWeekRangeLabel() : `Semana ${S.currentWeek}`;
   if(sf) sf.style.display = isDesktop ? 'block' : 'none';
 
   // Sync desktop user info
@@ -1134,8 +1155,8 @@ function renderAll() { renderSubnav(); renderMain(); }
 
 function renderSubnav() {
   const nav=document.getElementById('subnav');
-  const wp=document.getElementById('week-pill'); if(wp) wp.textContent=`Sem ${S.currentWeek}`;
-  const dwl=document.getElementById('desktop-week-label'); if(dwl) dwl.textContent=`Semana ${S.currentWeek}`;
+  const wp=document.getElementById('week-pill'); if(wp) wp.textContent = S.isAdmin ? getCurrentWeekRangeLabel() : `Sem ${S.currentWeek}`;
+  const dwr=document.getElementById('desktop-week-range'); if(dwr) dwr.textContent = S.isAdmin ? getCurrentWeekRangeLabel() : `Semana ${S.currentWeek}`;
   if(S.currentView!=='session') { nav.innerHTML=''; return; }
   // Sessions: for admin use A/B/C/D; for athlete with routine use routine session names
   const sessions = getSessionList();
@@ -4361,7 +4382,11 @@ function renderAtletaRutina(a) {
   }
   // La vista previa muestra la semana REAL del atleta (según su fecha de
   // inicio), no la del admin — así se ve exactamente lo que él está viendo hoy.
-  const athletePreviewWeek = S.viewingAthlete?.personal?.startDate ? computeWeekFromDate(S.viewingAthlete.personal.startDate) : 1;
+  // La semana se cuenta desde que se ASIGNÓ esta rutina, no desde que el
+  // atleta se registró — si por algún motivo esa fecha no está (rutinas
+  // asignadas antes de este cambio), caemos en la fecha de inicio general.
+  const athletePreviewWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate)
+    : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
 
   const sessionNames = sortSessionNames(Object.keys(routine.sessions || {}));
   html += `<div class="admin-section">
@@ -4393,7 +4418,7 @@ function renderAtletaRutina(a) {
                   // qué semana es), en vez de decir "no completó" a secas.
                   let doneData = {}, doneWeek = null;
                   for(let w=athletePreviewWeek; w>=1; w--) {
-                    const d = S.viewingAthlete?.personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id];
+                    const d = a._personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id];
                     if(d && (d.load || d.rpe || d.checked || d.athleteNote)) { doneData = d; doneWeek = w; break; }
                   }
                   const hasCompletion = !!(doneData.load || doneData.rpe);
@@ -5630,12 +5655,18 @@ async function assignRoutineToAthlete(uid) {
   const sel = document.getElementById('assign-routine-sel');
   if(!sel) return;
   const routineId = sel.value || null;
+  const today = new Date().toISOString().split('T')[0];
   try {
-    await setDoc(doc(db,'users',uid), { assignedRoutine: routineId||null }, {merge:true});
-    if(S.viewingAthlete?.userData) S.viewingAthlete.userData.assignedRoutine = routineId;
+    const update = { assignedRoutine: routineId||null };
+    // La semana de la planificación se cuenta desde el día que se la
+    // asignás, no desde que el atleta se registró — por eso guardamos esta
+    // fecha cada vez que asignás (o reasignás) una rutina.
+    if(routineId) update.routineAssignedDate = today;
+    await setDoc(doc(db,'users',uid), update, {merge:true});
+    if(S.viewingAthlete?.userData) Object.assign(S.viewingAthlete.userData, update);
     // Also update local adminAthletes list
     const a = S.adminAthletes.find(x=>x.uid===uid);
-    if(a) a.assignedRoutine = routineId;
+    if(a) Object.assign(a, update);
     showToast(routineId?'✓ Rutina asignada':'Rutina removida');
     renderMain();
   } catch(e) { showToast('Error al asignar'); }
