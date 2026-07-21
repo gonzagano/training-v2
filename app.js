@@ -1933,6 +1933,45 @@ function openProgressionModal(exId, exName) {
 }
 window.openProgressionModal = openProgressionModal;
 
+// Versión ADMIN: ver todas las semanas de un ejercicio de UN atleta puntual
+// (prescripto y completado), sin depender de la sesión propia del admin.
+function openAdminProgressionModal(uid, exId, exName, sName) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  if(!a) return;
+  const routine = S.routines.find(r=>r.id===a.assignedRoutine);
+  let ex = null;
+  if(routine) {
+    outer: for(const b of (routine.sessions?.[sName]||[])) {
+      for(const cat of (b.categories||[])) {
+        const found = (cat.exercises||[]).find(e=>e.id===exId);
+        if(found) { ex = found; break outer; }
+      }
+    }
+  }
+  const durationWeeks = routine?.durationWeeks || 1;
+  const athleteWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate) : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
+  const lastWeek = Math.max(durationWeeks, athleteWeek);
+  document.getElementById('progression-modal-title').textContent = 'Progresión · ' + exName;
+  let rows = '';
+  for(let w=1; w<=lastWeek; w++) {
+    const wp = ex ? getExPrescriptionForWeek(ex, w) : {series:'',reps:'',pct:'',rpe:''};
+    const d = a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[exId] || {};
+    const isCurrent = w===athleteWeek;
+    const prescTxt = [wp.series&&wp.series+' series', wp.reps&&wp.reps+' reps', wp.pct&&wp.pct+'%RM', wp.rpe&&(wp.intensityType||'RPE')+' '+wp.rpe].filter(Boolean).join(' · ') || '—';
+    const hasData = !!(d.load || d.rpe);
+    const doneTxt = hasData ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?'RPE '+d.rpe:'') : (d.checked?'Marcado, sin carga/RPE':'Sin completar');
+    rows += `<div style="padding:10px 0;border-top:1px solid var(--border);${isCurrent?'background:var(--accent-dim);margin:0 -4px;padding-left:4px;padding-right:4px;border-radius:6px':''}">
+      <div style="font-size:11px;font-weight:700;color:${isCurrent?'var(--accent)':'var(--text3)'};text-transform:uppercase;margin-bottom:3px">Semana ${w}${isCurrent?' · actual':''}</div>
+      <div style="font-size:13px;color:var(--text)">Prescripto: ${prescTxt}</div>
+      <div style="font-size:13px;color:${hasData?'var(--green)':'var(--text3)'}">Completó: ${doneTxt}</div>
+      ${d.athleteNote?`<div style="font-size:12px;color:var(--amber);margin-top:2px">📝 ${d.athleteNote}</div>`:''}
+    </div>`;
+  }
+  document.getElementById('progression-modal-body').innerHTML = rows || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
+  document.getElementById('progression-overlay').classList.add('open');
+}
+window.openAdminProgressionModal = openAdminProgressionModal;
+
 function closeProgressionModal() { document.getElementById('progression-overlay').classList.remove('open'); }
 window.closeProgressionModal = closeProgressionModal;
 function closeProgressionIfOutside(e) { if(e.target===document.getElementById('progression-overlay')) closeProgressionModal(); }
@@ -4390,6 +4429,19 @@ function renderAtletaRutina(a) {
 
   const sessionNames = sortSessionNames(Object.keys(routine.sessions || {}));
   html += `<div class="admin-section">
+    <div class="admin-item">
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Semana actual de esta planificación</div>
+        <div style="font-size:20px;font-weight:800;color:var(--accent);font-family:'Barlow Condensed',sans-serif">Semana ${athletePreviewWeek}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',-1)" title="Retroceder una semana">‹ Semana</button>
+        <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',1)" title="Avanzar una semana">Semana ›</button>
+        <button class="abtn abtn-d" onclick="resetAthleteRoutineWeek('${a.uid}')" title="Volver a Semana 1 desde hoy">Reiniciar a Sem. 1</button>
+      </div>
+    </div>
+  </div>
+  <div class="admin-section">
     <div class="admin-section-title">${routine.name}</div>
     ${sessionNames.map(sName => {
       const blocks = routine.sessions[sName] || [];
@@ -4424,7 +4476,7 @@ function renderAtletaRutina(a) {
                   const hasCompletion = !!(doneData.load || doneData.rpe);
                   return `
                   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}${ex.progression&&ex.progression.length>1?` <span style="font-size:10px;color:var(--accent);font-weight:600">· Semana ${athletePreviewWeek}</span>`:''}</div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${athletePreviewWeek} · Ver todas ▤</span></div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
@@ -5672,6 +5724,39 @@ async function assignRoutineToAthlete(uid) {
   } catch(e) { showToast('Error al asignar'); }
 }
 window.assignRoutineToAthlete=assignRoutineToAthlete;
+
+// Corregir manualmente en qué semana de SU PROPIA planificación está un
+// atleta — por si el admin se confunde probando, o el atleta marcó algo por
+// error. Mover "una semana atrás" en el conteo significa correr la fecha de
+// asignación hacia ADELANTE 7 días (más cerca de hoy), y viceversa.
+async function adjustAthleteRoutineWeek(uid, delta) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  if(!a) return;
+  const base = a.routineAssignedDate ? new Date(a.routineAssignedDate+'T00:00:00') : new Date();
+  base.setDate(base.getDate() - delta*7);
+  const newDate = base.toISOString().split('T')[0];
+  try {
+    await setDoc(doc(db,'users',uid), {routineAssignedDate:newDate}, {merge:true});
+    a.routineAssignedDate = newDate;
+    if(S.viewingAthlete?.uid===uid) S.viewingAthlete.userData.routineAssignedDate = newDate;
+    showToast('✓ Ahora está en Semana '+computeWeekFromDate(newDate));
+    renderMain();
+  } catch(e) { showToast('Error al ajustar'); }
+}
+window.adjustAthleteRoutineWeek = adjustAthleteRoutineWeek;
+
+async function resetAthleteRoutineWeek(uid) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    await setDoc(doc(db,'users',uid), {routineAssignedDate:today}, {merge:true});
+    if(a) a.routineAssignedDate = today;
+    if(S.viewingAthlete?.uid===uid) S.viewingAthlete.userData.routineAssignedDate = today;
+    showToast('✓ Reiniciado a Semana 1');
+    renderMain();
+  } catch(e) { showToast('Error al reiniciar'); }
+}
+window.resetAthleteRoutineWeek = resetAthleteRoutineWeek;
 
 async function changeAthleteWeek(uid, delta) {
   const p = S.viewingAthlete?.personal;
@@ -7236,15 +7321,31 @@ function renderDashboardContent() {
     return m && m.acwr && m.acwr>1.5;
   }).map(a=>({athlete:a, type:'acwr', detail:'ACWR elevado'}));
 
-  const wellnessAlerts = athletes.filter(a=>{
-    const wellness = a._personal?.wellness||{};
-    const dates = Object.keys(wellness).filter(d=>wellness[d] && getWellnessScore(wellness[d]).allFilled);
-    if(!dates.length) return true; // never checked in
-    const lastDate = dates.sort().reverse()[0];
-    return lastDate < twoDaysAgoStr;
-  }).map(a=>({athlete:a, type:'wellness', detail:'Sin wellness hace 2+ días'}));
+  // Alertas de lesiones — lo que de verdad requiere atención, no "no llenó
+  // el wellness". Una lesión moderada o grave SIEMPRE aparece acá, sin
+  // importar el dolor que el atleta marque ese día puntual (una operación
+  // de cruzado sigue siendo grave aunque hoy no duela). Una lesión leve
+  // (golpes, esguinces menores) solo aparece si el dolor de hoy es >3/10 —
+  // si es un golpe que casi no molesta, no hace falta alertar por eso.
+  const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  const injuryAlerts = [];
+  athletes.forEach(a=>{
+    const injuries = a._personal?.injuries || {};
+    Object.entries(injuries).forEach(([zoneId, inj])=>{
+      if(!inj.pain || inj.pain<=0) return;
+      const sev = inj.severity || 'leve';
+      const isRelevant = sev==='moderada' || sev==='grave' || (sev==='leve' && inj.pain>3);
+      if(!isRelevant) return;
+      const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
+      const sevInfo = severityInfo(sev);
+      injuryAlerts.push({
+        athlete:a, type:'injury', severity:sev,
+        detail: `${sevInfo?.label||'Leve'} · ${zoneLabel} · dolor ${inj.pain}/10`
+      });
+    });
+  });
 
-  const allAlerts = [...acwrAlerts, ...wellnessAlerts];
+  const allAlerts = [...acwrAlerts, ...injuryAlerts];
   const alertAthletes = acwrAlerts.map(x=>x.athlete); // keep for backward compat in metric card
 
   let html = `<div class="metric-grid" style="margin-bottom:20px">
@@ -7279,10 +7380,10 @@ function renderDashboardContent() {
         <span style="font-size:14px;font-weight:600;flex:1">Atención requerida (${allAlerts.length})</span>
         <span style="color:var(--text3);font-size:14px;transition:transform .15s;transform:rotate(${collapsed?'-90':'0'}deg);display:inline-block">›</span>
       </div>
-      ${collapsed?'':allAlerts.map(({athlete,type,detail})=>`
+      ${collapsed?'':allAlerts.map(({athlete,type,detail,severity})=>`
         <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
           <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:8px;height:8px;border-radius:50%;background:${type==='acwr'?'var(--red)':'var(--amber)'}"></div>
+            <div style="width:8px;height:8px;border-radius:50%;background:${type==='acwr'?'var(--red)':(severityInfo(severity)||severityInfo('leve')).color}"></div>
             <div>
               <div style="font-size:13px;font-weight:500">${athlete.name||athlete.email}</div>
               <div style="font-size:11px;color:var(--text3)">${detail}</div>
