@@ -655,6 +655,16 @@ window.capitalizeName=capitalizeName;
 // Ordena nombres de sesión/día ("Día 1","Día 2"...) de forma numérica en vez
 // de por orden de inserción (que es lo que da Object.keys por default, y por
 // eso a veces aparecían como "Día 2, Día 3, Día 4, Día 1").
+// parseFloat corta la lectura en la coma ("77,5" → 77, sin error ni aviso).
+// Los porcentajes de RM se escriben en notación es-AR (coma decimal), así
+// que cualquier número que el usuario tipeó con coma tiene que pasar por acá
+// antes de un parseFloat — si no, el decimal se pierde silenciosamente.
+function parseDecimal(str) {
+  if (str === null || str === undefined) return NaN;
+  return parseFloat(String(str).trim().replace(',', '.'));
+}
+window.parseDecimal = parseDecimal;
+
 const WEEKDAY_ORDER = {lunes:0,martes:1,miercoles:2,'miércoles':2,jueves:3,viernes:4,sabado:5,'sábado':5,domingo:6};
 function sortSessionNames(names) {
   return [...names].sort((a,b)=>{
@@ -1395,7 +1405,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const rmValue = ex.rmLift ? S.oneRM?.[ex.rmLift] : null;
   const pctParts = prescPct ? prescPct.split('/').map(p=>p.trim()).filter(Boolean) : [];
   const suggestedKg = (pctParts.length && rmValue)
-    ? pctParts.map(p=>{ const n=parseFloat(p); return isNaN(n)?'?':Math.round((n/100)*rmValue); }).join('/')
+    ? pctParts.map(p=>{ const n=parseDecimal(p); return isNaN(n)?'?':Math.round((n/100)*rmValue); }).join('/')
     : null;
   // Prescription display for athlete (read-only pill row above fields)
   const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct) ? `
@@ -4551,7 +4561,7 @@ function renderAtletaRutina(a) {
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
-                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}${(()=>{ const rmV=ex.rmLift?a._personal?.oneRM?.[ex.rmLift]:null; if(!rmV) return ''; const parts=wp.pct.split('/').map(p=>p.trim()).filter(Boolean); const kg=parts.map(p=>{const n=parseFloat(p);return isNaN(n)?'?':Math.round((n/100)*rmV);}).join('/'); return ' ≈ '+kg+'kg'; })()}</div></div>`:''}
+                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}${(()=>{ const rmV=ex.rmLift?a._personal?.oneRM?.[ex.rmLift]:null; if(!rmV) return ''; const parts=wp.pct.split('/').map(p=>p.trim()).filter(Boolean); const kg=parts.map(p=>{const n=parseDecimal(p);return isNaN(n)?'?':Math.round((n/100)*rmV);}).join('/'); return ' ≈ '+kg+'kg'; })()}</div></div>`:''}
                       <div class="field-box"><span class="field-lbl">${wp.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.rpe||'—'}</div></div>
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
@@ -5954,10 +5964,15 @@ function renderRoutineEditor() {
   }
   const curSession = S._routineEditSession;
   const blocks = curSession ? (r.sessions[curSession]||[]) : [];
+  // Si son días reales de semana, el orden calendario manda siempre (ver
+  // getOrderedSessionNames) — mover con las flechitas no haría nada, así
+  // que ni se muestran para no sugerir un control que no tiene efecto.
+  const canReorderManually = sessionNames.length > 1
+    && !sessionNames.every(n => WEEKDAY_ORDER[n.trim().toLowerCase()] !== undefined);
 
   const sessionTabs = sessionNames.map((s,i)=>'<span style="display:inline-flex;align-items:center;gap:2px">'
     +'<button class="snav-tab '+(curSession===s?'active':'')+'" onclick="routineSelectSession(\''+s+'\')">'+s+'</button>'
-    +(sessionNames.length>1?(
+    +(canReorderManually?(
       '<button class="ex-icon-btn" style="'+(i===0?'opacity:.3;pointer-events:none':'')+'" onclick="moveRoutineDay(\''+s+'\',-1)" title="Mover antes"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="15 18 9 12 15 6"/></svg></button>'
       +'<button class="ex-icon-btn" style="'+(i===sessionNames.length-1?'opacity:.3;pointer-events:none':'')+'" onclick="moveRoutineDay(\''+s+'\',1)" title="Mover después"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="9 18 15 12 9 6"/></svg></button>'
     ):'')
@@ -6318,6 +6333,14 @@ window.moveRoutineBlock = moveRoutineBlock;
 // nuevo, se suma al final; si se borra uno, se saca de la lista.
 function getOrderedSessionNames(routine) {
   const allNames = sortSessionNames(Object.keys(routine.sessions||{}));
+  // Si TODOS los nombres son días reales de la semana (Lunes, Martes...), el
+  // orden calendario es el único que tiene sentido — un sessionOrder manual
+  // viejo (guardado con las flechitas ‹ › antes de este fix, o con el orden
+  // en que se cargaron los días) no debe poder poner Jueves antes que Lunes.
+  // El reordenamiento manual queda reservado para nombres genéricos (Día 1,
+  // Bloque A...) donde no hay un orden natural que el calendario pueda dar.
+  const allWeekdays = allNames.every(n => WEEKDAY_ORDER[n.trim().toLowerCase()] !== undefined);
+  if (allWeekdays) return allNames;
   if(!routine.sessionOrder || !Array.isArray(routine.sessionOrder)) return allNames;
   const order = routine.sessionOrder.filter(n=>allNames.includes(n));
   allNames.forEach(n=>{ if(!order.includes(n)) order.push(n); });
