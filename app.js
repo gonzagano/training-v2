@@ -171,6 +171,17 @@ const DEFAULT_LIBRARY = [
 
 const ALL_FILTERS = ['MMII','MMSS','zona media','unilateral','bilateral','fuerza','tracción','empuje','hombros','rehabilitación','funcional','iso','cadera','rodilla','lumbar'];
 
+// Las categorías/etiquetas disponibles para filtrar y asignar tienen que
+// incluir SIEMPRE las que ya vienen por defecto, MÁS cualquier categoría
+// nueva que se haya creado en algún ejercicio de la biblioteca — antes
+// era una lista fija y las categorías nuevas nunca aparecían acá.
+function getAllLibraryTags() {
+  const tags = new Set(ALL_FILTERS);
+  (S.library||[]).forEach(ex => (ex.tags||[]).forEach(t=>{ if(t) tags.add(t); }));
+  return [...tags].sort((a,b)=>a.localeCompare(b));
+}
+window.getAllLibraryTags = getAllLibraryTags;
+
 // Escala 1→5 en TODOS los ítems, y 5 siempre significa "mejor". Cada opción tiene
 // una etiqueta explícita para que el atleta nunca tenga que interpretar un número solo.
 const WELLNESS_ITEMS = [
@@ -328,7 +339,7 @@ let S = {
   atletaSubview: 'rutina',
   evalScopeUids: null,        // si está seteado, Evaluaciones solo muestra estos uids
   libTarget: null, videoTarget: null,
-  activeFilter: null, selectedZone: null,
+  activeFilters: new Set(), selectedZone: null,
   teamView: null,
   teamDayEdit: null,
   teamDayIdx: 0,
@@ -535,8 +546,8 @@ onAuthStateChanged(auth, async (user) => {
       const rSnap = await getDoc(doc(db, 'routines', assignedId));
       if (rSnap.exists()) {
         S.assignedRoutine = { id: assignedId, ...rSnap.data() };
-        S.currentRoutineSessions = sortSessionNames(Object.keys(S.assignedRoutine.sessions || {}));
-        if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
+        S.currentRoutineSessions = getOrderedSessionNames(S.assignedRoutine);
+        if (S.currentRoutineSessions.length) S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, S.userData.routineAssignedDate);
         // blocks are read-only from routine; don't overwrite with personal
       }
     } else if (S.userData.teamId) {
@@ -555,7 +566,7 @@ onAuthStateChanged(auth, async (user) => {
         // sesión/semana/historial que ya existe funciona sin cambios.
         S.assignedRoutine = { id: null, name: team.category ? `${team.name} · ${team.category}` : team.name, sessions, fromTeam: true };
         S.currentRoutineSessions = sortSessionNames(Object.keys(sessions));
-        if (S.currentRoutineSessions.length) S.currentSession = S.currentRoutineSessions[0];
+        if (S.currentRoutineSessions.length) S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, null);
       }
     }
   }
@@ -644,15 +655,53 @@ window.capitalizeName=capitalizeName;
 // Ordena nombres de sesión/día ("Día 1","Día 2"...) de forma numérica en vez
 // de por orden de inserción (que es lo que da Object.keys por default, y por
 // eso a veces aparecían como "Día 2, Día 3, Día 4, Día 1").
+const WEEKDAY_ORDER = {lunes:0,martes:1,miercoles:2,'miércoles':2,jueves:3,viernes:4,sabado:5,'sábado':5,domingo:6};
 function sortSessionNames(names) {
   return [...names].sort((a,b)=>{
     const na=parseInt((a.match(/\d+/)||[])[0],10);
     const nb=parseInt((b.match(/\d+/)||[])[0],10);
     if(!isNaN(na)&&!isNaN(nb)) return na-nb;
+    // Si el nombre del día es un día de la semana (Lunes, Martes...),
+    // ordenamos por el calendario real, no alfabéticamente — si no,
+    // "Jueves" queda antes que "Lunes" porque la J va antes que la L.
+    const wa = WEEKDAY_ORDER[a.trim().toLowerCase()];
+    const wb = WEEKDAY_ORDER[b.trim().toLowerCase()];
+    if(wa!==undefined && wb!==undefined) return wa-wb;
     return a.localeCompare(b);
   });
 }
 window.sortSessionNames=sortSessionNames;
+
+// Qué día de la rutina le toca a un atleta HOY, sin que tenga que elegirlo
+// a mano — y sin importar si completó o no el día anterior (a las 00:00
+// ya es otro día, y le corresponde el que sigue).
+// - Si los nombres de día son días de la semana reales (Lunes, Martes...),
+//   usamos el calendario real: el día de HOY si está en la rutina, o el
+//   próximo que venga si hoy es un día de descanso.
+// - Si son genéricos (Día 1, Día 2...), avanzamos un día de la rutina por
+//   cada día calendario transcurrido desde que se ASIGNÓ, dando la vuelta
+//   cíclicamente si la rutina tiene menos días que los transcurridos.
+function getTodaysRoutineSession(sessionNames, assignedDate) {
+  if(!sessionNames || !sessionNames.length) return null;
+  const allWeekdays = sessionNames.every(n => WEEKDAY_ORDER[n.trim().toLowerCase()] !== undefined);
+  if(allWeekdays) {
+    const todayDow = (new Date().getDay()+6)%7; // lunes=0
+    let best = null, bestDiff = 8;
+    sessionNames.forEach(n=>{
+      const dow = WEEKDAY_ORDER[n.trim().toLowerCase()];
+      let diff = dow - todayDow; if(diff<0) diff += 7;
+      if(diff < bestDiff) { bestDiff = diff; best = n; }
+    });
+    return best;
+  }
+  if(!assignedDate) return sessionNames[0];
+  const start = new Date(assignedDate+'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diffDays = Math.floor((today-start)/86400000);
+  const idx = ((diffDays % sessionNames.length) + sessionNames.length) % sessionNames.length;
+  return sessionNames[idx];
+}
+window.getTodaysRoutineSession = getTodaysRoutineSession;
 
 // Los registros de un test (salto o fuerza) tienen que quedar SIEMPRE
 // ordenados por la fecha real del test, no por el orden en que se cargaron
@@ -1340,8 +1389,14 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
       onchange="setField('${ex.id}','ms',this.value)"></div>`:'';
   // Si el ejercicio tiene %RM y está vinculado a uno de los levantamientos
   // con RM cargado, calculamos el kilaje sugerido para hoy.
+  // El %RM puede ser un solo número, o varios separados por "/" — uno por
+  // serie, para progresiones dentro del mismo ejercicio (ej: "70/75/80" en
+  // un ejercicio de 3 series). Calculamos el kilo de CADA valor por separado.
   const rmValue = ex.rmLift ? S.oneRM?.[ex.rmLift] : null;
-  const suggestedKg = (prescPct && rmValue) ? Math.round((parseFloat(prescPct)/100) * rmValue) : null;
+  const pctParts = prescPct ? prescPct.split('/').map(p=>p.trim()).filter(Boolean) : [];
+  const suggestedKg = (pctParts.length && rmValue)
+    ? pctParts.map(p=>{ const n=parseFloat(p); return isNaN(n)?'?':Math.round((n/100)*rmValue); }).join('/')
+    : null;
   // Prescription display for athlete (read-only pill row above fields)
   const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct) ? `
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer" onclick="openProgressionModal('${ex.id}','${ex.name.replace(/'/g,"\\'")}')" title="Ver progresión semana a semana">
@@ -1688,7 +1743,7 @@ window.addBlock=addBlock;
 // ── LIBRARY ───────────────────────────────────────────────────
 function openLib(blockId,catIdx) {
   S.libTarget={blockId,catIdx};
-  S.activeFilter=null;
+  S.activeFilters=new Set();
   document.getElementById('lib-search').value='';
   renderLibFilters();
   renderLibList();
@@ -1704,13 +1759,15 @@ window.closeLibIfOutside=closeLibIfOutside;
 
 function renderLibFilters() {
   const f=document.getElementById('lib-filters');
-  f.innerHTML=[{id:null,label:'Todos'},...ALL_FILTERS.map(t=>({id:t,label:t}))].map(ft=>
-    `<span class="lib-filter ${S.activeFilter===ft.id?'active':''}" onclick="setFilter('${ft.id}')">${ft.label}</span>`
+  f.innerHTML=[{id:null,label:'Todos'},...getAllLibraryTags().map(t=>({id:t,label:t}))].map(ft=>
+    `<span class="lib-filter ${ft.id===null?(S.activeFilters.size===0?'active':''):(S.activeFilters.has(ft.id)?'active':'')}" onclick="setFilter('${ft.id}')">${ft.label}</span>`
   ).join('');
 }
 
 function setFilter(f) {
-  S.activeFilter=f==='null'?null:f;
+  if(f==='null') { S.activeFilters=new Set(); }
+  else if(S.activeFilters.has(f)) { S.activeFilters.delete(f); }
+  else { S.activeFilters.add(f); }
   renderLibFilters(); renderLibList();
 }
 window.setFilter=setFilter;
@@ -1720,7 +1777,7 @@ function renderLibList() {
   const list=document.getElementById('lib-list');
   let items=S.library.filter(ex=>{
     const matchQ=!q||ex.name.toLowerCase().includes(q);
-    const matchF=!S.activeFilter||ex.tags?.includes(S.activeFilter);
+    const matchF=S.activeFilters.size===0||[...S.activeFilters].every(f=>ex.tags?.includes(f));
     return matchQ&&matchF;
   });
   if(!items.length) { list.innerHTML=`<div class="empty-state">No se encontraron ejercicios</div>`; return; }
@@ -1766,7 +1823,9 @@ window.addFromLib=addFromLib;
 function createAndAddExercise() {
   const name=document.getElementById('lib-new-name').value.trim();
   if(!name) return;
-  const newLibEx={id:genId(),name,tags:[]};
+  const tagsInp=document.getElementById('lib-new-tags');
+  const tags=tagsInp&&tagsInp.value.trim() ? tagsInp.value.split(',').map(t=>t.trim()).filter(Boolean) : [];
+  const newLibEx={id:genId(),name,tags};
   S.library.push(newLibEx);
   if(S.libTarget) {
     const {blockId,catIdx,sessionName,isRoutine}=S.libTarget;
@@ -1851,6 +1910,9 @@ function openVideoModal(exId,exName,editable) {
     els.previewWrap.style.display=embed?'block':'none';
   }
   document.getElementById('video-overlay').classList.add('open');
+  // Foco automático en el campo de link — para no tener que tocarlo a mano
+  // antes de pegar la URL, ahorra un paso cada vez.
+  if(S.videoEditable) setTimeout(()=>els.urlInp.focus(), 50);
 }
 window.openVideoModal=openVideoModal;
 
@@ -4168,7 +4230,7 @@ function setTDExField(exId,blockId,teamId,dayIdx,ci,field,val){const b=getTDBloc
 window.setTDExField=setTDExField;
 function deleteTDEx(exId,blockId,teamId,dayIdx,ci){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;b.categories[ci].exercises=b.categories[ci].exercises.filter(e=>e.id!==exId);renderMain();}
 window.deleteTDEx=deleteTDEx;
-function openTDLib(blockId,teamId,dayIdx,ci){S.libTarget={blockId,catIdx:ci,teamId,dayIdx,isTD:true};S.activeFilter=null;document.getElementById('lib-search').value='';renderLibFilters();renderLibList();document.getElementById('lib-overlay').classList.add('open');}
+function openTDLib(blockId,teamId,dayIdx,ci){S.libTarget={blockId,catIdx:ci,teamId,dayIdx,isTD:true};S.activeFilters=new Set();document.getElementById('lib-search').value='';renderLibFilters();renderLibList();document.getElementById('lib-overlay').classList.add('open');}
 window.openTDLib=openTDLib;
 async function saveTeamDayBlocks(teamId,dayIdx){
   const team=S.teams.find(t=>t.id===teamId);if(!team)return;
@@ -4356,11 +4418,20 @@ window.openAtleta = openAtleta;
 
 function renderAtletaDetail(a) {
   const sub = S.atletaSubview || 'rutina';
+  const myTeam = S.teams.find(t=>t.id===a.teamId);
   let html = `<div class="team-detail-header">
-    <button class="back-btn" onclick="S.atletaView=null;renderMain()">‹</button>
+    <button class="back-btn" onclick="S.atletaView=null;S.currentView='atletas';renderBottomBar();renderMain()">‹</button>
     <div class="team-detail-title">${a.name || a.email}</div>
   </div>
   <div style="font-size:13px;color:var(--text3);margin-bottom:12px">${a.sport || ''}${a.position ? ' · ' + a.position : ''}</div>
+  <div class="card" style="padding:14px 16px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:10px">
+      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Equipo</div><div style="font-size:13px;font-weight:600">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}</div></div>
+      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Edad</div><div style="font-size:13px;font-weight:600">${a.age?a.age+' años':'—'}</div></div>
+      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Talla</div><div style="font-size:13px;font-weight:600">${a.height?a.height+' cm':'—'}</div></div>
+      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Peso</div><div style="font-size:13px;font-weight:600">${a.weight?a.weight+' kg':'—'}</div></div>
+    </div>
+  </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub === 'rutina' ? 'active' : ''}" onclick="setAtletaSubview('rutina')">Rutina</button>
     <button class="snav-tab ${sub === 'wellness' ? 'active' : ''}" onclick="setAtletaSubview('wellness')">Wellness</button>
@@ -4427,7 +4498,7 @@ function renderAtletaRutina(a) {
   const athletePreviewWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate)
     : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
 
-  const sessionNames = sortSessionNames(Object.keys(routine.sessions || {}));
+  const sessionNames = getOrderedSessionNames(routine);
   html += `<div class="admin-section">
     <div class="admin-item">
       <div>
@@ -4480,7 +4551,7 @@ function renderAtletaRutina(a) {
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
-                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}</div></div>`:''}
+                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}${(()=>{ const rmV=ex.rmLift?a._personal?.oneRM?.[ex.rmLift]:null; if(!rmV) return ''; const parts=wp.pct.split('/').map(p=>p.trim()).filter(Boolean); const kg=parts.map(p=>{const n=parseFloat(p);return isNaN(n)?'?':Math.round((n/100)*rmV);}).join('/'); return ' ≈ '+kg+'kg'; })()}</div></div>`:''}
                       <div class="field-box"><span class="field-lbl">${wp.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.rpe||'—'}</div></div>
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
@@ -5432,10 +5503,18 @@ function renderAthleteDetail() {
     </div>
     <button class="abtn" onclick="openWeeklyReport('${uid}')" title="Reporte semanal">📄 Reporte</button>
   </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent)">${myTeam.name}</span>`:''}
     ${userData.position?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${userData.position}</span>`:''}
     ${userData.sport&&!myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${userData.sport}</span>`:''}
+  </div>
+  <div class="card" style="padding:14px 16px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:10px">
+      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Equipo</div><div style="font-size:13px;font-weight:600">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}</div></div>
+      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Edad</div><div style="font-size:13px;font-weight:600">${userData.age?userData.age+' años':'—'}</div></div>
+      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Talla</div><div style="font-size:13px;font-weight:600">${userData.height?userData.height+' cm':'—'}</div></div>
+      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Peso</div><div style="font-size:13px;font-weight:600">${userData.weight?userData.weight+' kg':'—'}</div></div>
+    </div>
   </div>
 
   <!-- Resumen rápido -->
@@ -5869,16 +5948,22 @@ window.setRoutineDuration = setRoutineDuration;
 function renderRoutineEditor() {
   const r = S.editingRoutine;
   if(!r) return `<div class="empty-state">Error: no hay rutina en edición.</div>`;
-  const sessionNames = sortSessionNames(Object.keys(r.sessions||{}));
+  const sessionNames = getOrderedSessionNames(r);
   if(!S._routineEditSession || !r.sessions[S._routineEditSession]) {
     S._routineEditSession = sessionNames[0]||null;
   }
   const curSession = S._routineEditSession;
   const blocks = curSession ? (r.sessions[curSession]||[]) : [];
 
-  const sessionTabs = sessionNames.map(s=>'<button class="snav-tab '+(curSession===s?'active':'')+'" onclick="routineSelectSession(\''+s+'\')">'+s+'</button>').join('');
+  const sessionTabs = sessionNames.map((s,i)=>'<span style="display:inline-flex;align-items:center;gap:2px">'
+    +'<button class="snav-tab '+(curSession===s?'active':'')+'" onclick="routineSelectSession(\''+s+'\')">'+s+'</button>'
+    +(sessionNames.length>1?(
+      '<button class="ex-icon-btn" style="'+(i===0?'opacity:.3;pointer-events:none':'')+'" onclick="moveRoutineDay(\''+s+'\',-1)" title="Mover antes"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="15 18 9 12 15 6"/></svg></button>'
+      +'<button class="ex-icon-btn" style="'+(i===sessionNames.length-1?'opacity:.3;pointer-events:none':'')+'" onclick="moveRoutineDay(\''+s+'\',1)" title="Mover después"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="9 18 15 12 9 6"/></svg></button>'
+    ):'')
+    +'</span>').join('');
 
-  const blocksHtml = blocks.map(b=>renderRoutineBlock(b,curSession)).join('');
+  const blocksHtml = blocks.map((b,bi)=>renderRoutineBlock(b,curSession,bi,blocks.length)).join('');
 
   return `
   <div class="team-detail-header">
@@ -5903,7 +5988,7 @@ function renderRoutineEditor() {
   `;
 }
 
-function renderRoutineBlock(b, sessionName) {
+function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
   const cc=b.colorKey||'bx';
   const open=b._open!==false;
   let inner=``;
@@ -5938,6 +6023,8 @@ function renderRoutineBlock(b, sessionName) {
         <input class="block-title-inp" id="rbtinp-${b.id}" onblur="saveRBlockTitle('${b.id}','${sessionName}',this)" onkeydown="if(event.key==='Enter')this.blur()">
       </div>
       <span class="block-time">${b.time||''}</span>
+      <span class="ex-icon-btn" style="${bIdx===0?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',-1)" title="Mover arriba"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></span>
+      <span class="ex-icon-btn" style="${bIdx===totalBlocks-1?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',1)" title="Mover abajo"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
       <span class="block-del" onclick="deleteRBlock(event,'${b.id}','${sessionName}')">×</span>
       <span class="block-chevron">›</span>
     </div>
@@ -6213,9 +6300,48 @@ function moveRExercise(exId,blockId,sessionName,catIdx,direction) {
 }
 window.moveRExercise=moveRExercise;
 
+function moveRoutineBlock(blockId, sessionName, direction) {
+  const arr = S.editingRoutine?.sessions?.[sessionName]; if(!arr) return;
+  const idx = arr.findIndex(b=>b.id===blockId);
+  if(idx<0) return;
+  const newIdx = idx+direction;
+  if(newIdx<0||newIdx>=arr.length) return;
+  [arr[idx],arr[newIdx]] = [arr[newIdx],arr[idx]];
+  renderMain();
+}
+window.moveRoutineBlock = moveRoutineBlock;
+
+// El orden de los "días" (sesiones) se recalculaba solo (por número o por
+// día de semana) y no se podía fijar a mano. Guardamos un orden explícito
+// en la rutina — se inicializa con el orden calculado la primera vez, y de
+// ahí en más el admin lo puede reacomodar libremente. Si se agrega un día
+// nuevo, se suma al final; si se borra uno, se saca de la lista.
+function getOrderedSessionNames(routine) {
+  const allNames = sortSessionNames(Object.keys(routine.sessions||{}));
+  if(!routine.sessionOrder || !Array.isArray(routine.sessionOrder)) return allNames;
+  const order = routine.sessionOrder.filter(n=>allNames.includes(n));
+  allNames.forEach(n=>{ if(!order.includes(n)) order.push(n); });
+  return order;
+}
+window.getOrderedSessionNames = getOrderedSessionNames;
+
+function moveRoutineDay(sessionName, direction) {
+  const routine = S.editingRoutine; if(!routine) return;
+  const current = getOrderedSessionNames(routine);
+  if(!routine.sessionOrder) routine.sessionOrder = current;
+  const arr = routine.sessionOrder;
+  const idx = arr.indexOf(sessionName);
+  if(idx<0) return;
+  const newIdx = idx+direction;
+  if(newIdx<0||newIdx>=arr.length) return;
+  [arr[idx],arr[newIdx]] = [arr[newIdx],arr[idx]];
+  renderMain();
+}
+window.moveRoutineDay = moveRoutineDay;
+
 function openRoutineLib(blockId,sessionName,catIdx) {
   S.libTarget={blockId,catIdx,sessionName,isRoutine:true};
-  S.activeFilter=null;
+  S.activeFilters=new Set();
   document.getElementById('lib-search').value='';
   renderLibFilters();
   renderLibList();
