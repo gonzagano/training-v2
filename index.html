@@ -234,6 +234,18 @@
   </div>
 </div>
 
+<!-- Días de gimnasio (calendario semanal al asignar rutina) -->
+<div class="video-modal" id="weekday-assign-overlay" onclick="closeWeekdayAssignIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="weekday-assign-title">¿Qué días va al gimnasio?</div>
+    <div id="weekday-assign-body" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="video-modal-btns">
+      <button class="abtn" onclick="closeWeekdayAssignModal()">Cancelar</button>
+      <button class="abtn abtn-p" id="weekday-assign-confirm-btn" onclick="confirmWeekdayAssign()" disabled>Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- Chart.js for evaluations -->

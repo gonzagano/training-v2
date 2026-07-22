@@ -547,7 +547,7 @@ onAuthStateChanged(auth, async (user) => {
       if (rSnap.exists()) {
         S.assignedRoutine = { id: assignedId, ...rSnap.data() };
         S.currentRoutineSessions = getOrderedSessionNames(S.assignedRoutine);
-        if (S.currentRoutineSessions.length) S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, S.userData.routineAssignedDate);
+        if (S.currentRoutineSessions.length) S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, S.userData.routineAssignedDate, S.userData.trainingWeekdays);
         // blocks are read-only from routine; don't overwrite with personal
       }
     } else if (S.userData.teamId) {
@@ -691,8 +691,36 @@ window.sortSessionNames=sortSessionNames;
 // - Si son genéricos (Día 1, Día 2...), avanzamos un día de la rutina por
 //   cada día calendario transcurrido desde que se ASIGNÓ, dando la vuelta
 //   cíclicamente si la rutina tiene menos días que los transcurridos.
-function getTodaysRoutineSession(sessionNames, assignedDate) {
+// Cuando el admin elige a mano qué días de la semana el atleta va al
+// gimnasio (trainingWeekdays, ej. [0,2,4] = lunes/miércoles/viernes), esa
+// selección es la fuente de verdad de qué día de la rutina corresponde a
+// cada día real — sin importar cómo se llamen los días de la rutina
+// (Lunes, "Día 1", "Push"...). Se empareja por posición: el primer día
+// seleccionado (ordenado lunes→domingo) es el primer día de la rutina, el
+// segundo seleccionado el segundo día, y así — repitiendo cíclicamente si
+// hay más días seleccionados que días en la rutina.
+function getWeekdayScheduleMap(sessionNames, trainingWeekdays) {
+  const map = {};
+  if (!sessionNames || !sessionNames.length || !trainingWeekdays || !trainingWeekdays.length) return map;
+  const sorted = [...trainingWeekdays].sort((a,b)=>a-b);
+  sorted.forEach((dow, i) => { map[dow] = sessionNames[i % sessionNames.length]; });
+  return map;
+}
+window.getWeekdayScheduleMap = getWeekdayScheduleMap;
+
+function getTodaysRoutineSession(sessionNames, assignedDate, trainingWeekdays) {
   if(!sessionNames || !sessionNames.length) return null;
+  // Prioridad 1: días de gimnasio elegidos a mano por el admin al asignar.
+  if (trainingWeekdays && trainingWeekdays.length) {
+    const map = getWeekdayScheduleMap(sessionNames, trainingWeekdays);
+    const todayDow = (new Date().getDay()+6)%7; // lunes=0
+    if (map[todayDow] !== undefined) return map[todayDow];
+    // Hoy no es día de gimnasio: mostramos igual cuál es el próximo que viene.
+    const sorted = [...trainingWeekdays].sort((a,b)=>a-b);
+    let best = null, bestDiff = 8;
+    sorted.forEach(dow=>{ let diff = dow - todayDow; if(diff<0) diff += 7; if(diff < bestDiff){ bestDiff = diff; best = map[dow]; } });
+    return best;
+  }
   const allWeekdays = sessionNames.every(n => WEEKDAY_ORDER[n.trim().toLowerCase()] !== undefined);
   if(allWeekdays) {
     const todayDow = (new Date().getDay()+6)%7; // lunes=0
@@ -4494,6 +4522,10 @@ function renderAtletaRutina(a) {
       ${routineOpts}
       <button class="abtn abtn-p" onclick="assignRoutineToAthlete('${a.uid}')">Asignar</button>
     </div>
+    ${(routine && a.trainingWeekdays && a.trainingWeekdays.length) ? `<div style="font-size:12px;color:var(--text3);margin-top:6px">
+      Días de gimnasio: ${[...a.trainingWeekdays].sort((x,y)=>x-y).map(d=>WEEKDAY_LABELS[d]).join(' · ')}
+      — para cambiarlos, elegí la misma rutina y tocá "Asignar" de nuevo.
+    </div>` : ''}
   </div>`;
 
   if (!routine) {
@@ -5614,6 +5646,9 @@ function renderAthleteDetail() {
       : myTeam
         ? `<div style="padding:8px 14px;font-size:12px;color:var(--accent)">↳ Hereda la rutina del equipo "${myTeam.name}" · sin personalización propia</div>`
         : `<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
+    ${(assigned && userData.trainingWeekdays && userData.trainingWeekdays.length)
+      ? `<div style="padding:0 14px;font-size:12px;color:var(--text3)">Días de gimnasio: ${[...userData.trainingWeekdays].sort((x,y)=>x-y).map(d=>WEEKDAY_LABELS[d]).join(' · ')}</div>`
+      : ''}
     <div class="admin-item">
       <div><div class="admin-item-lbl">Semana ${personal.startDate?computeWeekFromDate(personal.startDate):(personal.currentWeek||1)}</div><div class="admin-item-sub">${personal.startDate?'Desde: '+personal.startDate:''}</div></div>
       <div style="display:flex;gap:6px">
@@ -5792,27 +5827,125 @@ function renderWeeklyReport() {
 }
 window.renderWeeklyReport = renderWeeklyReport;
 
+// Escribe la asignación en Firestore y refleja el cambio en el estado local
+// (viewingAthlete + lista de adminAthletes), sea que venga de "quitar
+// rutina" directo o de confirmar el modal de días de gimnasio.
+async function writeRoutineAssignment(uid, routineId, trainingWeekdays) {
+  const today = new Date().toISOString().split('T')[0];
+  const update = { assignedRoutine: routineId||null };
+  // La semana de la planificación se cuenta desde el día que se la
+  // asignás, no desde que el atleta se registró — por eso guardamos esta
+  // fecha cada vez que asignás (o reasignás) una rutina.
+  if(routineId) update.routineAssignedDate = today;
+  update.trainingWeekdays = routineId ? (trainingWeekdays||[]) : [];
+  await setDoc(doc(db,'users',uid), update, {merge:true});
+  if(S.viewingAthlete?.userData) Object.assign(S.viewingAthlete.userData, update);
+  const a = S.adminAthletes.find(x=>x.uid===uid);
+  if(a) Object.assign(a, update);
+}
+
 async function assignRoutineToAthlete(uid) {
   const sel = document.getElementById('assign-routine-sel');
   if(!sel) return;
   const routineId = sel.value || null;
-  const today = new Date().toISOString().split('T')[0];
+  if (!routineId) {
+    // "— Sin rutina —": se quita directo, no hace falta elegir días.
+    try {
+      await writeRoutineAssignment(uid, null, []);
+      showToast('Rutina removida');
+      renderMain();
+    } catch(e) { showToast('Error al asignar'); }
+    return;
+  }
+  openWeekdayAssignModal(uid, routineId);
+}
+window.assignRoutineToAthlete=assignRoutineToAthlete;
+
+// ── Calendario semanal de días de gimnasio (al asignar una rutina) ──────
+// El admin tilda en qué días reales de la semana el atleta entrena; esos
+// días se emparejan por orden con los días de la rutina (ver
+// getWeekdayScheduleMap), sin importar cómo se llamen. Se repite todas las
+// semanas mientras dure la rutina.
+const WEEKDAY_LABELS = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+
+function openWeekdayAssignModal(uid, routineId) {
+  const routine = S.routines.find(r=>r.id===routineId);
+  if(!routine) { showToast('Error: rutina no encontrada'); return; }
+  const sessionNames = getOrderedSessionNames(routine);
+  const a = S.adminAthletes.find(x=>x.uid===uid) || S.viewingAthlete?.userData;
+  // Si ya tenía días elegidos (para esta u otra rutina), arrancamos de ahí —
+  // es un punto de partida razonable que el admin puede ajustar.
+  const prevSelected = (a && a.assignedRoutine===routineId && Array.isArray(a.trainingWeekdays)) ? a.trainingWeekdays : [];
+  S._weekdayAssign = { uid, routineId, sessionNames, selected: [...prevSelected] };
+  document.getElementById('weekday-assign-title').textContent = 'Días de gimnasio · ' + routine.name;
+  renderWeekdayAssignBody();
+  document.getElementById('weekday-assign-overlay').classList.add('open');
+}
+window.openWeekdayAssignModal = openWeekdayAssignModal;
+
+function renderWeekdayAssignBody() {
+  const st = S._weekdayAssign;
+  if(!st) return;
+  const need = st.sessionNames.length;
+  const got = st.selected.length;
+  const sortedSel = [...st.selected].sort((a,b)=>a-b);
+  const html = `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+      Esta rutina tiene <strong>${need}</strong> día${need===1?'':'s'} (${st.sessionNames.join(' · ')}).
+      Elegí ${need} día${need===1?'':'s'} reales de la semana en que el atleta va al gimnasio.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${WEEKDAY_LABELS.map((label,dow)=>{
+        const checked = st.selected.includes(dow);
+        const order = checked ? sortedSel.indexOf(dow) : -1;
+        const mapped = (checked && order>=0) ? st.sessionNames[order % need] : null;
+        return `<button class="abtn ${checked?'abtn-p':''}" style="justify-content:space-between;display:flex;width:100%" onclick="toggleWeekdayAssignDay(${dow})">
+          <span>${label}</span>
+          ${mapped?`<span style="font-size:11px;opacity:.85">${mapped}</span>`:''}
+        </button>`;
+      }).join('')}
+    </div>
+    <div style="font-size:12px;color:${got===need?'var(--green)':'var(--text3)'};margin-top:12px;text-align:center">
+      ${got}/${need} día${need===1?'':'s'} seleccionado${need===1?'':'s'}
+    </div>`;
+  document.getElementById('weekday-assign-body').innerHTML = html;
+  const btn = document.getElementById('weekday-assign-confirm-btn');
+  const ready = got===need;
+  btn.disabled = !ready;
+  btn.style.opacity = ready ? '1' : '.3';
+  btn.style.cursor = ready ? 'pointer' : 'not-allowed';
+}
+window.renderWeekdayAssignBody = renderWeekdayAssignBody;
+
+function toggleWeekdayAssignDay(dow) {
+  const st = S._weekdayAssign;
+  if(!st) return;
+  const i = st.selected.indexOf(dow);
+  if(i>=0) st.selected.splice(i,1); else st.selected.push(dow);
+  renderWeekdayAssignBody();
+}
+window.toggleWeekdayAssignDay = toggleWeekdayAssignDay;
+
+function closeWeekdayAssignModal() {
+  document.getElementById('weekday-assign-overlay').classList.remove('open');
+  S._weekdayAssign = null;
+}
+window.closeWeekdayAssignModal = closeWeekdayAssignModal;
+
+function closeWeekdayAssignIfOutside(e) { if(e.target===document.getElementById('weekday-assign-overlay')) closeWeekdayAssignModal(); }
+window.closeWeekdayAssignIfOutside = closeWeekdayAssignIfOutside;
+
+async function confirmWeekdayAssign() {
+  const st = S._weekdayAssign;
+  if(!st || st.selected.length !== st.sessionNames.length) return;
   try {
-    const update = { assignedRoutine: routineId||null };
-    // La semana de la planificación se cuenta desde el día que se la
-    // asignás, no desde que el atleta se registró — por eso guardamos esta
-    // fecha cada vez que asignás (o reasignás) una rutina.
-    if(routineId) update.routineAssignedDate = today;
-    await setDoc(doc(db,'users',uid), update, {merge:true});
-    if(S.viewingAthlete?.userData) Object.assign(S.viewingAthlete.userData, update);
-    // Also update local adminAthletes list
-    const a = S.adminAthletes.find(x=>x.uid===uid);
-    if(a) Object.assign(a, update);
-    showToast(routineId?'✓ Rutina asignada':'Rutina removida');
+    await writeRoutineAssignment(st.uid, st.routineId, [...st.selected]);
+    showToast('✓ Rutina y días asignados');
+    closeWeekdayAssignModal();
     renderMain();
   } catch(e) { showToast('Error al asignar'); }
 }
-window.assignRoutineToAthlete=assignRoutineToAthlete;
+window.confirmWeekdayAssign = confirmWeekdayAssign;
 
 // Corregir manualmente en qué semana de SU PROPIA planificación está un
 // atleta — por si el admin se confunde probando, o el atleta marcó algo por
