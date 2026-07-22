@@ -834,12 +834,17 @@ function getED(w,s,id) {
 // rutinas ya existentes), cae en los campos planos de siempre — así ninguna
 // rutina vieja se rompe ni cambia de comportamiento.
 function getExPrescriptionForWeek(ex, week) {
+  // El tipo de intensidad (RPE/RIR) es UN SOLO interruptor para todo el
+  // ejercicio (el botón está una sola vez, arriba de toda la tabla de
+  // semanas) — nunca hay que leerlo de la copia por semana en
+  // ex.progression, que puede quedar vieja si se tocó el botón después de
+  // crear la progresión. ex.intensityType es siempre la fuente de verdad.
   if(ex.progression && ex.progression.length) {
     const idx = Math.min(week, ex.progression.length) - 1;
     const wk = ex.progression[idx] || {};
     return {
       series: wk.series||'', reps: wk.reps||'', pct: wk.pct||'',
-      rpe: wk.rpe||'', intensityType: wk.intensityType||'RPE', note: wk.note||''
+      rpe: wk.rpe||'', intensityType: ex.intensityType||'RPE', note: wk.note||''
     };
   }
   return {
