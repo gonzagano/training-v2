@@ -3936,9 +3936,20 @@ function renderAthleteSummaryCard(a) {
 }
 window.renderAthleteSummaryCard = renderAthleteSummaryCard;
 
-function renderGroupWellness(memberUids) {
+function renderGroupWellness(memberUids, opts) {
   const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
+
+  // Vista de comparación pura (para un atleta individual que eligió
+  // compararse con un equipo desde su Perfil): solo el promedio agregado —
+  // nunca el listado de compañeros ni sus datos puntuales, eso es exclusivo
+  // de la ficha real del equipo en Equipos.
+  if (opts && opts.compareOnly) {
+    return members.length > 1
+      ? renderTeamMetricsCard('Promedio del equipo con el que se compara', members)
+      : `<div class="empty-state">El equipo elegido para comparar todavía no tiene datos.</div>`;
+  }
+
   const today = new Date().toISOString().split('T')[0];
   const doneCount = members.filter(a => a._personal?.wellness?.[today]).length;
 
@@ -4268,9 +4279,21 @@ function drawTeamQuadrantChart(members) {
 }
 window.drawTeamQuadrantChart = drawTeamQuadrantChart;
 
-function renderGroupStats(memberUids) {
+function renderGroupStats(memberUids, opts) {
   const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
+
+  // Vista de comparación pura (atleta individual comparándose con un
+  // equipo elegido en su Perfil): solo gráficos duros de comparación
+  // (promedio, radar, cuadrante) — nada de molestias, ranking clickeable ni
+  // detalle semanal de otros jugadores, que son cosas exclusivas de la
+  // ficha real del equipo.
+  if (opts && opts.compareOnly) {
+    let cHtml = members.length > 1 ? renderTeamMetricsCard('Promedio del equipo con el que se compara', members) : '';
+    cHtml += renderTeamRadarSection(members);
+    cHtml += renderTeamQuadrantSection(members);
+    return cHtml;
+  }
 
   // 1) Promedio general del equipo — no tiene sentido para un solo atleta
   // (sería literalmente la misma tarjeta repetida dos veces)
@@ -4635,8 +4658,8 @@ function renderAtletaDetail(a) {
   </div>`;
 
   if (sub === 'rutina') html += renderAtletaRutina(a);
-  else if (sub === 'wellness') html += renderGroupWellness(getEffectiveGroupUids(a));
-  else if (sub === 'stats') html += renderGroupStats(getEffectiveGroupUids(a));
+  else if (sub === 'wellness') html += renderGroupWellness(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId});
+  else if (sub === 'stats') html += renderGroupStats(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId});
   else if (sub === 'evals') html += renderEvals();
   else html += renderPerfilTab(a);
   return html;
@@ -4849,18 +4872,24 @@ window.renderPerfilTab = renderPerfilTab;
 
 function setAtletaSubview(v) {
   S.atletaSubview = v;
-  const uids = S.atletaView ? getEffectiveGroupUids(S.atletaView) : [];
+  // OJO: Evaluaciones nunca se amplía con el equipo de comparación — eso
+  // dejaría entrar/editar el historial de evaluaciones de los compañeros
+  // desde la ficha de un atleta individual, que es justo lo que no
+  // queremos. La comparación con el equipo, en gráficos, vive en la
+  // pestaña Estadísticas (radar/cuadrante), no acá.
+  const uids = S.atletaView ? [S.atletaView.uid] : [];
+  const statsWellnessUids = S.atletaView ? getEffectiveGroupUids(S.atletaView) : [];
   if (v === 'evals') {
     S.evalScopeUids = uids;
     S.evalAthleteId = S.atletaView?.uid || null;
     ensureAdminAthletes()
-      .then(()=>Promise.all(uids.map(ensureAthleteEvalData)))
+      .then(()=>ensureAthleteEvalData(S.evalAthleteId))
       .then(() => { renderMain(); setTimeout(drawEvalCharts, 80); })
       .catch((e)=>{ console.error('Error al cargar Evaluaciones del atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
   }
   if (v === 'wellness' || v === 'stats') {
-    ensureGroupPersonalData(uids)
+    ensureGroupPersonalData(statsWellnessUids)
       .then(renderMain)
       .catch((e)=>{ console.error('Error al cargar datos del atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
