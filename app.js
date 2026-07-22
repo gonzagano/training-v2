@@ -83,6 +83,47 @@ const RM_LIFTS = [
 ];
 window.RM_LIFTS = RM_LIFTS;
 
+// Mapea el id de test de 1RM en Evaluaciones al id de levantamiento del
+// perfil (oneRM) — para que cargar un test de fuerza actualice el perfil
+// automáticamente. Solo en este sentido: Evaluaciones → Perfil. Editar el RM
+// a mano en el perfil nunca toca las evaluaciones. "Arranque de Potencia" no
+// tiene test equivalente en Evaluaciones todavía, así que queda solo manual.
+const EVAL_TO_ONERM_LIFT = {
+  rm_press_banca: 'press_plano',
+  rm_sentadilla: 'sentadilla_barra',
+  rm_peso_muerto: 'peso_muerto',
+  rm_cargada_potencia: 'cargada_potencia',
+};
+window.EVAL_TO_ONERM_LIFT = EVAL_TO_ONERM_LIFT;
+
+async function syncEvalToOneRM(uid, testId, value) {
+  const liftId = EVAL_TO_ONERM_LIFT[testId];
+  if (!liftId || !uid || isPendingId(uid)) return;
+  if (uid === 'self') {
+    if(!S.oneRM) S.oneRM = {};
+    S.oneRM[liftId] = value;
+    try { await setDoc(doc(db,'personal',S.user.uid), {oneRM:S.oneRM}, {merge:true}); } catch(e){ /* no bloquea el guardado del test */ }
+    return;
+  }
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  if(a) { if(!a._personal) a._personal={}; if(!a._personal.oneRM) a._personal.oneRM={}; a._personal.oneRM[liftId]=value; }
+  try { await setDoc(doc(db,'personal',uid), {oneRM:(a?._personal?.oneRM)||{[liftId]:value}}, {merge:true}); } catch(e){ /* no bloquea el guardado del test */ }
+}
+window.syncEvalToOneRM = syncEvalToOneRM;
+
+// Editar el RM de un atleta desde su Perfil (admin) — mismo campo oneRM que
+// Ajustes usa para el propio atleta, pero escrito desde el lado del admin.
+async function adminSaveOneRM(uid, liftId, value) {
+  const val = value===''||value===null||value===undefined ? null : parseDecimal(value);
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  if(a) { if(!a._personal) a._personal={}; if(!a._personal.oneRM) a._personal.oneRM={}; a._personal.oneRM[liftId]=val; }
+  try {
+    await setDoc(doc(db,'personal',uid), {oneRM:(a?._personal?.oneRM)||{[liftId]:val}}, {merge:true});
+    showToast('✓ RM guardado');
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.adminSaveOneRM = adminSaveOneRM;
+
 // ── DEFAULT DATA ─────────────────────────────────────────────
 const DEFAULT_BLOCKS = [
   { id:'b1', label:'Bloque 1', title:'Activación y movilidad', time:'5–10 min', colorKey:'b1',
@@ -336,7 +377,7 @@ let S = {
   myTeam: null, // solo para atletas de equipo: el doc de su propio equipo
   teamSubview: 'rutina',      // 'rutina'|'wellness'|'stats'|'evals' dentro de un equipo
   atletaView: null,           // uid del atleta individual seleccionado (o null = lista)
-  atletaSubview: 'rutina',
+  atletaSubview: 'perfil',
   evalScopeUids: null,        // si está seteado, Evaluaciones solo muestra estos uids
   libTarget: null, videoTarget: null,
   activeFilters: new Set(), selectedZone: null,
@@ -1288,10 +1329,10 @@ function renderMain() {
     case 'wellness': m.innerHTML=renderWellness(); setTimeout(()=>runCountUps(),30); break;
     case 'stats':    m.innerHTML=renderStats(); break;
     case 'teams':    m.innerHTML=renderTeams(); if(S.teamView && S.teamSubview==='stats') { const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid)); setTimeout(()=>{drawTeamInjuryChart(mem);drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); } break;
-    case 'atletas':  m.innerHTML=renderAtletas(); if(S.atletaView && S.atletaSubview==='stats') setTimeout(()=>drawTeamInjuryChart([S.atletaView]),80); break;
+    case 'atletas':  m.innerHTML=renderAtletas(); setTimeout(drawAtletaTabCharts,80); break;
     case 'settings': m.innerHTML=renderSettings(); break;
     case 'notifications': m.innerHTML=renderNotifications(); break;
-    case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAthleteTrendChart,80); if(S.adminView==='compare_athletes') setTimeout(drawCompareCharts,80); setTimeout(()=>runCountUps(),30); break;
+    case 'admin':    m.innerHTML=renderAdmin(); if(S.adminView==='athlete_detail') setTimeout(drawAtletaTabCharts,80); if(S.adminView==='compare_athletes') setTimeout(drawCompareCharts,80); setTimeout(()=>runCountUps(),30); break;
     case 'weekly_report': m.innerHTML=renderWeeklyReport(); break;
     case 'library':  m.innerHTML=renderLibraryView(); break;
     case 'evals':    m.innerHTML=renderEvals(); setTimeout(drawEvalCharts,80); break;
@@ -3402,6 +3443,48 @@ function avatarHtml(name, color, size, photoUrl) {
 }
 window.avatarHtml=avatarHtml;
 
+// Foto del atleta si la tiene, o si no, el típico círculo con silueta
+// genérica de hombros para arriba (en vez de iniciales) — para la lista de
+// Atletas individuales, donde el objetivo es distinguir de un vistazo quién
+// es quién, no decorar con color.
+function athleteListAvatarHtml(a, size) {
+  size = size || 44;
+  if (a.photoUrl) return `<img src="${a.photoUrl}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;display:block" alt="">`;
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">
+    <svg width="${Math.round(size*0.62)}" height="${Math.round(size*0.62)}" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke-linecap="round"/></svg>
+  </div>`;
+}
+window.athleteListAvatarHtml = athleteListAvatarHtml;
+
+// Ícono minimalista por deporte — para diferenciar de un vistazo la lista de
+// atletas individuales sin depender de leer el texto.
+function sportIconSvg(sport) {
+  const s = (sport||'').toLowerCase();
+  const common = 'width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+  if (s.includes('tenis') || s.includes('tennis')) {
+    // Raqueta
+    return `<svg ${common}><ellipse cx="9" cy="8" rx="6" ry="7" transform="rotate(-20 9 8)"/><line x1="13.5" y1="12.5" x2="20" y2="21"/></svg>`;
+  }
+  if (s.includes('basq') || s.includes('básq') || s.includes('basket')) {
+    // Pelota de básquet
+    return `<svg ${common}><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.5 5.5c3 3 3 10 0 13M18.5 5.5c-3 3-3 10 0 13"/></svg>`;
+  }
+  if (s.includes('handball') || s.includes('balonmano')) {
+    // Persona lanzando
+    return `<svg ${common}><circle cx="9" cy="4.5" r="1.8"/><path d="M9 7c-2 1-3 2.5-3 4.5v4M6 11l-3 2M9 11.5l4-1.5 4-5M13 10l1 5-2 6M13 10l-3 2 1 6"/></svg>`;
+  }
+  if (s.includes('futbol') || s.includes('fútbol') || s.includes('soccer')) {
+    // Pelota de fútbol
+    return `<svg ${common}><circle cx="12" cy="12" r="9"/><path d="M12 7l3.5 2.5-1.3 4.1h-4.4L8.5 9.5 12 7zM12 7V4M9.6 13.6L6 15M14.4 13.6L18 15M9.5 9.5L6 8M14.5 9.5L18 8"/></svg>`;
+  }
+  if (s.includes('rugby')) {
+    // Pelota de rugby (ovalada)
+    return `<svg ${common}><ellipse cx="12" cy="12" rx="9" ry="6" transform="rotate(-30 12 12)"/><path d="M7 9l10 6M9 7.5l6 9"/></svg>`;
+  }
+  return '';
+}
+window.sportIconSvg = sportIconSvg;
+
 // Mini-gráfico de tendencia sin ejes ni leyenda — para mostrar "hacia dónde viene
 // yendo" un número al lado del valor puntual, sin ocupar el espacio de un gráfico
 // completo. values: array ordenado de más viejo a más nuevo, con null = sin dato.
@@ -3528,6 +3611,38 @@ async function setAthletePosition(uid, position) {
   } catch(e){ showToast('Error'); }
 }
 window.setAthletePosition=setAthletePosition;
+
+// Un atleta puede ser individual (rutina y seguimiento propios, sin mezclarse
+// con ningún roster) y AL MISMO TIEMPO compararse con un equipo en
+// Wellness/Estadísticas/Evaluaciones — ej: juega en un club pero vos lo
+// llevás por fuera como preparador personal. compareTeamId es un vínculo
+// SOLO para comparar; no toca teamId (que es la pertenencia real al equipo,
+// con su roster y su rutina de equipo).
+async function setAthleteCompareTeam(uid, teamId) {
+  try {
+    await setDoc(doc(db,'users',uid),{compareTeamId:teamId||null},{merge:true});
+    const a = S.adminAthletes.find(x=>x.uid===uid);
+    if(a) a.compareTeamId = teamId||null;
+    if(S.viewingAthlete?.userData) S.viewingAthlete.userData.compareTeamId = teamId||null;
+    showToast(teamId?'✓ Ahora se compara con ese equipo':'Comparación quitada');
+    renderMain();
+  } catch(e){ showToast('Error'); }
+}
+window.setAthleteCompareTeam = setAthleteCompareTeam;
+
+// Uids a usar para Wellness/Estadísticas/Evaluaciones de un atleta: solo él
+// mismo, salvo que tenga un equipo de comparación elegido — ahí se suman los
+// compañeros de ese equipo (sin duplicar), para que tenga con quién
+// compararse sin dejar de ser un atleta individual de verdad.
+function getEffectiveGroupUids(a) {
+  if (!a) return [];
+  if (a.compareTeamId) {
+    const team = S.teams.find(t=>t.id===a.compareTeamId);
+    if (team) return [...new Set([a.uid, ...(team.memberUids||[])])];
+  }
+  return [a.uid];
+}
+window.getEffectiveGroupUids = getEffectiveGroupUids;
 
 async function setAthleteName(uid, newName) {
   newName = (newName||'').trim();
@@ -3827,15 +3942,21 @@ function renderGroupWellness(memberUids) {
   const today = new Date().toISOString().split('T')[0];
   const doneCount = members.filter(a => a._personal?.wellness?.[today]).length;
 
-  let html = renderTeamMetricsCard('Promedio del equipo', members);
-  const withPos = members.filter(a=>a.position);
-  if (withPos.length) {
-    const positions = [...new Set(members.map(a=>a.position||'Sin posición'))].sort((a,b)=>{
-      if(a==='Sin posición') return 1;
-      if(b==='Sin posición') return -1;
-      return a.localeCompare(b);
-    });
-    html += positions.map(pos=>renderTeamMetricsCard(pos, members.filter(a=>(a.position||'Sin posición')===pos))).join('');
+  // El promedio "del equipo" no dice nada cuando el grupo es un solo atleta
+  // (sería literalmente la misma tarjeta repetida dos veces) — pasa siempre
+  // que se abre a un atleta realmente individual, sin equipo para comparar.
+  let html = '';
+  if (members.length > 1) {
+    html = renderTeamMetricsCard('Promedio del equipo', members);
+    const withPos = members.filter(a=>a.position);
+    if (withPos.length) {
+      const positions = [...new Set(members.map(a=>a.position||'Sin posición'))].sort((a,b)=>{
+        if(a==='Sin posición') return 1;
+        if(b==='Sin posición') return -1;
+        return a.localeCompare(b);
+      });
+      html += positions.map(pos=>renderTeamMetricsCard(pos, members.filter(a=>(a.position||'Sin posición')===pos))).join('');
+    }
   }
 
   html += `<div style="margin:14px 0 12px;font-size:12px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
@@ -4001,16 +4122,24 @@ const RADAR_METRICS = [
 function renderTeamRadarSection(members) {
   const key = 'team-radar';
   const collapsed = S.collapsedSections?.has(key);
-  const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
   let html = `<div class="admin-section">${collapsibleHeader(key,'📡 Perfil de atleta (radar)')}`;
   if(!collapsed) {
-    html += `<div style="padding:0 16px 12px">
-      <select class="abtn" style="width:100%;text-align:left" onchange="setRadarAthlete(this.value)">
-        ${members.map(a=>`<option value="${a.uid}" ${athleteId===a.uid?'selected':''}>${a.name||a.email}</option>`).join('')}
-      </select>
-    </div>
-    <div style="padding:0 16px 8px;height:270px;position:relative"><canvas id="team-radar-chart"></canvas></div>
-    <div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">Cada eje es el % respecto al mejor valor del equipo en esa métrica — así se pueden comparar cm y kg en un mismo gráfico.</div>`;
+    if (members.length <= 1) {
+      // Con un solo atleta en el grupo, cada eje sería "% respecto a su
+      // propio mejor valor" — siempre 100%, no importa el nivel real. No
+      // tiene sentido mostrarlo así: hace falta más de un atleta (equipo, o
+      // comparar con un equipo) para que el radar diga algo real.
+      html += `<div style="padding:14px 16px;font-size:12px;color:var(--text3)">Hace falta más de un atleta en el grupo para comparar en el radar — un solo atleta siempre se vería al 100% en cada eje, comparado contra sí mismo.</div>`;
+    } else {
+      const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
+      html += `<div style="padding:0 16px 12px">
+        <select class="abtn" style="width:100%;text-align:left" onchange="setRadarAthlete(this.value)">
+          ${members.map(a=>`<option value="${a.uid}" ${athleteId===a.uid?'selected':''}>${a.name||a.email}</option>`).join('')}
+        </select>
+      </div>
+      <div style="padding:0 16px 8px;height:270px;position:relative"><canvas id="team-radar-chart"></canvas></div>
+      <div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">Cada eje es el % respecto al mejor valor del equipo en esa métrica — así se pueden comparar cm y kg en un mismo gráfico.</div>`;
+    }
   }
   html += `</div>`;
   return html;
@@ -4022,6 +4151,7 @@ window.setRadarAthlete = setRadarAthlete;
 
 function drawTeamRadarChart(members) {
   if(typeof Chart==='undefined') return;
+  if(members.length <= 1) return; // ver nota en renderTeamRadarSection
   const canvas = document.getElementById('team-radar-chart');
   if(!canvas) return;
   const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
@@ -4429,16 +4559,25 @@ function renderAtletas() {
   if (!individuals.length) {
     html += `<div class="empty-state">No hay atletas individuales registrados todavía.<br><span style="font-size:12px">Aparecen acá los que se registran sin elegir un equipo.</span></div>`;
   } else {
-    html += individuals.map(a => `
-      <div class="card" style="padding:14px;cursor:pointer;margin-bottom:8px" onclick="openAtleta('${a.uid}')">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-size:14px;font-weight:600">${a.name || a.email}</div>
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.sport || ''}${a.position ? ' · ' + a.position : ''}</div>
+    html += individuals.map(a => {
+      const icon = sportIconSvg(a.sport);
+      return `
+      <div class="card" style="padding:14px;cursor:pointer;margin-bottom:10px" onclick="openAtleta('${a.uid}')">
+        <div style="display:flex;align-items:center;gap:12px">
+          ${athleteListAvatarHtml(a, 44)}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:700">${a.name || a.email}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap">
+              ${(a.sport||a.position)?`<div style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-dim);border:1px solid var(--border);border-radius:20px;padding:4px 10px">
+                ${icon?`<span style="display:flex;color:var(--accent)">${icon}</span>`:''}
+                <span>${a.sport||''}${a.sport&&a.position?' · ':''}${a.position||''}</span>
+              </div>`:`<span style="font-size:11px;color:var(--text3)">Sin deporte/posición cargados</span>`}
+            </div>
           </div>
           <span style="color:var(--text3);font-size:18px">›</span>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
   return html;
 }
@@ -4447,21 +4586,38 @@ window.renderAtletas = renderAtletas;
 function openAtleta(uid) {
   const a = (S.adminAthletes || []).find(x => x.uid === uid);
   if (!a) return;
+  if(S.adminView !== 'athlete_detail') {
+    S._athleteDetailReturnCtx = {currentView:'atletas', adminView:null, teamView:null, teamSubview:null};
+  }
   S.atletaView = a;
-  S.atletaSubview = 'rutina';
-  ensureGroupPersonalData([uid]).then(renderMain).catch((e)=>{ console.error('Error al abrir atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
+  S.atletaSubview = 'perfil';
+  S._atletaRoutineCollapsedDays = null;
+  S._atletaRoutineCollapsedBlocks = null;
+  ensureGroupPersonalData(getEffectiveGroupUids(a)).then(()=>{
+    S.viewingAthlete = { uid, userData: a, personal: a._personal||{} };
+    renderMain();
+  }).catch((e)=>{ console.error('Error al abrir atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
   renderMain();
 }
 window.openAtleta = openAtleta;
 
 function renderAtletaDetail(a) {
-  const sub = S.atletaSubview || 'rutina';
+  const sub = S.atletaSubview || 'perfil';
   const myTeam = S.teams.find(t=>t.id===a.teamId);
+  const sportLabel = capitalizeName(a.sport||'');
   let html = `<div class="team-detail-header">
-    <button class="back-btn" onclick="S.atletaView=null;S.currentView='atletas';renderBottomBar();renderMain()">‹</button>
-    <div class="team-detail-title">${a.name || a.email}</div>
+    <button class="back-btn" onclick="goBackFromAthleteDetail()">‹</button>
+    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1">
+      ${avatarHtml(a.name||a.email, a.color, 30, a.photoUrl)}
+      ${a.name || a.email}
+    </div>
+    <button class="abtn" onclick="openWeeklyReport('${a.uid}')" title="Reporte semanal">📄 Reporte</button>
   </div>
-  <div style="font-size:13px;color:var(--text3);margin-bottom:12px">${a.sport || ''}${a.position ? ' · ' + a.position : ''}</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent)">${myTeam.name}</span>`:''}
+    ${a.position?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${a.position}</span>`:''}
+    ${sportLabel&&!myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${sportLabel}</span>`:''}
+  </div>
   <div class="card" style="padding:14px 16px;margin-bottom:14px">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:10px">
       <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Equipo</div><div style="font-size:13px;font-weight:600">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}</div></div>
@@ -4471,33 +4627,240 @@ function renderAtletaDetail(a) {
     </div>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+    <button class="snav-tab ${sub === 'perfil' ? 'active' : ''}" onclick="setAtletaSubview('perfil')">Perfil</button>
     <button class="snav-tab ${sub === 'rutina' ? 'active' : ''}" onclick="setAtletaSubview('rutina')">Rutina</button>
     <button class="snav-tab ${sub === 'wellness' ? 'active' : ''}" onclick="setAtletaSubview('wellness')">Wellness</button>
     <button class="snav-tab ${sub === 'stats' ? 'active' : ''}" onclick="setAtletaSubview('stats')">Estadísticas</button>
     <button class="snav-tab ${sub === 'evals' ? 'active' : ''}" onclick="setAtletaSubview('evals')">Evaluaciones</button>
   </div>`;
 
-  if (sub === 'wellness') html += renderGroupWellness([a.uid]);
-  else if (sub === 'stats') html += renderGroupStats([a.uid]);
+  if (sub === 'rutina') html += renderAtletaRutina(a);
+  else if (sub === 'wellness') html += renderGroupWellness(getEffectiveGroupUids(a));
+  else if (sub === 'stats') html += renderGroupStats(getEffectiveGroupUids(a));
   else if (sub === 'evals') html += renderEvals();
-  else html += renderAtletaRutina(a);
+  else html += renderPerfilTab(a);
   return html;
 }
 window.renderAtletaDetail = renderAtletaDetail;
 
+// Dibuja los gráficos que correspondan según qué pestaña de la ficha esté
+// activa — se llama igual sin importar si se entró por "Atletas" o por
+// Panel Admin, ya que ambas rutas ahora comparten la misma vista.
+function drawAtletaTabCharts() {
+  if (!S.atletaView) return;
+  const a = S.atletaView;
+  if (S.atletaSubview === 'perfil') {
+    drawAthleteTrendChart();
+  } else if (S.atletaSubview === 'stats') {
+    const uids = getEffectiveGroupUids(a);
+    const mem = (S.adminAthletes||[]).filter(x=>uids.includes(x.uid));
+    drawTeamInjuryChart(mem); drawTeamRadarChart(mem); drawTeamQuadrantChart(mem);
+  }
+}
+window.drawAtletaTabCharts = drawAtletaTabCharts;
+
+// ── PERFIL ───────────────────────────────────────────────────
+// Identidad + estado general del atleta: resumen de wellness/carga, datos
+// editables (nombre/color/posición/equipo/comparación), sus RM (editables,
+// sincronizados desde Evaluaciones) y resetear cuenta. La gestión de la
+// rutina en sí (asignar, semana, plan) vive en la pestaña Rutina aparte.
+function renderPerfilTab(a) {
+  const uid = a.uid;
+  const personal = a._personal || {};
+  const wellness = personal.wellness || {};
+  const injuries = personal.injuries || {};
+  const wEntries = Object.entries(wellness).sort((x,y)=>y[0].localeCompare(x[0])).slice(0,7);
+  const activeInj = Object.entries(injuries).filter(([,v])=>v.pain>0);
+  const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
+  const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
+
+  const today=new Date().toISOString().split('T')[0];
+  const todayW = wellness[today];
+  const {pct:todayPct, allFilled:todayFilled} = getWellnessScore(todayW);
+  const wState = getWellnessState(todayFilled?todayPct:null);
+  const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
+  const m = calcLoadMetrics(logs);
+  const acwrSt = getACWRStatus(m?.acwr??null, m?.daysOfHistory);
+  const activeInjCount = activeInj.length;
+
+  let html = `
+  <!-- Resumen rápido -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
+    <div style="background:var(--bg2);padding:14px;text-align:center${todayFilled?';cursor:pointer':''}" ${todayFilled?`onclick="viewWellnessDay('${uid}','${today}')"`:''}>
+      <div style="font-size:20px;font-weight:800;color:${wState.color}" ${todayFilled?`data-countup="${todayPct}" data-suffix="%"`:''}>${todayFilled?todayPct+'%':'—'}</div>
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy</div>
+      <div style="display:flex;justify-content:center;margin-top:6px">${sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 48, 16)}</div>
+    </div>
+    <div style="background:var(--bg2);padding:14px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:${acwrSt.color}" ${m?.acwr!=null?`data-countup="${m.acwr}" data-decimals="2"`:''}>${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
+    </div>
+    <div style="background:var(--bg2);padding:14px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:${activeInjCount?'var(--red)':'var(--green)'}" data-countup="${activeInjCount||0}">${activeInjCount||'0'}</div>
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias activas</div>
+    </div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Tendencia — últimos 30 días</div>
+    <div style="padding:14px 16px;height:220px;position:relative">
+      <canvas id="athlete-trend-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- Control de carga interna + wellness reciente, arriba del formulario editable -->
+  ${(()=>{
+    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin datos. El atleta debe cargar su carga de gimnasio/pelota/partido en Wellness.</div></div>';
+    const monSt=getMonotonyStatus(m.monotony);
+    return `<div class="admin-section">
+      <div class="admin-section-title">Control de carga interna</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border)">
+        <div style="background:var(--bg2);padding:14px 16px">
+          <div style="font-size:22px;font-weight:800;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
+          <div style="font-size:11px;color:${acwrSt.color}">${acwrSt.label}</div>
+        </div>
+        <div style="background:var(--bg2);padding:14px 16px">
+          <div style="font-size:22px;font-weight:800;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía</div>
+          <div style="font-size:11px;color:${monSt.color}">${monSt.label}</div>
+        </div>
+        <div style="background:var(--bg2);padding:14px 16px">
+          <div style="font-size:22px;font-weight:800">${m.acuteUA}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana</div>
+          <div style="font-size:11px;color:var(--text3)">${m.sessions} sesiones</div>
+        </div>
+        <div style="background:var(--bg2);padding:14px 16px">
+          <div style="font-size:22px;font-weight:800">${Math.round(m.strain)}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain</div>
+          <div style="font-size:11px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'}">${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
+        </div>
+      </div>
+    </div>`;
+  })()}
+
+  <div class="admin-section">
+    <div class="admin-section-title">Wellness — últimos 7 días</div>
+    ${wEntries.length?wEntries.map(([date,w])=>{
+      const {pct,allFilled}=getWellnessScore(w);
+      if(!allFilled) return '';
+      const col=getWellnessState(pct).color;
+      return `<div class="admin-item" style="cursor:pointer" onclick="viewWellnessDay('${uid}','${date}')">
+        <span style="font-size:12px;color:var(--text3)">${date}</span>
+        <span style="font-size:14px;font-weight:600;color:${col}">${pct}% ›</span>
+      </div>`;
+    }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div>`}
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Perfil</div>
+    <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:10px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Nombre</span>
+        <input id="edit-name-${uid}" value="${a.name||''}" placeholder="Apellido y nombre" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Color</span>
+        ${TEAM_COLORS.map(c=>`<div onclick="setAthleteColor('${uid}','${c}')" style="width:20px;height:20px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${a.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Posición</span>
+        ${(()=>{
+          const posOpts=getPositionOptionsForSport(myTeam?.sport);
+          if(posOpts) {
+            return `<select id="pos-sel-${uid}" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthletePosition('${uid}',this.value)">
+              <option value="">— Sin posición —</option>
+              ${posOpts.map(p=>`<option value="${p}" ${a.position===p?'selected':''}>${p}</option>`).join('')}
+            </select>`;
+          }
+          return `<input id="pos-inp-${uid}" value="${a.position||''}" placeholder="Ej: Base, Alero..." style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+        })()}
+      </div>
+      ${!myTeam?.sport&&myTeam?`<div style="font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Equipo</span>
+        ${(()=>{
+          const instMap = getInstitutionsFromTeams();
+          const opts = [];
+          Object.keys(instMap).sort().forEach(inst=>{
+            [...instMap[inst].categories].sort().forEach(cat=>opts.push({inst,cat}));
+          });
+          const curVal = (a.institution && a.category) ? (a.institution+'|||'+a.category) : '';
+          return `<select id="reassign-sel-${uid}" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
+            <option value="">— Sin equipo (individual) —</option>
+            ${opts.map(o=>`<option value="${o.inst}|||${o.cat}" ${curVal===(o.inst+'|||'+o.cat)?'selected':''}>${o.inst} / ${o.cat}</option>`).join('')}
+          </select>
+          <button class="abtn abtn-p" onclick="saveReassignAthleteTeam('${uid}')">Guardar</button>`;
+        })()}
+      </div>
+      <div style="font-size:11px;color:var(--text3)">Se ven TODAS las categorías conocidas (existan o no como equipo todavía) — si elegís una que no existe aún, se crea sola. Sirve para mover a alguien de categoría, fusionar equipos duplicados, o pasarlo de individual a equipo (y viceversa).</div>
+      ${!myTeam ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;padding-top:6px;border-top:1px dashed var(--border);margin-top:2px">
+        <span style="font-size:11px;color:var(--text3);min-width:110px">Comparar con equipo</span>
+        <select style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthleteCompareTeam('${uid}',this.value)">
+          <option value="">— Ninguno —</option>
+          ${S.teams.map(t=>`<option value="${t.id}" ${a.compareTeamId===t.id?'selected':''}>${t.name}${t.category?' · '+t.category:''}</option>`).join('')}
+        </select>
+      </div>
+      <div style="font-size:11px;color:var(--text3)">Para atletas individuales que igual juegan en un club: los suma solo en Wellness/Estadísticas/Evaluaciones para que se puedan comparar, sin volverlos parte real del roster ni tocar su rutina personal.</div>`:''}
+    </div>
+  </div>
+
+  <!-- RM del atleta: editable acá, y se actualiza solo desde Evaluaciones -->
+  <div class="admin-section">
+    <div class="admin-section-title">RM del atleta</div>
+    <div style="font-size:11px;color:var(--text3);padding:0 14px 8px">Se puede editar acá directamente. Si cargás un test de 1RM en Evaluaciones, el valor correspondiente se actualiza solo (nunca al revés).</div>
+    ${RM_LIFTS.map(rm=>`<div class="admin-item">
+      <span style="font-size:13px">${rm.label}</span>
+      <input type="number" step="0.5" min="0" placeholder="kg" value="${personal.oneRM?.[rm.id]||''}" style="width:90px;text-align:right;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="adminSaveOneRM('${uid}','${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+    </div>`).join('')}
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Molestias activas</div>
+    ${activeInj.length?`<div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px">${activeInj.map(([id,inj])=>{
+      const zone=allZones.find(z=>z.id===id);
+      const sev = severityInfo(inj.severity) || severityInfo('leve');
+      return `<div style="background:var(--bg);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${sev.color};flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${zone?.label||id}${inj.type?' · '+INJURY_TYPES[inj.type]:''}</div>
+            <div style="font-size:11px;color:var(--text3)">Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica (la fijás vos, no depende del dolor del día)</div>
+        <div style="display:flex;gap:6px">
+          ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.color+'1a':'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
+        </div>
+      </div>`;
+    }).join('')}</div>`:`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin molestias registradas.</div>`}
+  </div>
+
+  <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
+    <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:8px">
+      <div><div class="admin-item-lbl" style="color:var(--red)">Resetear cuenta</div><div class="admin-item-sub">Borra todo (nombre, equipo, tests, wellness) y lo manda al registro de cero la próxima vez que entre con el mismo mail. No borra el mail en sí — para eso, esa persona tiene que entrar y usar "Eliminar mi cuenta" en Ajustes.</div></div>
+      <button class="abtn abtn-d" onclick="resetAthleteAccount('${uid}')">Resetear cuenta</button>
+    </div>
+  </div>`;
+
+  return html;
+}
+window.renderPerfilTab = renderPerfilTab;
+
 function setAtletaSubview(v) {
   S.atletaSubview = v;
+  const uids = S.atletaView ? getEffectiveGroupUids(S.atletaView) : [];
   if (v === 'evals') {
-    S.evalScopeUids = S.atletaView ? [S.atletaView.uid] : [];
+    S.evalScopeUids = uids;
     S.evalAthleteId = S.atletaView?.uid || null;
     ensureAdminAthletes()
-      .then(()=>ensureAthleteEvalData(S.evalAthleteId))
+      .then(()=>Promise.all(uids.map(ensureAthleteEvalData)))
       .then(() => { renderMain(); setTimeout(drawEvalCharts, 80); })
       .catch((e)=>{ console.error('Error al cargar Evaluaciones del atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
   }
   if (v === 'wellness' || v === 'stats') {
-    ensureGroupPersonalData(S.atletaView ? [S.atletaView.uid] : [])
+    ensureGroupPersonalData(uids)
       .then(renderMain)
       .catch((e)=>{ console.error('Error al cargar datos del atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
@@ -4541,6 +4904,15 @@ function renderAtletaRutina(a) {
     : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
 
   const sessionNames = getOrderedSessionNames(routine);
+  // Qué día le toca hoy al atleta según su calendario real (días de gimnasio
+  // asignados, o el nombre del día si son días de semana reales).
+  const todaySession = getTodaysRoutineSession(sessionNames, a.routineAssignedDate, a.trainingWeekdays);
+  // La primera vez que se entra a esta ficha (nadie tocó un desplegable a
+  // mano todavía) arrancamos con SOLO el día de hoy abierto, el resto
+  // colapsado — así no hay que buscarlo entre todos los días de la rutina.
+  if (!S._atletaRoutineCollapsedDays) {
+    S._atletaRoutineCollapsedDays = new Set(sessionNames.filter(n=>n!==todaySession));
+  }
   html += `<div class="admin-section">
     <div class="admin-item">
       <div>
@@ -4559,9 +4931,13 @@ function renderAtletaRutina(a) {
     ${sessionNames.map(sName => {
       const blocks = routine.sessions[sName] || [];
       const dayCollapsed = S._atletaRoutineCollapsedDays?.has(sName);
-      return `<div style="border-top:1px solid var(--border)">
+      const dayDone = !!(a._personal?.history?.[sessionKey(athletePreviewWeek, sName)]?.done);
+      return `<div style="border-top:1px solid var(--border)${sName===todaySession?';background:var(--accent-dim)':''}">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer" onclick="toggleAtletaRoutineDay('${sName}')">
-          <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em">${sName}</div>
+          <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px">
+            ${sName}${sName===todaySession?'<span style="font-size:9px;font-weight:800;background:var(--accent);color:#fff;padding:2px 6px;border-radius:10px;text-transform:none;letter-spacing:0">HOY</span>':''}
+            ${dayDone?'<span style="color:var(--green);font-size:13px">✓</span>':''}
+          </div>
           <span style="color:var(--text3);font-size:16px;transition:transform .15s;transform:rotate(${dayCollapsed?'-90':'0'}deg)">›</span>
         </div>
         ${dayCollapsed ? '' : (blocks.length ? blocks.map(b=>{
@@ -5192,7 +5568,7 @@ window.sendInAppReminder = sendInAppReminder;
 function renderAdmin() {
   switch(S.adminView) {
     case 'athletes':       return renderAdminAthletes();
-    case 'athlete_detail': return renderAthleteDetail();
+    case 'athlete_detail': return S.atletaView ? renderAtletaDetail(S.atletaView) : `<div class="empty-state">Error cargando perfil.</div>`;
     case 'routines':       return renderAdminRoutines();
     case 'routine_edit':   return renderRoutineEditor();
     case 'compare_athletes': return renderCompareAthletes();
@@ -5460,18 +5836,25 @@ async function adminOpenAthlete(uid) {
   }
   S.adminView='athlete_detail';
   S.currentView='admin';
+  S.atletaSubview = 'perfil';
   S._atletaRoutineCollapsedDays = null;
   S._atletaRoutineCollapsedBlocks = null;
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
   try {
-    const uSnap = await getDoc(doc(db,'users',uid));
-    const pSnap = await getDoc(doc(db,'personal',uid));
-    S.viewingAthlete = {
-      uid,
-      userData: uSnap.exists()?uSnap.data():{email:'—',name:'—'},
-      personal: pSnap.exists()?pSnap.data():{}
-    };
-  } catch(e) { S.viewingAthlete=null; }
+    await ensureAdminAthletes();
+    let a = S.adminAthletes.find(x=>x.uid===uid);
+    if(!a) {
+      // Por las dudas no esté todavía en la caché liviana de atletas — lo
+      // traemos y lo agregamos, para no duplicar la lógica de la ficha en
+      // dos modelos de datos distintos.
+      const uSnap = await getDoc(doc(db,'users',uid));
+      a = { uid, ...(uSnap.exists()?uSnap.data():{email:'—',name:'—'}) };
+      S.adminAthletes.push(a);
+    }
+    await ensureGroupPersonalData(getEffectiveGroupUids(a));
+    S.atletaView = a;
+    S.viewingAthlete = { uid, userData:a, personal:a._personal||{} };
+  } catch(e) { S.viewingAthlete=null; S.atletaView=null; }
   renderMain();
 }
 window.adminOpenAthlete=adminOpenAthlete;
@@ -5483,6 +5866,7 @@ function goBackFromAthleteDetail() {
   const ctx = S._athleteDetailReturnCtx;
   S._athleteDetailReturnCtx = null;
   S.viewingAthlete = null;
+  S.atletaView = null;
   if(ctx) {
     S.currentView = ctx.currentView;
     S.adminView = ctx.adminView;
@@ -5494,237 +5878,6 @@ function goBackFromAthleteDetail() {
   }
 }
 window.goBackFromAthleteDetail = goBackFromAthleteDetail;
-
-function renderAthleteDetail() {
-  if(!S.viewingAthlete) return `<div class="empty-state">Error cargando perfil.</div>`;
-  const {uid,userData,personal} = S.viewingAthlete;
-  const assigned = S.routines.find(r=>r.id===userData.assignedRoutine);
-
-  // Build history summary
-  const history = personal.history || {};
-  const wellness = personal.wellness || {};
-  const injuries = personal.injuries || {};
-
-  // Last 5 sessions with data
-  const sessions = Object.entries(history)
-    .filter(([,sd])=>sd.done)
-    .sort((a,b)=>b[0].localeCompare(a[0]))
-    .slice(0,5);
-
-  // Last 7 wellness entries
-  const wEntries = Object.entries(wellness)
-    .sort((a,b)=>b[0].localeCompare(a[0]))
-    .slice(0,7);
-
-  // Active injuries
-  const activeInj = Object.entries(injuries).filter(([,v])=>v.pain>0);
-  const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
-
-  // Assign routine options
-  const myTeam = userData.teamId ? S.teams.find(t=>t.id===userData.teamId) : null;
-  const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
-    <option value="">${myTeam?'— Usar la del equipo —':'— Sin rutina —'}</option>
-    ${S.routines.map(r=>`<option value="${r.id}" ${userData.assignedRoutine===r.id?'selected':''}>${r.name}</option>`).join('')}
-  </select>`;
-
-  // ── Resumen rápido: wellness de hoy + ACWR, para no tener que bucear ──
-  const today=new Date().toISOString().split('T')[0];
-  const todayW = wellness[today];
-  const {pct:todayPct, allFilled:todayFilled} = getWellnessScore(todayW);
-  const wState = getWellnessState(todayFilled?todayPct:null);
-  const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
-  const m = calcLoadMetrics(logs);
-  const acwrSt = getACWRStatus(m?.acwr??null, m?.daysOfHistory);
-  const activeInjCount = activeInj.length;
-
-  let html=`<div class="team-detail-header">
-    <button class="back-btn" onclick="goBackFromAthleteDetail()">‹</button>
-    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1">
-      ${avatarHtml(userData.name||userData.email, userData.color, 30, userData.photoUrl)}
-      ${userData.name||userData.email}
-    </div>
-    <button class="abtn" onclick="openWeeklyReport('${uid}')" title="Reporte semanal">📄 Reporte</button>
-  </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-    ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent)">${myTeam.name}</span>`:''}
-    ${userData.position?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${userData.position}</span>`:''}
-    ${userData.sport&&!myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${userData.sport}</span>`:''}
-  </div>
-  <div class="card" style="padding:14px 16px;margin-bottom:14px">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:10px">
-      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Equipo</div><div style="font-size:13px;font-weight:600">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}</div></div>
-      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Edad</div><div style="font-size:13px;font-weight:600">${userData.age?userData.age+' años':'—'}</div></div>
-      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Talla</div><div style="font-size:13px;font-weight:600">${userData.height?userData.height+' cm':'—'}</div></div>
-      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Peso</div><div style="font-size:13px;font-weight:600">${userData.weight?userData.weight+' kg':'—'}</div></div>
-    </div>
-  </div>
-
-  <!-- Resumen rápido -->
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
-    <div style="background:var(--bg2);padding:14px;text-align:center${todayFilled?';cursor:pointer':''}" ${todayFilled?`onclick="viewWellnessDay('${uid}','${today}')"`:''}>
-      <div style="font-size:20px;font-weight:800;color:${wState.color}" ${todayFilled?`data-countup="${todayPct}" data-suffix="%"`:''}>${todayFilled?todayPct+'%':'—'}</div>
-      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy</div>
-      <div style="display:flex;justify-content:center;margin-top:6px">${sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 48, 16)}</div>
-    </div>
-    <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${acwrSt.color}" ${m?.acwr!=null?`data-countup="${m.acwr}" data-decimals="2"`:''}>${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
-    </div>
-    <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${activeInjCount?'var(--red)':'var(--green)'}" data-countup="${activeInjCount||0}">${activeInjCount||'0'}</div>
-      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias activas</div>
-    </div>
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Tendencia — últimos 30 días</div>
-    <div style="padding:14px 16px;height:220px;position:relative">
-      <canvas id="athlete-trend-chart"></canvas>
-    </div>
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Perfil</div>
-    <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:10px">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Nombre</span>
-        <input id="edit-name-${uid}" value="${userData.name||''}" placeholder="Apellido y nombre" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Color</span>
-        ${TEAM_COLORS.map(c=>`<div onclick="setAthleteColor('${uid}','${c}')" style="width:20px;height:20px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${userData.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Posición</span>
-        ${(()=>{
-          const posOpts=getPositionOptionsForSport(myTeam?.sport);
-          if(posOpts) {
-            return `<select id="pos-sel-${uid}" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthletePosition('${uid}',this.value)">
-              <option value="">— Sin posición —</option>
-              ${posOpts.map(p=>`<option value="${p}" ${userData.position===p?'selected':''}>${p}</option>`).join('')}
-            </select>`;
-          }
-          return `<input id="pos-inp-${uid}" value="${userData.position||''}" placeholder="Ej: Base, Alero..." style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
-        })()}
-      </div>
-      ${!myTeam?.sport&&myTeam?`<div style="font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Equipo</span>
-        ${(()=>{
-          const instMap = getInstitutionsFromTeams();
-          const opts = [];
-          Object.keys(instMap).sort().forEach(inst=>{
-            [...instMap[inst].categories].sort().forEach(cat=>opts.push({inst,cat}));
-          });
-          const curVal = (userData.institution && userData.category) ? (userData.institution+'|||'+userData.category) : '';
-          return `<select id="reassign-sel-${uid}" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
-            <option value="">— Sin equipo (individual) —</option>
-            ${opts.map(o=>`<option value="${o.inst}|||${o.cat}" ${curVal===(o.inst+'|||'+o.cat)?'selected':''}>${o.inst} / ${o.cat}</option>`).join('')}
-          </select>
-          <button class="abtn abtn-p" onclick="saveReassignAthleteTeam('${uid}')">Guardar</button>`;
-        })()}
-      </div>
-      <div style="font-size:11px;color:var(--text3)">Se ven TODAS las categorías conocidas (existan o no como equipo todavía) — si elegís una que no existe aún, se crea sola. Sirve para mover a alguien de categoría, fusionar equipos duplicados, o pasarlo de individual a equipo (y viceversa).</div>
-    </div>
-  </div>
-
-  <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
-    <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:8px">
-      <div><div class="admin-item-lbl" style="color:var(--red)">Resetear cuenta</div><div class="admin-item-sub">Borra todo (nombre, equipo, tests, wellness) y lo manda al registro de cero la próxima vez que entre con el mismo mail. No borra el mail en sí — para eso, esa persona tiene que entrar y usar "Eliminar mi cuenta" en Ajustes.</div></div>
-      <button class="abtn abtn-d" onclick="resetAthleteAccount('${uid}')">Resetear cuenta</button>
-    </div>
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">${myTeam?'Rutina personalizada (opcional)':'Rutina asignada'}</div>
-    <div class="admin-item" style="gap:8px;flex-wrap:wrap">
-      ${routineOpts}
-      <button class="abtn abtn-p" onclick="assignRoutineToAthlete('${uid}')">Asignar</button>
-    </div>
-    ${assigned
-      ? `<div style="padding:8px 14px;font-size:12px;color:var(--green)">✓ Personalizada activa: ${assigned.name}${myTeam?' (reemplaza a la del equipo)':''}</div>`
-      : myTeam
-        ? `<div style="padding:8px 14px;font-size:12px;color:var(--accent)">↳ Hereda la rutina del equipo "${myTeam.name}" · sin personalización propia</div>`
-        : `<div style="padding:8px 14px;font-size:12px;color:var(--amber)">Sin rutina activa</div>`}
-    ${(assigned && userData.trainingWeekdays && userData.trainingWeekdays.length)
-      ? `<div style="padding:0 14px;font-size:12px;color:var(--text3)">Días de gimnasio: ${[...userData.trainingWeekdays].sort((x,y)=>x-y).map(d=>WEEKDAY_LABELS[d]).join(' · ')}</div>`
-      : ''}
-    <div class="admin-item">
-      <div><div class="admin-item-lbl">Semana ${personal.startDate?computeWeekFromDate(personal.startDate):(personal.currentWeek||1)}</div><div class="admin-item-sub">${personal.startDate?'Desde: '+personal.startDate:''}</div></div>
-      <div style="display:flex;gap:6px">
-        <button class="abtn" onclick="changeAthleteWeek('${uid}',-1)">‹</button>
-        <button class="abtn" onclick="changeAthleteWeek('${uid}',1)">›</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Load metrics from session logs -->
-  ${(()=>{
-    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin datos. El atleta debe cargar su carga de gimnasio/pelota/partido en Wellness.</div></div>';
-    const monSt=getMonotonyStatus(m.monotony);
-    return `<div class="admin-section">
-      <div class="admin-section-title">Control de carga interna</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border)">
-        <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
-          <div style="font-size:11px;color:${acwrSt.color}">${acwrSt.label}</div>
-        </div>
-        <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía</div>
-          <div style="font-size:11px;color:${monSt.color}">${monSt.label}</div>
-        </div>
-        <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800">${m.acuteUA}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana</div>
-          <div style="font-size:11px;color:var(--text3)">${m.sessions} sesiones</div>
-        </div>
-        <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800">${Math.round(m.strain)}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain</div>
-          <div style="font-size:11px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'}">${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
-        </div>
-      </div>
-    </div>`;
-  })()}
-
-  <div class="admin-section">
-    <div class="admin-section-title">Wellness — últimos 7 días</div>
-    ${wEntries.length?wEntries.map(([date,w])=>{
-      const {pct,allFilled}=getWellnessScore(w);
-      if(!allFilled) return '';
-      const col=getWellnessState(pct).color;
-      return `<div class="admin-item" style="cursor:pointer" onclick="viewWellnessDay('${uid}','${date}')">
-        <span style="font-size:12px;color:var(--text3)">${date}</span>
-        <span style="font-size:14px;font-weight:600;color:${col}">${pct}% ›</span>
-      </div>`;
-    }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div>`}
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Molestias activas</div>
-    ${activeInj.length?`<div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px">${activeInj.map(([id,inj])=>{
-      const zone=allZones.find(z=>z.id===id);
-      const sev = severityInfo(inj.severity) || severityInfo('leve');
-      return `<div style="background:var(--bg);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 12px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <div style="width:8px;height:8px;border-radius:50%;background:${sev.color};flex-shrink:0"></div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600">${zone?.label||id}${inj.type?' · '+INJURY_TYPES[inj.type]:''}</div>
-            <div style="font-size:11px;color:var(--text3)">Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}</div>
-          </div>
-        </div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica (la fijás vos, no depende del dolor del día)</div>
-        <div style="display:flex;gap:6px">
-          ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.color+'1a':'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
-        </div>
-      </div>`;
-    }).join('')}</div>`:`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin molestias registradas.</div>`}
-  </div>`;
-
-  return html;
-}
 
 // ── REPORTE SEMANAL EXPORTABLE ──────────────────────────────
 // Usa la función nativa de impresión del navegador (sin librerías nuevas):
@@ -6748,6 +6901,7 @@ async function saveStrengthEvals() {
       S._athleteEvalsCache[uid][t.id].push(rec);
       sortEvalRecsByDate(S._athleteEvalsCache[uid][t.id]);
     }
+    await syncEvalToOneRM(uid, t.id, v);
     saved++;
   }
   if(!saved) { showToast('Ingresá al menos un valor'); return; }
@@ -7762,19 +7916,8 @@ function setDashTeamFilter(v) { S.dashTeamFilter=v; updateDashboardAthleteList()
 window.setDashTeamFilter=setDashTeamFilter;
 
 async function adminOpenAthleteDash(uid) {
-  if(S.adminView !== 'athlete_detail') {
-    S._athleteDetailReturnCtx = {currentView:S.currentView, adminView:S.adminView, teamView:S.teamView, teamSubview:S.teamSubview};
-  }
-  S.adminView='athlete_detail';
-  S.currentView='admin';
   renderBottomBar();
-  document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
-  try {
-    const uSnap=await getDoc(doc(db,'users',uid));
-    const pSnap=await getDoc(doc(db,'personal',uid));
-    S.viewingAthlete={uid,userData:uSnap.exists()?uSnap.data():{email:'—',name:'—'},personal:pSnap.exists()?pSnap.data():{}};
-  } catch(e) { S.viewingAthlete=null; }
-  renderMain();
+  await adminOpenAthlete(uid);
 }
 window.adminOpenAthleteDash=adminOpenAthleteDash;
 
