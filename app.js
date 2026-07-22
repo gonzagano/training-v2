@@ -1486,6 +1486,13 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
       <span style="font-size:10px;color:var(--text3)">📈</span>
     </div>` : '';
   const prescNoteRow = prescNote ? `<div style="font-size:12px;color:var(--text3);font-style:italic;margin:2px 0 6px">${prescNote}</div>` : '';
+  // El tipo de intensidad (RPE o RIR) lo define la rutina por ejercicio — acá
+  // solo lo leemos para que la etiqueta, el rango del campo y el color
+  // reflejen cuál es, en vez de asumir siempre RPE. Van en escalas opuestas:
+  // RPE alto = esfuerzo alto (rojo); RIR bajo = esfuerzo alto (rojo) — por
+  // eso el color no puede usar la misma función para los dos.
+  const intensityType = wp.intensityType || ex.intensityType || 'RPE';
+  const isRIR = intensityType === 'RIR';
   return `<div class="ex-row" id="exrow-${ex.id}">
     <div class="ex-check ${d.checked?'checked':''}" onclick="toggleCheck('${ex.id}')"></div>
     <div class="ex-main">
@@ -1508,8 +1515,8 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
         ${isAthleteMode ? `
           <div class="field-box"><span class="field-lbl" style="color:var(--green)">Carga real (kg)</span>
             <input class="field-inp load" type="text" placeholder="—" value="${d.load||''}" onchange="setField('${ex.id}','load',this.value)" style="border-color:rgba(212,100,122,0.35)"></div>
-          <div class="field-box"><span class="field-lbl" style="color:var(--amber)">RPE ejercicio</span>
-            <input class="field-inp" type="number" min="1" max="10" placeholder="—" value="${d.rpe||''}" onchange="setField('${ex.id}','rpe',this.value);this.style.borderColor=getRPEColor(+this.value)" style="border-color:${d.rpe?getRPEColor(+d.rpe):'rgba(198,124,15,0.4)'}"></div>
+          <div class="field-box"><span class="field-lbl" style="color:var(--amber)">${intensityType} ejercicio</span>
+            <input class="field-inp" type="number" min="${isRIR?0:1}" max="10" placeholder="—" value="${d.rpe||''}" onchange="setField('${ex.id}','rpe',this.value);this.style.borderColor=getIntensityColor(+this.value,'${intensityType}')" style="border-color:${d.rpe?getIntensityColor(+d.rpe,intensityType):'rgba(198,124,15,0.4)'}"></div>
           ${vbtF}
         ` : `
           <div class="field-box"><span class="field-lbl">Series</span>
@@ -1521,7 +1528,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
           ${vbtF}
           <div class="field-box"><span class="field-lbl">Carga (kg)</span>
             <input class="field-inp load" type="text" placeholder="—" value="${d.load||''}" onchange="setField('${ex.id}','load',this.value)"></div>
-          <div class="field-box"><span class="field-lbl">RPE</span>
+          <div class="field-box"><span class="field-lbl">${intensityType}</span>
             <input class="field-inp" type="text" placeholder="—" value="${d.rpe||''}" onchange="setField('${ex.id}','rpe',this.value)"></div>
         `}
       </div>
@@ -2451,6 +2458,21 @@ function getRPEColor(v) {
   return '#3b7dd8';
 }
 window.getRPEColor=getRPEColor;
+
+// RPE y RIR van en escalas OPUESTAS: en RPE, un número alto es más esfuerzo
+// (rojo); en RIR, un número BAJO es más esfuerzo (menos repeticiones en
+// reserva = más cerca del fallo). Usar getRPEColor tal cual para un valor de
+// RIR pintaría un 1 (casi al fallo) de verde, como si fuera fácil — al revés
+// de lo que es.
+function getIntensityColor(v, type) {
+  if (type === 'RIR') {
+    if (v<=1) return '#e05030';
+    if (v<=3) return '#f0a030';
+    return '#34c97a';
+  }
+  return getRPEColor(v);
+}
+window.getIntensityColor = getIntensityColor;
 
 function updateUAPreview() {
   const rpe = parseInt(document.getElementById('sf-rpe')?.value||'0');
