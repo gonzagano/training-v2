@@ -2069,7 +2069,7 @@ function openProgressionModal(exId, exName) {
     const d = (S.history[sessionKey(w,S.currentSession)]||{}).exercises?.[exId] || {};
     const isCurrent = w===S.currentWeek;
     const prescTxt = [wp.series&&wp.series+' series', wp.reps&&wp.reps+' reps', wp.pct&&wp.pct+'%RM', wp.rpe&&(wp.intensityType||'RPE')+' '+wp.rpe].filter(Boolean).join(' · ') || '—';
-    const doneTxt = d.load||d.rpe ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?'RPE '+d.rpe:'') : (d.checked?'Hecho, sin datos':'—');
+    const doneTxt = d.load||d.rpe ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'Hecho, sin datos':'—');
     rows += `<div style="padding:10px 0;border-top:1px solid var(--border);${isCurrent?'background:var(--accent-dim);margin:0 -4px;padding-left:4px;padding-right:4px;border-radius:6px':''}">
       <div style="font-size:11px;font-weight:700;color:${isCurrent?'var(--accent)':'var(--text3)'};text-transform:uppercase;margin-bottom:3px">Semana ${w}${isCurrent?' · actual':''}</div>
       <div style="font-size:13px;color:var(--text)">Prescripto: ${prescTxt}</div>
@@ -2107,7 +2107,7 @@ function openAdminProgressionModal(uid, exId, exName, sName) {
     const isCurrent = w===athleteWeek;
     const prescTxt = [wp.series&&wp.series+' series', wp.reps&&wp.reps+' reps', wp.pct&&wp.pct+'%RM', wp.rpe&&(wp.intensityType||'RPE')+' '+wp.rpe].filter(Boolean).join(' · ') || '—';
     const hasData = !!(d.load || d.rpe);
-    const doneTxt = hasData ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?'RPE '+d.rpe:'') : (d.checked?'Marcado, sin carga/RPE':'Sin completar');
+    const doneTxt = hasData ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'Marcado, sin carga/RPE':'Sin completar');
     rows += `<div style="padding:10px 0;border-top:1px solid var(--border);${isCurrent?'background:var(--accent-dim);margin:0 -4px;padding-left:4px;padding-right:4px;border-radius:6px':''}">
       <div style="font-size:11px;font-weight:700;color:${isCurrent?'var(--accent)':'var(--text3)'};text-transform:uppercase;margin-bottom:3px">Semana ${w}${isCurrent?' · actual':''}</div>
       <div style="font-size:13px;color:var(--text)">Prescripto: ${prescTxt}</div>
@@ -5027,7 +5027,7 @@ function renderAtletaRutina(a) {
                     ${(hasCompletion || doneData.checked) ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó${doneWeek&&doneWeek!==athletePreviewWeek?' (Semana '+doneWeek+')':''}</span>
                       ${hasCompletion?`
-                        <span style="font-size:12px;font-weight:700;color:var(--green)">${doneData.load?doneData.load+'kg':''}${doneData.load&&doneData.rpe?' · ':''}${doneData.rpe?'RPE '+doneData.rpe:''}</span>
+                        <span style="font-size:12px;font-weight:700;color:var(--green)">${doneData.load?doneData.load+'kg':''}${doneData.load&&doneData.rpe?' · ':''}${doneData.rpe?(wp.intensityType||'RPE')+' '+doneData.rpe:''}</span>
                         ${doneData.checked?`<span style="font-size:10px;color:var(--green)">✓ marcado</span>`:''}
                       `:`<span style="font-size:12px;color:var(--text3)">✓ marcado, sin carga/RPE cargado</span>`}
                     </div>` : ''}
@@ -6586,6 +6586,16 @@ function setRExField(exId,blockId,sessionName,catIdx,field,val) {
   const b=getRBlock(blockId,sessionName); if(!b) return;
   const ex=b.categories[catIdx].exercises.find(e=>e.id===exId); if(!ex) return;
   ex[field]=val;
+  // El botón RPE/RIR es un único interruptor para todo el ejercicio, pero
+  // una vez que existe progresión semana a semana, cada semana guarda su
+  // PROPIA copia de intensityType (para que getExPrescriptionForWeek pueda
+  // leerla semana por semana sin lógica extra). Si acá solo actualizamos
+  // ex.intensityType, el botón cambia pero cada semana sigue mostrando el
+  // valor viejo con el que se creó la progresión — hay que propagarlo a
+  // todas las semanas ya cargadas.
+  if (field === 'intensityType' && ex.progression && ex.progression.length) {
+    ex.progression.forEach(wk => { wk.intensityType = val; });
+  }
 }
 window.setRExField=setRExField;
 
