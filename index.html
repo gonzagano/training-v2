@@ -126,7 +126,7 @@
       <!-- RPE -->
       <div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <label style="font-size:13px;font-weight:600;color:var(--text2)">RPE — Esfuerzo percibido</label>
+          <label style="font-size:13px;font-weight:600;color:var(--text2)">RPE — Esfuerzo percibido <span class="info-btn" onclick="openInfoModal('rpe')" title="Referencia">?</span></label>
           <span id="sf-rpe-val" style="font-size:20px;font-weight:800;color:var(--accent)">—</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-bottom:4px">
@@ -243,6 +243,17 @@
       <button class="abtn abtn-d" id="exform-delete-btn" onclick="deleteFromExFormModal()" style="display:none">Eliminar</button>
       <button class="abtn" onclick="closeExFormModal()">Cancelar</button>
       <button class="abtn abtn-p" onclick="saveLibExerciseModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Referencia / leyenda de métricas (ACWR, monotonía, RPE, índices de salto, etc.) -->
+<div class="video-modal" id="info-modal-overlay" onclick="closeInfoModalIfOutside(event)">
+  <div class="video-modal-box" style="max-width:540px;max-height:82vh;overflow-y:auto">
+    <div class="video-modal-title" id="info-modal-title">Referencia</div>
+    <div id="info-modal-body" style="font-size:13px;line-height:1.55;color:var(--text2)"></div>
+    <div class="video-modal-btns">
+      <button class="abtn abtn-p" onclick="closeInfoModal()">Entendido</button>
     </div>
   </div>
 </div>

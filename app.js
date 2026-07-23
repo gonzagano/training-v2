@@ -365,6 +365,114 @@ const BODY_ZONES = {
   ]
 };
 
+// ── REFERENCIA / LEYENDAS DE MÉTRICAS ───────────────────────────
+// Texto corto para el botón "?" que acompaña a cada número de carga o de
+// salto — pensado para que ni el atleta ni el entrenador tengan que
+// guiarse solo por el color. A propósito evita afirmar una sola lectura
+// posible para los índices derivados (ej. Índice Elástico): un mismo
+// número puede salir de historias muy distintas.
+function infoLegendRow(color, title, text) {
+  return `<div class="info-legend-row">
+    ${color?`<div class="info-legend-dot" style="background:${color}"></div>`:''}
+    <div><b>${title}</b> — ${text}</div>
+  </div>`;
+}
+
+const INFO_LEGENDS = {
+  wellness: { title:'Wellness (%)', html:
+    `<p style="margin-bottom:10px">Tu estado percibido de hoy, según sueño, estrés, fatiga, dolor muscular y ánimo. No mide lo que entrenaste, sino cómo te sentís vos — un valor bajo puede venir del entrenamiento, pero también de factores fuera del gimnasio.</p>`
+    + infoLegendRow('var(--green)','75-100%','en buena forma')
+    + infoLegendRow('var(--amber)','50-74%','normal')
+    + infoLegendRow('var(--red)','menos de 50%','fatigado — vale la pena prestarle atención')
+  },
+  ua: { title:'UA — Unidades Arbitrarias', html:
+    `<p>Mide cuánto exigió una sesión, combinando la duración neta × el esfuerzo percibido (RPE de sesión). La carga <b>aguda</b> es tu última semana; la <b>crónica</b> es el promedio de las últimas 4 — se usan juntas para calcular el ACWR.</p>`
+  },
+  acwr: { title:'ACWR — Carga aguda : crónica', html:
+    `<p style="margin-bottom:10px">Compara tu carga de esta semana contra tu promedio de las últimas 4. No es un semáforo infalible: un valor alto puede ser una progresión buscada o un salto brusco sin base — depende de tu planificación.</p>`
+    + infoLegendRow('var(--purple)','menor a 0.8','carga baja respecto a tu base')
+    + infoLegendRow('var(--green)','0.8 – 1.3','zona habitual')
+    + infoLegendRow('var(--amber)','1.3 – 1.5','subida a vigilar')
+    + infoLegendRow('var(--red)','mayor a 1.5','subida marcada — la literatura la asocia a mayor riesgo')
+    + `<p style="margin-top:10px;font-size:11px;color:var(--text3)">Necesita 21 días de historial para ser confiable.</p>`
+  },
+  monotony: { title:'Monotonía', html:
+    `<p style="margin-bottom:10px">Qué tan parecida es tu carga día a día en la semana. Un valor alto no es malo por sí solo (puede ser una semana de acumulación buscada), pero sostenido en el tiempo se asocia a mayor riesgo.</p>`
+    + infoLegendRow('var(--green)','menor a 1.5','con variación')
+    + infoLegendRow('var(--blue)','1.5 – 2.0','moderada')
+    + infoLegendRow('var(--red)','mayor a 2.0','alta — sesiones muy parecidas entre sí')
+  },
+  strain: { title:'Strain', html:
+    `<p style="margin-bottom:10px">Cruza carga semanal × monotonía. Sube cuando entrenás mucho y siempre igual al mismo tiempo — más una alerta combinada que un valor a minimizar siempre.</p>`
+    + infoLegendRow('var(--green)','menor a 2000','bajo')
+    + infoLegendRow('var(--amber)','2000 – 6000','moderado')
+    + infoLegendRow('var(--red)','mayor a 6000','alto')
+  },
+  rpe: { title:'RPE — Esfuerzo percibido (escala de Foster)', html:
+    `<p style="margin-bottom:10px">Cuánto esfuerzo sentiste — de 0 (reposo) a 10 (máximo). Es la misma escala tanto para calificar una sesión completa como un ejercicio puntual.</p>
+     <table style="width:100%;border-collapse:collapse;font-size:12px">
+       <tr><td style="padding:4px 8px;font-weight:700">0-1</td><td style="padding:4px 8px">Reposo / muy, muy suave</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">2-3</td><td style="padding:4px 8px">Suave</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">4-5</td><td style="padding:4px 8px">Moderado</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">6-7</td><td style="padding:4px 8px">Duro</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">8-9</td><td style="padding:4px 8px">Muy duro</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">10</td><td style="padding:4px 8px">Esfuerzo máximo</td></tr>
+     </table>`
+  },
+  rir: { title:'RIR — Repeticiones en Reserva', html:
+    `<p style="margin-bottom:10px">Cuántas repeticiones más podrías haber hecho en esa serie antes de fallar. Es un concepto propio, no "el RPE al revés".</p>
+     <table style="width:100%;border-collapse:collapse;font-size:12px">
+       <tr><td style="padding:4px 8px;font-weight:700">0</td><td style="padding:4px 8px">Fallo — no podrías hacer una repetición más</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">1</td><td style="padding:4px 8px">Podrías hacer 1 repetición más</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">2</td><td style="padding:4px 8px">Podrías hacer 2 repeticiones más</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">3</td><td style="padding:4px 8px">Podrías hacer 3 repeticiones más</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">4-6</td><td style="padding:4px 8px">Esfuerzo moderado, con margen</td></tr>
+       <tr><td style="padding:4px 8px;font-weight:700">6+</td><td style="padding:4px 8px">Esfuerzo liviano / activación</td></tr>
+     </table>`
+  },
+  ice: { title:'Índice Elástico', html:
+    `<p>Compara tu salto CMJ (con contramovimiento) contra tu SJ (Squat Jump o salto sin impulso). Un valor alto puede significar que aprovechás bien el CEA (ciclo estiramiento-acortamiento) de tus músculos y tendones. Valores bajos o negativos pueden ser una señal de que hay que mejorar el CEA — los trabajos pliométricos son una buena alternativa para esto.</p>`
+  },
+  coord: { title:'Coordinación de Brazos', html:
+    `<p>Compara tu salto Abalakov (con brazos) contra tu CMJ. Muestra cuánto te ayuda — o no — el braceo al saltar. Un valor bajo puede indicar una técnica de braceo a pulir, no necesariamente un déficit físico.</p>`
+  },
+  asym: { title:'Asimetría Unilateral', html:
+    `<p style="margin-bottom:10px">Marca la diferencia entre tu pierna derecha e izquierda en el CMJ unilateral.</p>`
+    + infoLegendRow('var(--green)','hasta 10% de asimetría','normal')
+    + infoLegendRow('var(--red)','más de 10% de asimetría','la literatura la asocia con mayor riesgo de lesión — candidato a trabajo unilateral compensatorio')
+  },
+};
+// Vista combinada para el toggle RPE/RIR de la rutina — un solo ícono ahí
+// muestra las dos tablas juntas, ya que en ese lugar puede estar activo
+// cualquiera de los dos.
+INFO_LEGENDS.intensity = { title:'RPE y RIR — Intensidad por serie', html:
+  `<div style="margin-bottom:14px">${INFO_LEGENDS.rpe.html}</div><hr style="border:none;border-top:1px solid var(--border);margin-bottom:14px">${INFO_LEGENDS.rir.html}`
+};
+window.INFO_LEGENDS = INFO_LEGENDS;
+
+// Botón "?" reutilizable — se arma como string HTML para meter inline en
+// cualquier template. Toca/clickea (no solo hover), así funciona igual en
+// celular que en computadora.
+function infoBtn(key) {
+  return `<span class="info-btn" onclick="event.stopPropagation();openInfoModal('${key}')" title="Referencia">?</span>`;
+}
+window.infoBtn = infoBtn;
+
+function openInfoModal(key) {
+  const def = INFO_LEGENDS[key];
+  if(!def) return;
+  document.getElementById('info-modal-title').textContent = def.title;
+  document.getElementById('info-modal-body').innerHTML = def.html;
+  document.getElementById('info-modal-overlay').classList.add('open');
+}
+window.openInfoModal = openInfoModal;
+
+function closeInfoModal() { document.getElementById('info-modal-overlay').classList.remove('open'); }
+window.closeInfoModal = closeInfoModal;
+
+function closeInfoModalIfOutside(e) { if(e.target===document.getElementById('info-modal-overlay')) closeInfoModal(); }
+window.closeInfoModalIfOutside = closeInfoModalIfOutside;
+
 // ── STATE ─────────────────────────────────────────────────────
 let S = {
   user: null, isAdmin: false, userData: null,
@@ -1334,8 +1442,8 @@ function renderMain() {
     case 'wellness': m.innerHTML=renderWellness(); setTimeout(()=>runCountUps(),30); break;
     case 'stats':    m.innerHTML=renderStats(); break;
     case 'teams':    m.innerHTML=renderTeams();
-      if(S.teamView && S.teamSubview==='stats') { const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid)); setTimeout(()=>{drawTeamInjuryChart(mem);drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); }
-      if(S.teamView && S.teamSubview==='reporte') { const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid)); setTimeout(()=>{drawTeamReportTrendChart(mem);drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');},80); }
+      if(S.teamView && S.teamSubview==='stats') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamInjuryChart(mem);drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); }
+      if(S.teamView && S.teamSubview==='reporte') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamReportTrendChart(mem);drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');},80); }
       break;
     case 'atletas':  m.innerHTML=renderAtletas(); setTimeout(drawAtletaTabCharts,80); break;
     case 'settings': m.innerHTML=renderSettings(); break;
@@ -2547,7 +2655,7 @@ function refreshWellnessScoreSection(wKey) {
   el.innerHTML = `
     <div class="hooper-score-box">
       <div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy ${infoBtn('wellness')}</div>
         <div class="hooper-score-val" style="color:${wState.color}" ${allFilled?`data-countup="${pct}" data-suffix="%"`:''}>${allFilled?pct+'%':'—'}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">≥75% bien · ≥50% normal · &lt;50% fatigado</div>
       </div>
@@ -2943,8 +3051,8 @@ function renderTeamDetail(team) {
     <button class="snav-tab ${sub==='reporte'?'active':''}" onclick="setTeamSubview('reporte')">Informe</button>
   </div>`;
 
-  if(sub==='wellness') html += renderGroupWellness(team.memberUids||[]);
-  else if(sub==='stats') html += renderGroupStats(team.memberUids||[]);
+  if(sub==='wellness') html += renderGroupWellness(getTeamStatsMemberUids(team));
+  else if(sub==='stats') html += renderGroupStats(getTeamStatsMemberUids(team));
   else if(sub==='evals') html += renderEvals();
   else if(sub==='calendario') html += renderTeamCalendar(team);
   else if(sub==='reporte') html += renderTeamReport(team);
@@ -2955,24 +3063,26 @@ function renderTeamDetail(team) {
 function setTeamSubview(v) {
   S.teamSubview = v;
   if (v==='evals') {
-    S.evalScopeUids = S.teamView?.memberUids || [];
+    S.evalScopeUids = getTeamStatsMemberUids(S.teamView);
     if (!S.evalScopeUids.includes(S.evalAthleteId)) S.evalAthleteId = S.evalScopeUids[0] || null;
     ensureAdminAthletes()
-      .then(()=>ensureAthleteEvalData(S.evalAthleteId))
+      .then(()=>{ S.evalScopeUids = getTeamStatsMemberUids(S.teamView); return ensureAthleteEvalData(S.evalAthleteId); })
       .then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); })
       .catch((e)=>{ console.error('Error al cargar Evaluaciones del equipo', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
   }
   if (v==='wellness' || v==='stats' || v==='reporte') {
-    ensureGroupPersonalData(S.teamView?.memberUids||[])
+    ensureGroupPersonalData(getTeamStatsMemberUids(S.teamView))
       .then(()=>{
         // Aprovechamos que acá ya se cargaron los datos personales de todo
-        // el plantel para refrescar el promedio de evaluaciones del equipo
+        // el plantel (+ cualquier atleta individual comparado con este
+        // equipo) para refrescar el promedio de evaluaciones del equipo
         // (ver syncTeamEvalAverages) — así "Comparar en equipo" del lado
         // del atleta tiene un número real para mostrar, sin que el atleta
         // necesite permiso para leer los datos de sus compañeros.
         if(v==='stats' && S.teamView) {
-          const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid));
+          const uids = getTeamStatsMemberUids(S.teamView);
+          const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid));
           syncTeamEvalAverages(S.teamView, mem);
         }
         renderMain();
@@ -3231,7 +3341,8 @@ window.setCalendarEventField=setCalendarEventField;
 // ── INFORME EXPORTABLE DEL EQUIPO ────────────────────────────
 // ══════════════════════════════════════════════════════════════
 function renderTeamReport(team) {
-  const members = (S.adminAthletes||[]).filter(a=>(team.memberUids||[]).includes(a.uid));
+  const reportUids = getTeamStatsMemberUids(team);
+  const members = (S.adminAthletes||[]).filter(a=>reportUids.includes(a.uid));
   if(!members.length) return `<div class="empty-state">No hay atletas en este equipo todavía.</div>`;
 
   const today = new Date().toISOString().split('T')[0];
@@ -3753,6 +3864,23 @@ function getEffectiveGroupUids(a) {
 }
 window.getEffectiveGroupUids = getEffectiveGroupUids;
 
+// La otra mitad de getEffectiveGroupUids: un atleta individual comparado con
+// un equipo (compareTeamId, elegido en su Perfil) pasa a contarse TAMBIÉN
+// dentro de las vistas agregadas propias de ese equipo — Wellness,
+// Estadísticas, Evaluaciones e Informe — como si fuera un integrante más,
+// hasta que se cambie o se saque la comparación desde su Perfil. No toca su
+// rutina/roster de entrenamiento: sigue siendo un programa aparte, esto es
+// solo para que sus números entren en los promedios y gráficos del equipo.
+function getTeamStatsMemberUids(team) {
+  if (!team) return [];
+  const base = team.memberUids || [];
+  const compared = (S.adminAthletes||[])
+    .filter(a => a.compareTeamId === team.id && !base.includes(a.uid))
+    .map(a => a.uid);
+  return compared.length ? [...base, ...compared] : base;
+}
+window.getTeamStatsMemberUids = getTeamStatsMemberUids;
+
 async function setAthleteName(uid, newName) {
   newName = (newName||'').trim();
   if(!newName) { showToast('El nombre no puede quedar vacío'); renderMain(); return; }
@@ -3986,21 +4114,21 @@ function renderTeamMetricsCard(title,members) {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:800;color:${wState.color}" ${avgW!==null?`data-countup="${avgW}" data-suffix="%"`:''}>${avgW!==null?avgW+'%':'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness sem.</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness sem. ${infoBtn('wellness')}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:800;color:${acwrSt.color}" ${avgAcwr!==null?`data-countup="${avgAcwr}" data-decimals="2"`:''}>${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
         <div style="font-size:9px;color:${acwrSt.color}">${acwrSt.label}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:800;color:${monSt.color}" ${avgMono!==null?`data-countup="${avgMono}" data-decimals="1"`:''}>${avgMono!==null?avgMono.toFixed(1):'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
         <div style="font-size:9px;color:${monSt.color}">${monSt.label}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:16px;font-weight:700" ${avgToday!==null?`data-countup="${Math.round(avgToday)}"`:''}>${avgToday!==null?Math.round(avgToday):'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga hoy (UA)</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga hoy (UA) ${infoBtn('ua')}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:16px;font-weight:700" ${avgAcute!==null?`data-countup="${Math.round(avgAcute)}"`:''}>${avgAcute!==null?Math.round(avgAcute):'—'}</div>
@@ -4235,7 +4363,10 @@ function renderTeamLeaderboard(members) {
           <div style="width:20px;text-align:center;font-size:13px;font-weight:700;color:${i===0?'var(--warm)':'var(--text3)'}">${i+1}</div>
           <div style="font-size:13px;font-weight:600">${r.name}</div>
         </div>
-        <div style="font-size:14px;font-weight:700;color:var(--accent)">${r.best}${testDef.unit}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${jumpLevelTagHtml(testId,r.best)}
+          <div style="font-size:14px;font-weight:700;color:var(--accent)">${r.best}${testDef.unit}</div>
+        </div>
       </div>`).join('') : `<div style="padding:4px 16px 14px;font-size:13px;color:var(--text3)">Sin registros de ${testDef.label} todavía.</div>`;
   }
   html += `</div>`;
@@ -4805,7 +4936,7 @@ async function openTeam(id) {
   await ensureAdminAthletes();
   // Wellness y lesiones de cada jugador, para mostrarlas directamente en el
   // roster (no solo en la ficha individual de cada uno).
-  if(S.teamView) await ensureGroupPersonalData(S.teamView.memberUids||[]);
+  if(S.teamView) await ensureGroupPersonalData(getTeamStatsMemberUids(S.teamView));
   renderMain();
 }
 window.openTeam=openTeam;
@@ -5131,12 +5262,12 @@ function renderPerfilTab(a) {
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
     <div style="background:var(--bg2);padding:14px;text-align:center${todayFilled?';cursor:pointer':''}" ${todayFilled?`onclick="viewWellnessDay('${uid}','${today}')"`:''}>
       <div style="font-size:20px;font-weight:800;color:${wState.color}" ${todayFilled?`data-countup="${todayPct}" data-suffix="%"`:''}>${todayFilled?todayPct+'%':'—'}</div>
-      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy</div>
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy ${infoBtn('wellness')}</div>
       <div style="display:flex;justify-content:center;margin-top:6px">${sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 48, 16)}</div>
     </div>
     <div style="background:var(--bg2);padding:14px;text-align:center">
       <div style="font-size:20px;font-weight:800;color:${acwrSt.color}" ${m?.acwr!=null?`data-countup="${m.acwr}" data-decimals="2"`:''}>${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
     </div>
     <div style="background:var(--bg2);padding:14px;text-align:center">
       <div style="font-size:20px;font-weight:800;color:${activeInjCount?'var(--red)':'var(--green)'}" data-countup="${activeInjCount||0}">${activeInjCount||'0'}</div>
@@ -5160,22 +5291,22 @@ function renderPerfilTab(a) {
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border)">
         <div style="background:var(--bg2);padding:14px 16px">
           <div style="font-size:22px;font-weight:800;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
           <div style="font-size:11px;color:${acwrSt.color}">${acwrSt.label}</div>
         </div>
         <div style="background:var(--bg2);padding:14px 16px">
           <div style="font-size:22px;font-weight:800;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
           <div style="font-size:11px;color:${monSt.color}">${monSt.label}</div>
         </div>
         <div style="background:var(--bg2);padding:14px 16px">
           <div style="font-size:22px;font-weight:800">${m.acuteUA}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana ${infoBtn('ua')}</div>
           <div style="font-size:11px;color:var(--text3)">${m.sessions} sesiones</div>
         </div>
         <div style="background:var(--bg2);padding:14px 16px">
           <div style="font-size:22px;font-weight:800">${Math.round(m.strain)}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain ${infoBtn('strain')}</div>
           <div style="font-size:11px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'}">${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
         </div>
       </div>
@@ -6824,7 +6955,7 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
           <option value="">—</option>
           ${RM_LIFTS.map(rm=>`<option value="${rm.id}" ${ex.rmLift===rm.id?'selected':''}>${rm.label}</option>`).join('')}
         </select>
-        <span style="font-size:10px;color:var(--text3);font-weight:600;margin-left:8px">Intensidad:</span>
+        <span style="font-size:10px;color:var(--text3);font-weight:600;margin-left:8px">Intensidad: ${infoBtn('intensity')}</span>
         <div class="intensity-sel">
           <button class="intensity-type-btn ${(ex.intensityType||'RPE')==='RPE'?'active':''}" onclick="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
           <button class="intensity-type-btn ${ex.intensityType==='RIR'?'active':''}" onclick="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'intensityType','RIR');this.classList.add('active');this.previousElementSibling.classList.remove('active')">RIR</button>
@@ -7153,9 +7284,110 @@ const EVAL_TESTS = [
   { id:'sj',      label:'SJ',                     unit:'cm', desc:'Squat Jump' },
   { id:'abalakov', label:'Abalakov',               unit:'cm', desc:'CMJ con brazos libres' },
   { id:'saltoH',  label:'Salto Horizontal',        unit:'cm', desc:'Salto horizontal a dos piernas' },
+  { id:'saltoAprox', label:'Salto de Aproximación', unit:'cm', desc:'Salto con carrera de aproximación (remate/bloqueo)' },
   { id:'cmj_der', label:'CMJ Unilateral Der.',     unit:'cm', desc:'CMJ una pierna derecha' },
   { id:'cmj_izq', label:'CMJ Unilateral Izq.',     unit:'cm', desc:'CMJ una pierna izquierda' },
 ];
+
+// ── TABLA DE REFERENCIA — NIVEL DE SALTO VERTICAL ───────────────
+// Tabla general de población (no diferenciada por deporte/edad/categoría a
+// propósito) — el propio prep físico ya sabe ajustar la lectura según cada
+// caso (un CMJ de 40cm no es lo mismo a los 15 años que a los 30). El SJ no
+// tiene tabla publicada propia: se estima a partir del CMJ (SJ suele rondar
+// 85-90% del CMJ, al no haber ciclo estiramiento-acortamiento) y se marca
+// bien claro como estimado, no como dato validado.
+const JUMP_LEVELS = ['Inicial/Joven','Intermedio','Avanzado','Profesional','Élite'];
+const JUMP_LEVEL_COLORS = {
+  'Inicial/Joven': {c:'var(--green)',  bg:'var(--green-dim)'},
+  'Intermedio':    {c:'var(--amber)',  bg:'var(--amber-dim)'},
+  'Avanzado':      {c:'var(--warm)',   bg:'var(--warm-dim)'},
+  'Profesional':   {c:'var(--red)',    bg:'var(--red-dim)'},
+  'Élite':         {c:'var(--purple)', bg:'var(--purple-dim)'},
+};
+const JUMP_BENCHMARKS = {
+  cmj: { label:'CMJ', estimated:false, bands:[
+    {level:'Inicial/Joven', min:0,  max:34, text:'25 – 34 cm'},
+    {level:'Intermedio',    min:35, max:44, text:'35 – 44 cm'},
+    {level:'Avanzado',      min:45, max:54, text:'45 – 54 cm'},
+    {level:'Profesional',   min:55, max:64, text:'55 – 64 cm'},
+    {level:'Élite',         min:65, max:Infinity, text:'65 – 70+ cm'},
+  ]},
+  // SJ estimado a partir de las mismas bandas de CMJ, pero con un % que baja
+  // a medida que sube el nivel: cuanto más alto salta un atleta en CMJ, más
+  // de esa altura suele venir del ciclo estiramiento-acortamiento (elasticidad)
+  // y no de fuerza concéntrica pura — así que la brecha SJ vs. CMJ tiende a
+  // ser mayor en los niveles más altos. Hasta Avanzado: 87%. Profesional: 84%.
+  // Élite: 80%. El techo de cada banda se arma contra el piso de la
+  // siguiente (no se calcula el propio techo con el % de esa banda) para que
+  // no queden bandas superpuestas entre Profesional y Élite.
+  sj: { label:'SJ (estimado)', estimated:true, bands:[
+    {level:'Inicial/Joven', min:0,  max:29, text:'22 – 29 cm'},
+    {level:'Intermedio',    min:30, max:38, text:'30 – 38 cm'},
+    {level:'Avanzado',      min:39, max:45, text:'39 – 45 cm'},
+    {level:'Profesional',   min:46, max:51, text:'46 – 51 cm'},
+    {level:'Élite',         min:52, max:Infinity, text:'52 – 56+ cm'},
+  ]},
+  abalakov: { label:'Abalakov', estimated:false, bands:[
+    {level:'Inicial/Joven', min:0,  max:39, text:'30 – 39 cm'},
+    {level:'Intermedio',    min:40, max:49, text:'40 – 49 cm'},
+    {level:'Avanzado',      min:50, max:59, text:'50 – 59 cm'},
+    {level:'Profesional',   min:60, max:74, text:'60 – 74 cm'},
+    {level:'Élite',         min:75, max:Infinity, text:'75 – 80+ cm'},
+  ]},
+  saltoAprox: { label:'Salto de Aproximación', estimated:false, bands:[
+    {level:'Inicial/Joven', min:0,  max:49, text:'35 – 49 cm'},
+    {level:'Intermedio',    min:50, max:59, text:'50 – 59 cm'},
+    {level:'Avanzado',      min:60, max:69, text:'60 – 69 cm'},
+    {level:'Profesional',   min:70, max:89, text:'70 – 89 cm'},
+    {level:'Élite',         min:90, max:Infinity, text:'90 – 110+ cm'},
+  ]},
+};
+window.JUMP_BENCHMARKS = JUMP_BENCHMARKS;
+
+// Nivel al que corresponde un valor de salto — se usa para el tag de color
+// que acompaña al número (ej. "34cm · Avanzado") en historial, ranking, etc.
+function getJumpLevel(testId, value) {
+  const def = JUMP_BENCHMARKS[testId];
+  if(!def || value==null || isNaN(value)) return null;
+  // Las bandas están en cm enteros, pero los valores reales vienen con
+  // decimales (ej. 47.7) — sin redondear antes, un valor así caía en el
+  // "hueco" entre el techo de una banda (47) y el piso de la siguiente (48)
+  // y el .find() no encontraba ninguna banda, así que por error terminaba
+  // siempre cayendo en la última (Élite), sin importar el valor real.
+  const rounded = Math.round(value);
+  const band = def.bands.find(b=>rounded>=b.min && rounded<=b.max) || def.bands[def.bands.length-1];
+  return { level:band.level, ...JUMP_LEVEL_COLORS[band.level] };
+}
+window.getJumpLevel = getJumpLevel;
+
+// Chip clickeable con el nivel, que abre la tabla completa para que quien no
+// entienda de dónde sale "Avanzado" pueda ir a ver la referencia.
+function jumpLevelTagHtml(testId, value) {
+  const lv = getJumpLevel(testId, value);
+  if(!lv) return '';
+  return `<span onclick="event.stopPropagation();openInfoModal('jumpTable')" style="cursor:pointer;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${lv.bg};color:${lv.c};white-space:nowrap">${lv.level}</span>`;
+}
+window.jumpLevelTagHtml = jumpLevelTagHtml;
+
+function buildJumpBenchmarkTableHtml() {
+  const rows = ['sj','cmj','abalakov','saltoAprox'].map(id=>JUMP_BENCHMARKS[id]);
+  let html = `<p style="margin-bottom:12px">Tabla general de población — no diferenciada por deporte, edad o categoría. Usala como referencia amplia, no como corte exacto: un mismo centímetro no significa lo mismo a los 15 años que a los 30.</p>`;
+  html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;text-align:center">
+    <thead><tr>
+      <th style="padding:6px 8px;text-align:left;background:var(--teal-dim);color:var(--teal)">Tipo de salto</th>
+      ${JUMP_LEVELS.map(lv=>`<th style="padding:6px 8px;background:${JUMP_LEVEL_COLORS[lv].bg};color:${JUMP_LEVEL_COLORS[lv].c};white-space:nowrap">${lv}</th>`).join('')}
+    </tr></thead>
+    <tbody>
+      ${rows.map(r=>`<tr>
+        <td style="padding:6px 8px;text-align:left;font-weight:700;background:var(--blue-dim);color:var(--blue);white-space:nowrap">${r.label}</td>
+        ${r.bands.map(b=>`<td style="padding:6px 8px;background:${JUMP_LEVEL_COLORS[b.level].bg};color:${JUMP_LEVEL_COLORS[b.level].c};font-weight:600;white-space:nowrap">${b.text}</td>`).join('')}
+      </tr>`).join('')}
+    </tbody>
+  </table></div>`;
+  return html;
+}
+window.buildJumpBenchmarkTableHtml = buildJumpBenchmarkTableHtml;
+INFO_LEGENDS.jumpTable = { title:'Nivel de Salto Vertical — tabla de referencia', html: buildJumpBenchmarkTableHtml() };
 
 // Tests de fuerza máxima (1RM). Reutilizan el mismo campo "height" que los tests
 // de salto por debajo (para poder reusar renderEvalHistory/drawEvalCharts sin
@@ -7423,10 +7655,10 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
 
   // RIGHT: metric cards + chart
   html += '<div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
-  html += metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'));
-  html += metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'));
-  html += metricCardHtml('ASIMETRÍA UNILAT.', '↔', asym!==null?asym+'%':'-- %', asym?(parseFloat(asym)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'));
-  html += metricCardHtml('MEJOR CMJ', '↑', bestCMJ?bestCMJ.height+' cm':'--', 'var(--text)', bestCMJ?'Récord personal · '+bestCMJ.date:'Sin datos');
+  html += metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'), 'ice');
+  html += metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'), 'coord');
+  html += metricCardHtml('ASIMETRÍA UNILAT.', '↔', asym!==null?asym+'%':'-- %', asym?(parseFloat(asym)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'), 'asym');
+  html += metricCardHtml('MEJOR CMJ', '↑', bestCMJ?bestCMJ.height+' cm':'--', 'var(--text)', bestCMJ?'Récord personal · '+bestCMJ.date+' '+jumpLevelTagHtml('cmj',bestCMJ.height):'Sin datos');
   html += '</div>';
 
   html += '</div>';
@@ -7435,8 +7667,8 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
   return html;
 }
 
-function metricCardHtml(label, icon, value, color, sub) {
-  return '<div class="metric-card"><div class="metric-card-label">'+label+' <span class="metric-card-icon">'+icon+'</span></div>'
+function metricCardHtml(label, icon, value, color, sub, infoKey) {
+  return '<div class="metric-card"><div class="metric-card-label">'+label+(infoKey?' '+infoBtn(infoKey):'')+' <span class="metric-card-icon">'+icon+'</span></div>'
     + '<div class="metric-card-value" style="font-size:28px;color:'+color+'">'+value+'</div>'
     + '<div class="metric-card-sub">'+sub+'</div></div>';
 }
@@ -7463,10 +7695,10 @@ function renderEvalHistory(edata, isDesktop, testList) {
     const cmjRecsH = edata['cmj']||[];
     const bestCMJH = cmjRecsH.length ? cmjRecsH.reduce((best,r)=>r.height>best.height?r:best, cmjRecsH[0]) : null;
     html += `<div style="grid-column:${isDesktop?'1/-1':'auto'};display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px">`
-      + metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'))
-      + metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'))
-      + metricCardHtml('ASIMETRÍA UNILAT.', '↔', asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'))
-      + metricCardHtml('MEJOR CMJ', '↑', bestCMJH?bestCMJH.height+' cm':'--', 'var(--text)', bestCMJH?'Récord personal · '+bestCMJH.date:'Sin datos')
+      + metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'), 'ice')
+      + metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'), 'coord')
+      + metricCardHtml('ASIMETRÍA UNILAT.', '↔', asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'), 'asym')
+      + metricCardHtml('MEJOR CMJ', '↑', bestCMJH?bestCMJH.height+' cm':'--', 'var(--text)', bestCMJH?'Récord personal · '+bestCMJH.date+' '+jumpLevelTagHtml('cmj',bestCMJH.height):'Sin datos')
       + '</div>';
   }
 
@@ -7495,7 +7727,9 @@ function renderEvalHistory(edata, isDesktop, testList) {
     html += '<div><div style="font-size:14px;font-weight:600">'+t.label+'</div>';
     if(last) {
       const lcolor = isAsym ? (last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)') : 'var(--accent)';
-      html += '<div style="font-size:13px;font-weight:700;color:'+lcolor+';margin-top:2px">'+last.height+t.unit+(isAsym?' · Der:'+last.der+' / Izq:'+last.izq:'')+'</div>';
+      html += '<div style="font-size:13px;font-weight:700;color:'+lcolor+';margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+        + '<span>'+last.height+t.unit+(isAsym?' · Der:'+last.der+' / Izq:'+last.izq:'')+'</span>'
+        + jumpLevelTagHtml(t.id,last.height) + '</div>';
     } else {
       html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Sin registros</div>';
     }
@@ -7513,7 +7747,9 @@ function renderEvalHistory(edata, isDesktop, testList) {
       recs.slice(0,5).forEach((r,i)=>{
         const isPR = maxHeight!==null && r.height===maxHeight;
         html += '<div class="eval-record"><div>'
-          + '<div class="eval-record-main">'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+(isPR?' <span style="color:var(--warm);font-size:11px;font-weight:700">🏆 PR</span>':'')+'</div>'
+          + '<div class="eval-record-main" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+          + '<span>'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+(isPR?' <span style="color:var(--warm);font-size:11px;font-weight:700">🏆 PR</span>':'')+'</span>'
+          + jumpLevelTagHtml(t.id,r.height) + '</div>'
           + '<div class="eval-record-date">'+r.date+(r.tof?' · '+r.tof+'ms':'')+'</div></div>';
         if(!isAsym) html += '<span class="eval-record-del" onclick="deleteEvalRecord(\''+t.id+'\','+(recsFwd.length-1-i)+')">×</span>';
         html += '</div>';
@@ -8447,17 +8683,17 @@ function renderAthleteHome() {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:14px 0">
       <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
         <div style="font-size:24px;font-weight:800;color:${acwrSt.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">ACWR</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">ACWR ${infoBtn('acwr')}</div>
         <div style="font-size:11px;color:${acwrSt.color};margin-top:2px">${acwrSt.label}</div>
       </div>
       <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
         <div style="font-size:24px;font-weight:800">${Math.round((metrics.monotony||0)*10)/10}</div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">Monotonía</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">Monotonía ${infoBtn('monotony')}</div>
         <div style="font-size:11px;color:${getMonotonyStatus(metrics.monotony).color};margin-top:2px">${getMonotonyStatus(metrics.monotony).label}</div>
       </div>
       <div style="text-align:center;padding:10px">
         <div style="font-size:24px;font-weight:800">${metrics.acuteUA}</div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">UA semana</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">UA semana ${infoBtn('ua')}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${metrics.sessions} sesiones</div>
       </div>
     </div>

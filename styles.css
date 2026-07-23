@@ -204,6 +204,14 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 .ex-actions{display:flex;gap:4px;flex-shrink:0}
 .ex-icon-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);cursor:pointer;color:var(--text3);font-size:11px;transition:all .15s;flex-shrink:0}
 .ex-icon-btn.has-video{background:rgba(255,0,0,0.08);border-color:rgba(255,60,60,0.25);color:#ff6b6b}
+/* Botón "?" de referencia — al lado de cualquier número de carga/salto que
+   necesite una leyenda. Toca/clickeable en vez de solo hover, para que
+   funcione igual en celular que en computadora. */
+.info-btn{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--bg4);color:var(--text3);font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;line-height:1;vertical-align:middle;user-select:none}
+.info-btn:hover{background:var(--accent);color:#fff}
+.info-legend-row{display:flex;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.info-legend-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.info-legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px}
 .ex-icon-btn.has-note{background:var(--accent-dim);border-color:rgba(30,42,82,0.25);color:var(--accent)}
 .ex-icon-btn.del-ex:hover{background:var(--red-dim);border-color:rgba(195,58,44,0.35);color:var(--red)}
 .ex-fields{display:flex;gap:5px;flex-wrap:wrap}
