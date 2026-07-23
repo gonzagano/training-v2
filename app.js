@@ -1333,7 +1333,10 @@ function renderMain() {
     case 'progress': m.innerHTML=renderProgress(); break;
     case 'wellness': m.innerHTML=renderWellness(); setTimeout(()=>runCountUps(),30); break;
     case 'stats':    m.innerHTML=renderStats(); break;
-    case 'teams':    m.innerHTML=renderTeams(); if(S.teamView && S.teamSubview==='stats') { const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid)); setTimeout(()=>{drawTeamInjuryChart(mem);drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); } break;
+    case 'teams':    m.innerHTML=renderTeams();
+      if(S.teamView && S.teamSubview==='stats') { const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid)); setTimeout(()=>{drawTeamInjuryChart(mem);drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); }
+      if(S.teamView && S.teamSubview==='reporte') { const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid)); setTimeout(()=>{drawTeamReportTrendChart(mem);drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');},80); }
+      break;
     case 'atletas':  m.innerHTML=renderAtletas(); setTimeout(drawAtletaTabCharts,80); break;
     case 'settings': m.innerHTML=renderSettings(); break;
     case 'notifications': m.innerHTML=renderNotifications(); break;
@@ -1838,6 +1841,8 @@ function openLib(blockId,catIdx) {
   document.getElementById('lib-search').value='';
   renderLibFilters();
   renderLibList();
+  S._newExTags = new Set();
+  renderTagChipPicker('lib-new-tags-picker','_newExTags');
   document.getElementById('lib-overlay').classList.add('open');
 }
 window.openLib=openLib;
@@ -1911,11 +1916,46 @@ function addFromLib(libId) {
 }
 window.addFromLib=addFromLib;
 
+// Selector de categorías compartido — se usa para crear ejercicios tanto
+// desde el picker rápido (sesión/rutina/día de equipo) como desde la
+// Biblioteca completa, así las dos vías tienen exactamente las mismas
+// categorías disponibles para elegir con un click (toggle), en vez de
+// depender de que el usuario tipee bien un texto libre a mano cada vez
+// (fuente típica de categorías duplicadas por errores de tipeo).
+function renderTagChipPicker(containerId, setKey) {
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  if(!S[setKey]) S[setKey] = new Set();
+  const selected = S[setKey];
+  const allTags = [...new Set([...getAllLibraryTags(), ...selected])].sort((a,b)=>a.localeCompare(b));
+  el.innerHTML = allTags.map(t=>`<span class="lib-filter ${selected.has(t)?'active':''}" onclick="toggleTagChip('${containerId}','${setKey}','${t.replace(/'/g,"\\'")}')">${t}</span>`).join('')
+    + `<input class="lib-new-inp" id="${containerId}-custom" placeholder="+ categoría nueva" style="width:150px;font-size:12px;padding:6px 10px" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomTagChip('${containerId}','${setKey}');}">`;
+}
+window.renderTagChipPicker = renderTagChipPicker;
+
+function toggleTagChip(containerId, setKey, tag) {
+  if(!S[setKey]) S[setKey] = new Set();
+  if(S[setKey].has(tag)) S[setKey].delete(tag); else S[setKey].add(tag);
+  renderTagChipPicker(containerId, setKey);
+}
+window.toggleTagChip = toggleTagChip;
+
+function addCustomTagChip(containerId, setKey) {
+  const inp = document.getElementById(containerId+'-custom');
+  const val = (inp?.value||'').trim();
+  if(!val) return;
+  if(!S[setKey]) S[setKey] = new Set();
+  S[setKey].add(val);
+  renderTagChipPicker(containerId, setKey);
+  const newInp = document.getElementById(containerId+'-custom');
+  if(newInp) newInp.focus();
+}
+window.addCustomTagChip = addCustomTagChip;
+
 function createAndAddExercise() {
   const name=document.getElementById('lib-new-name').value.trim();
   if(!name) return;
-  const tagsInp=document.getElementById('lib-new-tags');
-  const tags=tagsInp&&tagsInp.value.trim() ? tagsInp.value.split(',').map(t=>t.trim()).filter(Boolean) : [];
+  const tags=[...(S._newExTags||new Set())];
   const newLibEx={id:genId(),name,tags};
   S.library.push(newLibEx);
   if(S.libTarget) {
@@ -2925,13 +2965,44 @@ function setTeamSubview(v) {
   }
   if (v==='wellness' || v==='stats' || v==='reporte') {
     ensureGroupPersonalData(S.teamView?.memberUids||[])
-      .then(renderMain)
+      .then(()=>{
+        // Aprovechamos que acá ya se cargaron los datos personales de todo
+        // el plantel para refrescar el promedio de evaluaciones del equipo
+        // (ver syncTeamEvalAverages) — así "Comparar en equipo" del lado
+        // del atleta tiene un número real para mostrar, sin que el atleta
+        // necesite permiso para leer los datos de sus compañeros.
+        if(v==='stats' && S.teamView) {
+          const mem=(S.adminAthletes||[]).filter(a=>(S.teamView.memberUids||[]).includes(a.uid));
+          syncTeamEvalAverages(S.teamView, mem);
+        }
+        renderMain();
+      })
       .catch((e)=>{ console.error('Error al cargar datos del equipo', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
   }
   renderMain();
 }
 window.setTeamSubview = setTeamSubview;
+
+// Promedio del equipo por test de saltabilidad (mejor marca de cada atleta,
+// igual criterio que el ranking/radar) — se guarda en el propio documento
+// del equipo, que cualquier usuario logueado puede leer. Los atletas no
+// tienen permiso para leer los datos personales de sus compañeros uno por
+// uno, así que sin esto "Comparar en equipo" no tenía ningún dato real con
+// qué comparar.
+async function syncTeamEvalAverages(team, members) {
+  if(!team || !members.length) return;
+  const bestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
+  const avgs = {};
+  EVAL_TESTS.forEach(t=>{
+    const vals = members.map(a=>bestOf(a,t.id)).filter(v=>v!=null);
+    if(vals.length) avgs[t.id] = +(vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(1);
+  });
+  if(!Object.keys(avgs).length) return;
+  team.evalAverages = avgs;
+  try { await setDoc(doc(db,'teams',team.id), {evalAverages:avgs}, {merge:true}); } catch(e) { /* no crítico */ }
+}
+window.syncTeamEvalAverages = syncTeamEvalAverages;
 
 // ══════════════════════════════════════════════════════════════
 // ── CALENDARIO DEL EQUIPO (estilo Google Calendar) ───────────
@@ -3283,6 +3354,17 @@ function renderTeamReport(team) {
     <div style="background:#F0F3F9;border-left:3px solid #243B6B;border-radius:0 6px 6px 0;padding:12px 14px;margin-bottom:22px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#243B6B;margin-bottom:6px">Puntos clave</div>
       ${highlights.map(h=>`<div style="font-size:12px;line-height:1.6">${h}</div>`).join('')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px">
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px">Evolución del plantel (${periodDays} días)</div>
+        <div style="height:170px;position:relative"><canvas id="report-trend-chart"></canvas></div>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px">Cuadrante — CMJ vs. Índice Elástico</div>
+        <div style="height:170px;position:relative"><canvas id="report-quadrant-chart"></canvas></div>
+      </div>
     </div>
 
     <div style="font-size:13px;font-weight:700;margin-bottom:8px">Lesiones activas por gravedad</div>
@@ -4123,17 +4205,29 @@ function renderTeamLeaderboard(members) {
   const key = 'team-leaderboard';
   const collapsed = S.collapsedSections?.has(key);
   const testId = S.leaderboardTest || 'cmj';
+  // Por defecto siempre PR histórico (mejor marca alguna vez registrada) —
+  // es lo que se ve la primera vez que se abre este gráfico. "Último test"
+  // es una vista alternativa que el propio prep puede elegir, no al revés.
+  const mode = S.leaderboardMode || 'pr';
   const testDef = LEADERBOARD_TESTS.find(t=>t.id===testId);
   let html = `<div class="admin-section">${collapsibleHeader(key,'🏆 Ranking del equipo')}`;
   if(!collapsed) {
     const rows = members.map(a=>{
       const recs = a._personal?.evals?.[testId]||[];
-      const best = recs.length ? Math.max(...recs.map(r=>r.height)) : null;
+      if(!recs.length) return {name:a.name||a.email, uid:a.uid, best:null};
+      const best = mode==='ultimo'
+        ? sortEvalRecsByDate([...recs]).slice(-1)[0].height
+        : Math.max(...recs.map(r=>r.height));
       return {name:a.name||a.email, uid:a.uid, best};
     }).filter(r=>r.best!=null).sort((a,b)=>b.best-a.best);
 
     html += `<div style="padding:0 16px 12px;display:flex;gap:6px;flex-wrap:wrap">
       ${LEADERBOARD_TESTS.map(t=>`<button class="lib-filter ${testId===t.id?'active':''}" onclick="setLeaderboardTest('${t.id}')">${t.label}</button>`).join('')}
+    </div>
+    <div style="padding:0 16px 12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Ordenar por</span>
+      <button class="lib-filter ${mode==='pr'?'active':''}" onclick="setLeaderboardMode('pr')">PR histórico</button>
+      <button class="lib-filter ${mode==='ultimo'?'active':''}" onclick="setLeaderboardMode('ultimo')">Último test</button>
     </div>`;
     html += rows.length ? rows.map((r,i)=>`
       <div class="admin-item" style="cursor:pointer" onclick="adminOpenAthlete('${r.uid}')">
@@ -4152,6 +4246,9 @@ window.renderTeamLeaderboard = renderTeamLeaderboard;
 function setLeaderboardTest(id) { S.leaderboardTest = id; renderMain(); }
 window.setLeaderboardTest = setLeaderboardTest;
 
+function setLeaderboardMode(mode) { S.leaderboardMode = mode; renderMain(); }
+window.setLeaderboardMode = setLeaderboardMode;
+
 const RADAR_METRICS = [
   {id:'cmj', label:'CMJ'}, {id:'sj', label:'SJ'}, {id:'abalakov', label:'Abalakov'},
   {id:'rm_press_banca', label:'Banca'}, {id:'rm_peso_muerto', label:'Muerto'}, {id:'rm_sentadilla', label:'Sentadilla'},
@@ -4162,21 +4259,30 @@ function renderTeamRadarSection(members) {
   const collapsed = S.collapsedSections?.has(key);
   let html = `<div class="admin-section">${collapsibleHeader(key,'📡 Perfil de atleta (radar)')}`;
   if(!collapsed) {
-    if (members.length <= 1) {
-      // Con un solo atleta en el grupo, cada eje sería "% respecto a su
-      // propio mejor valor" — siempre 100%, no importa el nivel real. No
-      // tiene sentido mostrarlo así: hace falta más de un atleta (equipo, o
-      // comparar con un equipo) para que el radar diga algo real.
-      html += `<div style="padding:14px 16px;font-size:12px;color:var(--text3)">Hace falta más de un atleta en el grupo para comparar en el radar — un solo atleta siempre se vería al 100% en cada eje, comparado contra sí mismo.</div>`;
+    if (!members.length) {
+      html += `<div style="padding:14px 16px;font-size:12px;color:var(--text3)">Sin atletas para mostrar.</div>`;
     } else {
+      // Con un solo atleta (individual sin equipo, sin comparación elegida)
+      // no hay con quién comparar en un mismo momento — pero SÍ tiene
+      // sentido comparar al atleta contra sí mismo en el tiempo, así que
+      // forzamos ese modo en vez de no mostrar nada.
+      const soloAthlete = members.length === 1;
+      const mode = soloAthlete ? 'self' : (S.radarMode || 'equipo');
       const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
-      html += `<div style="padding:0 16px 12px">
+      const scaleLabel = soloAthlete ? 'su propio mejor valor registrado' : 'el mejor valor del equipo';
+      html += soloAthlete ? '' : `<div style="padding:0 16px 10px;display:flex;gap:6px">
+        <button class="lib-filter ${mode==='equipo'?'active':''}" onclick="setRadarMode('equipo')">vs. equipo</button>
+        <button class="lib-filter ${mode==='self'?'active':''}" onclick="setRadarMode('self')">vs. uno mismo</button>
+      </div>`;
+      html += members.length>1 ? `<div style="padding:0 16px 12px">
         <select class="abtn" style="width:100%;text-align:left" onchange="setRadarAthlete(this.value)">
           ${members.map(a=>`<option value="${a.uid}" ${athleteId===a.uid?'selected':''}>${a.name||a.email}</option>`).join('')}
         </select>
-      </div>
-      <div style="padding:0 16px 8px;height:270px;position:relative"><canvas id="team-radar-chart"></canvas></div>
-      <div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">Cada eje es el % respecto al mejor valor del equipo en esa métrica — así se pueden comparar cm y kg en un mismo gráfico.</div>`;
+      </div>` : '';
+      html += `<div style="padding:0 16px 8px;height:270px;position:relative"><canvas id="team-radar-chart"></canvas></div>
+      <div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">${mode==='equipo'
+        ? `Cada eje es el % respecto a ${scaleLabel} — línea llena: el atleta elegido. Punteada: promedio del resto del equipo.`
+        : `Cada eje es el % respecto a ${scaleLabel} — línea llena: su test más reciente. Punteada: su primer test registrado.`}</div>`;
     }
   }
   html += `</div>`;
@@ -4187,39 +4293,67 @@ window.renderTeamRadarSection = renderTeamRadarSection;
 function setRadarAthlete(uid) { S.radarAthleteId = uid; renderMain(); }
 window.setRadarAthlete = setRadarAthlete;
 
+function setRadarMode(mode) { S.radarMode = mode; renderMain(); }
+window.setRadarMode = setRadarMode;
+
 function drawTeamRadarChart(members) {
   if(typeof Chart==='undefined') return;
-  if(members.length <= 1) return; // ver nota en renderTeamRadarSection
+  if(!members.length) return;
   const canvas = document.getElementById('team-radar-chart');
   if(!canvas) return;
+  const soloAthlete = members.length === 1;
+  const mode = soloAthlete ? 'self' : (S.radarMode || 'equipo');
   const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
   const athlete = members.find(a=>a.uid===athleteId);
   if(!athlete) return;
 
   const bestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
+  const latestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; if(!r.length) return null; return sortEvalRecsByDate([...r]).slice(-1)[0].height; };
+  const earliestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; if(!r.length) return null; return sortEvalRecsByDate([...r])[0].height; };
+  const unitOf = (id) => id.startsWith('rm_') ? 'kg' : 'cm';
+
   const teamMax = {};
   RADAR_METRICS.forEach(m=>{ teamMax[m.id] = Math.max(0.01, ...members.map(a=>bestOf(a,m.id)||0)); });
-  const values = RADAR_METRICS.map(m=>{
-    const v = bestOf(athlete,m.id);
-    return v!=null ? Math.round((v/teamMax[m.id])*100) : 0;
-  });
+  const pct = (raw,id) => raw!=null ? Math.round((raw/teamMax[id])*100) : 0;
+
+  let rawA, rawB, labelA, labelB;
+  if(mode==='self') {
+    rawA = RADAR_METRICS.map(m=>latestOf(athlete,m.id));
+    rawB = RADAR_METRICS.map(m=>earliestOf(athlete,m.id));
+    labelA = 'Ahora'; labelB = 'Primer registro';
+  } else {
+    rawA = RADAR_METRICS.map(m=>bestOf(athlete,m.id));
+    rawB = RADAR_METRICS.map(m=>{
+      const vals = members.filter(a=>a.uid!==athlete.uid).map(a=>bestOf(a,m.id)).filter(v=>v!=null);
+      return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
+    });
+    labelA = athlete.name||athlete.email; labelB = 'Promedio del equipo';
+  }
+  const valuesA = RADAR_METRICS.map((m,i)=>pct(rawA[i],m.id));
+  const valuesB = RADAR_METRICS.map((m,i)=>pct(rawB[i],m.id));
+  // Si "primer registro" y "ahora" son el mismo único test cargado, dibujar
+  // dos líneas idénticas superpuestas no aporta nada — mostramos solo una.
+  const sameData = mode==='self' && rawA.every((v,i)=>v===rawB[i]);
+
+  const datasets = [
+    { label:labelA, data:valuesA, backgroundColor:'rgba(36,59,107,0.15)', borderColor:'#243B6B', borderWidth:2, pointBackgroundColor:'#243B6B', pointRadius:3, _raw:rawA },
+  ];
+  if(!sameData) datasets.push({ label:labelB, data:valuesB, backgroundColor:'rgba(122,131,148,0.06)', borderColor:'#7A8394', borderWidth:2, borderDash:[5,4], pointBackgroundColor:'#7A8394', pointRadius:3, _raw:rawB });
 
   try{ S.radarChartInstance?.destroy(); }catch(e){}
   S.radarChartInstance = new Chart(canvas, {
     type:'radar',
-    data:{
-      labels: RADAR_METRICS.map(m=>m.label),
-      datasets:[{
-        label: athlete.name||athlete.email,
-        data: values,
-        backgroundColor:'rgba(36,59,107,0.15)',
-        borderColor:'#243B6B', borderWidth:2,
-        pointBackgroundColor:'#243B6B', pointRadius:3,
-      }]
-    },
+    data:{ labels: RADAR_METRICS.map(m=>m.label), datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false} },
+      plugins:{
+        legend:{ display:true, labels:{color:'#4B5160', font:{size:10}, boxWidth:10} },
+        tooltip:{ callbacks:{ label:(ctx)=>{
+          const raw = ctx.dataset._raw?.[ctx.dataIndex];
+          const unit = unitOf(RADAR_METRICS[ctx.dataIndex].id);
+          return `${ctx.dataset.label}: ${raw!=null?raw+unit:'sin datos'} (${ctx.formattedValue}%)`;
+        } } }
+      },
       scales:{ r:{ min:0, max:100, ticks:{color:'#4B5160', backdropColor:'transparent', font:{size:9}, stepSize:25},
         grid:{color:'rgba(18,21,28,0.1)'}, angleLines:{color:'rgba(18,21,28,0.1)'},
         pointLabels:{color:'#1A1D26', font:{size:11,weight:600}} } }
@@ -4228,12 +4362,63 @@ function drawTeamRadarChart(members) {
 }
 window.drawTeamRadarChart = drawTeamRadarChart;
 
+// Métricas disponibles para cruzar en el cuadrante — antes era fijo CMJ vs
+// Índice Elástico; ahora el prep elige qué cruzar según lo que le interese
+// (fuerza vs. elasticidad, por ejemplo). Los tests crudos usan la mejor
+// marca histórica (mismo criterio que ranking/radar); los índices derivados
+// (elástico/coordinación) se calculan con el último test cargado de cada
+// componente, porque reflejan el estado actual, no un récord.
+const QUADRANT_METRICS = [
+  {id:'cmj', label:'CMJ', unit:'cm'},
+  {id:'sj', label:'SJ', unit:'cm'},
+  {id:'abalakov', label:'Abalakov', unit:'cm'},
+  {id:'rm_press_banca', label:'Press banca 1RM', unit:'kg'},
+  {id:'rm_peso_muerto', label:'Peso muerto 1RM', unit:'kg'},
+  {id:'rm_sentadilla', label:'Sentadilla 1RM', unit:'kg'},
+  {id:'ice', label:'Índice Elástico', unit:'%'},
+  {id:'coord', label:'Coord. de brazos', unit:'%'},
+];
+window.QUADRANT_METRICS = QUADRANT_METRICS;
+
+function quadrantMetricValue(a, id) {
+  const bestOf = (mid) => { const r=a._personal?.evals?.[mid]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
+  const lastOf = (mid) => { const r=a._personal?.evals?.[mid]||[]; if(!r.length) return null; return sortEvalRecsByDate([...r]).slice(-1)[0].height; };
+  if(id==='ice') {
+    const cmj=lastOf('cmj'), sj=lastOf('sj');
+    return (cmj!=null && sj) ? parseFloat(((cmj-sj)/sj*100).toFixed(1)) : null;
+  }
+  if(id==='coord') {
+    const abal=lastOf('abalakov'), cmj=lastOf('cmj');
+    return (abal!=null && cmj) ? parseFloat(((abal-cmj)/cmj*100).toFixed(1)) : null;
+  }
+  return bestOf(id);
+}
+window.quadrantMetricValue = quadrantMetricValue;
+
+function setQuadrantAxis(axis, id) {
+  if(axis==='x') S.quadrantX = id; else S.quadrantY = id;
+  renderMain();
+}
+window.setQuadrantAxis = setQuadrantAxis;
+
 function renderTeamQuadrantSection(members) {
   const key = 'team-quadrant';
   const collapsed = S.collapsedSections?.has(key);
   let html = `<div class="admin-section">${collapsibleHeader(key,'🎯 Cuadrante de entrenamiento')}`;
   if(!collapsed) {
-    html += `<div style="padding:0 16px 8px;font-size:12px;color:var(--text3)">Altura de CMJ vs. Índice Elástico — agrupa a tus atletas por lo que más necesitan entrenar.</div>
+    const xId = S.quadrantX || 'cmj';
+    const yId = S.quadrantY || 'ice';
+    const xDef = QUADRANT_METRICS.find(m=>m.id===xId) || QUADRANT_METRICS[0];
+    const yDef = QUADRANT_METRICS.find(m=>m.id===yId) || QUADRANT_METRICS[6];
+    html += `<div style="padding:0 16px 10px;display:flex;gap:8px;flex-wrap:wrap">
+      <select class="abtn" style="flex:1;min-width:140px;text-align:left" onchange="setQuadrantAxis('x',this.value)">
+        ${QUADRANT_METRICS.map(m=>`<option value="${m.id}" ${xId===m.id?'selected':''}>Eje X: ${m.label}</option>`).join('')}
+      </select>
+      <select class="abtn" style="flex:1;min-width:140px;text-align:left" onchange="setQuadrantAxis('y',this.value)">
+        ${QUADRANT_METRICS.map(m=>`<option value="${m.id}" ${yId===m.id?'selected':''}>Eje Y: ${m.label}</option>`).join('')}
+      </select>
+    </div>
+    <div style="padding:0 16px 8px;font-size:12px;color:var(--text3)">${xDef.label} vs. ${yDef.label} — agrupa a tus atletas por lo que más necesitan entrenar.</div>
     <div style="padding:0 16px 16px;height:280px;position:relative"><canvas id="team-quadrant-chart"></canvas></div>`;
   }
   html += `</div>`;
@@ -4241,24 +4426,26 @@ function renderTeamQuadrantSection(members) {
 }
 window.renderTeamQuadrantSection = renderTeamQuadrantSection;
 
-function drawTeamQuadrantChart(members) {
+function drawTeamQuadrantChart(members, canvasId, instanceKey, overrideX, overrideY) {
   if(typeof Chart==='undefined') return;
-  const canvas = document.getElementById('team-quadrant-chart');
+  canvasId = canvasId || 'team-quadrant-chart';
+  instanceKey = instanceKey || 'quadrantChartInstance';
+  const canvas = document.getElementById(canvasId);
   if(!canvas) return;
 
+  const xId = overrideX || S.quadrantX || 'cmj';
+  const yId = overrideY || S.quadrantY || 'ice';
+  const xDef = QUADRANT_METRICS.find(m=>m.id===xId) || QUADRANT_METRICS[0];
+  const yDef = QUADRANT_METRICS.find(m=>m.id===yId) || QUADRANT_METRICS[6];
+
   const points = members.map(a=>{
-    const cmjRecs = a._personal?.evals?.['cmj']||[];
-    const sjRecs = a._personal?.evals?.['sj']||[];
-    if(!cmjRecs.length || !sjRecs.length) return null;
-    const cmj = Math.max(...cmjRecs.map(r=>r.height));
-    const sjLast = sortEvalRecsByDate([...sjRecs]).slice(-1)[0];
-    const cmjLast = sortEvalRecsByDate([...cmjRecs]).slice(-1)[0];
-    if(!sjLast || !cmjLast) return null;
-    const ice = ((cmjLast.height-sjLast.height)/sjLast.height)*100;
-    return {x:cmj, y:parseFloat(ice.toFixed(1)), name:a.name||a.email};
+    const x = quadrantMetricValue(a, xId);
+    const y = quadrantMetricValue(a, yId);
+    if(x==null || y==null) return null;
+    return {x, y, name:a.name||a.email};
   }).filter(Boolean);
 
-  try{ S.quadrantChartInstance?.destroy(); }catch(e){}
+  try{ S[instanceKey]?.destroy(); }catch(e){}
   if(!points.length) return;
 
   const xs = points.map(p=>p.x), ys = points.map(p=>p.y);
@@ -4290,21 +4477,160 @@ function drawTeamQuadrantChart(members) {
     }
   };
 
-  S.quadrantChartInstance = new Chart(canvas, {
+  S[instanceKey] = new Chart(canvas, {
     type:'scatter',
     data:{ datasets:[{ data:points, backgroundColor:'#243B6B', pointRadius:5, pointHoverRadius:7 }] },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>points[ctx.dataIndex].name+': '+ctx.parsed.x+'cm, '+ctx.parsed.y+'%'}} },
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>points[ctx.dataIndex].name+': '+ctx.parsed.x+xDef.unit+', '+ctx.parsed.y+yDef.unit}} },
       scales:{
-        x:{ title:{display:true,text:'Altura CMJ (cm)',color:'#1A1D26',font:{size:10}}, ticks:{color:'#1A1D26',font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
-        y:{ title:{display:true,text:'Índice Elástico (%)',color:'#1A1D26',font:{size:10}}, ticks:{color:'#1A1D26',font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
+        x:{ title:{display:true,text:xDef.label+' ('+xDef.unit+')',color:'#1A1D26',font:{size:10}}, ticks:{color:'#1A1D26',font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
+        y:{ title:{display:true,text:yDef.label+' ('+yDef.unit+')',color:'#1A1D26',font:{size:10}}, ticks:{color:'#1A1D26',font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
       }
     },
     plugins:[quadrantLinesPlugin, pointLabelsPlugin]
   });
 }
 window.drawTeamQuadrantChart = drawTeamQuadrantChart;
+
+// Wellness y ACWR promedio del plantel, día a día — para el informe
+// imprimible del equipo (mismo criterio que drawAthleteTrendChart, pero
+// promediando entre todos los miembros en vez de un solo atleta, así el
+// informe muestra una tendencia real y no solo la foto del día en que se
+// generó.
+function drawTeamReportTrendChart(members, canvasId) {
+  if(typeof Chart==='undefined') return;
+  canvasId = canvasId || 'report-trend-chart';
+  const canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+
+  const DAYS = 30;
+  const labels=[], acwrData=[], wellnessData=[];
+  const today = new Date();
+  for(let i=DAYS-1;i>=0;i--){
+    const d=new Date(today); d.setDate(d.getDate()-i);
+    const dateStr=d.toISOString().split('T')[0];
+    labels.push(dateStr.slice(5));
+
+    const wPcts = members.map(a=>{
+      const { pct, allFilled } = getWellnessScore(a._personal?.wellness?.[dateStr]);
+      return allFilled ? pct : null;
+    }).filter(v=>v!=null);
+    wellnessData.push(wPcts.length ? Math.round(wPcts.reduce((s,v)=>s+v,0)/wPcts.length) : null);
+
+    const acwrVals = members.map(a=>{
+      const logs = (a._personal?.history?._sessionLogs)||[];
+      const m = calcLoadMetrics(logs.filter(l=>l.date<=dateStr));
+      return m?.acwr!=null ? m.acwr : null;
+    }).filter(v=>v!=null);
+    acwrData.push(acwrVals.length ? +(acwrVals.reduce((s,v)=>s+v,0)/acwrVals.length).toFixed(2) : null);
+  }
+  if(acwrData.every(v=>v===null) && wellnessData.every(v=>v===null)) return;
+
+  try{ S.reportTrendChartInstance?.destroy(); }catch(e){}
+  const gridColor='rgba(0,0,0,0.08)';
+  S.reportTrendChartInstance = new Chart(canvas, {
+    type:'line',
+    data:{ labels, datasets:[
+      {label:'Wellness % (plantel)',data:wellnessData,borderColor:'#1f7a4d',backgroundColor:'rgba(31,122,77,0.08)',yAxisID:'y',spanGaps:true,tension:.3,pointRadius:2,fill:true},
+      {label:'ACWR (plantel)',data:acwrData,borderColor:'#2f5fd8',backgroundColor:'rgba(47,95,216,0.08)',yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:2,fill:false},
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{labels:{color:'#111',font:{size:9},boxWidth:9}} },
+      scales:{
+        x:{ ticks:{color:'#111',font:{size:8},maxRotation:0,autoSkip:true,maxTicksLimit:6}, grid:{color:gridColor} },
+        y:{ position:'left', min:0, max:100, ticks:{color:'#1f7a4d',font:{size:9},stepSize:25}, grid:{color:gridColor} },
+        y1:{ position:'right', min:0, suggestedMax:2, ticks:{color:'#2f5fd8',font:{size:9}}, grid:{drawOnChartArea:false} },
+      }
+    }
+  });
+}
+window.drawTeamReportTrendChart = drawTeamReportTrendChart;
+
+// ── SEMÁFORO DEL PLANTEL (triage) ───────────────────────────────
+// Tabla compacta y ordenable para escanear todo el equipo de un vistazo:
+// quién tiene ACWR alto, wellness bajo o dolor reportado, sin entrar a cada
+// ficha una por una. Pensada para ser lo primero que se mira antes de una
+// sesión.
+function setTriageSort(key) {
+  if(S._triageSortKey===key) S._triageSortDir = (S._triageSortDir==='desc'?'asc':'desc');
+  else { S._triageSortKey = key; S._triageSortDir = key==='wellness' ? 'asc' : 'desc'; }
+  renderMain();
+}
+window.setTriageSort = setTriageSort;
+
+function renderTriageTable(members) {
+  const key = 'team-triage';
+  const collapsed = S.collapsedSections?.has(key);
+  let html = `<div class="admin-section">${collapsibleHeader(key,'🚦 Semáforo del plantel — quién necesita atención hoy')}`;
+  if(!collapsed) {
+    const sortKey = S._triageSortKey || 'acwr';
+    const sortDir = S._triageSortDir || 'desc';
+    const today = new Date().toISOString().split('T')[0];
+
+    let rows = members.map(a=>{
+      const summary = computeAthleteLoadSummary(a);
+      const injuries = getActiveInjuriesSummary(a._personal);
+      const sevRank = {grave:3, moderada:2, leve:1};
+      const worst = injuries.length ? injuries.reduce((w,i)=>(sevRank[i.severity]||1)>(sevRank[w.severity]||1)?i:w, injuries[0]) : null;
+      const w = a._personal?.wellness?.[today];
+      const lowFlags = [];
+      if(w?.estres!==undefined && w.estres<=2) lowFlags.push('😩 estrés');
+      if(w?.sueño_calidad!==undefined && w.sueño_calidad<=2) lowFlags.push('😴 sueño');
+      if(w?.dolor_muscular!==undefined && w.dolor_muscular<=2) lowFlags.push('💪 dolor');
+      return {a, summary, worst, lowFlags};
+    });
+
+    rows.sort((r1,r2)=>{
+      if(sortKey==='name') {
+        const v1=(r1.a.name||r1.a.email||'').toLowerCase(), v2=(r2.a.name||r2.a.email||'').toLowerCase();
+        return sortDir==='asc' ? v1.localeCompare(v2) : v2.localeCompare(v1);
+      }
+      const v1 = sortKey==='wellness' ? r1.summary.avgWellness : sortKey==='monotony' ? r1.summary.monotony : r1.summary.acwr;
+      const v2 = sortKey==='wellness' ? r2.summary.avgWellness : sortKey==='monotony' ? r2.summary.monotony : r2.summary.acwr;
+      // Sin datos siempre al final, sea cual sea la dirección del orden.
+      if(v1==null && v2==null) return 0;
+      if(v1==null) return 1;
+      if(v2==null) return -1;
+      return sortDir==='asc' ? v1-v2 : v2-v1;
+    });
+
+    const arrow = (k) => sortKey===k ? (sortDir==='asc'?' ↑':' ↓') : '';
+    html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:8px 10px;cursor:pointer;white-space:nowrap;color:var(--text2)" onclick="setTriageSort('name')">Atleta${arrow('name')}</th>
+        <th style="text-align:center;padding:8px 10px;cursor:pointer;white-space:nowrap;color:var(--text2)" onclick="setTriageSort('wellness')">Wellness${arrow('wellness')}</th>
+        <th style="text-align:center;padding:8px 10px;cursor:pointer;white-space:nowrap;color:var(--text2)" onclick="setTriageSort('acwr')">ACWR${arrow('acwr')}</th>
+        <th style="text-align:center;padding:8px 10px;cursor:pointer;white-space:nowrap;color:var(--text2)" onclick="setTriageSort('monotony')">Monoton.${arrow('monotony')}</th>
+        <th style="text-align:left;padding:8px 10px;white-space:nowrap;color:var(--text2)">Alertas de hoy</th>
+      </tr></thead>
+      <tbody>
+      ${rows.map(({a,summary,worst,lowFlags})=>{
+        const wState = getWellnessState(summary.avgWellness);
+        const acwrSt = getACWRStatus(summary.acwr, null);
+        const monSt = getMonotonyStatus(summary.monotony);
+        const worstColor = worst ? (severityInfo(worst.severity)||severityInfo('leve')).color : null;
+        return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
+          <td style="padding:8px 10px;font-weight:600;white-space:nowrap">${a.name||a.email}</td>
+          <td style="padding:8px 10px;text-align:center;font-weight:700;color:${wState.color}">${summary.avgWellness!=null?summary.avgWellness+'%':'—'}</td>
+          <td style="padding:8px 10px;text-align:center;font-weight:700;color:${acwrSt.color}">${summary.acwr!=null?summary.acwr.toFixed(2):'—'}</td>
+          <td style="padding:8px 10px;text-align:center;font-weight:700;color:${monSt.color}">${summary.monotony!=null?summary.monotony.toFixed(1):'—'}</td>
+          <td style="padding:8px 10px">
+            ${worst?`<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${worstColor}22;color:${worstColor};margin-right:4px;white-space:nowrap">🩹 ${worst.zoneLabel}</span>`:''}
+            ${lowFlags.map(f=>`<span style="font-size:10px;color:var(--text3);margin-right:6px;white-space:nowrap">${f}</span>`).join('')}
+            ${(!worst && !lowFlags.length)?'<span style="color:var(--text3)">—</span>':''}
+          </td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table></div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+window.renderTriageTable = renderTriageTable;
 
 function renderGroupStats(memberUids, opts) {
   const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
@@ -4322,9 +4648,14 @@ function renderGroupStats(memberUids, opts) {
     return cHtml;
   }
 
+  // 0) Semáforo del plantel — lo primero que se ve, para escanear en
+  // segundos quién necesita atención hoy (ACWR alto, wellness bajo, dolor
+  // reportado) sin tener que entrar atleta por atleta.
+  let html = members.length > 1 ? renderTriageTable(members) : '';
+
   // 1) Promedio general del equipo — no tiene sentido para un solo atleta
   // (sería literalmente la misma tarjeta repetida dos veces)
-  let html = members.length > 1 ? renderTeamMetricsCard('Promedio del equipo', members) : '';
+  html += members.length > 1 ? renderTeamMetricsCard('Promedio del equipo', members) : '';
 
   // 1b) Lesiones activas del plantel, por gravedad
   html += renderTeamInjuryChart(members);
@@ -4448,7 +4779,7 @@ function setTDExField(exId,blockId,teamId,dayIdx,ci,field,val){const b=getTDBloc
 window.setTDExField=setTDExField;
 function deleteTDEx(exId,blockId,teamId,dayIdx,ci){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;b.categories[ci].exercises=b.categories[ci].exercises.filter(e=>e.id!==exId);renderMain();}
 window.deleteTDEx=deleteTDEx;
-function openTDLib(blockId,teamId,dayIdx,ci){S.libTarget={blockId,catIdx:ci,teamId,dayIdx,isTD:true};S.activeFilters=new Set();document.getElementById('lib-search').value='';renderLibFilters();renderLibList();document.getElementById('lib-overlay').classList.add('open');}
+function openTDLib(blockId,teamId,dayIdx,ci){S.libTarget={blockId,catIdx:ci,teamId,dayIdx,isTD:true};S.activeFilters=new Set();document.getElementById('lib-search').value='';renderLibFilters();renderLibList();S._newExTags=new Set();renderTagChipPicker('lib-new-tags-picker','_newExTags');document.getElementById('lib-overlay').classList.add('open');}
 window.openTDLib=openTDLib;
 async function saveTeamDayBlocks(teamId,dayIdx){
   const team=S.teams.find(t=>t.id===teamId);if(!team)return;
@@ -4633,12 +4964,64 @@ function renderAtletas() {
 }
 window.renderAtletas = renderAtletas;
 
+// Lista ordenada de uids "hermanos" del atleta que se está por abrir — se
+// calcula ANTES de tocar S.currentView/adminView/teamView (con esos todavía
+// intactos sabemos de qué lista real vino el click: roster de un equipo,
+// pestaña Atletas, o Panel Admin › Atletas), para poder recorrerla con
+// flechas ‹ › sin volver a la lista en el medio.
+function computeAthleteSiblingUids() {
+  if (S.teamView) {
+    const team = S.teamView;
+    const linked = (S.adminAthletes||[]).filter(a=>(team.memberUids||[]).includes(a.uid));
+    const ordered = [];
+    (team.players||[]).forEach(p=>{
+      const m = linked.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
+      if(m && !ordered.includes(m.uid)) ordered.push(m.uid);
+    });
+    linked.forEach(a=>{ if(!ordered.includes(a.uid)) ordered.push(a.uid); });
+    return ordered;
+  }
+  if (S.currentView==='atletas') {
+    return (S.adminAthletes||[]).filter(a=>a.athleteType==='individual').map(a=>a.uid);
+  }
+  if (S.adminView==='athletes') {
+    const search=(S._athletesSearch||'').toLowerCase();
+    let list=S.adminAthletes||[];
+    if(search) list=list.filter(a=>(a.name||a.email||'').toLowerCase().includes(search));
+    return list.map(a=>a.uid);
+  }
+  return null;
+}
+window.computeAthleteSiblingUids = computeAthleteSiblingUids;
+
+// Mueve la ficha abierta al atleta anterior/siguiente dentro de la lista de
+// donde se entró (ver computeAthleteSiblingUids), preservando la subvista
+// activa (Perfil/Rutina/Wellness/Estadísticas/Evaluaciones) — así comparar
+// wellness de todo un plantel es cuestión de tocar "siguiente", no de volver
+// atrás y volver a entrar cada vez.
+function navigateAthleteSibling(delta) {
+  const list = S._athleteSiblingUids;
+  const curUid = (S.viewingAthlete && S.viewingAthlete.uid) || (S.atletaView && S.atletaView.uid);
+  if(!list || list.length<2 || !curUid) return;
+  const idx = list.indexOf(curUid);
+  if(idx===-1) return;
+  const nextUid = list[(idx+delta+list.length)%list.length];
+  if(nextUid===curUid) return;
+  const sub = S.atletaSubview;
+  if(S.currentView==='atletas') openAtleta(nextUid);
+  else adminOpenAthlete(nextUid);
+  S.atletaSubview = sub;
+}
+window.navigateAthleteSibling = navigateAthleteSibling;
+
 function openAtleta(uid) {
   const a = (S.adminAthletes || []).find(x => x.uid === uid);
   if (!a) return;
-  if(S.adminView !== 'athlete_detail') {
+  if(!S._inAthleteDetail) {
     S._athleteDetailReturnCtx = {currentView:'atletas', adminView:null, teamView:null, teamSubview:null};
+    S._athleteSiblingUids = computeAthleteSiblingUids();
   }
+  S._inAthleteDetail = true;
   S.atletaView = a;
   S.atletaSubview = 'perfil';
   S._atletaRoutineCollapsedDays = null;
@@ -4655,12 +5038,22 @@ function renderAtletaDetail(a) {
   const sub = S.atletaSubview || 'perfil';
   const myTeam = S.teams.find(t=>t.id===a.teamId);
   const sportLabel = capitalizeName(a.sport||'');
+  // Flechas para recorrer el plantel/lista sin volver atrás — solo aparecen
+  // si sabemos de qué lista se entró (ver computeAthleteSiblingUids).
+  const sibs = S._athleteSiblingUids;
+  const sibIdx = sibs ? sibs.indexOf(a.uid) : -1;
+  const sibNav = (sibs && sibs.length>1 && sibIdx>=0) ? `<div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
+      <button class="ex-icon-btn" onclick="navigateAthleteSibling(-1)" title="Atleta anterior"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <span style="font-size:10px;color:var(--text3);white-space:nowrap;padding:0 2px">${sibIdx+1}/${sibs.length}</span>
+      <button class="ex-icon-btn" onclick="navigateAthleteSibling(1)" title="Atleta siguiente"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
+    </div>` : '';
   let html = `<div class="team-detail-header">
     <button class="back-btn" onclick="goBackFromAthleteDetail()">‹</button>
-    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1">
+    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
       ${avatarHtml(a.name||a.email, a.color, 30, a.photoUrl)}
-      ${a.name || a.email}
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name || a.email}</span>
     </div>
+    ${sibNav}
     <button class="abtn" onclick="openWeeklyReport('${a.uid}')" title="Reporte semanal">📄 Reporte</button>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
@@ -5886,10 +6279,13 @@ window.drawCompareCharts=drawCompareCharts;
 async function adminOpenAthlete(uid) {
   // Guardamos desde dónde se abrió esta ficha (Dashboard, un equipo, la
   // lista de Atletas...) para que "volver" te lleve ahí y no siempre al
-  // mismo lugar fijo.
-  if(S.adminView !== 'athlete_detail') {
+  // mismo lugar fijo. Con el mismo contexto armamos la lista de "hermanos"
+  // para poder recorrerla con las flechas ‹ › sin pasar por la lista.
+  if(!S._inAthleteDetail) {
     S._athleteDetailReturnCtx = {currentView:S.currentView, adminView:S.adminView, teamView:S.teamView, teamSubview:S.teamSubview};
+    S._athleteSiblingUids = computeAthleteSiblingUids();
   }
+  S._inAthleteDetail = true;
   S.adminView='athlete_detail';
   S.currentView='admin';
   S.atletaSubview = 'perfil';
@@ -5921,6 +6317,8 @@ window.adminOpenAthlete=adminOpenAthlete;
 function goBackFromAthleteDetail() {
   const ctx = S._athleteDetailReturnCtx;
   S._athleteDetailReturnCtx = null;
+  S._athleteSiblingUids = null;
+  S._inAthleteDetail = false;
   S.viewingAthlete = null;
   S.atletaView = null;
   if(ctx) {
@@ -6720,6 +7118,8 @@ function openRoutineLib(blockId,sessionName,catIdx) {
   document.getElementById('lib-search').value='';
   renderLibFilters();
   renderLibList();
+  S._newExTags = new Set();
+  renderTagChipPicker('lib-new-tags-picker','_newExTags');
   document.getElementById('lib-overlay').classList.add('open');
 }
 window.openRoutineLib=openRoutineLib;
@@ -7188,18 +7588,37 @@ function renderAthleteTeamCompare(myData) {
     return html;
   }
 
+  const avgs = myTeam.evalAverages || {};
+  if(!Object.keys(avgs).length) {
+    html += '<div style="font-size:12px;color:var(--text3);margin-bottom:4px">'+myTeam.name+'</div>'
+      + '<div class="eval-no-data">Todavía no hay un promedio del equipo calculado. Se actualiza solo la próxima vez que tu entrenador abra las estadísticas del equipo.</div></div>';
+    return html;
+  }
+
   html += '<div style="font-size:12px;color:var(--text3);margin-bottom:14px">'+myTeam.name+'</div>';
-  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tu último valor vs. media del equipo (visual)</div>';
+  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tu mejor marca vs. promedio del equipo</div>';
 
   EVAL_TESTS.filter(t=>t.id!=='cmj_der' && t.id!=='cmj_izq').forEach(t=>{
+    const avg = avgs[t.id];
     const myRecs = myData[t.id]||[];
-    const myLast = myRecs.length ? myRecs[myRecs.length-1].height : null;
-    if(!myLast) return;
-    html += '<div style="margin-bottom:12px">'
-      + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">'
-      + '<span style="font-weight:500">'+t.label+'</span><span style="color:var(--accent);font-weight:700">'+myLast+' cm</span></div>'
-      + '<div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">'
-      + '<div style="height:100%;background:var(--accent);border-radius:3px;width:'+Math.min(100,myLast/60*100)+'%"></div></div></div>';
+    const myBest = myRecs.length ? Math.max(...myRecs.map(r=>r.height)) : null;
+    if(myBest==null && avg==null) return;
+    // Escala visual relativa a lo más alto entre mi marca y el promedio (con
+    // margen), en vez de un techo fijo inventado — así la barra siempre
+    // representa la proporción real entre los dos números, sea cm o kg.
+    const ceiling = Math.max(myBest||0, avg||0, 0.01) * 1.15;
+    const myPct = myBest!=null ? Math.min(100, (myBest/ceiling)*100) : 0;
+    const avgPct = avg!=null ? Math.min(100, (avg/ceiling)*100) : 0;
+    html += '<div style="margin-bottom:14px">'
+      + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px">'
+      + '<span style="font-weight:500">'+t.label+'</span>'
+      + '<span style="color:var(--text3)">'+(avg!=null?'equipo '+avg+t.unit:'sin promedio')+'</span></div>'
+      + '<div style="position:relative;height:8px;background:var(--bg3);border-radius:4px;overflow:visible;margin-bottom:2px">'
+      + '<div style="height:100%;background:var(--accent);border-radius:4px;width:'+myPct+'%"></div>'
+      + (avg!=null?'<div style="position:absolute;top:-3px;left:'+avgPct+'%;width:2px;height:14px;background:var(--text2)" title="Promedio del equipo"></div>':'')
+      + '</div>'
+      + '<div style="text-align:right;font-size:12px;font-weight:700;color:var(--accent)">'+(myBest!=null?myBest+t.unit:'sin datos')+'</div>'
+      + '</div>';
   });
 
   html += '</div>';
@@ -7549,7 +7968,9 @@ async function deleteEvalRecord(testId, idx) {
 window.deleteEvalRecord = deleteEvalRecord;
 
 function setLibFilter(tag) {
-  S._libViewFilter = (S._libViewFilter===tag) ? null : tag;
+  if(!S._libViewFilters) S._libViewFilters = new Set();
+  if(S._libViewFilters.has(tag)) S._libViewFilters.delete(tag);
+  else S._libViewFilters.add(tag);
   updateLibViewResults();
 }
 window.setLibFilter = setLibFilter;
@@ -8084,19 +8505,20 @@ window.renderLibraryView=renderLibraryView;
 // de búsqueda — así el input nunca pierde el foco mientras se escribe.
 function renderLibViewBody() {
   const search = S._libViewSearch||'';
-  const filter = S._libViewFilter||null;
+  if(!S._libViewFilters) S._libViewFilters = new Set();
+  const filters = S._libViewFilters;
   const allTags = [...new Set(S.library.flatMap(e=>e.tags||[]))].sort();
 
   let items = S.library;
   if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
     (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
-  if(filter) items = items.filter(e=>(e.tags||[]).includes(filter));
+  if(filters.size) items = items.filter(e=>[...filters].every(f=>e.tags?.includes(f)));
   items = [...items].sort((a,b)=>a.name.localeCompare(b.name));
 
-  return `<!-- Tag filters -->
+  return `<!-- Tag filters — multi-select: un click selecciona, otro click desselecciona -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-    <button class="lib-filter ${!filter?'active':''}" onclick="S._libViewFilter=null;updateLibViewResults()">Todos</button>
-    ${allTags.map(t=>'<button class="lib-filter '+(filter===t?'active':'')+'" onclick="setLibFilter(\''+t+'\')">' + t + '</button>').join('')}
+    <button class="lib-filter ${!filters.size?'active':''}" onclick="S._libViewFilters=new Set();updateLibViewResults()">Todos</button>
+    ${allTags.map(t=>'<button class="lib-filter '+(filters.has(t)?'active':'')+'" onclick="setLibFilter(\''+t+'\')">' + t + '</button>').join('')}
   </div>
 
   <!-- Exercise list -->
@@ -8130,30 +8552,60 @@ function updateLibViewResults() {
 }
 window.updateLibViewResults=updateLibViewResults;
 
-function addLibraryExercise() {
-  const name = prompt('Nombre del ejercicio:');
-  if(!name||!name.trim()) return;
-  const tagsRaw = prompt('Categorías separadas por coma (ej: Tren inferior,Fuerza):', '');
-  const tags = tagsRaw ? tagsRaw.split(',').map(t=>t.trim()).filter(Boolean) : [];
-  const newEx = {id:genId(), name:name.trim(), tags};
-  S.library.push(newEx);
-  scheduleSave();
-  showToast('✓ Ejercicio agregado');
-  renderMain();
+// Reemplaza los viejos prompt() de nombre/categorías por el mismo modal con
+// selector de categorías con un click que usa el resto de la app — así
+// crear/editar desde la Biblioteca completa tiene exactamente las mismas
+// funciones que crear un ejercicio nuevo desde una rutina o una sesión.
+function openLibExerciseModal(id) {
+  const ex = id ? S.library.find(e=>e.id===id) : null;
+  S._exFormEditId = id||null;
+  S._exFormTags = new Set(ex?.tags||[]);
+  document.getElementById('exform-modal-title').textContent = ex ? 'Editar ejercicio' : 'Nuevo ejercicio';
+  document.getElementById('exform-name-inp').value = ex?.name||'';
+  document.getElementById('exform-delete-btn').style.display = ex ? 'block' : 'none';
+  renderTagChipPicker('exform-tags-picker','_exFormTags');
+  document.getElementById('exform-overlay').classList.add('open');
 }
-window.addLibraryExercise=addLibraryExercise;
+window.openLibExerciseModal = openLibExerciseModal;
 
-function editLibraryExercise(id) {
-  const ex = S.library.find(e=>e.id===id); if(!ex) return;
-  const name = prompt('Nombre:', ex.name);
-  if(!name) return;
-  const tagsRaw = prompt('Categorías (separadas por coma):', (ex.tags||[]).join(','));
-  ex.name = name.trim();
-  ex.tags = tagsRaw ? tagsRaw.split(',').map(t=>t.trim()).filter(Boolean) : [];
+function closeExFormModal() { document.getElementById('exform-overlay').classList.remove('open'); }
+window.closeExFormModal = closeExFormModal;
+
+function closeExFormIfOutside(e) { if(e.target===document.getElementById('exform-overlay')) closeExFormModal(); }
+window.closeExFormIfOutside = closeExFormIfOutside;
+
+function saveLibExerciseModal() {
+  const name = document.getElementById('exform-name-inp').value.trim();
+  if(!name) { showToast('Ingresá un nombre'); return; }
+  const tags = [...(S._exFormTags||new Set())];
+  if(S._exFormEditId) {
+    const ex = S.library.find(e=>e.id===S._exFormEditId);
+    if(ex) { ex.name=name; ex.tags=tags; }
+  } else {
+    S.library.push({id:genId(), name, tags});
+  }
   scheduleSave();
+  closeExFormModal();
   showToast('✓ Guardado');
   renderMain();
 }
+window.saveLibExerciseModal = saveLibExerciseModal;
+
+function deleteFromExFormModal() {
+  if(!S._exFormEditId) return;
+  if(!confirm('¿Eliminar este ejercicio de la biblioteca?')) return;
+  S.library = S.library.filter(e=>e.id!==S._exFormEditId);
+  scheduleSave();
+  closeExFormModal();
+  showToast('Ejercicio eliminado');
+  renderMain();
+}
+window.deleteFromExFormModal = deleteFromExFormModal;
+
+function addLibraryExercise() { openLibExerciseModal(null); }
+window.addLibraryExercise=addLibraryExercise;
+
+function editLibraryExercise(id) { openLibExerciseModal(id); }
 window.editLibraryExercise=editLibraryExercise;
 
 function deleteLibraryExercise(id) {

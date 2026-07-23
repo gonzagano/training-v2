@@ -14,7 +14,7 @@
 <title>G-Metrics Performance Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260718k">
+<link rel="stylesheet" href="styles.css?v=20260722a">
 </head>
 <body>
 
@@ -183,10 +183,8 @@
     <div class="lib-list" id="lib-list"></div>
     <div class="lib-new-wrap" style="flex-direction:column;align-items:stretch;gap:6px">
       <input class="lib-new-inp" id="lib-new-name" placeholder="Crear ejercicio nuevo...">
-      <div style="display:flex;gap:6px">
-        <input class="lib-new-inp" id="lib-new-tags" placeholder="Categorías, separadas por coma (opcional)" style="flex:1">
-        <button class="lib-new-btn" onclick="createAndAddExercise()">+ Agregar</button>
-      </div>
+      <div id="lib-new-tags-picker" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;max-height:96px;overflow-y:auto"></div>
+      <button class="lib-new-btn" onclick="createAndAddExercise()">+ Agregar</button>
     </div>
   </div>
 </div>
@@ -234,6 +232,21 @@
   </div>
 </div>
 
+<!-- Crear/editar ejercicio (vista Biblioteca) -->
+<div class="video-modal" id="exform-overlay" onclick="closeExFormIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="exform-modal-title">Nuevo ejercicio</div>
+    <input class="video-url-inp" id="exform-name-inp" placeholder="Nombre del ejercicio">
+    <div style="font-size:12px;color:var(--text3);margin:10px 0 6px">Categorías — tocá para sumar o sacar</div>
+    <div id="exform-tags-picker" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;max-height:140px;overflow-y:auto"></div>
+    <div class="video-modal-btns">
+      <button class="abtn abtn-d" id="exform-delete-btn" onclick="deleteFromExFormModal()" style="display:none">Eliminar</button>
+      <button class="abtn" onclick="closeExFormModal()">Cancelar</button>
+      <button class="abtn abtn-p" onclick="saveLibExerciseModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Días de gimnasio (calendario semanal al asignar rutina) -->
 <div class="video-modal" id="weekday-assign-overlay" onclick="closeWeekdayAssignIfOutside(event)">
   <div class="video-modal-box">
@@ -252,6 +265,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <!-- App (JS separado) -->
-<script type="module" src="app.js?v=20260718k"></script>
+<script type="module" src="app.js?v=20260722a"></script>
 </body>
 </html>
