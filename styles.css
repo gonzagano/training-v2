@@ -37,6 +37,32 @@
   --sidebar-w:260px;
 }
 
+/* ── DARK THEME (opcional, Nocturne-derived) ── */
+[data-theme="dark"] {
+  --bg:#161826; --bg2:#1c1f30; --bg3:#242840; --bg4:#2c3149;
+  --border:rgba(233,233,237,0.08); --border2:rgba(233,233,237,0.15);
+  --text:#e9e9ed; --text2:#b7b9c6; --text3:#8d90a3;
+  --accent:#9184d9; --accent-dim:rgba(145,132,217,0.18); --accent-dim2:rgba(145,132,217,0.09);
+  --accent-hover:#a79bea;
+  --warm:#ff9e5c; --warm-dim:rgba(255,158,92,0.16);
+  --green:#3ddc84; --green-dim:rgba(61,220,132,0.16);
+  --amber:#f0a838; --amber-dim:rgba(240,168,56,0.16);
+  --red:#f2685c; --red-dim:rgba(242,104,92,0.16);
+  --blue:#5b8bf5; --blue-dim:rgba(91,139,245,0.16);
+  --purple:#a08ae0; --purple-dim:rgba(160,138,224,0.16);
+  --teal:#2dd4c0; --teal-dim:rgba(45,212,192,0.16);
+  --purple-dim2:rgba(145,132,217,0.09);
+}
+[data-theme="dark"] body{background:var(--bg)}
+[data-theme="dark"] .field-inp{background:var(--bg3)}
+[data-theme="dark"] .lib-search,[data-theme="dark"] .load-mins-inp{color:var(--text)}
+
+/* ── THEME SWITCH ─────────────────────────────── */
+.theme-switch{width:44px;height:26px;border-radius:20px;background:var(--bg4);border:1px solid var(--border2);position:relative;cursor:pointer;flex-shrink:0;transition:background .2s}
+.theme-switch.on{background:var(--accent)}
+.theme-switch-knob{width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,0.25)}
+.theme-switch.on .theme-switch-knob{left:20px}
+
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5;overflow:hidden}
 
@@ -138,7 +164,8 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 .metric-card-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
 .metric-card-value{font-family:'Barlow Condensed',sans-serif;font-size:34px;font-weight:700;color:var(--text);line-height:1}
 .metric-card-sub{font-size:12px;color:var(--text3);margin-top:6px}
-.metric-card-icon{opacity:.6}
+.metric-card-icon{width:26px;height:26px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;color:var(--text2);flex-shrink:0}
+.metric-card-icon svg{width:15px;height:15px}
 /* Desktop two-column layout — este sí es exclusivo de escritorio */
 @media(min-width:900px){
   .desktop-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
@@ -412,6 +439,21 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 .video-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:450;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px;backdrop-filter:blur(4px)}
 .video-modal.open{opacity:1;pointer-events:all}
 .video-modal-box{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);width:100%;max-width:400px;padding:18px}
+.video-modal-box.wide{max-width:900px}
+
+/* ── PROGRESSION TABLE (semanas en horizontal) ── */
+.prog-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--rsm)}
+.prog-table{border-collapse:collapse;width:100%;font-size:12.5px}
+.prog-table th,.prog-table td{padding:8px 12px;text-align:center;white-space:nowrap;border-bottom:1px solid var(--border)}
+.prog-table th{position:sticky;top:0;background:var(--bg3);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);z-index:1}
+.prog-table td:first-child,.prog-table th:first-child{position:sticky;left:0;background:var(--bg2);text-align:left;font-weight:600;color:var(--text2);z-index:2;box-shadow:1px 0 0 var(--border)}
+.prog-table th:first-child{background:var(--bg3);z-index:3}
+.prog-table th.cur,.prog-table td.cur{background:var(--accent-dim)}
+.prog-table th.cur{color:var(--accent)}
+.prog-table tr:last-child td{border-bottom:none}
+.prog-table .done-ok{color:var(--green);font-weight:700}
+.prog-table .done-partial{color:var(--amber)}
+.prog-table .done-none{color:var(--text3)}
 .video-modal-title{font-size:14px;font-weight:600;margin-bottom:10px}
 .video-url-inp{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 12px;color:var(--text);font-size:13px;outline:none;margin-bottom:10px;font-family:inherit}
 .video-url-inp:focus{border-color:var(--accent)}

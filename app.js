@@ -1,8 +1,23 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ── TEMA (claro/oscuro) ──────────────────────────────────────────
+// El modo oscuro es opcional: no toca el tema claro por defecto, solo
+// alterna un atributo que activa el bloque de variables oscuras en CSS.
+function getTheme() { return localStorage.getItem('gm-theme') || 'light'; }
+function toggleTheme() {
+  const next = getTheme()==='dark' ? 'light' : 'dark';
+  localStorage.setItem('gm-theme', next);
+  document.documentElement.setAttribute('data-theme', next);
+  renderMain();
+}
+window.getTheme = getTheme;
+window.toggleTheme = toggleTheme;
 
 const firebaseConfig = {
   apiKey: "AIzaSyA_GNkUG63pSMNU1aNvAXM-61jVHbwuGQ0",
@@ -16,6 +31,56 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
 const db = getFirestore(fbApp);
+const fns = getFunctions(fbApp);
+
+// ── PUSH NOTIFICATIONS (Firebase Cloud Messaging) ────────────────
+// IMPORTANTE — antes de que esto funcione en producción hace falta:
+//  1) Generar la "Web Push certificate" (clave VAPID) en Firebase Console →
+//     Project Settings → Cloud Messaging → Web Push certificates, y
+//     pegarla en VAPID_KEY más abajo.
+//  2) Deployar la Cloud Function functions/index.js (ver ese archivo) —
+//     el navegador del admin NO puede disparar el push directo, tiene
+//     que hacerlo un backend con la Admin SDK.
+const VAPID_KEY = 'PEGAR_VAPID_KEY_ACA';
+let messagingInstance = null;
+function getMessagingInstance() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  if (!messagingInstance) { try { messagingInstance = getMessaging(fbApp); } catch(e) { return null; } }
+  return messagingInstance;
+}
+async function enablePushNotifications() {
+  if (!('Notification' in window)) { showToast('Este navegador no soporta notificaciones'); return; }
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { showToast('Permiso de notificaciones denegado'); return; }
+    const reg = await navigator.serviceWorker.ready;
+    const msg = getMessagingInstance();
+    if (!msg) { showToast('Push no disponible en este navegador'); return; }
+    const token = await getToken(msg, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) { showToast('No se pudo generar el token'); return; }
+    await setDoc(doc(db,'users', S.user.uid), { fcmTokens: arrayUnion(token) }, { merge: true });
+    if(!S.userData) S.userData = {};
+    if(!S.userData.fcmTokens) S.userData.fcmTokens = [];
+    if(!S.userData.fcmTokens.includes(token)) S.userData.fcmTokens.push(token);
+    S.pushEnabled = true;
+    showToast('✓ Notificaciones activadas');
+    renderMain();
+  } catch(e) { console.error(e); showToast('Error activando notificaciones'); }
+}
+window.enablePushNotifications = enablePushNotifications;
+// Notificación en foreground: FCM no la muestra sola con la app abierta,
+// así que la disparamos a mano (y refrescamos el listado in-app).
+function wirePushForeground() {
+  const msg = getMessagingInstance();
+  if (!msg) return;
+  onMessage(msg, (payload) => {
+    const n = payload.notification || {};
+    if (Notification.permission === 'granted') {
+      new Notification(n.title || 'G-Metrics', { body: n.body || '', icon: './icons/icon-192.png' });
+    }
+    showToast('🔔 ' + (n.title || 'Nueva notificación'));
+  });
+}
 
 // ── ADMIN EMAIL (el tuyo) ─────────────────────────────────────
 const ADMIN_EMAIL = "gonzaloganora@gmail.com";
@@ -595,6 +660,7 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById('app').style.display = 'flex';
   S.user = user;
   S.isAdmin = user.email === ADMIN_EMAIL;
+  wirePushForeground();
 
   // Load user data from Firestore
   const uRef = doc(db, 'users', user.uid);
@@ -2210,26 +2276,88 @@ function findExInAssignedRoutine(exId) {
 }
 window.findExInAssignedRoutine = findExInAssignedRoutine;
 
+// Toggle micro/macrociclo en la ficha de rutina del atleta (vista admin) —
+// microciclo = semana puntual con estética de campos; macrociclo = todas
+// las semanas en tabla horizontal. Solo aplica a la vista admin.
+function setAtletaRoutineCicloView(mode) {
+  S._atletaRoutineCicloView = mode;
+  renderMain();
+}
+window.setAtletaRoutineCicloView = setAtletaRoutineCicloView;
+
+// Permite al admin corregir carga/RPE que el atleta cargó mal — escribe
+// directo en el historial personal del atleta (mismo documento que él usa).
+async function adminSetExerciseField(uid, wKey, sName, exId, field, value) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid) || (S.viewingAthlete?.uid===uid ? S.viewingAthlete : null);
+  if(!a) return;
+  if(!a._personal) a._personal = {};
+  if(!a._personal.history) a._personal.history = {};
+  const sk = sessionKey(wKey, sName);
+  if(!a._personal.history[sk]) a._personal.history[sk] = {};
+  if(!a._personal.history[sk].exercises) a._personal.history[sk].exercises = {};
+  if(!a._personal.history[sk].exercises[exId]) a._personal.history[sk].exercises[exId] = {};
+  const rec = a._personal.history[sk].exercises[exId];
+  const num = value===''? null : parseDecimal(value);
+  rec[field] = (num===null || isNaN(num)) ? null : num;
+  if(rec.load || rec.rpe) rec.checked = true;
+  try {
+    await setDoc(doc(db,'personal',uid), {history:a._personal.history}, {merge:true});
+    showToast('✓ Guardado');
+  } catch(e) { showToast('Error al guardar'); }
+  renderMain();
+}
+window.adminSetExerciseField = adminSetExerciseField;
+
+// Tabla de progresión semana×semana en horizontal: cada columna es una
+// semana, cada fila una métrica (series/reps/%RM/intensidad/completó) —
+// así se puede leer de un vistazo cómo progresa el plan y qué pasó
+// realmente, sin tener que scrollear una lista vertical semana por semana.
+function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx) {
+  const weeks = Array.from({length:lastWeek}, (_,i)=>i+1);
+  const rowsOf = weeks.map(w => getWeekData(w));
+  const anyPct = rowsOf.some(r=>r.wp.pct);
+  const anyNote = rowsOf.some(r=>r.wp.note);
+  const head = weeks.map((w,i)=>`<th class="${w===currentWeek?'cur':''}">S${w}${w===currentWeek?' ·':''}</th>`).join('');
+  const rowSeries = weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}">${rowsOf[i].wp.series||'—'}</td>`).join('');
+  const rowReps = weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}">${rowsOf[i].wp.reps||'—'}</td>`).join('');
+  const rowPct = weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}">${rowsOf[i].wp.pct?rowsOf[i].wp.pct+'%':'—'}</td>`).join('');
+  const rowInt = weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}">${rowsOf[i].wp.rpe?(rowsOf[i].wp.intensityType||'RPE')+' '+rowsOf[i].wp.rpe:'—'}</td>`).join('');
+  const rowDone = weeks.map((w,i)=>{
+    const d = rowsOf[i].d, hasData = !!(d.load||d.rpe);
+    const cls = hasData?'done-ok':(d.checked?'done-partial':'done-none');
+    if (editCtx) {
+      const base = `adminSetExerciseField('${editCtx.uid}',${w},'${editCtx.sName.replace(/'/g,"\\'")}','${editCtx.exId}'`;
+      return `<td class="${w===currentWeek?'cur':''}"><div style="display:flex;gap:3px;justify-content:center;align-items:center">
+        <input type="number" value="${d.load||''}" placeholder="kg" onchange="${base},'load',this.value)" style="width:44px;font-size:11.5px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 2px;color:var(--text)">
+        <input type="number" value="${d.rpe||''}" placeholder="${(rowsOf[i].wp.intensityType||'RPE').slice(0,3)}" onchange="${base},'rpe',this.value)" style="width:36px;font-size:11.5px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 2px;color:var(--text)">
+      </div></td>`;
+    }
+    const txt = hasData ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(rowsOf[i].wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'✓ sin datos':'—');
+    return `<td class="${w===currentWeek?'cur':''} ${cls}">${txt}</td>`;
+  }).join('');
+  const rowNote = anyNote ? `<tr><td>Nota</td>${weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}" style="white-space:normal;max-width:140px;font-size:11.5px;color:var(--text3)">${rowsOf[i].wp.note||''}</td>`).join('')}</tr>` : '';
+  const athleteNoteRows = rowsOf.map((r,i)=>r.d.athleteNote?`<div style="font-size:12px;color:var(--amber);margin-top:6px"><b>S${weeks[i]}:</b> 📝 ${r.d.athleteNote}</div>`:'').filter(Boolean).join('');
+  return `<div class="prog-table-wrap"><table class="prog-table"><thead><tr><th>Semana</th>${head}</tr></thead><tbody>
+    <tr><td>Series</td>${rowSeries}</tr>
+    <tr><td>Reps</td>${rowReps}</tr>
+    ${anyPct?`<tr><td>%RM</td>${rowPct}</tr>`:''}
+    <tr><td>Intensidad</td>${rowInt}</tr>
+    <tr><td>Completó</td>${rowDone}</tr>
+    ${rowNote}
+  </tbody></table></div>${athleteNoteRows?`<div style="margin-top:10px">${athleteNoteRows}</div>`:''}`;
+}
+
 function openProgressionModal(exId, exName) {
   const ex = findExInAssignedRoutine(exId);
   const routine = S.assignedRoutine;
   const durationWeeks = routine?.durationWeeks || 1;
   const lastWeek = Math.max(durationWeeks, S.currentWeek);
   document.getElementById('progression-modal-title').textContent = 'Progresión · ' + exName;
-  let rows = '';
-  for(let w=1; w<=lastWeek; w++) {
-    const wp = ex ? getExPrescriptionForWeek(ex, w) : {series:'',reps:'',pct:'',rpe:''};
-    const d = (S.history[sessionKey(w,S.currentSession)]||{}).exercises?.[exId] || {};
-    const isCurrent = w===S.currentWeek;
-    const prescTxt = [wp.series&&wp.series+' series', wp.reps&&wp.reps+' reps', wp.pct&&wp.pct+'%RM', wp.rpe&&(wp.intensityType||'RPE')+' '+wp.rpe].filter(Boolean).join(' · ') || '—';
-    const doneTxt = d.load||d.rpe ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'Hecho, sin datos':'—');
-    rows += `<div style="padding:10px 0;border-top:1px solid var(--border);${isCurrent?'background:var(--accent-dim);margin:0 -4px;padding-left:4px;padding-right:4px;border-radius:6px':''}">
-      <div style="font-size:11px;font-weight:700;color:${isCurrent?'var(--accent)':'var(--text3)'};text-transform:uppercase;margin-bottom:3px">Semana ${w}${isCurrent?' · actual':''}</div>
-      <div style="font-size:13px;color:var(--text)">Prescripto: ${prescTxt}</div>
-      <div style="font-size:13px;color:${(d.load||d.rpe)?'var(--green)':'var(--text3)'}">Completado: ${doneTxt}</div>
-    </div>`;
-  }
-  document.getElementById('progression-modal-body').innerHTML = rows || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
+  const body = ex ? buildWeeklyProgressionTable(lastWeek, S.currentWeek, (w) => ({
+    wp: getExPrescriptionForWeek(ex, w),
+    d: (S.history[sessionKey(w,S.currentSession)]||{}).exercises?.[exId] || {}
+  })) : '';
+  document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
   document.getElementById('progression-overlay').classList.add('open');
 }
 window.openProgressionModal = openProgressionModal;
@@ -2253,22 +2381,11 @@ function openAdminProgressionModal(uid, exId, exName, sName) {
   const athleteWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate) : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
   const lastWeek = Math.max(durationWeeks, athleteWeek);
   document.getElementById('progression-modal-title').textContent = 'Progresión · ' + exName;
-  let rows = '';
-  for(let w=1; w<=lastWeek; w++) {
-    const wp = ex ? getExPrescriptionForWeek(ex, w) : {series:'',reps:'',pct:'',rpe:''};
-    const d = a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[exId] || {};
-    const isCurrent = w===athleteWeek;
-    const prescTxt = [wp.series&&wp.series+' series', wp.reps&&wp.reps+' reps', wp.pct&&wp.pct+'%RM', wp.rpe&&(wp.intensityType||'RPE')+' '+wp.rpe].filter(Boolean).join(' · ') || '—';
-    const hasData = !!(d.load || d.rpe);
-    const doneTxt = hasData ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'Marcado, sin carga/RPE':'Sin completar');
-    rows += `<div style="padding:10px 0;border-top:1px solid var(--border);${isCurrent?'background:var(--accent-dim);margin:0 -4px;padding-left:4px;padding-right:4px;border-radius:6px':''}">
-      <div style="font-size:11px;font-weight:700;color:${isCurrent?'var(--accent)':'var(--text3)'};text-transform:uppercase;margin-bottom:3px">Semana ${w}${isCurrent?' · actual':''}</div>
-      <div style="font-size:13px;color:var(--text)">Prescripto: ${prescTxt}</div>
-      <div style="font-size:13px;color:${hasData?'var(--green)':'var(--text3)'}">Completó: ${doneTxt}</div>
-      ${d.athleteNote?`<div style="font-size:12px;color:var(--amber);margin-top:2px">📝 ${d.athleteNote}</div>`:''}
-    </div>`;
-  }
-  document.getElementById('progression-modal-body').innerHTML = rows || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
+  const body = ex ? buildWeeklyProgressionTable(lastWeek, athleteWeek, (w) => ({
+    wp: getExPrescriptionForWeek(ex, w),
+    d: a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[exId] || {}
+  }), {uid:a.uid, sName, exId}) : '';
+  document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
   document.getElementById('progression-overlay').classList.add('open');
 }
 window.openAdminProgressionModal = openAdminProgressionModal;
@@ -2304,6 +2421,39 @@ window.clearVideoUrl=clearVideoUrl;
 
 // ── WELLNESS ──────────────────────────────────────────────────
 const WELLNESS_BACKFILL_DAYS = 13; // hasta 2 semanas atrás para completar días salteados
+
+// Tira de 7 días (hoy + los 6 anteriores) para saltar directo a un día —
+// marca con color qué días ya tienen wellness enviado, cuáles están a medio
+// completar y cuáles están vacíos, para no depender solo de una flecha ‹ ›
+// sin ninguna señal visual de qué días faltan.
+function renderWellnessDayStrip(wKey) {
+  const today = new Date().toISOString().split('T')[0];
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    days.push({ key: d.toISOString().split('T')[0], dow: d.toLocaleDateString('es-AR', { weekday: 'narrow' }), num: d.getDate() });
+  }
+  const cells = days.map(d => {
+    const rec = S.wellness[d.key];
+    const submitted = !!(rec && rec.submitted);
+    const partial = !!(rec && !submitted && Object.keys(rec).length);
+    const isSel = d.key === wKey;
+    const bg = submitted ? 'var(--green)' : partial ? 'var(--amber)' : 'var(--bg3)';
+    const fg = (submitted || partial) ? '#fff' : 'var(--text3)';
+    const border = isSel ? 'var(--accent)' : 'var(--border2)';
+    return `<div onclick="goToWellnessDate('${d.key}')" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;min-width:0">
+      <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase">${d.dow}</div>
+      <div style="width:100%;aspect-ratio:1;max-width:38px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:${isSel ? '2px' : '1px'} solid ${border};transition:all .15s">${d.num}</div>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;gap:5px;margin-bottom:10px">${cells}</div>`;
+}
+function goToWellnessDate(key) {
+  const today = new Date().toISOString().split('T')[0];
+  S.wellnessViewDate = (key === today) ? null : key;
+  renderMain();
+}
+window.goToWellnessDate = goToWellnessDate;
 
 function shiftWellnessDate(delta) {
   const today=new Date().toISOString().split('T')[0];
@@ -2373,13 +2523,16 @@ function renderWellness() {
     <div class="page-title">Wellness</div>
     <div class="page-subtitle">${wKey} · Check-in diario</div>
   </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:8px 12px">
+  <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:10px 12px 8px;margin-bottom:14px">
+  ${renderWellnessDayStrip(wKey)}
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:6px;border-top:1px solid var(--border)">
     <button class="abtn" onclick="shiftWellnessDate(-1)" ${canGoBack?'':'disabled style="opacity:.3;cursor:not-allowed"'}>‹</button>
     <div style="text-align:center">
       <div style="font-size:14px;font-weight:700;text-transform:capitalize">${dateLabel}</div>
       ${!isToday?`<div style="font-size:11px;color:var(--accent);cursor:pointer" onclick="goToTodayWellness()">Volver a hoy →</div>`:''}
     </div>
     <button class="abtn" onclick="shiftWellnessDate(1)" ${canGoForward?'':'disabled style="opacity:.3;cursor:not-allowed"'}>›</button>
+  </div>
   </div>`;
 
   html += renderInjuryFollowup();
@@ -3690,8 +3843,8 @@ function sportIconSvg(sport) {
     return `<svg ${common}><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.5 5.5c3 3 3 10 0 13M18.5 5.5c-3 3-3 10 0 13"/></svg>`;
   }
   if (s.includes('handball') || s.includes('balonmano')) {
-    // Persona lanzando
-    return `<svg ${common}><circle cx="9" cy="4.5" r="1.8"/><path d="M9 7c-2 1-3 2.5-3 4.5v4M6 11l-3 2M9 11.5l4-1.5 4-5M13 10l1 5-2 6M13 10l-3 2 1 6"/></svg>`;
+    // Persona lanzando — figura en zancada, brazo atrás con la pelota
+    return `<svg ${common}><circle cx="9.5" cy="3.6" r="1.7"/><path d="M9.5 6v6"/><path d="M9.5 7.5l3.5-2 2-3"/><circle cx="15.3" cy="2.2" r="1.1"/><path d="M9.5 8l-3.5 1.5-1.5 3"/><path d="M9.5 12l3 2 1 5"/><path d="M9.5 12l-3.5 1-3 5"/></svg>`;
   }
   if (s.includes('futbol') || s.includes('fútbol') || s.includes('soccer')) {
     // Pelota de fútbol
@@ -3704,6 +3857,24 @@ function sportIconSvg(sport) {
   return '';
 }
 window.sportIconSvg = sportIconSvg;
+
+// Íconos de línea con personalidad propia para tarjetas de métricas —
+// reemplazan los emoji genéricos (⚡💪❤️👥) por trazos consistentes con
+// el resto del set de íconos de la app.
+function metricIconSvg(key) {
+  const c = 'width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+  const paths = {
+    ice: '<path d="M3 12h3l2-6 2 12 2-12 2 12 2-6h3"/>',
+    coord: '<path d="M18.18 8c5.1 0 5.1 8 0 8-5.1 0-7.73-8-12.36-8-5.1 0-5.1 8 0 8 4.63 0 7.26-8 12.36-8z"/>',
+    asym: '<path d="M12 3v18M5 7h14"/><path d="M5 7l-3 6a3 3 0 0 0 6 0L5 7z"/><path d="M19 7l-3 6a3 3 0 0 0 6 0l-3-6z"/>',
+    bestcmj: '<rect x="4" y="14" width="3" height="7"/><rect x="10.5" y="10" width="3" height="11"/><rect x="17" y="5" width="3" height="16"/><path d="M18.5 1.6l.6 1.3 1.4.2-1 1 .2 1.4-1.2-.7-1.2.7.2-1.4-1-1 1.4-.2z" fill="currentColor"/>',
+    atletas: '<circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><circle cx="17.5" cy="9" r="2.3"/><path d="M14.8 20a4.7 4.7 0 0 1 8.2-3.1"/>',
+    entrenaron: '<line x1="7" y1="12" x2="17" y2="12"/><rect x="3" y="9" width="3" height="6" rx="1"/><rect x="18" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.4" height="10" rx="1"/><rect x="15.6" y="7" width="2.4" height="10" rx="1"/>',
+    wellness: '<path d="M12 20.2s-7-4.4-9.3-9A5 5 0 0 1 12 6.3 5 5 0 0 1 21.3 11.2c-2.3 4.6-9.3 9-9.3 9z"/><path d="M6 12.5h2.6l1.4-2.6 1.8 4.3 1.4-2.6H18"/>'
+  };
+  return '<svg '+c+'>'+(paths[key]||'')+'</svg>';
+}
+window.metricIconSvg = metricIconSvg;
 
 // Mini-gráfico de tendencia sin ejes ni leyenda — para mostrar "hacia dónde viene
 // yendo" un número al lado del valor puntual, sin ocupar el espacio de un gráfico
@@ -5507,7 +5678,13 @@ function renderAtletaRutina(a) {
     </div>
   </div>
   <div class="admin-section">
-    <div class="admin-section-title">${routine.name}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
+      <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
+      <div style="display:flex;gap:6px">
+        <button class="abtn ${S._atletaRoutineCicloView!=='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('micro')">Vista microciclo</button>
+        <button class="abtn ${S._atletaRoutineCicloView==='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('macro')">Vista macrociclo</button>
+      </div>
+    </div>
     ${sessionNames.map(sName => {
       const blocks = routine.sessions[sName] || [];
       const dayCollapsed = S._atletaRoutineCollapsedDays?.has(sName);
@@ -5543,6 +5720,18 @@ function renderAtletaRutina(a) {
                     if(d && (d.load || d.rpe || d.checked || d.athleteNote)) { doneData = d; doneWeek = w; break; }
                   }
                   const hasCompletion = !!(doneData.load || doneData.rpe);
+                  const durationWeeksEx = routine?.durationWeeks || 1;
+                  const lastWeekEx = Math.max(durationWeeksEx, athletePreviewWeek);
+                  if (S._atletaRoutineCicloView === 'macro') {
+                    return `
+                    <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
+                      <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}</div>
+                      ${buildWeeklyProgressionTable(lastWeekEx, athletePreviewWeek, (w) => ({
+                        wp: getExPrescriptionForWeek(ex, w),
+                        d: a._personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id] || {}
+                      }), {uid:a.uid, sName, exId:ex.id})}
+                    </div>`;
+                  }
                   return `
                   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
                     <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${athletePreviewWeek} · Ver todas ▤</span></div>
@@ -5555,11 +5744,13 @@ function renderAtletaRutina(a) {
                     </div>
                     ${(hasCompletion || doneData.checked) ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó${doneWeek&&doneWeek!==athletePreviewWeek?' (Semana '+doneWeek+')':''}</span>
-                      ${hasCompletion?`
-                        <span style="font-size:12px;font-weight:700;color:var(--green)">${doneData.load?doneData.load+'kg':''}${doneData.load&&doneData.rpe?' · ':''}${doneData.rpe?(wp.intensityType||'RPE')+' '+doneData.rpe:''}</span>
-                        ${doneData.checked?`<span style="font-size:10px;color:var(--green)">✓ marcado</span>`:''}
-                      `:`<span style="font-size:12px;color:var(--text3)">✓ marcado, sin carga/RPE cargado</span>`}
-                    </div>` : ''}
+                      <input type="number" value="${doneData.load||''}" placeholder="kg" onchange="adminSetExerciseField('${a.uid}',${doneWeek||athletePreviewWeek},'${sName.replace(/'/g,"\\'")}','${ex.id}','load',this.value)" style="width:52px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 3px;color:var(--green);font-weight:700">
+                      <input type="number" value="${doneData.rpe||''}" placeholder="${wp.intensityType||'RPE'}" onchange="adminSetExerciseField('${a.uid}',${doneWeek||athletePreviewWeek},'${sName.replace(/'/g,"\\'")}','${ex.id}','rpe',this.value)" style="width:52px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 3px;color:var(--green);font-weight:700">
+                    </div>` : `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
+                      <input type="number" value="" placeholder="kg" onchange="adminSetExerciseField('${a.uid}',${athletePreviewWeek},'${sName.replace(/'/g,"\\'")}','${ex.id}','load',this.value)" style="width:52px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 3px;color:var(--text)">
+                      <input type="number" value="" placeholder="${wp.intensityType||'RPE'}" onchange="adminSetExerciseField('${a.uid}',${athletePreviewWeek},'${sName.replace(/'/g,"\\'")}','${ex.id}','rpe',this.value)" style="width:52px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 3px;color:var(--text)">
+                    </div>`}
                     ${doneData.athleteNote?`<div style="margin-top:6px;background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--rxs);padding:8px 10px;font-size:12px;color:var(--text)">
                       <span style="font-weight:700;color:var(--amber)">📝 Nota del atleta:</span> ${doneData.athleteNote}
                     </div>`:''}
@@ -5730,7 +5921,23 @@ window.fixAllNameCapitalization = fixAllNameCapitalization;
 
 function renderSettings() {
   const u = S.userData || {};
+  const darkOn = getTheme()==='dark';
+  const pushOn = (u.fcmTokens||[]).length>0;
   return `
+  <div class="card">
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Apariencia</div>
+    <div class="settings-item" style="border-bottom:none">
+      <div><div class="settings-lbl">Modo oscuro</div><div class="settings-sub">Ideal para entrenar de noche o con poca luz</div></div>
+      <div class="theme-switch ${darkOn?'on':''}" onclick="toggleTheme()"><div class="theme-switch-knob"></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Notificaciones</div>
+    <div class="settings-item" style="border-bottom:none">
+      <div><div class="settings-lbl">Notificaciones push</div><div class="settings-sub">${pushOn?'Activadas en este dispositivo':'Recibí avisos de wellness y carga aunque no tengas la app abierta'}</div></div>
+      ${pushOn?`<span style="font-size:11px;font-weight:700;color:var(--green)">✓ Activas</span>`:`<button class="abtn abtn-p" onclick="enablePushNotifications()">Activar</button>`}
+    </div>
+  </div>
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mi perfil</div>
     <div style="padding:16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border)">
@@ -6141,6 +6348,13 @@ async function sendInAppReminder() {
       sentCount++;
     } catch(e) {}
   }
+  // Push real (celular bloqueado / app cerrada) — best-effort: si la Cloud
+  // Function todavía no está deployada, esto falla en silencio y el
+  // recordatorio in-app de arriba ya se mandó igual.
+  try {
+    const call = httpsCallable(fns, 'sendPushReminder');
+    await call({ uids: pendingUids, title: 'G-Metrics', body: msg });
+  } catch(e) { console.warn('Push no disponible aún:', e.message); }
   showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}`);
 }
 window.sendInAppReminder = sendInAppReminder;
@@ -7655,10 +7869,10 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
 
   // RIGHT: metric cards + chart
   html += '<div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
-  html += metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'), 'ice');
-  html += metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'), 'coord');
-  html += metricCardHtml('ASIMETRÍA UNILAT.', '↔', asym!==null?asym+'%':'-- %', asym?(parseFloat(asym)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'), 'asym');
-  html += metricCardHtml('MEJOR CMJ', '↑', bestCMJ?bestCMJ.height+' cm':'--', 'var(--text)', bestCMJ?'Récord personal · '+bestCMJ.date+' '+jumpLevelTagHtml('cmj',bestCMJ.height):'Sin datos');
+  html += metricCardHtml('ÍNDICE ELÁSTICO', metricIconSvg('ice'), ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'), 'ice');
+  html += metricCardHtml('COORD. DE BRAZOS', metricIconSvg('coord'), coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'), 'coord');
+  html += metricCardHtml('ASIMETRÍA UNILAT.', metricIconSvg('asym'), asym!==null?asym+'%':'-- %', asym?(parseFloat(asym)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'), 'asym');
+  html += metricCardHtml('MEJOR CMJ', metricIconSvg('bestcmj'), bestCMJ?bestCMJ.height+' cm':'--', 'var(--text)', bestCMJ?'Récord personal · '+bestCMJ.date+' '+jumpLevelTagHtml('cmj',bestCMJ.height):'Sin datos');
   html += '</div>';
 
   html += '</div>';
@@ -7695,10 +7909,10 @@ function renderEvalHistory(edata, isDesktop, testList) {
     const cmjRecsH = edata['cmj']||[];
     const bestCMJH = cmjRecsH.length ? cmjRecsH.reduce((best,r)=>r.height>best.height?r:best, cmjRecsH[0]) : null;
     html += `<div style="grid-column:${isDesktop?'1/-1':'auto'};display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px">`
-      + metricCardHtml('ÍNDICE ELÁSTICO', '⚡', ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'), 'ice')
-      + metricCardHtml('COORD. DE BRAZOS', '💪', coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'), 'coord')
-      + metricCardHtml('ASIMETRÍA UNILAT.', '↔', asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'), 'asym')
-      + metricCardHtml('MEJOR CMJ', '↑', bestCMJH?bestCMJH.height+' cm':'--', 'var(--text)', bestCMJH?'Récord personal · '+bestCMJH.date+' '+jumpLevelTagHtml('cmj',bestCMJH.height):'Sin datos')
+      + metricCardHtml('ÍNDICE ELÁSTICO', metricIconSvg('ice'), ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'), 'ice')
+      + metricCardHtml('COORD. DE BRAZOS', metricIconSvg('coord'), coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'), 'coord')
+      + metricCardHtml('ASIMETRÍA UNILAT.', metricIconSvg('asym'), asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'), 'asym')
+      + metricCardHtml('MEJOR CMJ', metricIconSvg('bestcmj'), bestCMJH?bestCMJH.height+' cm':'--', 'var(--text)', bestCMJH?'Récord personal · '+bestCMJH.date+' '+jumpLevelTagHtml('cmj',bestCMJH.height):'Sin datos')
       + '</div>';
   }
 
@@ -8509,17 +8723,17 @@ function renderDashboardContent() {
 
   let html = `<div class="metric-grid" style="margin-bottom:20px">
     <div class="metric-card" style="border-left:3px solid var(--accent)">
-      <div class="metric-card-label">ATLETAS <span class="metric-card-icon">👥</span></div>
+      <div class="metric-card-label">ATLETAS <span class="metric-card-icon">${metricIconSvg('atletas')}</span></div>
       <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
       <div class="metric-card-sub">registrados</div>
     </div>
     <div class="metric-card" style="border-left:3px solid var(--warm)">
-      <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">💪</span></div>
+      <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">${metricIconSvg('entrenaron')}</span></div>
       <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}" data-countup="${trainedToday}">${trainedToday}</div>
       <div class="metric-card-sub">de ${totalAthletes} atletas</div>
     </div>
     <div class="metric-card" style="border-left:3px solid var(--green);cursor:pointer" onclick="openReminderScreen()">
-      <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">❤️</span></div>
+      <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">${metricIconSvg('wellness')}</span></div>
       <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}" data-countup="${wellnessToday}">${wellnessToday}</div>
       <div class="metric-card-sub">registros enviados · tocá para recordar</div>
     </div>

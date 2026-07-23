@@ -41,3 +41,26 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(event.request))
   );
 });
+
+// ── PUSH (Firebase Cloud Messaging) ──────────────────────────
+// Recibe el push cuando la app está cerrada/en background y muestra la
+// notificación del sistema (igual que cualquier app nativa).
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+firebase.initializeApp({
+  apiKey: "AIzaSyA_GNkUG63pSMNU1aNvAXM-61jVHbwuGQ0",
+  authDomain: "training-app-pf.firebaseapp.com",
+  projectId: "training-app-pf",
+  storageBucket: "training-app-pf.firebasestorage.app",
+  messagingSenderId: "698623644418",
+  appId: "1:698623644418:web:a5b3fa6093752a53c9e81b"
+});
+const messaging = firebase.messaging();
+messaging.onBackgroundMessage((payload) => {
+  const n = payload.notification || {};
+  self.registration.showNotification(n.title || 'G-Metrics', {
+    body: n.body || '',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png'
+  });
+});
