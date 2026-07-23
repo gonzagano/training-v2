@@ -1,32 +1,282 @@
-{
-  "name": "G-Metrics Performance Lab",
-  "short_name": "G-Metrics",
-  "description": "Sistema de monitoreo de entrenamiento, wellness y carga para atletas y equipos.",
-  "start_url": "./",
-  "scope": "./",
-  "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#0b1120",
-  "theme_color": "#0b1120",
-  "lang": "es-AR",
-  "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ]
-}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b1120">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="G-Metrics">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<title>G-Metrics Performance Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=20260722a">
+<script>(function(){var t=localStorage.getItem('gm-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})();</script>
+</head>
+<body>
+
+<div id="loading"><img src="logo.svg" alt="G-Metrics" style="width:180px;max-width:70vw"></div>
+
+<div id="auth-screen" style="display:none">
+  <div class="auth-box">
+    <img src="logo.svg" alt="G-Metrics" style="width:200px;max-width:80%;display:block;margin:0 auto 20px">
+    <div class="auth-sub" id="auth-sub">Tu sistema de entrenamiento</div>
+    <input class="auth-inp" id="auth-email" type="email" placeholder="Email" autocomplete="email">
+    <input class="auth-inp" id="auth-pass" type="password" placeholder="Contraseña" autocomplete="current-password">
+    <input class="auth-inp" id="auth-name" type="text" placeholder="Nombre completo" style="display:none" autocomplete="name">
+    <button class="auth-btn" id="auth-btn" onclick="authAction()">Iniciar sesión</button>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-switch" id="auth-switch" onclick="toggleAuthMode()">¿No tenés cuenta? <span>Registrarse</span></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+<div id="app-inner">
+  <div id="topbar">
+    <!-- Logo -->
+    <div class="app-logo" onclick="goHome()">
+      <img src="logo-icon.svg" alt="G-Metrics" width="26" height="26">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.01em">G<span style="color:var(--accent)">-Metrics</span></span>
+    </div>
+    <!-- Desktop sidebar nav (hidden on mobile) -->
+    <div class="sidebar-nav" id="sidebar-nav">
+      <!-- filled by renderBottomBar() -->
+    </div>
+    <!-- Desktop week widget -->
+    <div class="desktop-week" id="desktop-week" style="display:none">
+      <div>
+        <div class="desktop-week-label">Semana actual</div>
+        <div class="desktop-week-sub" id="desktop-week-range">—</div>
+      </div>
+    </div>
+    <!-- Desktop sidebar footer -->
+    <div class="sidebar-footer" id="sidebar-footer" style="display:none">
+      <div class="notif-bell-btn" id="notif-bell-desk" onclick="switchView('notifications')" style="position:relative;cursor:pointer;padding:8px;margin-bottom:4px;display:flex;align-items:center;gap:8px;color:var(--text2)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span style="font-size:13px">Notificaciones</span>
+        <span id="notif-badge-desk" style="display:none;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:20px;min-width:16px;height:16px;padding:0 4px;align-items:center;justify-content:center"></span>
+      </div>
+      <div class="sidebar-user" onclick="switchView('settings')">
+        <div class="sidebar-user-av" id="avatar-btn">?</div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="pm-name-desk">—</div>
+          <div class="sidebar-user-role" id="pm-role-desk">atleta</div>
+        </div>
+      </div>
+    </div>
+    <!-- Mobile right side -->
+    <div class="topbar-right" id="topbar-right-mobile">
+      <span class="week-pill" id="week-pill">Sem 1</span>
+      <div class="notif-bell-btn" id="notif-bell-mobile" onclick="switchView('notifications')" style="position:relative;cursor:pointer;padding:4px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span id="notif-badge-mobile" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:50%;min-width:15px;height:15px;align-items:center;justify-content:center;padding:0 3px"></span>
+      </div>
+      <div class="avatar-btn" id="avatar-btn-mobile" onclick="switchView('settings')">?</div>
+    </div>
+  </div>
+
+  <div class="profile-menu" id="profile-menu">
+    <div class="profile-info">
+      <div class="profile-info-name" id="pm-name">—</div>
+      <div class="profile-info-email" id="pm-email">—</div>
+      <div class="profile-info-role" id="pm-role">atleta</div>
+    </div>
+    <div class="profile-menu-item" id="pm-settings" onclick="switchView('settings');toggleProfileMenu()">Ajustes</div>
+    <div class="profile-menu-item" id="pm-admin" style="display:none" onclick="switchView('admin');toggleProfileMenu()">Panel admin</div>
+    <div class="profile-menu-sep"></div>
+    <div class="profile-menu-item danger" onclick="signOut()">Cerrar sesión</div>
+  </div>
+
+  <div id="subnav"></div>
+  <div id="main"></div>
+
+  <div id="bottombar">
+    <!-- Filled dynamically by renderBottomBar() after login -->
+  </div>
+
+  <!-- Cronómetro de descanso flotante -->
+  <div id="rest-timer-fab" onclick="toggleRestTimerPanel()" style="display:none"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M9 3h6"/><path d="M18.5 6.5l1-1"/></svg></div>
+  <div id="rest-timer-panel" style="display:none">
+    <div id="rest-timer-display">1:30</div>
+    <div id="rest-timer-presets">
+      <button onclick="setRestTimerPreset(30)">30s</button>
+      <button onclick="setRestTimerPreset(60)">60s</button>
+      <button onclick="setRestTimerPreset(90)">90s</button>
+      <button onclick="setRestTimerPreset(120)">120s</button>
+    </div>
+    <div id="rest-timer-controls">
+      <button id="rest-timer-startpause" onclick="toggleRestTimerRun()">▶ Iniciar</button>
+      <button onclick="resetRestTimer()">↺ Reiniciar</button>
+    </div>
+  </div>
+</div><!-- /app-inner -->
+</div><!-- /app -->
+
+<!-- SESSION FEEDBACK MODAL -->
+<div id="session-feedback-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:450;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px;backdrop-filter:blur(6px)">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);width:100%;max-width:420px;overflow:hidden">
+    <div style="padding:20px 20px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">¿Cómo estuvo la sesión?</div>
+      <div style="font-size:13px;color:var(--text3);padding-bottom:16px">Registrá tu percepción para el control de carga</div>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+      <!-- RPE -->
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <label style="font-size:13px;font-weight:600;color:var(--text2)">RPE — Esfuerzo percibido <span class="info-btn" onclick="openInfoModal('rpe')" title="Referencia">?</span></label>
+          <span id="sf-rpe-val" style="font-size:20px;font-weight:800;color:var(--accent)">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-bottom:4px">
+          <span>Muy suave</span><span>Máximo</span>
+        </div>
+        <input type="range" id="sf-rpe" min="1" max="10" step="1" value="5"
+          style="width:100%;accent-color:var(--accent);cursor:pointer"
+          oninput="document.getElementById('sf-rpe-val').textContent=this.value;document.getElementById('sf-rpe-val').style.color=getRPEColor(+this.value)">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:2px">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+        </div>
+      </div>
+      <!-- Duration -->
+      <div>
+        <label style="font-size:13px;font-weight:600;color:var(--text2);display:block;margin-bottom:8px">Duración neta de práctica (minutos)</label>
+        <input type="number" id="sf-mins" min="1" max="300" placeholder="ej: 75"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 14px;color:var(--text);font-size:16px;outline:none;font-family:inherit"
+          oninput="updateUAPreview()">
+        <div id="sf-ua-preview" style="font-size:12px;color:var(--text3);margin-top:6px;text-align:right"></div>
+      </div>
+      <!-- How did you feel -->
+      <div>
+        <label style="font-size:13px;font-weight:600;color:var(--text2);display:block;margin-bottom:8px">¿Cómo te sentiste? <span style="font-weight:400;color:var(--text3)">(opcional)</span></label>
+        <input type="text" id="sf-feel" placeholder="ej: Bien, con energía / Pesado en piernas..."
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 14px;color:var(--text);font-size:14px;outline:none;font-family:inherit">
+      </div>
+      <!-- Injury -->
+      <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg3);border-radius:var(--rsm);cursor:pointer" onclick="document.getElementById('sf-injury').click()">
+        <input type="checkbox" id="sf-injury" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
+        <div>
+          <div style="font-size:13px;font-weight:600">Tuve una molestia o dolor</div>
+          <div style="font-size:11px;color:var(--text3)">Te llevará al mapa de molestias</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:0 20px 20px;display:flex;gap:10px">
+      <button onclick="closeSessionFeedback()" style="flex:1;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text2);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Omitir</button>
+      <button onclick="submitSessionFeedback()" style="flex:2;padding:12px;background:var(--accent);border:none;border-radius:var(--rsm);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Guardar sesión</button>
+    </div>
+  </div>
+</div>
+
+<!-- Library Sheet -->
+<div class="lib-overlay" id="lib-overlay" onclick="closeLibIfOutside(event)">
+  <div class="lib-sheet" id="lib-sheet">
+    <div class="lib-header">
+      <div class="lib-title">Biblioteca de ejercicios</div>
+      <span class="lib-close" onclick="closeLib()">×</span>
+    </div>
+    <div class="lib-search-wrap">
+      <input class="lib-search" id="lib-search" placeholder="Buscar ejercicio..." oninput="renderLibList()">
+    </div>
+    <div class="lib-filters" id="lib-filters"></div>
+    <div class="lib-list" id="lib-list"></div>
+    <div class="lib-new-wrap" style="flex-direction:column;align-items:stretch;gap:6px">
+      <input class="lib-new-inp" id="lib-new-name" placeholder="Crear ejercicio nuevo...">
+      <div id="lib-new-tags-picker" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;max-height:96px;overflow-y:auto"></div>
+      <button class="lib-new-btn" onclick="createAndAddExercise()">+ Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Video Modal -->
+<div class="video-modal" id="video-overlay" onclick="closeVideoIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="video-modal-title">Video del ejercicio</div>
+    <div id="video-modal-editnote" style="font-size:12px;color:var(--text3);margin-bottom:10px">Pegá un link de YouTube</div>
+    <div id="video-preview-wrap" style="display:none;width:100%;aspect-ratio:16/9;border-radius:var(--rsm);overflow:hidden;margin-bottom:10px;background:#000">
+      <iframe id="video-preview-frame" width="100%" height="100%" style="display:block;border:0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen src=""></iframe>
+    </div>
+    <input class="video-url-inp" id="video-url-inp" placeholder="https://youtube.com/...">
+    <div id="video-empty-note" style="display:none;text-align:center;padding:16px;color:var(--text3);font-size:13px">Todavía no hay video cargado para este ejercicio.</div>
+    <div class="video-modal-btns">
+      <button class="abtn abtn-d" id="video-clear-btn" onclick="clearVideoUrl()" style="display:none">Quitar</button>
+      <button class="abtn" id="video-cancel-btn" onclick="closeVideoModal()">Cancelar</button>
+      <button class="abtn abtn-p" id="video-save-btn" onclick="saveVideoUrl()">Guardar</button>
+      <button class="abtn" id="video-close-btn" onclick="closeVideoModal()" style="display:none">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Athlete Note Modal -->
+<div class="video-modal" id="note-overlay" onclick="closeNoteIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="note-modal-title">Mi nota del ejercicio</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Escribí lo que quieras sobre este ejercicio — cómo lo sentiste, un ajuste para la próxima, o si no lo pudiste hacer, contale a tu entrenador por qué. Tu entrenador puede ver esta nota.</div>
+    <textarea id="note-modal-textarea" placeholder="Ej: me costó la última serie, bajar un poco el peso la próxima" style="width:100%;min-height:110px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px;color:var(--text);font-size:14px;outline:none;font-family:inherit;resize:vertical"></textarea>
+    <div class="video-modal-btns">
+      <button class="abtn" id="note-cancel-btn" onclick="closeNoteModal()">Cancelar</button>
+      <button class="abtn abtn-p" id="note-save-btn" onclick="saveAthleteNote()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Progresión semanal Modal -->
+<div class="video-modal" id="progression-overlay" onclick="closeProgressionIfOutside(event)">
+  <div class="video-modal-box wide" id="progression-modal-box">
+    <div class="video-modal-title" id="progression-modal-title">Progresión</div>
+    <div id="progression-modal-body" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="video-modal-btns">
+      <button class="abtn" onclick="closeProgressionModal()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Crear/editar ejercicio (vista Biblioteca) -->
+<div class="video-modal" id="exform-overlay" onclick="closeExFormIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="exform-modal-title">Nuevo ejercicio</div>
+    <input class="video-url-inp" id="exform-name-inp" placeholder="Nombre del ejercicio">
+    <div style="font-size:12px;color:var(--text3);margin:10px 0 6px">Categorías — tocá para sumar o sacar</div>
+    <div id="exform-tags-picker" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;max-height:140px;overflow-y:auto"></div>
+    <div class="video-modal-btns">
+      <button class="abtn abtn-d" id="exform-delete-btn" onclick="deleteFromExFormModal()" style="display:none">Eliminar</button>
+      <button class="abtn" onclick="closeExFormModal()">Cancelar</button>
+      <button class="abtn abtn-p" onclick="saveLibExerciseModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Referencia / leyenda de métricas (ACWR, monotonía, RPE, índices de salto, etc.) -->
+<div class="video-modal" id="info-modal-overlay" onclick="closeInfoModalIfOutside(event)">
+  <div class="video-modal-box" style="max-width:540px;max-height:82vh;overflow-y:auto">
+    <div class="video-modal-title" id="info-modal-title">Referencia</div>
+    <div id="info-modal-body" style="font-size:13px;line-height:1.55;color:var(--text2)"></div>
+    <div class="video-modal-btns">
+      <button class="abtn abtn-p" onclick="closeInfoModal()">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<!-- Días de gimnasio (calendario semanal al asignar rutina) -->
+<div class="video-modal" id="weekday-assign-overlay" onclick="closeWeekdayAssignIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="weekday-assign-title">¿Qué días va al gimnasio?</div>
+    <div id="weekday-assign-body" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="video-modal-btns">
+      <button class="abtn" onclick="closeWeekdayAssignModal()">Cancelar</button>
+      <button class="abtn abtn-p" id="weekday-assign-confirm-btn" onclick="confirmWeekdayAssign()" disabled>Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Chart.js for evaluations -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- App (JS separado) -->
+<script type="module" src="app.js?v=20260722a"></script>
+</body>
+</html>
