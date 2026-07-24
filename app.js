@@ -1,9 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
-import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion }
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── TEMA (claro/oscuro) ──────────────────────────────────────────
@@ -31,56 +29,6 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
 const db = getFirestore(fbApp);
-const fns = getFunctions(fbApp);
-
-// ── PUSH NOTIFICATIONS (Firebase Cloud Messaging) ────────────────
-// IMPORTANTE — antes de que esto funcione en producción hace falta:
-//  1) Generar la "Web Push certificate" (clave VAPID) en Firebase Console →
-//     Project Settings → Cloud Messaging → Web Push certificates, y
-//     pegarla en VAPID_KEY más abajo.
-//  2) Deployar la Cloud Function functions/index.js (ver ese archivo) —
-//     el navegador del admin NO puede disparar el push directo, tiene
-//     que hacerlo un backend con la Admin SDK.
-const VAPID_KEY = 'PEGAR_VAPID_KEY_ACA';
-let messagingInstance = null;
-function getMessagingInstance() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
-  if (!messagingInstance) { try { messagingInstance = getMessaging(fbApp); } catch(e) { return null; } }
-  return messagingInstance;
-}
-async function enablePushNotifications() {
-  if (!('Notification' in window)) { showToast('Este navegador no soporta notificaciones'); return; }
-  try {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { showToast('Permiso de notificaciones denegado'); return; }
-    const reg = await navigator.serviceWorker.ready;
-    const msg = getMessagingInstance();
-    if (!msg) { showToast('Push no disponible en este navegador'); return; }
-    const token = await getToken(msg, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (!token) { showToast('No se pudo generar el token'); return; }
-    await setDoc(doc(db,'users', S.user.uid), { fcmTokens: arrayUnion(token) }, { merge: true });
-    if(!S.userData) S.userData = {};
-    if(!S.userData.fcmTokens) S.userData.fcmTokens = [];
-    if(!S.userData.fcmTokens.includes(token)) S.userData.fcmTokens.push(token);
-    S.pushEnabled = true;
-    showToast('✓ Notificaciones activadas');
-    renderMain();
-  } catch(e) { console.error(e); showToast('Error activando notificaciones'); }
-}
-window.enablePushNotifications = enablePushNotifications;
-// Notificación en foreground: FCM no la muestra sola con la app abierta,
-// así que la disparamos a mano (y refrescamos el listado in-app).
-function wirePushForeground() {
-  const msg = getMessagingInstance();
-  if (!msg) return;
-  onMessage(msg, (payload) => {
-    const n = payload.notification || {};
-    if (Notification.permission === 'granted') {
-      new Notification(n.title || 'G-Metrics', { body: n.body || '', icon: './icons/icon-192.png' });
-    }
-    showToast('🔔 ' + (n.title || 'Nueva notificación'));
-  });
-}
 
 // ── ADMIN EMAIL (el tuyo) ─────────────────────────────────────
 const ADMIN_EMAIL = "gonzaloganora@gmail.com";
@@ -660,7 +608,6 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById('app').style.display = 'flex';
   S.user = user;
   S.isAdmin = user.email === ADMIN_EMAIL;
-  wirePushForeground();
 
   // Load user data from Firestore
   const uRef = doc(db, 'users', user.uid);
@@ -2307,6 +2254,36 @@ async function adminSetExerciseField(uid, wKey, sName, exId, field, value) {
   renderMain();
 }
 window.adminSetExerciseField = adminSetExerciseField;
+
+// "Completó" (kg/RPE reales del atleta, editables por el admin por si se
+// equivocó al cargar) — mismo patrón que editar el título de un bloque: se
+// ve como texto, doble click lo vuelve editable. adminSetExerciseField ya
+// hace renderMain() al terminar de guardar, así que el texto se termina de
+// actualizar solo con los datos frescos — acá solo hace falta mostrar el
+// input al doble click.
+function editAthleteDoneField(e) {
+  e.stopPropagation();
+  const wrap = e.currentTarget.closest('.done-field-wrap');
+  if(!wrap) return;
+  const span = wrap.querySelector('.done-field-txt');
+  const inp = wrap.querySelector('.done-field-inp');
+  if(!span || !inp) return;
+  span.style.display = 'none';
+  inp.style.display = 'inline-block';
+  inp.focus(); inp.select();
+}
+window.editAthleteDoneField = editAthleteDoneField;
+
+function saveAthleteDoneField(uid, week, sName, exId, field, unitLabel, inp) {
+  const wrap = inp.closest('.done-field-wrap');
+  if(wrap) {
+    const span = wrap.querySelector('.done-field-txt');
+    if(span) span.style.display = '';
+  }
+  inp.style.display = 'none';
+  adminSetExerciseField(uid, week, sName, exId, field, inp.value);
+}
+window.saveAthleteDoneField = saveAthleteDoneField;
 
 // Tabla de progresión semana×semana en horizontal: cada columna es una
 // semana, cada fila una métrica (series/reps/%RM/intensidad/completó) —
@@ -4261,10 +4238,14 @@ function computeAthleteLoadSummary(a) {
 window.computeAthleteLoadSummary=computeAthleteLoadSummary;
 
 // Promedia una métrica entre varios resúmenes, ignorando los atletas sin dato para esa métrica.
+// Redondeado acá mismo a 1 decimal — promediar valores ya redondeados entre
+// varios atletas (ej. 3 wellness / 9 personas) puede dar decimales
+// interminables (79.8888...9%) si no se corta en algún lado.
 function avgMetric(summaries,key) {
   const vals=summaries.map(s=>s[key]).filter(v=>v!==null&&v!==undefined&&!isNaN(v));
   if(!vals.length) return null;
-  return vals.reduce((a,v)=>a+v,0)/vals.length;
+  const avg = vals.reduce((a,v)=>a+v,0)/vals.length;
+  return Math.round(avg*10)/10;
 }
 window.avgMetric=avgMetric;
 
@@ -4627,7 +4608,7 @@ function drawTeamRadarChart(members) {
     rawA = RADAR_METRICS.map(m=>bestOf(athlete,m.id));
     rawB = RADAR_METRICS.map(m=>{
       const vals = members.filter(a=>a.uid!==athlete.uid).map(a=>bestOf(a,m.id)).filter(v=>v!=null);
-      return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
+      return vals.length ? Math.round((vals.reduce((s,v)=>s+v,0)/vals.length)*10)/10 : null;
     });
     labelA = athlete.name||athlete.email; labelB = 'Promedio del equipo';
   }
@@ -5742,15 +5723,25 @@ function renderAtletaRutina(a) {
                       <div class="field-box"><span class="field-lbl">${wp.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.rpe||'—'}</div></div>
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
-                    ${(hasCompletion || doneData.checked) ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    ${(()=>{
+                      const effWeek = doneWeek||athletePreviewWeek;
+                      const sNameEsc = sName.replace(/'/g,"\\'");
+                      const intensityLbl = wp.intensityType||'RPE';
+                      const loadTxt = doneData.load ? doneData.load+'kg' : '— kg';
+                      const rpeTxt = intensityLbl+' '+(doneData.rpe!=null&&doneData.rpe!==''?doneData.rpe:'—');
+                      const txtColor = hasCompletion ? 'var(--green)' : 'var(--text3)';
+                      return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó${doneWeek&&doneWeek!==athletePreviewWeek?' (Semana '+doneWeek+')':''}</span>
-                      <input type="number" value="${doneData.load||''}" placeholder="kg" onchange="adminSetExerciseField('${a.uid}',${doneWeek||athletePreviewWeek},'${sName.replace(/'/g,"\\'")}','${ex.id}','load',this.value)" style="width:52px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 3px;color:var(--green);font-weight:700">
-                      <input type="number" value="${doneData.rpe||''}" placeholder="${wp.intensityType||'RPE'}" onchange="adminSetExerciseField('${a.uid}',${doneWeek||athletePreviewWeek},'${sName.replace(/'/g,"\\'")}','${ex.id}','rpe',this.value)" style="width:52px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 3px;color:var(--green);font-weight:700">
-                    </div>` : `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
-                      <input type="number" value="" placeholder="kg" onchange="adminSetExerciseField('${a.uid}',${athletePreviewWeek},'${sName.replace(/'/g,"\\'")}','${ex.id}','load',this.value)" style="width:52px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 3px;color:var(--text)">
-                      <input type="number" value="" placeholder="${wp.intensityType||'RPE'}" onchange="adminSetExerciseField('${a.uid}',${athletePreviewWeek},'${sName.replace(/'/g,"\\'")}','${ex.id}','rpe',this.value)" style="width:52px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 3px;color:var(--text)">
-                    </div>`}
+                      <span class="done-field-wrap">
+                        <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${loadTxt}</span>
+                        <input class="done-field-inp" type="number" value="${doneData.load||''}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${effWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
+                      </span>
+                      <span class="done-field-wrap">
+                        <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${rpeTxt}</span>
+                        <input class="done-field-inp" type="number" value="${doneData.rpe||''}" placeholder="${intensityLbl}" onblur="saveAthleteDoneField('${a.uid}',${effWeek},'${sNameEsc}','${ex.id}','rpe','${intensityLbl}',this)" onkeydown="if(event.key==='Enter')this.blur()">
+                      </span>
+                    </div>`;
+                    })()}
                     ${doneData.athleteNote?`<div style="margin-top:6px;background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--rxs);padding:8px 10px;font-size:12px;color:var(--text)">
                       <span style="font-weight:700;color:var(--amber)">📝 Nota del atleta:</span> ${doneData.athleteNote}
                     </div>`:''}
@@ -5922,20 +5913,12 @@ window.fixAllNameCapitalization = fixAllNameCapitalization;
 function renderSettings() {
   const u = S.userData || {};
   const darkOn = getTheme()==='dark';
-  const pushOn = (u.fcmTokens||[]).length>0;
   return `
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Apariencia</div>
     <div class="settings-item" style="border-bottom:none">
       <div><div class="settings-lbl">Modo oscuro</div><div class="settings-sub">Ideal para entrenar de noche o con poca luz</div></div>
       <div class="theme-switch ${darkOn?'on':''}" onclick="toggleTheme()"><div class="theme-switch-knob"></div></div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Notificaciones</div>
-    <div class="settings-item" style="border-bottom:none">
-      <div><div class="settings-lbl">Notificaciones push</div><div class="settings-sub">${pushOn?'Activadas en este dispositivo':'Recibí avisos de wellness y carga aunque no tengas la app abierta'}</div></div>
-      ${pushOn?`<span style="font-size:11px;font-weight:700;color:var(--green)">✓ Activas</span>`:`<button class="abtn abtn-p" onclick="enablePushNotifications()">Activar</button>`}
     </div>
   </div>
   <div class="card">
@@ -6348,13 +6331,6 @@ async function sendInAppReminder() {
       sentCount++;
     } catch(e) {}
   }
-  // Push real (celular bloqueado / app cerrada) — best-effort: si la Cloud
-  // Function todavía no está deployada, esto falla en silencio y el
-  // recordatorio in-app de arriba ya se mandó igual.
-  try {
-    const call = httpsCallable(fns, 'sendPushReminder');
-    await call({ uids: pendingUids, title: 'G-Metrics', body: msg });
-  } catch(e) { console.warn('Push no disponible aún:', e.message); }
   showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}`);
 }
 window.sendInAppReminder = sendInAppReminder;
@@ -7882,7 +7858,11 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
 }
 
 function metricCardHtml(label, icon, value, color, sub, infoKey) {
-  return '<div class="metric-card"><div class="metric-card-label">'+label+(infoKey?' '+infoBtn(infoKey):'')+' <span class="metric-card-icon">'+icon+'</span></div>'
+  // El label del ícono redondo y el texto+"?" van agrupados cada uno en su
+  // propio span — así .metric-card-label (que es flex) siempre reparte
+  // exactamente 2 items (space-between), y el "?" nunca queda flotando
+  // suelto entre el texto y el ícono en pantallas angostas.
+  return '<div class="metric-card"><div class="metric-card-label"><span class="metric-card-label-txt">'+label+(infoKey?' '+infoBtn(infoKey):'')+'</span><span class="metric-card-icon">'+icon+'</span></div>'
     + '<div class="metric-card-value" style="font-size:28px;color:'+color+'">'+value+'</div>'
     + '<div class="metric-card-sub">'+sub+'</div></div>';
 }
