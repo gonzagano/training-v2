@@ -239,6 +239,18 @@
   </div>
 </div>
 
+<!-- Progresión de dolor de una molestia/lesión -->
+<div class="video-modal" id="pain-trend-overlay" onclick="closePainTrendIfOutside(event)">
+  <div class="video-modal-box" style="max-width:460px">
+    <div class="video-modal-title" id="pain-trend-title">Progresión de dolor</div>
+    <div style="height:200px;position:relative;margin-bottom:12px"><canvas id="pain-trend-chart"></canvas></div>
+    <div id="pain-trend-list" style="max-height:150px;overflow-y:auto;font-size:12px"></div>
+    <div class="video-modal-btns">
+      <button class="abtn abtn-p" onclick="closePainTrendModal()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Progresión semanal Modal -->
 <div class="video-modal" id="progression-overlay" onclick="closeProgressionIfOutside(event)">
   <div class="video-modal-box wide" id="progression-modal-box">

@@ -178,6 +178,84 @@ window.severityInfo = severityInfo;
 function isRealInjury(inj) { return inj?.isInjury === true; }
 window.isRealInjury = isRealInjury;
 
+// ── PROGRESIÓN DE DOLOR (flecha de tendencia + gráfico día a día) ───────
+// Compara el dolor de HOY (inj.pain, el valor vivo) contra el último
+// registro guardado en el historial que no sea de hoy. OJO con la
+// dirección: acá arriba (↑) significa mejorando (menos dolor) y abajo (↓)
+// empeorando (más dolor) — es la convención que pidió el prep, no "el
+// número subió/bajó" literal.
+function getInjuryTrend(inj) {
+  const hist = inj?.history||[];
+  if(!hist.length) return null;
+  const today = new Date().toISOString().split('T')[0];
+  const prior = [...hist].filter(h=>h.date!==today).sort((a,b)=>a.date.localeCompare(b.date)).pop();
+  if(!prior) return null;
+  const current = inj.pain;
+  if(current < prior.pain) return {dir:'up', label:'Mejorando', color:'var(--green)', arrow:'↑'};
+  if(current > prior.pain) return {dir:'down', label:'Empeorando', color:'var(--red)', arrow:'↓'};
+  return {dir:'flat', label:'Estable', color:'var(--text3)', arrow:'→'};
+}
+window.getInjuryTrend = getInjuryTrend;
+
+// uid: 'self' (o vacío) para la propia molestia del atleta logueado, o el
+// uid real de un atleta cuando lo abre el admin desde su perfil.
+function openPainTrendModal(uid, zoneId) {
+  let inj, zoneLabel;
+  const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  zoneLabel = allZones.find(z=>z.id===zoneId)?.label || zoneId;
+  if(!uid || uid==='self') {
+    inj = S.injuries?.[zoneId];
+  } else {
+    const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : (S.adminAthletes||[]).find(x=>x.uid===uid)?._personal;
+    inj = personal?.injuries?.[zoneId];
+  }
+  if(!inj) return;
+
+  const today = new Date().toISOString().split('T')[0];
+  const points = [...(inj.history||[])].sort((a,b)=>a.date.localeCompare(b.date));
+  if(!points.length || points[points.length-1].date!==today) points.push({date:today, pain:inj.pain});
+
+  document.getElementById('pain-trend-title').textContent = `${zoneLabel} — progresión de dolor`;
+  document.getElementById('pain-trend-list').innerHTML = [...points].reverse().map(p=>
+    `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text3)">${p.date}${p.date===today?' (hoy)':''}</span>
+      <span style="font-weight:700;color:${getPainColor(p.pain).color}">${p.pain}/10</span>
+    </div>`).join('');
+
+  document.getElementById('pain-trend-overlay').classList.add('open');
+  setTimeout(()=>drawPainTrendChart(points), 50);
+}
+window.openPainTrendModal = openPainTrendModal;
+
+function drawPainTrendChart(points) {
+  if(typeof Chart==='undefined') return;
+  const canvas = document.getElementById('pain-trend-chart');
+  if(!canvas) return;
+  try{ S.painTrendChartInstance?.destroy(); }catch(e){}
+  if(points.length<2) return; // un solo punto no dice tendencia, solo se ve la lista
+  S.painTrendChartInstance = new Chart(canvas, {
+    type:'line',
+    data:{
+      labels: points.map(p=>p.date.slice(5)),
+      datasets:[{ label:'Dolor', data:points.map(p=>p.pain), borderColor:'#C33A2C', backgroundColor:'rgba(195,58,44,0.08)', tension:.3, pointRadius:3, fill:true }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>'Dolor: '+ctx.parsed.y+'/10'}} },
+      scales:{
+        y:{min:0,max:10,ticks:{stepSize:2,color:'#7A8394',font:{size:10}},grid:{color:'rgba(18,21,28,0.08)'}},
+        x:{ticks:{color:'#7A8394',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{display:false}}
+      }
+    }
+  });
+}
+window.drawPainTrendChart = drawPainTrendChart;
+
+function closePainTrendModal() { document.getElementById('pain-trend-overlay').classList.remove('open'); }
+window.closePainTrendModal = closePainTrendModal;
+function closePainTrendIfOutside(e) { if(e.target===document.getElementById('pain-trend-overlay')) closePainTrendModal(); }
+window.closePainTrendIfOutside = closePainTrendIfOutside;
+
 // Los 5 levantamientos con RM registrable — usados para linkear el %RM de
 // la rutina con el peso real de cada atleta.
 const RM_LIFTS = [
@@ -2875,15 +2953,14 @@ function renderInjuryList() {
         const sev = severityInfo(inj.severity) || severityInfo('leve');
         const col = sev.color;
         const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
-        const hist=inj.history||[];
-        const trend=hist.length>1?(hist[hist.length-1].pain<hist[hist.length-2].pain?'↓ Mejorando':hist[hist.length-1].pain>hist[hist.length-2].pain?'↑ Empeorando':'→ Estable'):'';
-        return `<div class="injury-item">
+        const trend = getInjuryTrend(inj);
+        return `<div class="injury-item" style="cursor:pointer" onclick="openPainTrendModal('self','${id}')" title="Tocá para ver la progresión">
           <div class="injury-dot" style="background:${col}"></div>
           <div class="injury-info">
             <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''} · <span style="color:${col};font-weight:700">${sev.label}</span></div>
             <div class="injury-pain">Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,30):''}</div>
           </div>
-          <div class="injury-trend" style="color:${col}">${trend}</div>
+          ${trend?`<div class="injury-trend" style="color:${trend.color};font-weight:800;font-size:15px">${trend.arrow}</div>`:''}
         </div>`;
       }).join('')}</div>`;
   return activeHtml + renderResolvedInjuries();
@@ -6042,12 +6119,16 @@ function renderPerfilTab(a) {
     ${activeInj.length?`<div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px">${activeInj.map(([id,inj])=>{
       const zone=allZones.find(z=>z.id===id);
       const sev = severityInfo(inj.severity) || severityInfo('leve');
+      const trend = getInjuryTrend(inj);
       return `<div style="background:var(--bg);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 12px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:8px;height:8px;border-radius:50%;background:${sev.color};flex-shrink:0"></div>
           <div style="flex:1">
             <div style="font-size:13px;font-weight:600">${zone?.label||id}${inj.type?' · '+INJURY_TYPES[inj.type]:''}</div>
-            <div style="font-size:11px;color:var(--text3)">Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}</div>
+            <div style="font-size:11px;color:var(--text3);cursor:pointer" onclick="openPainTrendModal('${uid}','${id}')" title="Tocá para ver la progresión">
+              Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}
+              ${trend?` <span style="color:${trend.color};font-weight:800;font-size:13px" title="${trend.label}">${trend.arrow}</span>`:''}
+            </div>
           </div>
         </div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica (la fijás vos, no depende del dolor del día)</div>
