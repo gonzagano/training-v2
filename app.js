@@ -169,12 +169,13 @@ window.severityInfo = severityInfo;
 
 // Distingue una LESIÓN real (esguince, edema, luxación, hasta una cirugía —
 // con tipo y gravedad clínica) de una MOLESTIA pasajera (dolor sin
-// diagnóstico, ej. "me duele la espalda"). Los registros viejos (de antes de
-// este campo) no tienen isInjury guardado — se tratan como lesión real por
-// default, para no hacer desaparecer de golpe algo que ya se venía
-// siguiendo. Se usa para no inundar el Dashboard de alertas con molestias
-// menores; dentro de cada equipo se siguen viendo todas, lesión o molestia.
-function isRealInjury(inj) { return inj?.isInjury !== false; }
+// diagnóstico, ej. "me duele la espalda"). Solo cuenta como lesión real si
+// alguien la marcó explícitamente así (isInjury===true) — cualquier otra
+// cosa (incluidos todos los registros de antes de este campo, que no tienen
+// isInjury guardado) se trata como molestia. Es la única forma de que el
+// Dashboard muestre pocas alertas de verdad en vez de inundarse con cada
+// dolor que alguien marcó sin querer decir "esto es una lesión".
+function isRealInjury(inj) { return inj?.isInjury === true; }
 window.isRealInjury = isRealInjury;
 
 // Los 5 levantamientos con RM registrable — usados para linkear el %RM de
@@ -6945,6 +6946,7 @@ function renderAdmin() {
     case 'wellness_detail': return renderWellnessDetail();
     case 'reminders': return renderReminderScreen();
     case 'trained_today': return renderTrainedTodayScreen();
+    case 'injury_classify': return renderInjuryClassifyScreen();
     default:               return renderAdminMain();
   }
 }
@@ -6991,6 +6993,10 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Importar fixture Estudiantes (Clausura)</div><div class="admin-item-sub">Carga los partidos que quedan en Liga de Honor, Cadetes, Juveniles y Juniors — no duplica si se corre de nuevo</div></div>
       <button class="abtn" onclick="importEstudiantesFixtures()">Importar</button>
+    </div>
+    <div class="admin-item">
+      <div><div class="admin-item-lbl">Clasificar molestias/lesiones</div><div class="admin-item-sub">Decidí de una cuáles dolores marcados son lesión real y cuáles son molestia pasajera</div></div>
+      <button class="abtn" onclick="openInjuryClassifyScreen()">Revisar</button>
     </div>
   </div>
   <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
@@ -9284,6 +9290,95 @@ async function loadDashboard() {
 }
 window.loadDashboard=loadDashboard;
 
+// Feed cronológico de lesiones reales — activas (con su último estado) y
+// dadas de alta (archivadas) — para el panel "Lesiones recientes" del
+// Dashboard, separado de "Atención requerida" (que es solo lo que hay que
+// mirar HOY). Acá se ve la foto más amplia: qué pasó últimamente.
+function getRecentInjuryFeed(athletes, limit) {
+  const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  const feed = [];
+  athletes.forEach(a=>{
+    const injuries = a._personal?.injuries||{};
+    Object.entries(injuries).forEach(([zoneId,inj])=>{
+      if(!inj.pain||inj.pain<=0||!isRealInjury(inj)) return;
+      const lastDate = inj.history?.length ? inj.history[inj.history.length-1].date : null;
+      const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
+      feed.push({athlete:a, zoneLabel, type:inj.type, severity:inj.severity||'leve', date:lastDate||'', status:'active'});
+    });
+    (a._personal?.injuryArchive||[]).forEach(r=>{
+      feed.push({athlete:a, zoneLabel:r.zoneLabel||r.zoneId, type:r.type, severity:null, date:r.resolvedDate||'', status:'resolved'});
+    });
+  });
+  feed.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  return limit ? feed.slice(0, limit) : feed;
+}
+window.getRecentInjuryFeed = getRecentInjuryFeed;
+
+// Marcas de dolor de ANTES de que existiera la distinción lesión/molestia
+// (isInjury sin definir todavía) — se listan acá para clasificarlas de una,
+// en vez de tener que entrar atleta por atleta al mapa corporal de cada uno.
+function getUnclassifiedInjuries(athletes) {
+  const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  const rows = [];
+  (athletes||[]).forEach(a=>{
+    const injuries = a._personal?.injuries||{};
+    Object.entries(injuries).forEach(([zoneId,inj])=>{
+      if(!inj.pain||inj.pain<=0) return;
+      if(inj.isInjury===true||inj.isInjury===false) return;
+      rows.push({a, zoneId, inj, zoneLabel: allBodyZones.find(z=>z.id===zoneId)?.label||zoneId});
+    });
+  });
+  return rows;
+}
+window.getUnclassifiedInjuries = getUnclassifiedInjuries;
+
+function openInjuryClassifyScreen() {
+  S.adminView = 'injury_classify';
+  S.currentView = 'admin';
+  renderBottomBar();
+  renderMain();
+}
+window.openInjuryClassifyScreen = openInjuryClassifyScreen;
+
+function renderInjuryClassifyScreen() {
+  const rows = getUnclassifiedInjuries(S.dashAthletes||[]);
+  return `<div class="team-detail-header">
+    <button class="back-btn" data-back="admin-main">‹</button>
+    <div class="team-detail-title">Clasificar molestias/lesiones</div>
+  </div>
+  <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
+    Estos dolores se marcaron antes de que existiera esta distinción. Elegí de una si cada uno es una lesión de verdad (entra en las alertas del Dashboard) o una molestia pasajera (solo se ve dentro del equipo, no genera alerta). Una vez que elijas, esa fila desaparece de esta lista.
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">${rows.length} sin clasificar</div>
+    ${rows.length ? rows.map(({a,zoneId,inj,zoneLabel})=>`
+      <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div>
+          <div class="admin-item-lbl">${a.name||a.email}</div>
+          <div style="font-size:11px;color:var(--text3)">${zoneLabel} · dolor ${inj.pain}/10${inj.note?' · '+inj.note:''}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="abtn" style="flex:1" onclick="adminSetIsInjury('${a.uid}','${zoneId}',false)">Molestia pasajera</button>
+          <button class="abtn abtn-d" style="flex:1" onclick="adminSetIsInjury('${a.uid}','${zoneId}',true)">Lesión</button>
+        </div>
+      </div>`).join('') : `<div style="padding:12px 16px;font-size:13px;color:var(--green)">✓ Ya clasificaste todo.</div>`}
+  </div>`;
+}
+window.renderInjuryClassifyScreen = renderInjuryClassifyScreen;
+
+async function adminSetIsInjury(uid, zoneId, val) {
+  const a = (S.dashAthletes||[]).find(x=>x.uid===uid) || (S.adminAthletes||[]).find(x=>x.uid===uid);
+  const personal = a?._personal;
+  if(!personal?.injuries?.[zoneId]) return;
+  personal.injuries[zoneId].isInjury = val;
+  try {
+    await setDoc(doc(db,'personal',uid), {injuries:personal.injuries}, {merge:true});
+    showToast(val?'✓ Marcada como lesión':'✓ Marcada como molestia');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.adminSetIsInjury = adminSetIsInjury;
+
 function renderDashboardContent() {
   const athletes = S.dashAthletes;
   const today = new Date().toISOString().split('T')[0];
@@ -9378,6 +9473,43 @@ function renderDashboardContent() {
           </div>
           <span style="color:var(--text3);font-size:16px">›</span>
         </div>`).join('')}
+    </div>`;
+  }
+
+  // Marcas de dolor de antes de la distinción lesión/molestia — banner bien
+  // visible para clasificarlas de una (ver getUnclassifiedInjuries).
+  const unclassified = getUnclassifiedInjuries(athletes);
+  if(unclassified.length) {
+    html += `<div style="background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--r);padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openInjuryClassifyScreen()">
+      <span style="color:var(--amber);font-size:16px">⚠</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--amber)">${unclassified.length} dolor${unclassified.length===1?'':'es'} marcado${unclassified.length===1?'':'s'} antes de esta actualización, sin clasificar</div>
+        <div style="font-size:11px;color:var(--text3)">Tocá para decidir de una cuáles son lesión y cuáles molestia</div>
+      </div>
+      <span style="color:var(--text3);font-size:16px">›</span>
+    </div>`;
+  }
+
+  // Lesiones recientes — feed cronológico (activas + de alta), separado de
+  // "Atención requerida" que es solo lo urgente de hoy.
+  const recentFeed = getRecentInjuryFeed(athletes, 8);
+  if(recentFeed.length) {
+    html += `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);margin-bottom:20px;overflow:hidden">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Lesiones recientes</div>
+      ${recentFeed.map(r=>{
+        const col = r.status==='resolved' ? 'var(--green)' : (severityInfo(r.severity)||severityInfo('leve')).color;
+        const statusLbl = r.status==='resolved' ? 'De alta' : 'Activa';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${col}"></div>
+            <div>
+              <div style="font-size:13px;font-weight:500">${r.athlete.name||r.athlete.email} — ${r.zoneLabel}${r.type?' · '+(INJURY_TYPES[r.type]||r.type):''}</div>
+              <div style="font-size:11px;color:var(--text3)">${r.date||''} · <span style="color:${col};font-weight:600">${statusLbl}</span></div>
+            </div>
+          </div>
+          <span style="color:var(--text3);font-size:16px">›</span>
+        </div>`;
+      }).join('')}
     </div>`;
   }
 
