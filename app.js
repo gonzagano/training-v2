@@ -85,6 +85,16 @@ const SEVERITY_LEVELS = [
 function severityInfo(id) { return SEVERITY_LEVELS.find(s=>s.id===id) || null; }
 window.severityInfo = severityInfo;
 
+// Distingue una LESIÓN real (esguince, edema, luxación, hasta una cirugía —
+// con tipo y gravedad clínica) de una MOLESTIA pasajera (dolor sin
+// diagnóstico, ej. "me duele la espalda"). Los registros viejos (de antes de
+// este campo) no tienen isInjury guardado — se tratan como lesión real por
+// default, para no hacer desaparecer de golpe algo que ya se venía
+// siguiendo. Se usa para no inundar el Dashboard de alertas con molestias
+// menores; dentro de cada equipo se siguen viendo todas, lesión o molestia.
+function isRealInjury(inj) { return inj?.isInjury !== false; }
+window.isRealInjury = isRealInjury;
+
 // Los 5 levantamientos con RM registrable — usados para linkear el %RM de
 // la rutina con el peso real de cada atleta.
 const RM_LIFTS = [
@@ -1220,6 +1230,82 @@ async function findOrCreateTeam(institution, category, sport) {
   await setDoc(doc(db, 'teams', id), team);
   return id;
 }
+
+// ── IMPORTACIÓN DE FIXTURE — Estudiantes de La Plata (Femebal, Clausura 2026) ──
+// Partidos que quedan del Torneo Metropolitano Clausura, sacados de los PDFs
+// oficiales de la liga (Mayores/LHC → Liga de Honor; Infantiles-A-Masculino →
+// Cadetes, Juveniles y Juniors por igual, según lo confirmó el prep). Se puede
+// correr más de una vez sin duplicar: si esa fecha ya tiene un partido contra
+// el mismo rival, se salta.
+const ESTUDIANTES_FIXTURES_LHC = [
+  {date:'2026-08-08', opponent:'S.A.G. Polvorines', homeAway:'local'},
+  {date:'2026-08-15', opponent:'Nuestra Señora de Luján', homeAway:'visitante'},
+  {date:'2026-08-22', opponent:'A.A.C.F. Quilmes', homeAway:'local'},
+  {date:'2026-08-29', opponent:'Municipalidad de Vicente López', homeAway:'visitante'},
+  {date:'2026-09-05', opponent:'Colegio Ward', homeAway:'local'},
+  {date:'2026-09-12', opponent:'S.A.G. Villa Ballester', homeAway:'visitante'},
+  {date:'2026-09-19', opponent:'A.A. Argentinos Juniors', homeAway:'local'},
+  {date:'2026-09-26', opponent:'Ferro Carril Oeste', homeAway:'visitante'},
+  {date:'2026-10-03', opponent:'C.A. Vélez Sarsfield', homeAway:'local'},
+  {date:'2026-10-17', opponent:'Club Ferrocarril Mitre', homeAway:'visitante'},
+  {date:'2026-10-24', opponent:'San Fernando Handball', homeAway:'local'},
+  {date:'2026-10-31', opponent:'C.A. River Plate', homeAway:'visitante'},
+  {date:'2026-11-07', opponent:'Dorrego Handball', homeAway:'local'},
+  {date:'2026-11-14', opponent:'S.A.G.A.B.', homeAway:'local'},
+  {date:'2026-11-21', opponent:'S.E.D.A.L.O.', homeAway:'visitante'},
+];
+const ESTUDIANTES_FIXTURES_INFANTILES = [
+  {date:'2026-08-08', opponent:'C.A. Lanús', homeAway:'local'},
+  {date:'2026-08-15', opponent:'Nuestra Señora de Luján', homeAway:'visitante'},
+  {date:'2026-08-22', opponent:'A.A.C.F. Quilmes', homeAway:'local'},
+  {date:'2026-08-29', opponent:'Municipalidad de Vicente López', homeAway:'visitante'},
+  {date:'2026-09-05', opponent:'Colegio Ward', homeAway:'local'},
+  {date:'2026-09-12', opponent:'S.A.G. Villa Ballester', homeAway:'visitante'},
+  {date:'2026-09-19', opponent:'A.A. Argentinos Juniors', homeAway:'local'},
+  {date:'2026-09-26', opponent:'Ferro Carril Oeste', homeAway:'visitante'},
+  {date:'2026-10-03', opponent:'C.A. Vélez Sarsfield', homeAway:'local'},
+  {date:'2026-10-17', opponent:'Campana Boat Club', homeAway:'visitante'},
+  {date:'2026-10-24', opponent:'San Fernando Handball', homeAway:'local'},
+  {date:'2026-10-31', opponent:'C.A. River Plate', homeAway:'visitante'},
+  {date:'2026-11-07', opponent:'Dorrego Handball', homeAway:'local'},
+  {date:'2026-11-14', opponent:'S.A.G.A.B.', homeAway:'local'},
+  {date:'2026-11-21', opponent:'S.E.D.A.L.O.', homeAway:'visitante'},
+];
+
+async function importEstudiantesFixtures() {
+  if(!confirm('Esto agrega los partidos que quedan del Torneo Metropolitano Clausura al calendario de Liga de Honor, Cadetes, Juveniles y Juniors de Handball-EDLP. ¿Confirmás?')) return;
+  showToast('Importando fixture…');
+  try {
+    const targets = [
+      {category:'Liga de Honor', fixtures:ESTUDIANTES_FIXTURES_LHC},
+      {category:'Cadetes', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
+      {category:'Juveniles', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
+      {category:'Juniors', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
+    ];
+    let addedTotal = 0;
+    for(const {category, fixtures} of targets) {
+      const teamId = await findOrCreateTeam('Handball-EDLP', category, 'Handball');
+      let team = S.teams.find(t=>t.id===teamId);
+      if(!team) {
+        const snap = await getDoc(doc(db,'teams',teamId));
+        team = {id:teamId, ...snap.data()};
+        S.teams.push(team);
+      }
+      if(!team.calendar) team.calendar={};
+      for(const fx of fixtures) {
+        const existing = getCalendarEvents(team, fx.date);
+        if(existing.some(e=>e.type==='partido' && e.opponent===fx.opponent)) continue;
+        const updated = [...existing, {type:'partido', opponent:fx.opponent, homeAway:fx.homeAway}];
+        team.calendar[fx.date] = updated;
+        await setDoc(doc(db,'teams',teamId), {[`calendar.${fx.date}`]: updated}, {merge:true});
+        addedTotal++;
+      }
+    }
+    showToast(`✓ Fixture importado — ${addedTotal} partidos agregados`);
+    renderMain();
+  } catch(e) { console.error(e); showToast('Error al importar: '+e.message); }
+}
+window.importEstudiantesFixtures = importEstudiantesFixtures;
 
 async function finishOnboarding() {
   const d = S.onboardingData;
@@ -2656,7 +2742,7 @@ function renderZoneDetail() {
   const zid=S.selectedZone;
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   const zone=allZones.find(z=>z.id===zid); if(!zone) return '';
-  const inj=S.injuries[zid]||{pain:0,note:'',type:'',severity:'',history:[]};
+  const inj=S.injuries[zid]||{pain:0,note:'',type:'',severity:'',isInjury:false,history:[]};
   const painBtns=Array.from({length:11},(_,i)=>{
     const cls=inj.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn';
     return `<button class="${cls}" onclick="setPain('${zid}',${i})">${i}</button>`;
@@ -2669,20 +2755,28 @@ function renderZoneDetail() {
     const active=(inj.severity||'')===s.id;
     return `<button onclick="setInjurySeverity('${zid}','${s.id}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?s.color:'var(--border2)'};background:${active?s.color+'1a':'transparent'};color:${active?s.color:'var(--text3)'};font-weight:${active?'700':'400'};font-size:12px;cursor:pointer">${s.label}</button>`;
   }).join('');
+  const isInjury = inj.isInjury===true;
   const isExisting = !!S.injuries[zid];
   return `<div class="zone-detail">
     <div class="zone-detail-title">${zone.label}
       <span class="zone-close" onclick="S.selectedZone=null;renderMain()">×</span>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Tipo de molestia</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">¿Qué es esto? — una molestia pasajera solo se ve dentro de tu equipo; una lesión también entra en las alertas del entrenador</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button onclick="setIsInjury('${zid}',false)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${!isInjury?'var(--accent)':'var(--border2)'};background:${!isInjury?'var(--bg3)':'transparent'};color:${!isInjury?'var(--text)':'var(--text3)'};font-weight:${!isInjury?'700':'400'};font-size:12px;cursor:pointer">Molestia pasajera</button>
+      <button onclick="setIsInjury('${zid}',true)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${isInjury?'var(--red)':'var(--border2)'};background:${isInjury?'var(--red-dim)':'transparent'};color:${isInjury?'var(--red)':'var(--text3)'};font-weight:${isInjury?'700':'400'};font-size:12px;cursor:pointer">Lesión (esguince, edema, luxación...)</button>
+    </div>
+    ${isInjury?`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Tipo de lesión</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">${typeBtns}</div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Gravedad — esto lo evalúa tu entrenador, marcá lo que te haya dicho (o dejalo en "Leve" si es algo nuevo/sin evaluar)</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">${sevBtns}</div>
+    `:''}
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dolor de HOY 0–10</div>
     <div class="pain-scale" style="display:flex;gap:4px;margin:8px 0;flex-wrap:wrap">${painBtns}</div>
     <textarea class="pain-note-inp" placeholder="Observaciones..." onchange="setPainNote('${zid}',this.value)">${inj.note||''}</textarea>
     <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="wellness-submit" style="flex:2" onclick="saveInjury('${zid}')">Guardar molestia</button>
+      <button class="wellness-submit" style="flex:2" onclick="saveInjury('${zid}')">Guardar ${isInjury?'lesión':'molestia'}</button>
       ${isExisting?`<button style="flex:1;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:var(--rsm);cursor:pointer;font-size:13px" onclick="removeInjury('${zid}')">Quitar</button>`:''}
     </div>
   </div>`;
@@ -2840,26 +2934,35 @@ function setPain(zid,val) {
     // queda pegada a este valor: se puede cambiar en cualquier momento,
     // independiente de cómo evolucione el dolor día a día.
     const suggestedSeverity = val>=8?'grave':val>=4?'moderada':'leve';
-    S.injuries[zid]={pain:0,note:'',type:'',severity:suggestedSeverity,history:[]};
+    // Arranca como "molestia" (isInjury:false) — el caso más común al tocar
+    // rápido en el mapa es un dolor sin diagnóstico. El atleta lo sube a
+    // "lesión" a propósito si corresponde (ver setIsInjury).
+    S.injuries[zid]={pain:0,note:'',type:'',severity:suggestedSeverity,isInjury:false,history:[]};
   }
   S.injuries[zid].pain=val; renderMain();
 }
 window.setPain=setPain;
 
 function setPainNote(zid,val) {
-  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'leve',history:[]};
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'leve',isInjury:false,history:[]};
   S.injuries[zid].note=val;
 }
 window.setPainNote=setPainNote;
 
+function setIsInjury(zid,val) {
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'leve',isInjury:false,history:[]};
+  S.injuries[zid].isInjury=val; renderMain();
+}
+window.setIsInjury=setIsInjury;
+
 function setInjuryType(zid,type) {
-  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',history:[]};
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',isInjury:true,history:[]};
   S.injuries[zid].type=type; renderMain();
 }
 window.setInjuryType=setInjuryType;
 
 function setInjurySeverity(zid,severity) {
-  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',history:[]};
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',isInjury:true,history:[]};
   S.injuries[zid].severity=severity; renderMain();
 }
 window.setInjurySeverity=setInjurySeverity;
@@ -3412,12 +3515,14 @@ function renderCalendarDayEditor(team, dateStr) {
           <div style="font-size:13px;font-weight:600;flex:1">${t?t.label:e.type}</div>
           <button class="abtn abtn-d" onclick="removeCalendarEvent('${team.id}','${dateStr}',${i})">Quitar</button>
         </div>
-        ${e.type==='partido'?`<div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:16px">
+        ${e.type==='partido'?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-left:16px">
           <input value="${e.opponent||''}" placeholder="Rival" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:12px;outline:none" onblur="setCalendarEventField('${team.id}','${dateStr}',${i},'opponent',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
           <select style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:12px;outline:none" onchange="setCalendarEventField('${team.id}','${dateStr}',${i},'homeAway',this.value)">
             <option value="local" ${e.homeAway==='local'?'selected':''}>Local</option>
             <option value="visitante" ${e.homeAway==='visitante'?'selected':''}>Visitante</option>
           </select>
+          ${e.crestUrl?`<img src="${e.crestUrl}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;border:1px solid var(--border2)">`:''}
+          <label class="abtn" style="cursor:pointer;font-size:11px">Escudo rival<input type="file" accept="image/*" style="display:none" onchange="handleCrestUpload(this,'${team.id}','${dateStr}',${i})"></label>
         </div>`:''}
       </div>`;
     }).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin actividades este día.</div>`}
@@ -3470,11 +3575,49 @@ window.setCalendarEventField=setCalendarEventField;
 // ══════════════════════════════════════════════════════════════
 // ── INFORME EXPORTABLE DEL EQUIPO ────────────────────────────
 // ══════════════════════════════════════════════════════════════
+// ── INFORME DEL EQUIPO — 4 sub-pestañas dentro de la misma pestaña "Informe" ──
+// Resumen (semáforo + puntos clave, ya existía) / Reunión de staff / Médico /
+// Cómo llegamos al partido. Todo anidado por equipo, no como sección aparte.
+const TEAM_REPORT_TABS = [
+  {id:'resumen', label:'Resumen'},
+  {id:'staff', label:'Reunión de staff'},
+  {id:'medico', label:'Médico'},
+  {id:'partido', label:'Cómo llegamos al partido'},
+];
+
+function setTeamReportSubview(v) {
+  S.teamReportSubview = v;
+  renderMain();
+  if(v==='resumen') setTimeout(()=>{
+    const mem = (S.adminAthletes||[]).filter(a=>getTeamStatsMemberUids(S.teamView||{}).includes(a.uid));
+    drawTeamReportTrendChart(mem);
+    drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');
+  },80);
+}
+window.setTeamReportSubview = setTeamReportSubview;
+
 function renderTeamReport(team) {
   const reportUids = getTeamStatsMemberUids(team);
   const members = (S.adminAthletes||[]).filter(a=>reportUids.includes(a.uid));
   if(!members.length) return `<div class="empty-state">No hay atletas en este equipo todavía.</div>`;
 
+  const sub = S.teamReportSubview || 'resumen';
+  const tabsHtml = `<div class="no-print" style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+    <div style="font-size:15px;font-weight:700;flex:1;min-width:160px">Informe del equipo</div>
+    <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+  </div>
+  <div class="no-print" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+    ${TEAM_REPORT_TABS.map(t=>`<button class="snav-tab ${sub===t.id?'active':''}" onclick="setTeamReportSubview('${t.id}')">${t.label}</button>`).join('')}
+  </div>`;
+
+  if(sub==='staff') return tabsHtml + renderStaffMeetingReport(team, members);
+  if(sub==='medico') return tabsHtml + renderMedicalReport(team, members);
+  if(sub==='partido') return tabsHtml + renderMatchReadinessReport(team, members);
+  return tabsHtml + renderTeamReportResumen(team, members);
+}
+window.renderTeamReport=renderTeamReport;
+
+function renderTeamReportResumen(team, members) {
   const today = new Date().toISOString().split('T')[0];
   const periodDays = 30;
   const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
@@ -3557,12 +3700,7 @@ function renderTeamReport(team) {
   if(bajas>altas && bajas>0) highlights.push(`${bajas} lesiones nuevas contra ${altas} altas en los últimos ${periodDays} días — el balance es negativo.`);
   if(!highlights.length) highlights.push('Sin alertas relevantes — el plantel está estable en wellness, carga y lesiones.');
 
-  return `<div class="no-print" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
-    <div style="font-size:15px;font-weight:700;flex:1">Informe del equipo</div>
-    <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
-  </div>
-
-  <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:760px;margin:0 auto;font-family:'Inter',-apple-system,sans-serif">
+  return `<div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:760px;margin:0 auto;font-family:'Inter',-apple-system,sans-serif">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #243B6B;padding-bottom:14px;margin-bottom:18px">
       <div>
         <div style="font-size:20px;font-weight:800;color:#243B6B">${team.name}</div>
@@ -3652,7 +3790,282 @@ function renderTeamReport(team) {
     <div style="font-size:10px;color:#999;text-align:right;margin-top:20px">Generado el ${today} · G-Metrics Performance Lab</div>
   </div>`;
 }
-window.renderTeamReport=renderTeamReport;
+window.renderTeamReportResumen=renderTeamReportResumen;
+
+// ── REUNIÓN DE STAFF ─────────────────────────────────────────
+function renderStaffMeetingReport(team, members) {
+  const today = new Date().toISOString().split('T')[0];
+  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
+  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+
+  // Lesiones reales vs. molestias — acá SÍ se ven las dos, es la vista de
+  // adentro del equipo (a diferencia del Dashboard, que solo alerta lesiones).
+  const injSum = getTeamInjurySummary(members);
+  const realInjuriesActive = members.reduce((s,a)=>s+Object.values(a._personal?.injuries||{}).filter(inj=>inj.pain>0&&isRealInjury(inj)).length,0);
+  const molestiasActive = Math.max(0, injSum.total-realInjuriesActive);
+
+  const cargaronHoy = members.filter(a=>a._personal?.wellness?.[today]).length;
+  const nuncaCargaron = members.filter(a=>!Object.keys(a._personal?.wellness||{}).length).length;
+  const diasPromedio = members.length ? (members.reduce((s,a)=>{
+    const w=a._personal?.wellness||{};
+    return s+Object.keys(w).filter(d=>d>=sevenDaysAgoStr&&d<=today).length;
+  },0)/members.length).toFixed(1) : '0.0';
+  const noCargaronHoy = members.filter(a=>!a._personal?.wellness?.[today]);
+
+  const fatigaVals=[];
+  const dolorRows = members.map(a=>{
+    const w = a._personal?.wellness||{};
+    const dates = Object.keys(w).sort();
+    const lastDate = dates[dates.length-1];
+    const last = lastDate?w[lastDate]:null;
+    if(last?.fatiga!=null) fatigaVals.push(last.fatiga);
+    return {name:a.name||a.email, fatiga:last?.fatiga??null, dolor:last?.dolor_muscular??null, date:lastDate};
+  }).filter(r=>r.fatiga!=null||r.dolor!=null);
+  const fatigaMedia = fatigaVals.length ? (fatigaVals.reduce((s,v)=>s+v,0)/fatigaVals.length).toFixed(1) : null;
+
+  const matchRows = members.map(a=>{
+    const logs = a._personal?.history?._sessionLogs||[];
+    const sum = getMatchMinutesSummary(logs);
+    return {name:a.name||a.email, ...sum};
+  }).filter(r=>r.partidosJugados>0).sort((x,y)=>y.minutosTotales-x.minutosTotales);
+
+  return `<div class="admin-section">
+    <div class="admin-section-title">Resumen ejecutivo del plantel — ${today}</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${members.length}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Plantel</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${realInjuriesActive>0?'var(--red)':'var(--text)'}">${realInjuriesActive}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${molestiasActive}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media</div></div>
+    </div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Cumplimiento del wellness diario</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-bottom:10px">
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${cargaronHoy===members.length?'var(--green)':'var(--text)'}">${cargaronHoy}/${members.length}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Cargaron hoy</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${diasPromedio}/7</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Promedio días (últ. 7)</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${nuncaCargaron>0?'var(--amber)':'var(--text)'}">${nuncaCargaron}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Nunca cargaron</div></div>
+    </div>
+    ${noCargaronHoy.length?`<div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">Todavía no cargaron hoy: ${noCargaronHoy.map(a=>a.name||a.email).join(', ')}</div>`:''}
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Fatiga y dolor por jugador</div>
+    <div style="padding:6px 16px 4px;font-size:11px;color:var(--text3)">Se usa el último check-in cargado por cada jugador — no hace falta que todas hayan completado el wellness el mismo día.</div>
+    ${dolorRows.length?dolorRows.map(r=>`
+      <div style="padding:8px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="font-size:12px;font-weight:600">${r.name}</div>
+        <div style="font-size:11px;color:var(--text3)">Fatiga ${r.fatiga??'—'}/5 · Dolor ${r.dolor??'—'}/5${r.date?' · '+r.date:''}</div>
+      </div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin registros de wellness todavía.</div>`}
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Participación en partidos del plantel</div>
+    <div style="padding:6px 16px 4px;font-size:11px;color:var(--text3)">Quiénes acumulan más minutos de partido — cruzalo con fatiga y ACWR antes de definir la próxima carga.</div>
+    ${matchRows.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:8px 10px;color:var(--text2)">Jugador</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Partidos</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Minutos totales</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Promedio</th>
+      </tr></thead>
+      <tbody>${matchRows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 10px;font-weight:600">${r.name}</td>
+        <td style="padding:8px 10px;text-align:center">${r.partidosJugados}</td>
+        <td style="padding:8px 10px;text-align:center">${r.minutosTotales}</td>
+        <td style="padding:8px 10px;text-align:center">${r.promedioPorPartido}'</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`:`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin partidos cargados en "Carga de hoy" todavía.</div>`}
+  </div>`;
+}
+window.renderStaffMeetingReport = renderStaffMeetingReport;
+
+// ── INFORME MÉDICO ────────────────────────────────────────────
+function renderMedicalReport(team, members) {
+  const periodDays = 90;
+  const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
+  const periodStartStr = periodStart.toISOString().split('T')[0];
+
+  let activeToday=0, grave=0, moderada=0, leve=0, totalHistoric=0;
+  const zoneCounts = {};
+  const monthCounts = {};
+
+  members.forEach(a=>{
+    const injuries = a._personal?.injuries||{};
+    Object.entries(injuries).forEach(([zoneId,inj])=>{
+      if(!inj.pain||inj.pain<=0||!isRealInjury(inj)) return;
+      activeToday++;
+      const sev = inj.severity||'leve';
+      if(sev==='grave') grave++; else if(sev==='moderada') moderada++; else leve++;
+      zoneCounts[zoneId] = (zoneCounts[zoneId]||0)+1;
+      const start = inj.history?.length ? inj.history[0].date : null;
+      if(start && start>=periodStartStr) monthCounts[start.slice(0,7)] = (monthCounts[start.slice(0,7)]||0)+1;
+    });
+    const archive = a._personal?.injuryArchive||[];
+    archive.forEach(r=>{
+      totalHistoric++;
+      if(r.startDate>=periodStartStr) monthCounts[r.startDate.slice(0,7)] = (monthCounts[r.startDate.slice(0,7)]||0)+1;
+    });
+  });
+  totalHistoric += activeToday;
+
+  const prevalencia = members.length ? Math.round((activeToday/members.length)*100) : 0;
+  const lesionesPorJugador = members.length ? (totalHistoric/members.length).toFixed(2) : '0.00';
+  const totalExposureHours = members.reduce((s,a)=>s+getExposureHours(a._personal?.history?._sessionLogs||[]),0);
+  const incidencia = totalExposureHours>0 ? +((activeToday/totalExposureHours)*1000).toFixed(1) : null;
+
+  const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  const zoneRows = Object.entries(zoneCounts).map(([zid,count])=>({label:allBodyZones.find(z=>z.id===zid)?.label||zid, count})).sort((a,b)=>b.count-a.count);
+  const maxZoneCount = zoneRows.length ? Math.max(...zoneRows.map(z=>z.count)) : 1;
+  const monthKeys = Object.keys(monthCounts).sort();
+  const maxMonthCount = monthKeys.length ? Math.max(...monthKeys.map(k=>monthCounts[k])) : 1;
+
+  return `<div class="admin-section">
+    <div class="admin-section-title">Resumen epidemiológico del plantel</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${prevalencia>0?'var(--red)':'var(--text)'}">${prevalencia}%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Prevalencia actual</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${lesionesPorJugador}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesiones/jugador</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${activeToday}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Activas hoy</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${incidencia??'—'}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Incidencia /1000hs</div></div>
+    </div>
+    <div style="padding:8px 16px 12px;font-size:11px;color:var(--text3)">La incidencia por horas de exposición se calcula con los minutos de entrenamiento/partido que cada atleta ya carga en "Carga de hoy".</div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Zonas del cuerpo más afectadas</div>
+    ${zoneRows.length?zoneRows.map(z=>`
+      <div style="padding:6px 16px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${z.label}</span><span style="font-weight:700">${z.count}</span></div>
+        <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;background:var(--red);border-radius:4px;width:${(z.count/maxZoneCount)*100}%"></div></div>
+      </div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin lesiones activas.</div>`}
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Distribución por gravedad</div>
+    <div style="display:flex;gap:8px;padding:12px 16px">
+      <div style="flex:1;background:var(--red-dim);border-radius:6px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--red)">${grave}</div><div style="font-size:9px;color:var(--red);text-transform:uppercase">Graves</div></div>
+      <div style="flex:1;background:var(--amber-dim);border-radius:6px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--amber)">${moderada}</div><div style="font-size:9px;color:var(--amber);text-transform:uppercase">Moderadas</div></div>
+      <div style="flex:1;background:var(--green-dim);border-radius:6px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--green)">${leve}</div><div style="font-size:9px;color:var(--green);text-transform:uppercase">Leves</div></div>
+    </div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Lesiones por mes (tendencia, últimos ${periodDays} días)</div>
+    ${monthKeys.length?monthKeys.map(mk=>`
+      <div style="padding:6px 16px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${mk}</span><span style="font-weight:700">${monthCounts[mk]}</span></div>
+        <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;background:var(--accent);border-radius:4px;width:${(monthCounts[mk]/maxMonthCount)*100}%"></div></div>
+      </div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin lesiones nuevas en el período.</div>`}
+  </div>`;
+}
+window.renderMedicalReport = renderMedicalReport;
+
+// ── CÓMO LLEGAMOS AL PARTIDO ──────────────────────────────────
+// Busca el próximo evento de tipo "partido" en el calendario del equipo —
+// mismo dato que ya carga el editor de calendario (rival, local/visitante,
+// escudo), sin pedir nada nuevo.
+function getNextMatch(team) {
+  const today = new Date().toISOString().split('T')[0];
+  const cal = team.calendar || {};
+  const dates = Object.keys(cal).filter(d=>d>=today).sort();
+  for(const d of dates) {
+    const partido = getCalendarEvents(team,d).find(e=>e.type==='partido');
+    if(partido) return {date:d, ...partido};
+  }
+  return null;
+}
+window.getNextMatch = getNextMatch;
+
+function renderMatchReadinessReport(team, members) {
+  const today = new Date().toISOString().split('T')[0];
+  const nextMatch = getNextMatch(team);
+  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
+  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+
+  let noWellness7d = 0;
+  const rows = members.map(a=>{
+    const personal = a._personal||{};
+    const logs = personal.history?._sessionLogs||[];
+    const m = calcLoadMetrics(logs);
+    const wellness = personal.wellness||{};
+    const recentEntries = Object.entries(wellness).filter(([d])=>d>=sevenDaysAgoStr && d<=today);
+    const fatigaVals = recentEntries.map(([,w])=>w.fatiga).filter(v=>v!=null);
+    const dolorVals = recentEntries.map(([,w])=>w.dolor_muscular).filter(v=>v!=null);
+    const fatigaAvg = fatigaVals.length ? +(fatigaVals.reduce((s,v)=>s+v,0)/fatigaVals.length).toFixed(1) : null;
+    const dolorAvg = dolorVals.length ? +(dolorVals.reduce((s,v)=>s+v,0)/dolorVals.length).toFixed(1) : null;
+    if(!recentEntries.length) noWellness7d++;
+
+    const injuries = personal.injuries||{};
+    const realInjuries = Object.values(injuries).filter(inj=>inj.pain>0 && isRealInjury(inj));
+    const rank = {grave:3,moderada:2,leve:1};
+    const worst = realInjuries.reduce((w,inj)=>(rank[inj.severity]||1)>(rank[w?.severity]||0)?inj:w, null);
+    let disponibilidad = {label:'Disponible', color:'var(--green)'};
+    if(worst?.severity==='grave') disponibilidad = {label:'No disponible', color:'var(--red)'};
+    else if(worst?.severity==='moderada') disponibilidad = {label:'En duda', color:'var(--amber)'};
+
+    const matchSummary = getMatchMinutesSummary(logs);
+    return {a, fatigaAvg, dolorAvg, acwr:m?.acwr??null, disponibilidad, diasSinPartido:matchSummary.daysSinceLastMatch};
+  });
+
+  const fatigaVals = rows.map(r=>r.fatigaAvg).filter(v=>v!=null);
+  const dolorVals = rows.map(r=>r.dolorAvg).filter(v=>v!=null);
+  const fatigaMedia = fatigaVals.length ? (fatigaVals.reduce((s,v)=>s+v,0)/fatigaVals.length).toFixed(1) : null;
+  const dolorMedia = dolorVals.length ? (dolorVals.reduce((s,v)=>s+v,0)/dolorVals.length).toFixed(1) : null;
+  const acwrRiesgo = rows.filter(r=>r.acwr!=null && r.acwr>1.5).length;
+  const lesionadasEnDuda = rows.filter(r=>r.disponibilidad.label!=='Disponible').length;
+
+  let html = `<div class="admin-section">`;
+  if(nextMatch) {
+    const daysUntil = Math.max(0, Math.ceil((new Date(nextMatch.date)-new Date(today))/(1000*60*60*24)));
+    html += `<div class="admin-section-title">Próximo partido</div>
+      <div style="padding:14px 16px;display:flex;align-items:center;gap:12px">
+        ${nextMatch.crestUrl?`<img src="${nextMatch.crestUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid var(--border2)">`:''}
+        <div>
+          <div style="font-size:15px;font-weight:700">${nextMatch.opponent?'vs. '+nextMatch.opponent:'Partido'} · ${nextMatch.homeAway==='visitante'?'✈️ Visitante':'🏠 Local'}</div>
+          <div style="font-size:12px;color:var(--text3)">${nextMatch.date} · en ${daysUntil} día${daysUntil===1?'':'s'}</div>
+        </div>
+      </div>`;
+  } else {
+    html += `<div class="admin-section-title">Próximo partido</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">No hay ningún partido cargado en el Calendario para este equipo.</div>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="admin-section"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media (7d)</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${dolorMedia??'—'}${dolorMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Dolor medio (7d)</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${acwrRiesgo>0?'var(--red)':'var(--text)'}">${acwrRiesgo}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR en riesgo</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${lesionadasEnDuda>0?'var(--amber)':'var(--text)'}">${lesionadasEnDuda}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas/en duda</div></div>
+  </div></div>`;
+
+  if(noWellness7d>0) html += `<div style="background:var(--amber-dim);color:var(--amber);border-radius:var(--rsm);padding:10px 14px;margin-bottom:14px;font-size:12px">⚠ ${noWellness7d} atleta${noWellness7d===1?'':'s'} sin wellness cargado en los últimos 7 días — su estado real podría no estar reflejado.</div>`;
+
+  html += `<div class="admin-section"><div class="admin-section-title">Disponibilidad del plantel</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:8px 10px;color:var(--text2)">Atleta</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Disponibilidad</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Fatiga</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Dolor</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2)">ACWR</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Días s/partido</th>
+      </tr></thead>
+      <tbody>
+      ${[...rows].sort((x,y)=>(x.a.name||x.a.email||'').localeCompare(y.a.name||y.a.email||'')).map(r=>`
+        <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthlete('${r.a.uid}')">
+          <td style="padding:8px 10px;font-weight:600">${r.a.name||r.a.email}</td>
+          <td style="padding:8px 10px;text-align:center"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${r.disponibilidad.color}22;color:${r.disponibilidad.color}">${r.disponibilidad.label}</span></td>
+          <td style="padding:8px 10px;text-align:center">${r.fatigaAvg??'—'}</td>
+          <td style="padding:8px 10px;text-align:center">${r.dolorAvg??'—'}</td>
+          <td style="padding:8px 10px;text-align:center">${r.acwr!=null?r.acwr.toFixed(2):'—'}</td>
+          <td style="padding:8px 10px;text-align:center">${r.diasSinPartido??'—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  </div>`;
+
+  return html;
+}
+window.renderMatchReadinessReport = renderMatchReadinessReport;
 
 function renderTeamRutina(team) {
   const days=team.trainingDays||[];
@@ -6124,6 +6537,36 @@ function handleProfilePhotoUpload(input) {
 }
 window.handleProfilePhotoUpload=handleProfilePhotoUpload;
 
+// Escudo del rival en un evento de Partido — mismo criterio que la foto de
+// perfil (achicar a un cuadrado chico y guardar como dataURL, sin usar
+// Storage aparte) pero todavía más chico porque es solo un ícono.
+function handleCrestUpload(input, teamId, dateStr, idx) {
+  const file = input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')) { showToast('Elegí un archivo de imagen'); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = async () => {
+      const size = 80;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const minSide = Math.min(img.width, img.height);
+      const sx = (img.width-minSide)/2, sy = (img.height-minSide)/2;
+      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL('image/png', 0.85);
+      if(dataUrl.length > 300000) { showToast('La imagen es muy pesada, probá con otra'); return; }
+      await setCalendarEventField(teamId, dateStr, idx, 'crestUrl', dataUrl);
+      showToast('✓ Escudo cargado');
+      renderMain();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+window.handleCrestUpload = handleCrestUpload;
+
 function changeWeek(d) {
   const start = new Date(S.startDate+'T00:00:00');
   start.setDate(start.getDate() - d*7);
@@ -6249,6 +6692,58 @@ function openReminderScreen() {
 }
 window.openReminderScreen = openReminderScreen;
 
+// La tarjeta "N atletas" del dashboard no navega a otra pantalla — la lista
+// ya está más abajo, en la misma vista — solo hace scroll hasta ahí.
+function scrollToDashAthleteList() {
+  const el = document.getElementById('dash-team-filters');
+  if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+}
+window.scrollToDashAthleteList = scrollToDashAthleteList;
+
+function openTrainedTodayScreen() {
+  S.adminView = 'trained_today';
+  S.currentView = 'admin';
+  renderBottomBar();
+  renderMain();
+}
+window.openTrainedTodayScreen = openTrainedTodayScreen;
+
+// Mismo criterio que "Wellness hoy" (renderReminderScreen) pero para carga:
+// quién entrenó hoy, con qué duración/RPE por actividad, y si de paso marcó
+// alguna molestia o lesión en el mapa corporal ese mismo día.
+function renderTrainedTodayScreen() {
+  const today = new Date().toISOString().split('T')[0];
+  const athletes = S.dashAthletes || [];
+  const rows = [];
+  athletes.forEach(a=>{
+    const logs = (a._personal?.history?._sessionLogs||[]).filter(l=>l.date===today);
+    if(!logs.length) return;
+    const injuries = a._personal?.injuries || {};
+    const markedToday = Object.values(injuries).some(inj=>(inj.history||[]).some(h=>h.date===today));
+    rows.push({a, logs, markedToday});
+  });
+  rows.sort((x,y)=>(x.a.name||x.a.email||'').localeCompare(y.a.name||y.a.email||''));
+
+  return `<div class="team-detail-header">
+    <button class="back-btn" data-back="admin-main">‹</button>
+    <div class="team-detail-title">Entrenaron hoy</div>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">${rows.length} de ${athletes.length} atletas · ${today}</div>
+    ${rows.length ? rows.map(({a,logs,markedToday})=>`
+      <div class="admin-item" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:6px" onclick="adminOpenAthleteDash('${a.uid}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div class="admin-item-lbl">${a.name||a.email}</div>
+          ${markedToday?`<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">⚠ molestia/lesión</span>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${logs.map(l=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);white-space:nowrap">${l.session||l.activity} · ${l.mins}min · RPE ${l.rpe}</span>`).join('')}
+        </div>
+      </div>`).join('') : `<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Todavía nadie entrenó hoy.</div>`}
+  </div>`;
+}
+window.renderTrainedTodayScreen = renderTrainedTodayScreen;
+
 // Mecanismo genérico para ocultar/mostrar cualquier lista de la app —
 // reutilizable en cualquier sección (Atención requerida, lesiones del
 // plantel, etc.), sin guardar nada en Firestore (es solo preferencia visual
@@ -6344,6 +6839,7 @@ function renderAdmin() {
     case 'compare_athletes': return renderCompareAthletes();
     case 'wellness_detail': return renderWellnessDetail();
     case 'reminders': return renderReminderScreen();
+    case 'trained_today': return renderTrainedTodayScreen();
     default:               return renderAdminMain();
   }
 }
@@ -6386,6 +6882,10 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Corregir mayúsculas de nombres</div><div class="admin-item-sub">Pasa "GANORA gonzalo" → "Ganora Gonzalo" para todos los atletas de una</div></div>
       <button class="abtn" onclick="fixAllNameCapitalization()">Corregir</button>
+    </div>
+    <div class="admin-item">
+      <div><div class="admin-item-lbl">Importar fixture Estudiantes (Clausura)</div><div class="admin-item-sub">Carga los partidos que quedan en Liga de Honor, Cadetes, Juveniles y Juniors — no duplica si se corre de nuevo</div></div>
+      <button class="abtn" onclick="importEstudiantesFixtures()">Importar</button>
     </div>
   </div>
   <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
@@ -8479,6 +8979,34 @@ window.loadAllAthleteEvals = loadAllAthleteEvals;
 // ── DASHBOARD ────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 
+// Minutos jugados en partido — se arman solos a partir de lo que cada
+// atleta ya completa en "Carga de hoy" (actividad Partido/Partido 2), sin
+// pedirle un dato nuevo a nadie. Estos mismos logs YA entran en calcLoadMetrics
+// (UA/ACWR) porque comparten el mismo array _sessionLogs — acá solo se
+// resumen aparte para los informes de partido y médico.
+function getMatchLogs(sessionLogs) {
+  return (sessionLogs||[]).filter(l=>l.activity==='partido'||l.activity==='partido2');
+}
+window.getMatchLogs = getMatchLogs;
+
+function getMatchMinutesSummary(sessionLogs) {
+  const matchLogs = getMatchLogs(sessionLogs);
+  const partidosJugados = matchLogs.length;
+  const minutosTotales = matchLogs.reduce((s,l)=>s+(l.mins||0),0);
+  const promedioPorPartido = partidosJugados ? Math.round(minutosTotales/partidosJugados) : 0;
+  const lastMatchDate = matchLogs.length ? matchLogs.reduce((max,l)=>l.date>max?l.date:max, matchLogs[0].date) : null;
+  const daysSinceLastMatch = lastMatchDate ? Math.floor((new Date()-new Date(lastMatchDate))/(1000*60*60*24)) : null;
+  return { partidosJugados, minutosTotales, promedioPorPartido, lastMatchDate, daysSinceLastMatch, matchLogs };
+}
+window.getMatchMinutesSummary = getMatchMinutesSummary;
+
+// Horas de exposición (entrenamiento + partido) — insumo para la incidencia
+// de lesiones por 1000hs, un estándar real de epidemiología deportiva.
+function getExposureHours(sessionLogs) {
+  return (sessionLogs||[]).reduce((s,l)=>s+(l.mins||0),0) / 60;
+}
+window.getExposureHours = getExposureHours;
+
 function calcLoadMetrics(sessionLogs) {
   // sessionLogs = array of {date, week, session, rpe, mins, ua}
   if(!sessionLogs || !sessionLogs.length) return null;
@@ -8675,20 +9203,21 @@ function renderDashboardContent() {
   }).map(a=>({athlete:a, type:'acwr', detail:'ACWR elevado'}));
 
   // Alertas de lesiones — lo que de verdad requiere atención, no "no llenó
-  // el wellness". Una lesión moderada o grave SIEMPRE aparece acá, sin
-  // importar el dolor que el atleta marque ese día puntual (una operación
-  // de cruzado sigue siendo grave aunque hoy no duela). Una lesión leve
-  // (golpes, esguinces menores) solo aparece si el dolor de hoy es >3/10 —
-  // si es un golpe que casi no molesta, no hace falta alertar por eso.
+  // el wellness" ni una molestia pasajera sin diagnóstico. Acá SOLO entran
+  // lesiones reales (isRealInjury), en cualquier gravedad — leve, moderada o
+  // grave — sin importar el dolor puntual de hoy (una operación de cruzado
+  // sigue siendo grave aunque hoy no duela). Las molestias (dolores sin
+  // diagnóstico, tipo "me duele la espalda") NO entran acá para no inundar
+  // el panel de inicio de ruido — siguen viéndose completas dentro de cada
+  // equipo.
   const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
   const injuryAlerts = [];
   athletes.forEach(a=>{
     const injuries = a._personal?.injuries || {};
     Object.entries(injuries).forEach(([zoneId, inj])=>{
       if(!inj.pain || inj.pain<=0) return;
+      if(!isRealInjury(inj)) return;
       const sev = inj.severity || 'leve';
-      const isRelevant = sev==='moderada' || sev==='grave' || (sev==='leve' && inj.pain>3);
-      if(!isRelevant) return;
       const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
       const sevInfo = severityInfo(sev);
       injuryAlerts.push({
@@ -8702,15 +9231,15 @@ function renderDashboardContent() {
   const alertAthletes = acwrAlerts.map(x=>x.athlete); // keep for backward compat in metric card
 
   let html = `<div class="metric-grid" style="margin-bottom:20px">
-    <div class="metric-card" style="border-left:3px solid var(--accent)">
+    <div class="metric-card" style="border-left:3px solid var(--accent);cursor:pointer" onclick="scrollToDashAthleteList()">
       <div class="metric-card-label">ATLETAS <span class="metric-card-icon">${metricIconSvg('atletas')}</span></div>
       <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
-      <div class="metric-card-sub">registrados</div>
+      <div class="metric-card-sub">registrados · tocá para ver la lista</div>
     </div>
-    <div class="metric-card" style="border-left:3px solid var(--warm)">
+    <div class="metric-card" style="border-left:3px solid var(--warm);cursor:pointer" onclick="openTrainedTodayScreen()">
       <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">${metricIconSvg('entrenaron')}</span></div>
       <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}" data-countup="${trainedToday}">${trainedToday}</div>
-      <div class="metric-card-sub">de ${totalAthletes} atletas</div>
+      <div class="metric-card-sub">de ${totalAthletes} atletas · tocá para ver quiénes</div>
     </div>
     <div class="metric-card" style="border-left:3px solid var(--green);cursor:pointer" onclick="openReminderScreen()">
       <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">${metricIconSvg('wellness')}</span></div>
@@ -8754,18 +9283,12 @@ function renderDashboardContent() {
 
   // Búsqueda + filtro por equipo — para que esto siga siendo usable con 30-50 atletas,
   // no solo con 2. Filas compactas en vez de una tarjeta enorme por atleta.
-  const teamsWithAthletes = [...new Set(athletes.filter(a=>a.teamId).map(a=>a.teamId))]
-    .map(tid=>S.teams?.find(t=>t.id===tid)).filter(Boolean);
   html += `<div style="margin-bottom:10px">
     <input id="dash-search-inp" value="${S.dashSearch||''}" placeholder="Buscar atleta..."
       style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
       oninput="setDashSearch(this.value)">
   </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-    <button class="lib-filter ${!S.dashTeamFilter?'active':''}" onclick="setDashTeamFilter(null)">Todos (${athletes.length})</button>
-    <button class="lib-filter ${S.dashTeamFilter==='individual'?'active':''}" onclick="setDashTeamFilter('individual')">Individuales</button>
-    ${teamsWithAthletes.map(t=>`<button class="lib-filter ${S.dashTeamFilter===t.id?'active':''}" onclick="setDashTeamFilter('${t.id}')">${t.name}${t.category?' · '+t.category:''}</button>`).join('')}
-  </div>
+  <div id="dash-team-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${renderDashTeamFilters(athletes)}</div>
   <div id="dash-athlete-list">${renderDashboardAthleteList()}</div>`;
 
   html += `<div style="text-align:center;margin-top:12px">
@@ -8826,10 +9349,29 @@ function updateDashboardAthleteList() {
 }
 window.updateDashboardAthleteList=updateDashboardAthleteList;
 
+// Chips de "Todos / Individuales / equipo" — separados para poder
+// refrescarlos junto con la lista al filtrar. Antes solo se refrescaba la
+// lista de abajo: filtraba bien, pero el chip tocado nunca se pintaba de
+// azul porque su propio HTML no se volvía a generar.
+function renderDashTeamFilters(athletes) {
+  const teamsWithAthletes = [...new Set(athletes.filter(a=>a.teamId).map(a=>a.teamId))]
+    .map(tid=>S.teams?.find(t=>t.id===tid)).filter(Boolean);
+  return `<button class="lib-filter ${!S.dashTeamFilter?'active':''}" onclick="setDashTeamFilter(null)">Todos (${athletes.length})</button>
+    <button class="lib-filter ${S.dashTeamFilter==='individual'?'active':''}" onclick="setDashTeamFilter('individual')">Individuales</button>
+    ${teamsWithAthletes.map(t=>`<button class="lib-filter ${S.dashTeamFilter===t.id?'active':''}" onclick="setDashTeamFilter('${t.id}')">${t.name}${t.category?' · '+t.category:''}</button>`).join('')}`;
+}
+window.renderDashTeamFilters = renderDashTeamFilters;
+
+function updateDashTeamFilters() {
+  const el=document.getElementById('dash-team-filters');
+  if(el) el.innerHTML=renderDashTeamFilters(S.dashAthletes||[]);
+}
+window.updateDashTeamFilters = updateDashTeamFilters;
+
 function setDashSearch(v) { S.dashSearch=v; updateDashboardAthleteList(); }
 window.setDashSearch=setDashSearch;
 
-function setDashTeamFilter(v) { S.dashTeamFilter=v; updateDashboardAthleteList(); }
+function setDashTeamFilter(v) { S.dashTeamFilter=v; updateDashTeamFilters(); updateDashboardAthleteList(); }
 window.setDashTeamFilter=setDashTeamFilter;
 
 async function adminOpenAthleteDash(uid) {
