@@ -6406,6 +6406,139 @@ async function fixAllNameCapitalization() {
 }
 window.fixAllNameCapitalization = fixAllNameCapitalization;
 
+// ── ORDEN DE NOMBRES (Apellido, Nombre) — con vista previa ──────────────
+// No hay forma de saber por código si un nombre YA está en formato
+// "Apellido Nombre" (el campo es texto libre, no hay firstName/lastName
+// separados) — por eso esto SIEMPRE pasa por una revisión antes de guardar,
+// a diferencia de fixAllNameCapitalization que sí es seguro aplicar directo.
+// La propuesta: mover la primera palabra al final, dejando el resto (uno o
+// dos apellidos) en el mismo orden en que la persona los escribió.
+function proposeNameOrder(rawName) {
+  const cap = capitalizeName(rawName);
+  const words = cap.split(' ').filter(Boolean);
+  if(words.length<2) return cap;
+  const first = words.shift();
+  words.push(first);
+  return words.join(' ');
+}
+window.proposeNameOrder = proposeNameOrder;
+
+function getNameOrderCandidates() {
+  const list = [];
+  (S.adminAthletes||[]).forEach(a=>{
+    const proposed = proposeNameOrder(a.name);
+    if(proposed && proposed!==a.name) list.push({kind:'user', id:a.uid, current:a.name, proposed});
+  });
+  (S.pendingAthletes||[]).forEach(p=>{
+    const proposed = proposeNameOrder(p.name);
+    if(proposed && proposed!==p.name) list.push({kind:'pending', id:p.id, current:p.name, proposed});
+  });
+  return list;
+}
+window.getNameOrderCandidates = getNameOrderCandidates;
+
+function openNameOrderReview() {
+  S.adminView = 'name_order_review';
+  S.currentView = 'admin';
+  S._nameOrderChecked = null;
+  renderBottomBar();
+  renderMain();
+}
+window.openNameOrderReview = openNameOrderReview;
+
+function toggleNameOrderChecked(i) {
+  if(!S._nameOrderChecked) return;
+  if(S._nameOrderChecked.has(i)) S._nameOrderChecked.delete(i); else S._nameOrderChecked.add(i);
+  renderMain();
+}
+window.toggleNameOrderChecked = toggleNameOrderChecked;
+
+function setAllNameOrderChecked(val) {
+  const candidates = getNameOrderCandidates();
+  S._nameOrderChecked = val ? new Set(candidates.map((c,i)=>i)) : new Set();
+  renderMain();
+}
+window.setAllNameOrderChecked = setAllNameOrderChecked;
+
+function renderNameOrderReview() {
+  const candidates = getNameOrderCandidates();
+  if(!S._nameOrderChecked) S._nameOrderChecked = new Set(candidates.map((c,i)=>i));
+  return `<div class="team-detail-header">
+    <button class="back-btn" data-back="admin-main">‹</button>
+    <div class="team-detail-title">Revisar orden de nombres</div>
+  </div>
+  <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
+    Propuesta: mover la primera palabra al final (ej. "Facundo Letanu" → "Letanu Facundo"), dejando el resto en el mismo orden en que lo escribieron — así un doble apellido no se reordena entre sí, solo se mueve el nombre de pila al final. No hay forma de saber por código cuáles YA están en formato Apellido-Nombre: desmarcá esos antes de aplicar.
+  </div>
+  ${candidates.length ? `
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="abtn" onclick="setAllNameOrderChecked(true)">Marcar todos</button>
+    <button class="abtn" onclick="setAllNameOrderChecked(false)">Desmarcar todos</button>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">${candidates.length} nombre${candidates.length!==1?'s':''} con cambio propuesto</div>
+    ${candidates.map((c,i)=>`
+      <div class="admin-item" style="cursor:pointer" onclick="toggleNameOrderChecked(${i})">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+          <input type="checkbox" ${S._nameOrderChecked.has(i)?'checked':''} onclick="event.stopPropagation();toggleNameOrderChecked(${i})" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;flex-shrink:0">
+          <div style="min-width:0">
+            <div style="font-size:11px;color:var(--text3);text-decoration:line-through">${c.current}</div>
+            <div style="font-size:13px;font-weight:600">${c.proposed}</div>
+          </div>
+        </div>
+      </div>`).join('')}
+  </div>
+  <button class="wellness-submit" onclick="applyNameOrderReview()">Aplicar seleccionados (${S._nameOrderChecked.size})</button>
+  ` : `<div class="empty-state">No hay cambios de orden para proponer.</div>`}`;
+}
+window.renderNameOrderReview = renderNameOrderReview;
+
+async function applyNameOrderReview() {
+  const candidates = getNameOrderCandidates();
+  const checked = S._nameOrderChecked || new Set();
+  if(!checked.size) { showToast('No marcaste ninguno'); return; }
+  if(!confirm(`¿Aplicar el nuevo orden a ${checked.size} nombre${checked.size!==1?'s':''}? Esto no se puede deshacer.`)) return;
+  showToast('Aplicando…');
+  let fixedCount = 0;
+  for(let i=0;i<candidates.length;i++) {
+    if(!checked.has(i)) continue;
+    const c = candidates[i];
+    try {
+      if(c.kind==='user') {
+        await setDoc(doc(db,'users',c.id), {name:c.proposed}, {merge:true});
+        const a = S.adminAthletes.find(x=>x.uid===c.id);
+        if(a) {
+          if(a.teamId) {
+            const team = S.teams.find(t=>t.id===a.teamId);
+            if(team && team.players) {
+              const idx = team.players.findIndex(p=>namesLikelyMatch(p,c.current));
+              if(idx>=0) { team.players[idx]=c.proposed; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
+            }
+          }
+          a.name = c.proposed;
+        }
+      } else {
+        await setDoc(doc(db,'pendingAthletes',c.id), {name:c.proposed}, {merge:true});
+        const p = S.pendingAthletes.find(x=>x.id===c.id);
+        if(p) {
+          const team = S.teams.find(t=>t.id===p.teamId);
+          if(team && team.players) {
+            const idx = team.players.findIndex(pl=>namesLikelyMatch(pl,c.current));
+            if(idx>=0) { team.players[idx]=c.proposed; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
+          }
+          p.name = c.proposed;
+        }
+      }
+      fixedCount++;
+    } catch(e) { /* seguimos con el resto aunque uno falle */ }
+  }
+  S._nameOrderChecked = null;
+  showToast(`✓ ${fixedCount} nombre${fixedCount!==1?'s':''} actualizado${fixedCount!==1?'s':''}`);
+  S.adminView = 'main';
+  renderMain();
+}
+window.applyNameOrderReview = applyNameOrderReview;
+
 function renderSettings() {
   const u = S.userData || {};
   const darkOn = getTheme()==='dark';
@@ -6947,6 +7080,7 @@ function renderAdmin() {
     case 'reminders': return renderReminderScreen();
     case 'trained_today': return renderTrainedTodayScreen();
     case 'injury_classify': return renderInjuryClassifyScreen();
+    case 'name_order_review': return renderNameOrderReview();
     default:               return renderAdminMain();
   }
 }
@@ -6989,6 +7123,10 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Corregir mayúsculas de nombres</div><div class="admin-item-sub">Pasa "GANORA gonzalo" → "Ganora Gonzalo" para todos los atletas de una</div></div>
       <button class="abtn" onclick="fixAllNameCapitalization()">Corregir</button>
+    </div>
+    <div class="admin-item">
+      <div><div class="admin-item-lbl">Ordenar nombres (Apellido, Nombre)</div><div class="admin-item-sub">Te muestra una vista previa para revisar antes de aplicar — no hay forma de saber cuáles ya están bien</div></div>
+      <button class="abtn" onclick="openNameOrderReview()">Revisar</button>
     </div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Importar fixture Estudiantes (Clausura)</div><div class="admin-item-sub">Carga los partidos que quedan en Liga de Honor, Cadetes, Juveniles y Juniors — no duplica si se corre de nuevo</div></div>
@@ -9323,6 +9461,9 @@ window.renderDashInjuryCategoryFilters = renderDashInjuryCategoryFilters;
 // dadas de alta (archivadas) — para el panel "Lesiones recientes" del
 // Dashboard, separado de "Atención requerida" (que es solo lo que hay que
 // mirar HOY). Acá se ve la foto más amplia: qué pasó últimamente.
+// Solo ACTIVAS a propósito — las dadas de alta no hacen bulto acá, quedan
+// como historial dentro del informe de cada equipo (injuryArchive sigue
+// completo, esto es nomás lo que se muestra en el Dashboard).
 function getRecentInjuryFeed(athletes, limit) {
   const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
   const feed = [];
@@ -9332,16 +9473,55 @@ function getRecentInjuryFeed(athletes, limit) {
       if(!inj.pain||inj.pain<=0||!isRealInjury(inj)) return;
       const lastDate = inj.history?.length ? inj.history[inj.history.length-1].date : null;
       const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
-      feed.push({athlete:a, zoneLabel, type:inj.type, severity:inj.severity||'leve', date:lastDate||'', status:'active'});
-    });
-    (a._personal?.injuryArchive||[]).forEach(r=>{
-      feed.push({athlete:a, zoneLabel:r.zoneLabel||r.zoneId, type:r.type, severity:null, date:r.resolvedDate||'', status:'resolved'});
+      feed.push({athlete:a, zoneLabel, type:inj.type, severity:inj.severity||'leve', pain:inj.pain, date:lastDate||'', status:'active'});
     });
   });
   feed.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
   return limit ? feed.slice(0, limit) : feed;
 }
 window.getRecentInjuryFeed = getRecentInjuryFeed;
+
+// Color de dolor 0-10 — mismo criterio que ya usan los botones del mapa
+// corporal (pain-btn p-low/p-med/p-high), reusado acá para los badges.
+function getPainColor(pain) {
+  if(pain>=8) return {color:'var(--red)', bg:'rgba(195,58,44,0.14)'};
+  if(pain>=4) return {color:'var(--amber)', bg:'rgba(198,124,15,0.14)'};
+  return {color:'var(--green)', bg:'rgba(31,122,77,0.14)'};
+}
+window.getPainColor = getPainColor;
+
+function getAthleteTeam(a) {
+  return a?.teamId ? (S.teams||[]).find(t=>t.id===a.teamId) : null;
+}
+window.getAthleteTeam = getAthleteTeam;
+
+// Badge de equipo/categoría — usa el color que vos le asignaste al equipo en
+// Equipos (team.color); si es individual o el equipo no tiene color propio
+// todavía, cae a un gris neutro.
+function teamBadgeHtml(a) {
+  const team = getAthleteTeam(a);
+  const label = getAthleteCategoryLabel(a);
+  if(team?.color) {
+    return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${team.color}22;color:${team.color};white-space:nowrap">${label}</span>`;
+  }
+  return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--bg4);color:var(--text2);white-space:nowrap">${label}</span>`;
+}
+window.teamBadgeHtml = teamBadgeHtml;
+
+// Fila de badges para una lesión: gravedad (color de gravedad), zona del
+// cuerpo (siempre el mismo color, es solo informativo) y dolor (color de la
+// escala de dolor) + el badge de equipo al final.
+function injuryBadgesHtml({severity, zoneLabel, pain, athlete}) {
+  const sevInfo = severityInfo(severity) || severityInfo('leve');
+  const painC = getPainColor(pain);
+  return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
+    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${sevInfo.color}22;color:${sevInfo.color};white-space:nowrap">${sevInfo.label}</span>
+    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--blue-dim);color:var(--blue);white-space:nowrap">${zoneLabel}</span>
+    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${painC.bg};color:${painC.color};white-space:nowrap">dolor ${pain}/10</span>
+    ${teamBadgeHtml(athlete)}
+  </div>`;
+}
+window.injuryBadgesHtml = injuryBadgesHtml;
 
 // Marcas de dolor de ANTES de que existiera la distinción lesión/molestia
 // (isInjury sin definir todavía) — se listan acá para clasificarlas de una,
@@ -9450,7 +9630,7 @@ function renderDashboardContent() {
       const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
       const sevInfo = severityInfo(sev);
       injuryAlerts.push({
-        athlete:a, type:'injury', severity:sev,
+        athlete:a, type:'injury', severity:sev, zoneLabel, pain:inj.pain,
         detail: `${sevInfo?.label||'Leve'} · ${zoneLabel} · dolor ${inj.pain}/10`
       });
     });
@@ -9516,35 +9696,29 @@ function renderDashboardContent() {
         <span style="color:var(--red);font-size:16px">⚠</span>
         <span style="font-size:14px;font-weight:600;flex:1">Atención requerida (${alertsSorted.length})</span>
       </div>
-      ${alertsSorted.length?alertsSorted.map(({athlete,type,detail,severity})=>`
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
-          <div style="display:flex;align-items:center;gap:10px;min-width:0">
-            <div style="width:8px;height:8px;border-radius:50%;background:${type==='acwr'?'var(--red)':(severityInfo(severity)||severityInfo('leve')).color};flex-shrink:0"></div>
-            <div style="min-width:0">
-              <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${athlete.name||athlete.email}</div>
-              <div style="font-size:11px;color:var(--text3)">${detail}</div>
-            </div>
+      ${alertsSorted.length?alertsSorted.map(({athlete,type,detail,severity,zoneLabel,pain})=>`
+        <div style="padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${athlete.name||athlete.email}</div>
+            <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
           </div>
-          <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
+          ${type==='injury'
+            ? injuryBadgesHtml({severity,zoneLabel,pain,athlete})
+            : `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);white-space:nowrap">${detail}</span>${teamBadgeHtml(athlete)}</div>`}
         </div>`).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin alertas${catFilter?' en '+catFilter:''}.</div>`}
     </div>`;
 
     const recentPanel = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden;height:100%">
       <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Lesiones recientes (${recentFeed.length})</div>
-      ${recentFeed.length?recentFeed.map(r=>{
-        const col = r.status==='resolved' ? 'var(--green)' : (severityInfo(r.severity)||severityInfo('leve')).color;
-        const statusLbl = r.status==='resolved' ? 'De alta' : 'Activa';
-        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
-          <div style="display:flex;align-items:center;gap:10px;min-width:0">
-            <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></div>
-            <div style="min-width:0">
-              <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.athlete.name||r.athlete.email} — ${r.zoneLabel}${r.type?' · '+(INJURY_TYPES[r.type]||r.type):''}</div>
-              <div style="font-size:11px;color:var(--text3)">${r.date||''} · <span style="color:${col};font-weight:600">${statusLbl}</span></div>
-            </div>
+      ${recentFeed.length?recentFeed.map(r=>`
+        <div style="padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.athlete.name||r.athlete.email}</div>
+            <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
           </div>
-          <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
-        </div>`;
-      }).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin lesiones recientes${catFilter?' en '+catFilter:''}.</div>`}
+          ${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain, athlete:r.athlete})}
+          <div style="font-size:10px;color:var(--text3);margin-top:4px">${r.date||''}</div>
+        </div>`).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin lesiones activas${catFilter?' en '+catFilter:''}.</div>`}
     </div>`;
 
     html += isDesktop
