@@ -2844,9 +2844,9 @@ function renderZoneDetail() {
     <div class="zone-detail-title">${zone.label}
       <span class="zone-close" onclick="S.selectedZone=null;renderMain()">×</span>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">¿Qué es esto? — una molestia pasajera solo se ve dentro de tu equipo; una lesión también entra en las alertas del entrenador</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">¿Qué es esto? — una molestia solo se ve dentro de tu equipo; una lesión también entra en las alertas del entrenador</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">
-      <button onclick="setIsInjury('${zid}',false)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${!isInjury?'var(--accent)':'var(--border2)'};background:${!isInjury?'var(--bg3)':'transparent'};color:${!isInjury?'var(--text)':'var(--text3)'};font-weight:${!isInjury?'700':'400'};font-size:12px;cursor:pointer">Molestia pasajera</button>
+      <button onclick="setIsInjury('${zid}',false)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${!isInjury?'var(--accent)':'var(--border2)'};background:${!isInjury?'var(--bg3)':'transparent'};color:${!isInjury?'var(--text)':'var(--text3)'};font-weight:${!isInjury?'700':'400'};font-size:12px;cursor:pointer">Molestia</button>
       <button onclick="setIsInjury('${zid}',true)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${isInjury?'var(--red)':'var(--border2)'};background:${isInjury?'var(--red-dim)':'transparent'};color:${isInjury?'var(--red)':'var(--text3)'};font-weight:${isInjury?'700':'400'};font-size:12px;cursor:pointer">Lesión (esguince, edema, luxación...)</button>
     </div>
     ${isInjury?`
@@ -6995,7 +6995,7 @@ function renderAdminMain() {
       <button class="abtn" onclick="importEstudiantesFixtures()">Importar</button>
     </div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Clasificar molestias/lesiones</div><div class="admin-item-sub">Decidí de una cuáles dolores marcados son lesión real y cuáles son molestia pasajera</div></div>
+      <div><div class="admin-item-lbl">Clasificar molestias/lesiones</div><div class="admin-item-sub">Decidí de una cuáles dolores marcados son lesión real y cuáles son molestia</div></div>
       <button class="abtn" onclick="openInjuryClassifyScreen()">Revisar</button>
     </div>
   </div>
@@ -9290,6 +9290,35 @@ async function loadDashboard() {
 }
 window.loadDashboard=loadDashboard;
 
+// Orden fijo de "grupo de población" para las listas de lesiones del
+// Dashboard — de mayor a menor edad/nivel. Individuales siempre al final,
+// después de cualquier categoría real conocida.
+const INJURY_CATEGORY_ORDER = ['Liga de Honor', 'Juniors', 'Juveniles', 'Cadetes'];
+function getAthleteCategoryLabel(a) {
+  if(!a?.teamId) return 'Individuales';
+  const team = (S.teams||[]).find(t=>t.id===a.teamId);
+  return team?.category || 'Sin categoría';
+}
+window.getAthleteCategoryLabel = getAthleteCategoryLabel;
+function injuryCategoryRank(label) {
+  const idx = INJURY_CATEGORY_ORDER.indexOf(label);
+  if(idx>=0) return idx;
+  if(label==='Individuales') return INJURY_CATEGORY_ORDER.length;
+  return INJURY_CATEGORY_ORDER.length+1; // categorías desconocidas, al final de todo
+}
+
+function setDashInjuryCategoryFilter(v) { S.dashInjuryCategoryFilter = v||null; renderMain(); }
+window.setDashInjuryCategoryFilter = setDashInjuryCategoryFilter;
+
+function renderDashInjuryCategoryFilters() {
+  const cats = ['Todas', ...INJURY_CATEGORY_ORDER, 'Individuales'];
+  const cur = S.dashInjuryCategoryFilter || 'Todas';
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+    ${cats.map(c=>`<button class="lib-filter ${cur===c?'active':''}" onclick="setDashInjuryCategoryFilter('${c==='Todas'?'':c}')">${c}</button>`).join('')}
+  </div>`;
+}
+window.renderDashInjuryCategoryFilters = renderDashInjuryCategoryFilters;
+
 // Feed cronológico de lesiones reales — activas (con su último estado) y
 // dadas de alta (archivadas) — para el panel "Lesiones recientes" del
 // Dashboard, separado de "Atención requerida" (que es solo lo que hay que
@@ -9347,7 +9376,7 @@ function renderInjuryClassifyScreen() {
     <div class="team-detail-title">Clasificar molestias/lesiones</div>
   </div>
   <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
-    Estos dolores se marcaron antes de que existiera esta distinción. Elegí de una si cada uno es una lesión de verdad (entra en las alertas del Dashboard) o una molestia pasajera (solo se ve dentro del equipo, no genera alerta). Una vez que elijas, esa fila desaparece de esta lista.
+    Estos dolores se marcaron antes de que existiera esta distinción. Elegí de una si cada uno es una lesión de verdad (entra en las alertas del Dashboard) o una molestia (solo se ve dentro del equipo, no genera alerta). Una vez que elijas, esa fila desaparece de esta lista.
   </div>
   <div class="admin-section">
     <div class="admin-section-title">${rows.length} sin clasificar</div>
@@ -9358,7 +9387,7 @@ function renderInjuryClassifyScreen() {
           <div style="font-size:11px;color:var(--text3)">${zoneLabel} · dolor ${inj.pain}/10${inj.note?' · '+inj.note:''}</div>
         </div>
         <div style="display:flex;gap:6px">
-          <button class="abtn" style="flex:1" onclick="adminSetIsInjury('${a.uid}','${zoneId}',false)">Molestia pasajera</button>
+          <button class="abtn" style="flex:1" onclick="adminSetIsInjury('${a.uid}','${zoneId}',false)">Molestia</button>
           <button class="abtn abtn-d" style="flex:1" onclick="adminSetIsInjury('${a.uid}','${zoneId}',true)">Lesión</button>
         </div>
       </div>`).join('') : `<div style="padding:12px 16px;font-size:13px;color:var(--green)">✓ Ya clasificaste todo.</div>`}
@@ -9453,34 +9482,11 @@ function renderDashboardContent() {
     </div>`:''}
   </div>`;
 
-  // Dedicated alerts panel
-  if(allAlerts.length) {
-    const collapsed = S.collapsedSections?.has('dash-alerts');
-    html += `<div style="background:var(--bg2);border:1px solid rgba(195,58,44,0.25);border-radius:var(--r);margin-bottom:20px;overflow:hidden">
-      <div style="padding:14px 16px;${collapsed?'':'border-bottom:1px solid var(--border);'}display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleSection('dash-alerts')">
-        <span style="color:var(--red);font-size:16px">⚠</span>
-        <span style="font-size:14px;font-weight:600;flex:1">Atención requerida (${allAlerts.length})</span>
-        <span style="color:var(--text3);font-size:14px;transition:transform .15s;transform:rotate(${collapsed?'-90':'0'}deg);display:inline-block">›</span>
-      </div>
-      ${collapsed?'':allAlerts.map(({athlete,type,detail,severity})=>`
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:8px;height:8px;border-radius:50%;background:${type==='acwr'?'var(--red)':(severityInfo(severity)||severityInfo('leve')).color}"></div>
-            <div>
-              <div style="font-size:13px;font-weight:500">${athlete.name||athlete.email}</div>
-              <div style="font-size:11px;color:var(--text3)">${detail}</div>
-            </div>
-          </div>
-          <span style="color:var(--text3);font-size:16px">›</span>
-        </div>`).join('')}
-    </div>`;
-  }
-
   // Marcas de dolor de antes de la distinción lesión/molestia — banner bien
   // visible para clasificarlas de una (ver getUnclassifiedInjuries).
   const unclassified = getUnclassifiedInjuries(athletes);
   if(unclassified.length) {
-    html += `<div style="background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--r);padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openInjuryClassifyScreen()">
+    html += `<div style="background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openInjuryClassifyScreen()">
       <span style="color:var(--amber);font-size:16px">⚠</span>
       <div style="flex:1">
         <div style="font-size:13px;font-weight:600;color:var(--amber)">${unclassified.length} dolor${unclassified.length===1?'':'es'} marcado${unclassified.length===1?'':'s'} antes de esta actualización, sin clasificar</div>
@@ -9490,27 +9496,60 @@ function renderDashboardContent() {
     </div>`;
   }
 
-  // Lesiones recientes — feed cronológico (activas + de alta), separado de
-  // "Atención requerida" que es solo lo urgente de hoy.
-  const recentFeed = getRecentInjuryFeed(athletes, 8);
-  if(recentFeed.length) {
-    html += `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);margin-bottom:20px;overflow:hidden">
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Lesiones recientes</div>
-      ${recentFeed.map(r=>{
+  // "Atención requerida" y "Lesiones recientes" van al mismo nivel (lado a
+  // lado en desktop, apiladas en celular) — ambas ordenadas por grupo de
+  // población (Liga de Honor → Juniors → Juveniles → Cadetes → Individuales)
+  // y con el mismo filtro compartido arriba, en vez de una sola lista larga.
+  if(allAlerts.length || getRecentInjuryFeed(athletes).length) {
+    const catFilter = S.dashInjuryCategoryFilter || null;
+    let alertsSorted = catFilter ? allAlerts.filter(x=>getAthleteCategoryLabel(x.athlete)===catFilter) : allAlerts.slice();
+    alertsSorted.sort((a,b)=>injuryCategoryRank(getAthleteCategoryLabel(a.athlete))-injuryCategoryRank(getAthleteCategoryLabel(b.athlete)));
+
+    let recentFeed = getRecentInjuryFeed(athletes);
+    if(catFilter) recentFeed = recentFeed.filter(r=>getAthleteCategoryLabel(r.athlete)===catFilter);
+    recentFeed.sort((a,b)=>injuryCategoryRank(getAthleteCategoryLabel(a.athlete))-injuryCategoryRank(getAthleteCategoryLabel(b.athlete)) || (b.date||'').localeCompare(a.date||''));
+
+    html += renderDashInjuryCategoryFilters();
+
+    const alertsPanel = `<div style="background:var(--bg2);border:1px solid rgba(195,58,44,0.25);border-radius:var(--r);overflow:hidden;height:100%">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <span style="color:var(--red);font-size:16px">⚠</span>
+        <span style="font-size:14px;font-weight:600;flex:1">Atención requerida (${alertsSorted.length})</span>
+      </div>
+      ${alertsSorted.length?alertsSorted.map(({athlete,type,detail,severity})=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <div style="width:8px;height:8px;border-radius:50%;background:${type==='acwr'?'var(--red)':(severityInfo(severity)||severityInfo('leve')).color};flex-shrink:0"></div>
+            <div style="min-width:0">
+              <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${athlete.name||athlete.email}</div>
+              <div style="font-size:11px;color:var(--text3)">${detail}</div>
+            </div>
+          </div>
+          <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
+        </div>`).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin alertas${catFilter?' en '+catFilter:''}.</div>`}
+    </div>`;
+
+    const recentPanel = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden;height:100%">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Lesiones recientes (${recentFeed.length})</div>
+      ${recentFeed.length?recentFeed.map(r=>{
         const col = r.status==='resolved' ? 'var(--green)' : (severityInfo(r.severity)||severityInfo('leve')).color;
         const statusLbl = r.status==='resolved' ? 'De alta' : 'Activa';
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:8px;height:8px;border-radius:50%;background:${col}"></div>
-            <div>
-              <div style="font-size:13px;font-weight:500">${r.athlete.name||r.athlete.email} — ${r.zoneLabel}${r.type?' · '+(INJURY_TYPES[r.type]||r.type):''}</div>
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></div>
+            <div style="min-width:0">
+              <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.athlete.name||r.athlete.email} — ${r.zoneLabel}${r.type?' · '+(INJURY_TYPES[r.type]||r.type):''}</div>
               <div style="font-size:11px;color:var(--text3)">${r.date||''} · <span style="color:${col};font-weight:600">${statusLbl}</span></div>
             </div>
           </div>
-          <span style="color:var(--text3);font-size:16px">›</span>
+          <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
         </div>`;
-      }).join('')}
+      }).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin lesiones recientes${catFilter?' en '+catFilter:''}.</div>`}
     </div>`;
+
+    html += isDesktop
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;align-items:start">${alertsPanel}${recentPanel}</div>`
+      : `<div style="margin-bottom:16px">${alertsPanel}</div><div style="margin-bottom:20px">${recentPanel}</div>`;
   }
 
   if(!athletes.length) {
