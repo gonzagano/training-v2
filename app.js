@@ -17,6 +17,88 @@ function toggleTheme() {
 window.getTheme = getTheme;
 window.toggleTheme = toggleTheme;
 
+// ── PERSONALIZACIÓN (color de acento, tipografía, tamaño de fuente) ──
+// Mismo criterio que el tema: se guarda en el dispositivo (localStorage) y
+// se aplica pisando variables CSS — no toca los colores semánticos
+// (verde/amarillo/rojo de ACWR, wellness, gravedad de lesión), que siguen
+// significando siempre lo mismo sin importar el acento elegido.
+const ACCENT_COLORS = [
+  {id:'navy',   label:'Navy',          c:'#243B6B', hover:'#2F4A85'},
+  {id:'teal',   label:'Teal',          c:'#0E7C6B', hover:'#159686'},
+  {id:'purple', label:'Violeta',       c:'#5B3E96', hover:'#6F4FB2'},
+  {id:'wine',   label:'Vino',          c:'#A83250', hover:'#C23F61'},
+  {id:'forest', label:'Verde bosque',  c:'#256D4B', hover:'#2E8560'},
+  {id:'orange', label:'Naranja',       c:'#C1601F', hover:'#D97328'},
+];
+window.ACCENT_COLORS = ACCENT_COLORS;
+
+const FONT_OPTIONS = [
+  {id:'manrope', label:'Manrope (predeterminada)', stack:"'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", googleFont:null},
+  {id:'inter',   label:'Inter',                    stack:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", googleFont:'Inter:wght@400;500;600;700;800'},
+  {id:'poppins', label:'Poppins',                  stack:"'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", googleFont:'Poppins:wght@400;500;600;700;800'},
+  {id:'system',  label:'Del sistema (más rápida)', stack:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif", googleFont:null},
+];
+window.FONT_OPTIONS = FONT_OPTIONS;
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function getAccentColor() { return localStorage.getItem('gm-accent') || 'navy'; }
+window.getAccentColor = getAccentColor;
+function applyAccentColor(id) {
+  const def = ACCENT_COLORS.find(a=>a.id===id) || ACCENT_COLORS[0];
+  const root = document.documentElement.style;
+  root.setProperty('--accent', def.c);
+  root.setProperty('--accent-hover', def.hover);
+  root.setProperty('--accent-dim', hexToRgba(def.c, 0.08));
+  root.setProperty('--accent-dim2', hexToRgba(def.c, 0.05));
+}
+function setAccentColor(id) {
+  localStorage.setItem('gm-accent', id);
+  applyAccentColor(id);
+  renderMain();
+}
+window.setAccentColor = setAccentColor;
+
+let _loadedGoogleFonts = new Set();
+function getFontFamily() { return localStorage.getItem('gm-font') || 'manrope'; }
+window.getFontFamily = getFontFamily;
+function applyFontFamily(id) {
+  const def = FONT_OPTIONS.find(f=>f.id===id) || FONT_OPTIONS[0];
+  if(def.googleFont && !_loadedGoogleFonts.has(def.googleFont)) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${def.googleFont}&display=swap`;
+    document.head.appendChild(link);
+    _loadedGoogleFonts.add(def.googleFont);
+  }
+  document.documentElement.style.setProperty('--font-body', def.stack);
+}
+function setFontFamily(id) {
+  localStorage.setItem('gm-font', id);
+  applyFontFamily(id);
+  renderMain();
+}
+window.setFontFamily = setFontFamily;
+
+function getFontScale() { return +(localStorage.getItem('gm-fontscale')||100); }
+window.getFontScale = getFontScale;
+function applyFontScale(pct) { document.documentElement.style.zoom = pct/100; }
+function setFontScale(pct) {
+  localStorage.setItem('gm-fontscale', pct);
+  applyFontScale(pct);
+}
+window.setFontScale = setFontScale;
+
+// Se aplican apenas carga el módulo — el flash inicial (antes de esto)
+// ya lo evita el script inline de index.html, que hace lo mismo más rápido.
+applyAccentColor(getAccentColor());
+applyFontFamily(getFontFamily());
+applyFontScale(getFontScale());
+
 const firebaseConfig = {
   apiKey: "AIzaSyA_GNkUG63pSMNU1aNvAXM-61jVHbwuGQ0",
   authDomain: "training-app-pf.firebaseapp.com",
@@ -6326,12 +6408,35 @@ window.fixAllNameCapitalization = fixAllNameCapitalization;
 function renderSettings() {
   const u = S.userData || {};
   const darkOn = getTheme()==='dark';
+  const curAccent = getAccentColor();
+  const curFont = getFontFamily();
+  const curScale = getFontScale();
   return `
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Apariencia</div>
-    <div class="settings-item" style="border-bottom:none">
+    <div class="settings-item">
       <div><div class="settings-lbl">Modo oscuro</div><div class="settings-sub">Ideal para entrenar de noche o con poca luz</div></div>
       <div class="theme-switch ${darkOn?'on':''}" onclick="toggleTheme()"><div class="theme-switch-knob"></div></div>
+    </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      <div class="settings-lbl" style="margin-bottom:8px">Color de acento</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${ACCENT_COLORS.map(a=>`<div onclick="setAccentColor('${a.id}')" title="${a.label}" style="width:30px;height:30px;border-radius:50%;background:${a.c};cursor:pointer;border:2px solid ${curAccent===a.id?'var(--text)':'transparent'};box-shadow:0 0 0 1px var(--border2);transition:border-color .15s"></div>`).join('')}
+      </div>
+    </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      <div class="settings-lbl" style="margin-bottom:8px">Tipografía</div>
+      <select class="abtn" style="width:100%;text-align:left" onchange="setFontFamily(this.value)">
+        ${FONT_OPTIONS.map(f=>`<option value="${f.id}" ${curFont===f.id?'selected':''}>${f.label}</option>`).join('')}
+      </select>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="settings-lbl">Tamaño de fuente</div>
+        <span id="font-scale-val" style="font-size:12px;color:var(--text3);font-weight:600">${curScale}%</span>
+      </div>
+      <input type="range" min="90" max="130" step="5" value="${curScale}" style="width:100%;accent-color:var(--accent);cursor:pointer"
+        oninput="document.getElementById('font-scale-val').textContent=this.value+'%';setFontScale(this.value)">
     </div>
   </div>
   <div class="card">

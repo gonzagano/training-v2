@@ -15,7 +15,24 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css?v=20260722a">
-<script>(function(){var t=localStorage.getItem('gm-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})();</script>
+<script>(function(){
+  var t=localStorage.getItem('gm-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');
+  var accents={navy:['#243B6B','#2F4A85'],teal:['#0E7C6B','#159686'],purple:['#5B3E96','#6F4FB2'],wine:['#A83250','#C23F61'],forest:['#256D4B','#2E8560'],orange:['#C1601F','#D97328']};
+  var a=localStorage.getItem('gm-accent');
+  if(a&&accents[a]){
+    var c=accents[a][0],h=accents[a][1];
+    var r=parseInt(c.substr(1,2),16),g=parseInt(c.substr(3,2),16),b=parseInt(c.substr(5,2),16);
+    var root=document.documentElement.style;
+    root.setProperty('--accent',c);root.setProperty('--accent-hover',h);
+    root.setProperty('--accent-dim','rgba('+r+','+g+','+b+',0.08)');
+    root.setProperty('--accent-dim2','rgba('+r+','+g+','+b+',0.05)');
+  }
+  var fonts={inter:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",poppins:"'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",system:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"};
+  var f=localStorage.getItem('gm-font');
+  if(f&&fonts[f]) document.documentElement.style.setProperty('--font-body',fonts[f]);
+  var fs=localStorage.getItem('gm-fontscale');
+  if(fs) document.documentElement.style.zoom=(+fs/100);
+})();</script>
 </head>
 <body>
 
