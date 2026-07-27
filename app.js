@@ -2355,7 +2355,7 @@ function renderLibList() {
   const list=document.getElementById('lib-list');
   let items=S.library.filter(ex=>{
     const matchQ=!q||ex.name.toLowerCase().includes(q);
-    const matchF=S.activeFilters.size===0||[...S.activeFilters].every(f=>ex.tags?.includes(f));
+    const matchF=S.activeFilters.size===0||[...S.activeFilters].some(f=>ex.tags?.includes(f));
     return matchQ&&matchF;
   });
   if(!items.length) { list.innerHTML=`<div class="empty-state">No se encontraron ejercicios</div>`; return; }
@@ -2438,8 +2438,10 @@ function createAndAddExercise() {
   const name=document.getElementById('lib-new-name').value.trim();
   if(!name) return;
   const tags=[...(S._newExTags||new Set())];
+  const videoUrl=document.getElementById('lib-new-video').value.trim();
   const newLibEx={id:genId(),name,tags};
   S.library.push(newLibEx);
+  if(videoUrl) S.videos[newLibEx.id]=videoUrl;
   if(S.libTarget) {
     const {blockId,catIdx,sessionName,isRoutine}=S.libTarget;
     if(S.libTarget.isTD) {
@@ -2459,6 +2461,7 @@ function createAndAddExercise() {
     }
   }
   document.getElementById('lib-new-name').value='';
+  document.getElementById('lib-new-video').value='';
   showToast(`✓ Ejercicio creado`);
 }
 window.createAndAddExercise=createAndAddExercise;
@@ -10484,7 +10487,7 @@ function renderLibViewBody() {
   let items = S.library;
   if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
     (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
-  if(filters.size) items = items.filter(e=>[...filters].every(f=>e.tags?.includes(f)));
+  if(filters.size) items = items.filter(e=>[...filters].some(f=>e.tags?.includes(f)));
   items = [...items].sort((a,b)=>a.name.localeCompare(b.name));
 
   return `<!-- Tag filters — multi-select: un click selecciona, otro click desselecciona -->
@@ -10534,6 +10537,7 @@ function openLibExerciseModal(id) {
   S._exFormTags = new Set(ex?.tags||[]);
   document.getElementById('exform-modal-title').textContent = ex ? 'Editar ejercicio' : 'Nuevo ejercicio';
   document.getElementById('exform-name-inp').value = ex?.name||'';
+  document.getElementById('exform-video-inp').value = (id && S.videos[id]) || '';
   document.getElementById('exform-delete-btn').style.display = ex ? 'block' : 'none';
   renderTagChipPicker('exform-tags-picker','_exFormTags');
   document.getElementById('exform-overlay').classList.add('open');
@@ -10550,12 +10554,15 @@ function saveLibExerciseModal() {
   const name = document.getElementById('exform-name-inp').value.trim();
   if(!name) { showToast('Ingresá un nombre'); return; }
   const tags = [...(S._exFormTags||new Set())];
+  const videoUrl = document.getElementById('exform-video-inp').value.trim();
+  const exId = S._exFormEditId || genId();
   if(S._exFormEditId) {
     const ex = S.library.find(e=>e.id===S._exFormEditId);
     if(ex) { ex.name=name; ex.tags=tags; }
   } else {
-    S.library.push({id:genId(), name, tags});
+    S.library.push({id:exId, name, tags});
   }
+  if(videoUrl) S.videos[exId]=videoUrl; else delete S.videos[exId];
   scheduleSave();
   closeExFormModal();
   showToast('✓ Guardado');
