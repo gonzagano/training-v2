@@ -1327,9 +1327,9 @@ function renderOnboardingStep2(d) {
       ${d.institution ? (()=>{
         const sport = instMap[d.institution]?.sport||'';
         const posOpts = getPositionOptionsForSport(sport);
-        return `<div><label class="eval-lbl">Posición (opcional)</label>
+        return `<div><label class="eval-lbl">Posición</label>
           ${posOpts ? `<select class="auth-inp" style="margin:0" onchange="setOnboardingField('position',this.value)">
-            <option value="">— Sin posición —</option>
+            <option value="">Seleccionar...</option>
             ${posOpts.map(p=>`<option value="${p}" ${d.position===p?'selected':''}>${p}</option>`).join('')}
           </select>` : `<input class="auth-inp" style="margin:0" type="text" value="${d.position||''}" oninput="setOnboardingField('position',this.value)" placeholder="Ej: Base, Alero...">`}
         </div>`;
@@ -1338,7 +1338,7 @@ function renderOnboardingStep2(d) {
   }
 
   const teamCategoryOk = d.category && (d.category!=='__nueva__' || !!(d.categoryCustom||'').trim());
-  const canContinue = d.athleteType==='individual' ? !!(d.sport && d.position) : d.athleteType==='team' ? !!(d.institution && teamCategoryOk) : false;
+  const canContinue = d.athleteType==='individual' ? !!(d.sport && d.position) : d.athleteType==='team' ? !!(d.institution && teamCategoryOk && d.position) : false;
   html += `<div style="padding:0 16px 16px;display:flex;gap:10px">
     <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
     <button class="wellness-submit" style="flex:2;${canContinue?'':'opacity:.4;pointer-events:none'}" onclick="onboardingNext()">Continuar</button>
@@ -2157,6 +2157,29 @@ const LOAD_ACTIVITIES = [
   {key:'partido2',  label:'Partido 2 (si jugaste doble ese día)', emoji:'🏆', isGame:true},
 ];
 
+// "Pelota" era un nombre fijo (y el ícono siempre una pelota de básquet) sin
+// importar el deporte real del atleta — un tenista veía "Pelota 🏀", que no
+// tiene nada que ver. Esto cruza el deporte cargado en su ficha (individual
+// o heredado del equipo) para mostrar "Entrenamiento de tenis 🎾", etc. El
+// key interno sigue siendo 'pelota' siempre — solo cambia lo que se muestra.
+const SPORT_ACTIVITY_ICONS = {
+  handball:{name:'handball',emoji:'🤾'}, balonmano:{name:'handball',emoji:'🤾'},
+  basquet:{name:'básquet',emoji:'🏀'}, básquet:{name:'básquet',emoji:'🏀'}, basketball:{name:'básquet',emoji:'🏀'},
+  futbol:{name:'fútbol',emoji:'⚽'}, fútbol:{name:'fútbol',emoji:'⚽'},
+  tenis:{name:'tenis',emoji:'🎾'}, padel:{name:'pádel',emoji:'🎾'}, pádel:{name:'pádel',emoji:'🎾'},
+  voley:{name:'vóley',emoji:'🏐'}, vóley:{name:'vóley',emoji:'🏐'},
+  rugby:{name:'rugby',emoji:'🏉'}, hockey:{name:'hockey',emoji:'🏑'},
+};
+function getLoadActivityDisplay(act, sport) {
+  if(act.key!=='pelota') return {label:act.label, emoji:act.emoji};
+  const s=(sport||'').toLowerCase().trim();
+  for(const key in SPORT_ACTIVITY_ICONS) {
+    if(s.includes(key)) { const info=SPORT_ACTIVITY_ICONS[key]; return {label:'Entrenamiento de '+info.name, emoji:info.emoji}; }
+  }
+  return sport ? {label:'Entrenamiento de '+sport, emoji:'🥅'} : {label:act.label, emoji:act.emoji};
+}
+window.getLoadActivityDisplay = getLoadActivityDisplay;
+
 function getLoadLog(activity,date) {
   const logs=(S.history?._sessionLogs)||[];
   return logs.find(l=>l.date===date && l.activity===activity) || null;
@@ -2208,7 +2231,7 @@ function saveLoadLog(date) {
     if(mins && rpe) {
       // saca cualquier log previo de esta actividad en esa fecha, para no duplicar carga
       S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity===act.key));
-      S.history._sessionLogs.push({date, activity:act.key, session:act.label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe});
+      S.history._sessionLogs.push({date, activity:act.key, session:getLoadActivityDisplay(act, S.userData?.sport).label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe});
       savedAny=true;
     }
   });
@@ -2824,12 +2847,13 @@ window.shiftWellnessDate=shiftWellnessDate;
 function goToTodayWellness() { S.wellnessViewDate=null; renderMain(); }
 window.goToTodayWellness=goToTodayWellness;
 
-function renderLoadItemRow(act, wKey) {
+function renderLoadItemRow(act, wKey, sport) {
   const existing=getLoadLog(act.key,wKey);
   const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe,note:existing.note||''}:{mins:'',rpe:0,note:''});
   const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
+  const display = getLoadActivityDisplay(act, sport);
   return `<div class="load-item">
-    <div class="load-item-label"><span>${act.emoji}</span><span>${act.label}</span></div>
+    <div class="load-item-label"><span>${display.emoji}</span><span>${display.label}</span></div>
     ${act.isGame?`<input type="text" maxlength="60" class="load-mins-inp" style="width:100%;text-align:left;margin-bottom:8px" placeholder="Rival / categoría (opcional, ej: vs Club X — Juvenil)" value="${draft.note||''}" onblur="updateLoadDraft('${wKey}','${act.key}','note',this.value)">`:''}
     <div class="load-item-row">
       <input type="number" min="0" max="300" class="load-mins-inp" placeholder="min" value="${draft.mins||''}" oninput="updateLoadDraft('${wKey}','${act.key}','mins',this.value)">
@@ -2962,7 +2986,7 @@ function renderWellness() {
 
   LOAD_ACTIVITIES.forEach(act=>{
     if(act.isExtraGym) return; // se muestra aparte, como desplegable, justo después de Gimnasio
-    html += renderLoadItemRow(act, wKey);
+    html += renderLoadItemRow(act, wKey, S.userData?.sport);
     if(act.key==='gimnasio') {
       const extraAct = LOAD_ACTIVITIES.find(a=>a.key==='gimnasio2');
       const hasExtraData = !!getLoadLog('gimnasio2', wKey);
@@ -2970,7 +2994,7 @@ function renderWellness() {
       html += showExtra
         ? `<div style="position:relative">
              <button class="abtn" style="position:absolute;top:8px;right:0;font-size:11px;z-index:1" onclick="toggleExtraGym()">Ocultar</button>
-             ${renderLoadItemRow(extraAct, wKey)}
+             ${renderLoadItemRow(extraAct, wKey, S.userData?.sport)}
            </div>`
         : `<div style="text-align:center;padding:2px 0 12px">
              <button class="abtn" style="font-size:12px" onclick="toggleExtraGym()">+ Agregar entrenamiento individual (fuera del club)</button>
@@ -7357,9 +7381,10 @@ function renderWellnessDetail() {
     <div class="admin-section-title">Carga de ese día</div>
     ${logs.length ? logs.map(l=>{
       const act = LOAD_ACTIVITIES.find(x=>x.key===l.activity);
+      const display = act ? getLoadActivityDisplay(act, a.sport) : null;
       return `<div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:4px">
         <div style="display:flex;justify-content:space-between;width:100%">
-          <span style="font-size:13px;font-weight:600">${act?act.emoji+' '+act.label:l.activity}</span>
+          <span style="font-size:13px;font-weight:600">${display?display.emoji+' '+display.label:l.activity}</span>
           <span style="font-size:13px;font-weight:700;color:var(--accent)">${l.ua} UA</span>
         </div>
         <div style="font-size:12px;color:var(--text3)">${l.mins} min · RPE ${l.rpe}${l.note?' · '+l.note:''}</div>
