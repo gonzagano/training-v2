@@ -40,6 +40,18 @@ const FONT_OPTIONS = [
 ];
 window.FONT_OPTIONS = FONT_OPTIONS;
 
+// Lee el color REAL vigente de una variable CSS (light u oscuro, el acento
+// que elegiste, lo que sea) — los gráficos de Chart.js no entienden var(),
+// dibujan en un <canvas> aparte de la cascada CSS, así que hay que
+// resolverlo a mano en el momento de dibujar. Sin esto, los textos de los
+// gráficos quedaban con un gris oscuro fijo que en modo oscuro es casi
+// invisible.
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback || '#000';
+}
+window.cssVar = cssVar;
+
 function hexToRgba(hex, alpha) {
   const h = hex.replace('#','');
   const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
@@ -167,6 +179,58 @@ const SEVERITY_LEVELS = [
 function severityInfo(id) { return SEVERITY_LEVELS.find(s=>s.id===id) || null; }
 window.severityInfo = severityInfo;
 
+// Cuestionario OSTRC-O simplificado — 4 preguntas de opción múltiple (no
+// números sueltos, así es más rápido y didáctico para el atleta) que suman
+// 0–100. Convive con el dolor 0–10 de siempre, no lo reemplaza: uno es "cuánto
+// duele" y esto es "cuánto te está afectando de verdad" (participación,
+// volumen de entrenamiento, rendimiento), que no son lo mismo.
+const OSTRC_QUESTIONS = [
+  { id:'q1', label:'¿Pudiste participar normalmente hoy?', options:[
+    {v:0, label:'Sí, sin problema'}, {v:8, label:'Sí, con molestia'},
+    {v:17, label:'Participé menos'}, {v:25, label:'No participé'},
+  ]},
+  { id:'q2', label:'¿Bajaste el volumen de entrenamiento por esto?', options:[
+    {v:0, label:'No, nada'}, {v:6, label:'Un poco'}, {v:13, label:'Bastante'},
+    {v:19, label:'Mucho'}, {v:25, label:'No entrené'},
+  ]},
+  { id:'q3', label:'¿Te afectó el rendimiento?', options:[
+    {v:0, label:'Nada'}, {v:6, label:'Un poco'}, {v:13, label:'Bastante'},
+    {v:19, label:'Mucho'}, {v:25, label:'No pude rendir'},
+  ]},
+  { id:'q4', label:'¿Cuánto dolor al entrenar/jugar?', options:[
+    {v:0, label:'Nada'}, {v:8, label:'Leve'}, {v:17, label:'Moderado'}, {v:25, label:'Severo'},
+  ]},
+];
+window.OSTRC_QUESTIONS = OSTRC_QUESTIONS;
+
+function ostrcTotal(inj) {
+  const o = inj?.ostrc;
+  if(!o || o.q1==null || o.q2==null || o.q3==null || o.q4==null) return null;
+  return o.q1+o.q2+o.q3+o.q4;
+}
+window.ostrcTotal = ostrcTotal;
+
+function setOstrcAnswer(zid, q, val) {
+  if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'leve',isInjury:false,history:[]};
+  if(!S.injuries[zid].ostrc) S.injuries[zid].ostrc={};
+  S.injuries[zid].ostrc[q]=val;
+  renderMain();
+}
+window.setOstrcAnswer=setOstrcAnswer;
+
+// Fases de retorno al juego — las fija el entrenador/kinesiólogo, nunca el
+// atleta (es una decisión clínica/técnica, no una autoevaluación). Solo
+// aplica a lesiones reales (isRealInjury), no a molestias sin diagnóstico.
+const RTP_PHASES = [
+  {id:'reposo', label:'Reposo'},
+  {id:'sin_contacto', label:'Trabajo sin contacto'},
+  {id:'reintegro_parcial', label:'Reintegro parcial'},
+  {id:'alta', label:'Alta médica'},
+];
+function rtpPhaseInfo(id) { return RTP_PHASES.find(p=>p.id===id) || null; }
+window.RTP_PHASES = RTP_PHASES;
+window.rtpPhaseInfo = rtpPhaseInfo;
+
 // Distingue una LESIÓN real (esguince, edema, luxación, hasta una cirugía —
 // con tipo y gravedad clínica) de una MOLESTIA pasajera (dolor sin
 // diagnóstico, ej. "me duele la espalda"). Solo cuenta como lesión real si
@@ -243,8 +307,8 @@ function drawPainTrendChart(points) {
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>'Dolor: '+ctx.parsed.y+'/10'}} },
       scales:{
-        y:{min:0,max:10,ticks:{stepSize:2,color:'#7A8394',font:{size:10}},grid:{color:'rgba(18,21,28,0.08)'}},
-        x:{ticks:{color:'#7A8394',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{display:false}}
+        y:{min:0,max:10,ticks:{stepSize:2,color:cssVar('--text3','#7A8394'),font:{size:10}},grid:{color:'rgba(18,21,28,0.08)'}},
+        x:{ticks:{color:cssVar('--text3','#7A8394'),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{display:false}}
       }
     }
   });
@@ -664,7 +728,7 @@ let S = {
   startDate: new Date().toISOString().split('T')[0],
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
-  videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [],
+  videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [], illnesses: [],
   teams: [], pendingAthletes: [], notifications: [], progressView: { week: 1 },
   myTeam: null, // solo para atletas de equipo: el doc de su propio equipo
   teamSubview: 'rutina',      // 'rutina'|'wellness'|'stats'|'evals' dentro de un equipo
@@ -802,6 +866,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.wellness) S.wellness = d.wellness;
     if (d.injuries) S.injuries = d.injuries;
     if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
+    if (d.illnesses) S.illnesses = d.illnesses;
     if (d.notifications) S.notifications = d.notifications;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     if (d.startDate) S.startDate = d.startDate;
@@ -942,6 +1007,7 @@ async function saveToFirestore() {
     const dataToSave = {
       history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
       wellness: S.wellness, injuries: S.injuries, injuryArchive: S.injuryArchive||[],
+      illnesses: S.illnesses||[],
       currentWeek: S.currentWeek, startDate: S.startDate,
       updatedAt: serverTimestamp()
     };
@@ -1468,6 +1534,53 @@ async function importEstudiantesFixtures() {
 }
 window.importEstudiantesFixtures = importEstudiantesFixtures;
 
+// ── COMPLETAR CALENDARIO SEMANAL — Handball-EDLP, Clausura 2026 ──────────
+// Lunes/Martes/Jueves = Físico + Pelota el mismo día (el modelo de datos ya
+// soporta varios eventos por fecha), desde hoy hasta fin de temporada. No
+// pisa nada que ya esté cargado (ni partidos, ni si el prep ya tocó ese día
+// a mano) — si ese tipo de evento ya existe esa fecha, se salta.
+const WEEKLY_TRAINING_END_DATE = '2026-11-30';
+async function fillWeeklyTrainingCalendar() {
+  if(!confirm('Esto agrega entrenamiento de Físico y Pelota todos los lunes, martes y jueves desde hoy hasta el 30/11, en Liga de Honor, Cadetes, Juveniles y Juniors de Handball-EDLP. No duplica ni pisa lo que ya esté cargado. ¿Confirmás?')) return;
+  showToast('Completando calendario…');
+  try {
+    const categories = ['Liga de Honor','Cadetes','Juveniles','Juniors'];
+    const today = new Date(); today.setHours(0,0,0,0);
+    const endDate = new Date(WEEKLY_TRAINING_END_DATE+'T00:00:00');
+    let addedTotal = 0;
+    for(const category of categories) {
+      const teamId = await findOrCreateTeam('Handball-EDLP', category, 'Handball');
+      let team = S.teams.find(t=>t.id===teamId);
+      if(!team) {
+        const snap = await getDoc(doc(db,'teams',teamId));
+        team = {id:teamId, ...snap.data()};
+        S.teams.push(team);
+      }
+      if(!team.calendar) team.calendar={};
+      const d = new Date(today);
+      while(d<=endDate) {
+        const dow = d.getDay(); // 1=lunes, 2=martes, 4=jueves
+        if(dow===1||dow===2||dow===4) {
+          const dateStr = d.toISOString().split('T')[0];
+          const existing = getCalendarEvents(team, dateStr);
+          const existingTypes = existing.map(e=>e.type);
+          const toAdd = ['fisico','pelota'].filter(t=>!existingTypes.includes(t)).map(type=>({type}));
+          if(toAdd.length) {
+            const updated = [...existing, ...toAdd];
+            team.calendar[dateStr] = updated;
+            await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: updated}, {merge:true});
+            addedTotal += toAdd.length;
+          }
+        }
+        d.setDate(d.getDate()+1);
+      }
+    }
+    showToast(`✓ Calendario completado — ${addedTotal} entrenamientos agregados`);
+    renderMain();
+  } catch(e) { console.error(e); showToast('Error al completar calendario: '+e.message); }
+}
+window.fillWeeklyTrainingCalendar = fillWeeklyTrainingCalendar;
+
 async function finishOnboarding() {
   const d = S.onboardingData;
   const btn = document.getElementById('onboarding-finish-btn');
@@ -1703,7 +1816,8 @@ function renderMain() {
     case 'stats':    m.innerHTML=renderStats(); break;
     case 'teams':    m.innerHTML=renderTeams();
       if(S.teamView && S.teamSubview==='stats') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamInjuryChart(mem);drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); }
-      if(S.teamView && S.teamSubview==='reporte') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamReportTrendChart(mem);drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');},80); }
+      if(S.teamView && S.teamSubview==='reporte' && (S.teamReportSubview||'resumen')==='resumen') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamReportTrendChart(mem);drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');},80); }
+      if(S.teamView && S.teamSubview==='reporte' && S.teamReportSubview==='medico') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>drawMedicalReportCharts(mem),80); }
       break;
     case 'atletas':  m.innerHTML=renderAtletas(); setTimeout(drawAtletaTabCharts,80); break;
     case 'settings': m.innerHTML=renderSettings(); break;
@@ -2759,6 +2873,7 @@ function renderWellness() {
   </div>
   </div>`;
 
+  html += renderIllnessSection();
   html += renderInjuryFollowup();
 
   if(isDesktop) {
@@ -2935,6 +3050,16 @@ function renderZoneDetail() {
     `:''}
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dolor de HOY 0–10</div>
     <div class="pain-scale" style="display:flex;gap:4px;margin:8px 0;flex-wrap:wrap">${painBtns}</div>
+    <div style="font-size:12px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px dashed var(--border)">Cuestionario rápido (4 preguntas — te ayuda a vos y a tu entrenador a ver cómo te está afectando de verdad, no solo cuánto duele)</div>
+    ${OSTRC_QUESTIONS.map(q=>{
+      const cur = inj.ostrc?.[q.id];
+      const opts = q.options.map(o=>`<button onclick="setOstrcAnswer('${zid}','${q.id}',${o.v})" style="flex:1;min-width:70px;padding:6px 4px;border-radius:var(--rxs);border:1px solid ${cur===o.v?'var(--accent)':'var(--border2)'};background:${cur===o.v?'var(--accent-dim)':'transparent'};color:${cur===o.v?'var(--accent)':'var(--text3)'};font-weight:${cur===o.v?'700':'400'};font-size:10.5px;cursor:pointer">${o.label}</button>`).join('');
+      return `<div style="margin-bottom:10px">
+        <div style="font-size:11.5px;color:var(--text3);margin-bottom:5px">${q.label}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${opts}</div>
+      </div>`;
+    }).join('')}
+    ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px">Puntaje: ${sc}/100</div>`:''; })()}
     <textarea class="pain-note-inp" placeholder="Observaciones..." onchange="setPainNote('${zid}',this.value)">${inj.note||''}</textarea>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="wellness-submit" style="flex:2" onclick="saveInjury('${zid}')">Guardar ${isInjury?'lesión':'molestia'}</button>
@@ -2959,6 +3084,7 @@ function renderInjuryList() {
           <div class="injury-info">
             <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''} · <span style="color:${col};font-weight:700">${sev.label}</span></div>
             <div class="injury-pain">Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,30):''}</div>
+            ${isRealInjury(inj)&&inj.rtpPhase?`<div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:2px">🩹 En recuperación · ${rtpPhaseInfo(inj.rtpPhase)?.label||''}</div>`:''}
           </div>
           ${trend?`<div class="injury-trend" style="color:${trend.color};font-weight:800;font-size:15px">${trend.arrow}</div>`:''}
         </div>`;
@@ -3142,6 +3268,111 @@ async function adminSetInjurySeverity(uid, zoneId, severity) {
   } catch(e) { showToast('Error al guardar'); }
 }
 window.adminSetInjurySeverity = adminSetInjurySeverity;
+
+async function adminSetInjuryRtpPhase(uid, zoneId, phase) {
+  const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
+  if(!personal || !personal.injuries || !personal.injuries[zoneId]) return;
+  personal.injuries[zoneId].rtpPhase = phase;
+  try {
+    await setDoc(doc(db,'personal',uid), {injuries:personal.injuries}, {merge:true});
+    showToast('✓ Fase de retorno actualizada');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.adminSetInjuryRtpPhase = adminSetInjuryRtpPhase;
+
+// ── ENFERMEDAD — separada a propósito de lesiones/molestias: no es una
+// excepción del cuerpo (golpe, sobrecarga), es una excepción a la regla, así
+// que vive en su propia sección chica, sin ocupar lugar en el monigote ni en
+// las alertas del dashboard.
+function getActiveIllness(illnesses) {
+  const today = new Date().toISOString().split('T')[0];
+  return (illnesses||[]).find(x=>!x.endDate || x.endDate>=today) || null;
+}
+window.getActiveIllness = getActiveIllness;
+
+function toggleIllnessForm() { S._showIllnessForm = !S._showIllnessForm; renderMain(); }
+window.toggleIllnessForm = toggleIllnessForm;
+
+// Chico y discreto a propósito — no es un monigote ni una alerta, es una
+// línea que se puede ignorar los 364 días que no aplica.
+function renderIllnessSection() {
+  const active = getActiveIllness(S.illnesses);
+  if(active) {
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);font-size:12px">
+      <span style="color:var(--text3)">🤒 Enfermedad activa desde ${active.startDate}${active.note?' · '+active.note:''}</span>
+      <button class="abtn" style="font-size:11px;padding:4px 8px" onclick="resolveIllness('${active.id}')">Marcar recuperado</button>
+    </div>`;
+  }
+  if(S._showIllnessForm) {
+    return `<div style="padding:10px 12px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm)">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Registrar enfermedad (gripe, fiebre, gastro, etc. — no es un golpe ni una molestia física)</div>
+      <input type="text" id="illness-note-inp" placeholder="Ej: Gripe" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box">
+      <div style="display:flex;gap:8px">
+        <button class="abtn abtn-p" style="flex:1" onclick="addIllness(document.getElementById('illness-note-inp').value)">Guardar</button>
+        <button class="abtn" onclick="toggleIllnessForm()">Cancelar</button>
+      </div>
+    </div>`;
+  }
+  return `<div style="text-align:right;margin-bottom:14px"><span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="toggleIllnessForm()">🤒 ¿Estás enfermo? Registrar</span></div>`;
+}
+window.renderIllnessSection = renderIllnessSection;
+
+async function addIllness(note) {
+  if(!S.illnesses) S.illnesses=[];
+  if(getActiveIllness(S.illnesses)) { showToast('Ya hay una enfermedad activa registrada'); return; }
+  const today = new Date().toISOString().split('T')[0];
+  S.illnesses.push({id:genId(), startDate:today, endDate:null, note:(note||'').trim()});
+  S._showIllnessForm = false;
+  scheduleSave();
+  showToast('✓ Enfermedad registrada');
+  renderMain();
+}
+window.addIllness = addIllness;
+
+function resolveIllness(id) {
+  const it = (S.illnesses||[]).find(x=>x.id===id);
+  if(!it) return;
+  it.endDate = new Date().toISOString().split('T')[0];
+  scheduleSave();
+  showToast('✓ Marcado como recuperado');
+  renderMain();
+}
+window.resolveIllness = resolveIllness;
+
+// Versión admin — misma lógica pero contra la ficha de OTRO atleta.
+function toggleAdminIllnessForm() { S._showAdminIllnessForm = !S._showAdminIllnessForm; renderMain(); }
+window.toggleAdminIllnessForm = toggleAdminIllnessForm;
+
+async function adminAddIllness(uid, note) {
+  const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
+  if(!personal) return;
+  if(!personal.illnesses) personal.illnesses=[];
+  if(getActiveIllness(personal.illnesses)) { showToast('Ya hay una enfermedad activa registrada'); return; }
+  const today = new Date().toISOString().split('T')[0];
+  personal.illnesses.push({id:genId(), startDate:today, endDate:null, note:(note||'').trim()});
+  try {
+    await setDoc(doc(db,'personal',uid), {illnesses:personal.illnesses}, {merge:true});
+    S._showAdminIllnessForm = false;
+    showToast('✓ Enfermedad registrada');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.adminAddIllness = adminAddIllness;
+
+async function adminResolveIllness(uid, id) {
+  const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
+  if(!personal) return;
+  const it = (personal.illnesses||[]).find(x=>x.id===id);
+  if(!it) return;
+  it.endDate = new Date().toISOString().split('T')[0];
+  try {
+    await setDoc(doc(db,'personal',uid), {illnesses:personal.illnesses}, {merge:true});
+    showToast('✓ Marcado como recuperado');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.adminResolveIllness = adminResolveIllness;
 
 // Copia una lesión activa al historial permanente antes de que desaparezca
 // de la lista de "activas". No se pierde nada: queda disponible para
@@ -3753,6 +3984,10 @@ function setTeamReportSubview(v) {
     drawTeamReportTrendChart(mem);
     drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');
   },80);
+  if(v==='medico') setTimeout(()=>{
+    const mem = (S.adminAthletes||[]).filter(a=>getTeamStatsMemberUids(S.teamView||{}).includes(a.uid));
+    drawMedicalReportCharts(mem);
+  },80);
 }
 window.setTeamReportSubview = setTeamReportSubview;
 
@@ -4041,7 +4276,10 @@ function renderStaffMeetingReport(team, members) {
 window.renderStaffMeetingReport = renderStaffMeetingReport;
 
 // ── INFORME MÉDICO ────────────────────────────────────────────
-function renderMedicalReport(team, members) {
+// Toda la data que necesitan tanto el HTML del informe médico como sus
+// gráficos Chart.js — un solo lugar para no tener el conteo de lesiones
+// duplicado (y potencialmente divergente) entre render y dibujo.
+function computeMedicalReportStats(members) {
   const periodDays = 90;
   const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
   const periodStartStr = periodStart.toISOString().split('T')[0];
@@ -4049,12 +4287,17 @@ function renderMedicalReport(team, members) {
   let activeToday=0, grave=0, moderada=0, leve=0, totalHistoric=0;
   const zoneCounts = {};
   const monthCounts = {};
+  const posStats = {}; // {posLabel: {active, exposureHours}}
 
   members.forEach(a=>{
+    const posLabel = a.position || 'Sin puesto';
+    if(!posStats[posLabel]) posStats[posLabel] = {active:0, exposureHours:0};
+    posStats[posLabel].exposureHours += getExposureHours(a._personal?.history?._sessionLogs||[]);
     const injuries = a._personal?.injuries||{};
     Object.entries(injuries).forEach(([zoneId,inj])=>{
       if(!inj.pain||inj.pain<=0||!isRealInjury(inj)) return;
       activeToday++;
+      posStats[posLabel].active++;
       const sev = inj.severity||'leve';
       if(sev==='grave') grave++; else if(sev==='moderada') moderada++; else leve++;
       zoneCounts[zoneId] = (zoneCounts[zoneId]||0)+1;
@@ -4076,24 +4319,36 @@ function renderMedicalReport(team, members) {
 
   const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
   const zoneRows = Object.entries(zoneCounts).map(([zid,count])=>({label:allBodyZones.find(z=>z.id===zid)?.label||zid, count})).sort((a,b)=>b.count-a.count);
-  const maxZoneCount = zoneRows.length ? Math.max(...zoneRows.map(z=>z.count)) : 1;
   const monthKeys = Object.keys(monthCounts).sort();
-  const maxMonthCount = monthKeys.length ? Math.max(...monthKeys.map(k=>monthCounts[k])) : 1;
+
+  const positionRows = Object.entries(posStats)
+    .filter(([,s])=>s.active>0)
+    .map(([label,s])=>({label, active:s.active, incidencia: s.exposureHours>0 ? +((s.active/s.exposureHours)*1000).toFixed(1) : null}))
+    .sort((a,b)=>b.active-a.active);
+
+  return {periodDays, activeToday, grave, moderada, leve, prevalencia, lesionesPorJugador, incidencia, zoneRows, monthKeys, monthCounts, positionRows};
+}
+window.computeMedicalReportStats = computeMedicalReportStats;
+
+function renderMedicalReport(team, members) {
+  const st = computeMedicalReportStats(members);
+  const maxZoneCount = st.zoneRows.length ? Math.max(...st.zoneRows.map(z=>z.count)) : 1;
+  const maxPosActive = st.positionRows.length ? Math.max(...st.positionRows.map(p=>p.active)) : 1;
 
   return `<div class="admin-section">
     <div class="admin-section-title">Resumen epidemiológico del plantel</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${prevalencia>0?'var(--red)':'var(--text)'}">${prevalencia}%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Prevalencia actual</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${lesionesPorJugador}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesiones/jugador</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${activeToday}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Activas hoy</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${incidencia??'—'}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Incidencia /1000hs</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${st.prevalencia>0?'var(--red)':'var(--text)'}">${st.prevalencia}%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Prevalencia actual</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${st.lesionesPorJugador}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesiones/jugador</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${st.activeToday}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Activas hoy</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${st.incidencia??'—'}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Incidencia /1000hs</div></div>
     </div>
     <div style="padding:8px 16px 12px;font-size:11px;color:var(--text3)">La incidencia por horas de exposición se calcula con los minutos de entrenamiento/partido que cada atleta ya carga en "Carga de hoy".</div>
   </div>
 
   <div class="admin-section">
     <div class="admin-section-title">Zonas del cuerpo más afectadas</div>
-    ${zoneRows.length?zoneRows.map(z=>`
+    ${st.zoneRows.length?st.zoneRows.map(z=>`
       <div style="padding:6px 16px">
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${z.label}</span><span style="font-weight:700">${z.count}</span></div>
         <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;background:var(--red);border-radius:4px;width:${(z.count/maxZoneCount)*100}%"></div></div>
@@ -4101,24 +4356,67 @@ function renderMedicalReport(team, members) {
   </div>
 
   <div class="admin-section">
-    <div class="admin-section-title">Distribución por gravedad</div>
-    <div style="display:flex;gap:8px;padding:12px 16px">
-      <div style="flex:1;background:var(--red-dim);border-radius:6px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--red)">${grave}</div><div style="font-size:9px;color:var(--red);text-transform:uppercase">Graves</div></div>
-      <div style="flex:1;background:var(--amber-dim);border-radius:6px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--amber)">${moderada}</div><div style="font-size:9px;color:var(--amber);text-transform:uppercase">Moderadas</div></div>
-      <div style="flex:1;background:var(--green-dim);border-radius:6px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--green)">${leve}</div><div style="font-size:9px;color:var(--green);text-transform:uppercase">Leves</div></div>
-    </div>
+    <div class="admin-section-title">Incidencia por puesto</div>
+    ${st.positionRows.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:6px 16px;color:var(--text2)">Puesto</th>
+        <th style="text-align:center;padding:6px 10px;color:var(--text2)">Activas</th>
+        <th style="text-align:center;padding:6px 16px;color:var(--text2)">Incidencia /1000hs</th>
+      </tr></thead>
+      <tbody>${st.positionRows.map(p=>`
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 16px">${p.label}</td>
+          <td style="padding:6px 10px;text-align:center;font-weight:700">${p.active}</td>
+          <td style="padding:6px 16px;text-align:center">${p.incidencia??'—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`:`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin lesiones activas, o los atletas no tienen puesto cargado en su ficha.</div>`}
   </div>
 
   <div class="admin-section">
-    <div class="admin-section-title">Lesiones por mes (tendencia, últimos ${periodDays} días)</div>
-    ${monthKeys.length?monthKeys.map(mk=>`
-      <div style="padding:6px 16px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${mk}</span><span style="font-weight:700">${monthCounts[mk]}</span></div>
-        <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;background:var(--accent);border-radius:4px;width:${(monthCounts[mk]/maxMonthCount)*100}%"></div></div>
-      </div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin lesiones nuevas en el período.</div>`}
+    <div class="admin-section-title">Distribución por gravedad</div>
+    <div style="height:180px;position:relative;padding:12px 16px"><canvas id="medreport-severity-chart"></canvas></div>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Lesiones por mes (tendencia, últimos ${st.periodDays} días)</div>
+    <div style="height:180px;position:relative;padding:12px 16px">${st.monthKeys.length?'<canvas id="medreport-trend-chart"></canvas>':`<div style="font-size:13px;color:var(--text3)">Sin lesiones nuevas en el período.</div>`}</div>
   </div>`;
 }
 window.renderMedicalReport = renderMedicalReport;
+
+function drawMedicalReportCharts(members) {
+  if(typeof Chart==='undefined') return;
+  const st = computeMedicalReportStats(members);
+  try { S._medreportSeverityChart?.destroy(); } catch(e){}
+  try { S._medreportTrendChart?.destroy(); } catch(e){}
+
+  const sevCanvas = document.getElementById('medreport-severity-chart');
+  if(sevCanvas && (st.grave+st.moderada+st.leve)>0) {
+    S._medreportSeverityChart = new Chart(sevCanvas, {
+      type:'doughnut',
+      data:{ labels:['Graves','Moderadas','Leves'], datasets:[{ data:[st.grave,st.moderada,st.leve], backgroundColor:['#C33A2C','#C67C0F','#1F7A4D'], borderWidth:0 }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{color:cssVar('--text','#1A1D26'),font:{size:11},boxWidth:10} } } }
+    });
+  }
+
+  const trendCanvas = document.getElementById('medreport-trend-chart');
+  if(trendCanvas && st.monthKeys.length) {
+    S._medreportTrendChart = new Chart(trendCanvas, {
+      type:'bar',
+      data:{ labels:st.monthKeys, datasets:[{ label:'Lesiones', data:st.monthKeys.map(k=>st.monthCounts[k]), backgroundColor:'#3b7dd8', borderRadius:6 }] },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false} },
+        scales:{
+          x:{ ticks:{color:cssVar('--text','#1A1D26'),font:{size:10}}, grid:{display:false} },
+          y:{ beginAtZero:true, ticks:{color:cssVar('--text','#1A1D26'),font:{size:10},stepSize:1}, grid:{color:'rgba(18,21,28,0.08)'} }
+        }
+      }
+    });
+  }
+}
+window.drawMedicalReportCharts = drawMedicalReportCharts;
 
 // ── CÓMO LLEGAMOS AL PARTIDO ──────────────────────────────────
 // Busca el próximo evento de tipo "partido" en el calendario del equipo —
@@ -5194,7 +5492,7 @@ function drawTeamRadarChart(members) {
   const datasets = [
     { label:labelA, data:valuesA, backgroundColor:'rgba(36,59,107,0.15)', borderColor:'#243B6B', borderWidth:2, pointBackgroundColor:'#243B6B', pointRadius:3, _raw:rawA },
   ];
-  if(!sameData) datasets.push({ label:labelB, data:valuesB, backgroundColor:'rgba(122,131,148,0.06)', borderColor:'#7A8394', borderWidth:2, borderDash:[5,4], pointBackgroundColor:'#7A8394', pointRadius:3, _raw:rawB });
+  if(!sameData) datasets.push({ label:labelB, data:valuesB, backgroundColor:'rgba(122,131,148,0.06)', borderColor:cssVar('--text3','#7A8394'), borderWidth:2, borderDash:[5,4], pointBackgroundColor:cssVar('--text3','#7A8394'), pointRadius:3, _raw:rawB });
 
   try{ S.radarChartInstance?.destroy(); }catch(e){}
   S.radarChartInstance = new Chart(canvas, {
@@ -5203,16 +5501,16 @@ function drawTeamRadarChart(members) {
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{ display:true, labels:{color:'#4B5160', font:{size:10}, boxWidth:10} },
+        legend:{ display:true, labels:{color:cssVar('--text2','#4B5160'), font:{size:10}, boxWidth:10} },
         tooltip:{ callbacks:{ label:(ctx)=>{
           const raw = ctx.dataset._raw?.[ctx.dataIndex];
           const unit = unitOf(RADAR_METRICS[ctx.dataIndex].id);
           return `${ctx.dataset.label}: ${raw!=null?raw+unit:'sin datos'} (${ctx.formattedValue}%)`;
         } } }
       },
-      scales:{ r:{ min:0, max:100, ticks:{color:'#4B5160', backdropColor:'transparent', font:{size:9}, stepSize:25},
+      scales:{ r:{ min:0, max:100, ticks:{color:cssVar('--text2','#4B5160'), backdropColor:'transparent', font:{size:9}, stepSize:25},
         grid:{color:'rgba(18,21,28,0.1)'}, angleLines:{color:'rgba(18,21,28,0.1)'},
-        pointLabels:{color:'#1A1D26', font:{size:11,weight:600}} } }
+        pointLabels:{color:cssVar('--text','#1A1D26'), font:{size:11,weight:600}} } }
     }
   });
 }
@@ -5326,7 +5624,7 @@ function drawTeamQuadrantChart(members, canvasId, instanceKey, overrideX, overri
       const ctx = chart.ctx;
       chart.getDatasetMeta(0).data.forEach((pt,i)=>{
         ctx.save();
-        ctx.fillStyle='#1A1D26'; ctx.font='600 10px Inter, sans-serif'; ctx.textAlign='center';
+        ctx.fillStyle=cssVar('--text','#1A1D26'); ctx.font='600 10px Inter, sans-serif'; ctx.textAlign='center';
         ctx.fillText(points[i].name.split(' ')[0], pt.x, pt.y-8);
         ctx.restore();
       });
@@ -5340,8 +5638,8 @@ function drawTeamQuadrantChart(members, canvasId, instanceKey, overrideX, overri
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>points[ctx.dataIndex].name+': '+ctx.parsed.x+xDef.unit+', '+ctx.parsed.y+yDef.unit}} },
       scales:{
-        x:{ title:{display:true,text:xDef.label+' ('+xDef.unit+')',color:'#1A1D26',font:{size:10}}, ticks:{color:'#1A1D26',font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
-        y:{ title:{display:true,text:yDef.label+' ('+yDef.unit+')',color:'#1A1D26',font:{size:10}}, ticks:{color:'#1A1D26',font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
+        x:{ title:{display:true,text:xDef.label+' ('+xDef.unit+')',color:cssVar('--text','#1A1D26'),font:{size:10}}, ticks:{color:cssVar('--text','#1A1D26'),font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
+        y:{ title:{display:true,text:yDef.label+' ('+yDef.unit+')',color:cssVar('--text','#1A1D26'),font:{size:10}}, ticks:{color:cssVar('--text','#1A1D26'),font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
       }
     },
     plugins:[quadrantLinesPlugin, pointLabelsPlugin]
@@ -5776,9 +6074,14 @@ async function deleteTeam(teamId) {
 }
 window.deleteTeam=deleteTeam;
 
+// Guarda SOLO jugadores y días de entrenamiento — nunca el documento
+// completo. Escribir el objeto entero pisaba campos que esta función jamás
+// toca (como calendar) con lo que hubiera en la copia local en memoria,
+// que podía estar desactualizada (ej: fixture importado en otra pestaña) —
+// eso borraba partidos ya guardados sin que nadie los tocara.
 async function saveTeam(teamId) {
   const t=S.teams.find(x=>x.id===teamId); if(!t) return;
-  try { await setDoc(doc(db,'teams',teamId),t); } catch(e) { console.error(e); }
+  try { await setDoc(doc(db,'teams',teamId),{players:t.players||[],trainingDays:t.trainingDays||[]},{merge:true}); } catch(e) { console.error(e); }
 }
 
 // ── ATLETAS (individuales, sin equipo) ─────────────────────────
@@ -5882,6 +6185,7 @@ function openAtleta(uid) {
   S.atletaSubview = 'perfil';
   S._atletaRoutineCollapsedDays = null;
   S._atletaRoutineCollapsedBlocks = null;
+  S._routineWeekPreview = null;
   ensureGroupPersonalData(getEffectiveGroupUids(a)).then(()=>{
     S.viewingAthlete = { uid, userData: a, personal: a._personal||{} };
     renderMain();
@@ -6129,15 +6433,47 @@ function renderPerfilTab(a) {
               Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}
               ${trend?` <span style="color:${trend.color};font-weight:800;font-size:13px" title="${trend.label}">${trend.arrow}</span>`:''}
             </div>
+            ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:11px;color:var(--text3)">Puntaje OSTRC: <b style="color:var(--text)">${sc}/100</b></div>`:''; })()}
           </div>
         </div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica (la fijás vos, no depende del dolor del día)</div>
         <div style="display:flex;gap:6px">
           ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.color+'1a':'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
         </div>
+        ${isRealInjury(inj)?`
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 5px">Fase de retorno al juego</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${RTP_PHASES.map(p=>`<button onclick="adminSetInjuryRtpPhase('${uid}','${id}','${p.id}')" style="flex:1;min-width:80px;padding:6px;border-radius:var(--rxs);border:1px solid ${inj.rtpPhase===p.id?'var(--accent)':'var(--border2)'};background:${inj.rtpPhase===p.id?'var(--accent-dim)':'transparent'};color:${inj.rtpPhase===p.id?'var(--accent)':'var(--text3)'};font-weight:${inj.rtpPhase===p.id?'700':'400'};font-size:11px;cursor:pointer">${p.label}</button>`).join('')}
+        </div>`:''}
       </div>`;
     }).join('')}</div>`:`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin molestias registradas.</div>`}
   </div>
+
+  ${(()=>{
+    const activeIllness = getActiveIllness(personal.illnesses);
+    const pastIllnesses = (personal.illnesses||[]).filter(x=>x.endDate && (!activeIllness||x.id!==activeIllness.id));
+    return `<div class="admin-section">
+    <div class="admin-section-title">Salud general (no es lesión física)</div>
+    <div style="padding:10px 14px">
+      ${activeIllness
+        ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px">
+             <span>🤒 Enfermedad activa desde ${activeIllness.startDate}${activeIllness.note?' · '+activeIllness.note:''}</span>
+             <button class="abtn" style="font-size:11px;padding:4px 8px" onclick="adminResolveIllness('${uid}','${activeIllness.id}')">Marcar recuperado</button>
+           </div>`
+        : (S._showAdminIllnessForm
+          ? `<div>
+              <input type="text" id="admin-illness-note-inp" placeholder="Ej: Gripe" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box">
+              <div style="display:flex;gap:8px">
+                <button class="abtn abtn-p" style="flex:1" onclick="adminAddIllness('${uid}',document.getElementById('admin-illness-note-inp').value)">Guardar</button>
+                <button class="abtn" onclick="toggleAdminIllnessForm()">Cancelar</button>
+              </div>
+            </div>`
+          : `<span style="font-size:12px;color:var(--text3);cursor:pointer" onclick="toggleAdminIllnessForm()">Sin enfermedad activa · + Registrar</span>`)
+      }
+      ${pastIllnesses.length ? `<div style="font-size:11px;color:var(--text3);margin-top:10px">Historial: ${pastIllnesses.map(x=>x.startDate+'→'+x.endDate+(x.note?' ('+x.note+')':'')).join(' · ')}</div>` : ''}
+    </div>
+  </div>`;
+  })()}
 
   <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
     <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:8px">
@@ -6204,13 +6540,18 @@ function renderAtletaRutina(a) {
     html += `<div class="empty-state">Este atleta no tiene una rutina asignada todavía.</div>`;
     return html;
   }
-  // La vista previa muestra la semana REAL del atleta (según su fecha de
-  // inicio), no la del admin — así se ve exactamente lo que él está viendo hoy.
-  // La semana se cuenta desde que se ASIGNÓ esta rutina, no desde que el
-  // atleta se registró — si por algún motivo esa fecha no está (rutinas
-  // asignadas antes de este cambio), caemos en la fecha de inicio general.
-  const athletePreviewWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate)
+  // La semana REAL se cuenta desde que se ASIGNÓ esta rutina (fecha real en
+  // Firestore), no desde que el atleta se registró — si por algún motivo esa
+  // fecha no está (rutinas asignadas antes de este cambio), caemos en la
+  // fecha de inicio general.
+  const realWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate)
     : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
+  // La navegación ‹/› solo cambia esta variable LOCAL para poder hojear otras
+  // semanas de la planificación — antes movía routineAssignedDate en
+  // Firestore, lo cual cambiaba de verdad la semana real del atleta (¡y lo
+  // que ve en su propio celular!) cada vez que el admin solo quería mirar.
+  const previewWeek = S._routineWeekPreview?.[a.uid] ?? realWeek;
+  const isViewingReal = previewWeek === realWeek;
 
   const sessionNames = getOrderedSessionNames(routine);
   // Qué día le toca hoy al atleta según su calendario real (días de gimnasio
@@ -6225,13 +6566,15 @@ function renderAtletaRutina(a) {
   html += `<div class="admin-section">
     <div class="admin-item">
       <div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Semana actual de esta planificación</div>
-        <div style="font-size:20px;font-weight:800;color:var(--accent);font-family:'Barlow Condensed',sans-serif">Semana ${athletePreviewWeek}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Semana real de esta planificación</div>
+        <div style="font-size:20px;font-weight:800;color:var(--accent);font-family:'Barlow Condensed',sans-serif">Semana ${realWeek}</div>
+        ${!isViewingReal?`<div style="font-size:11px;color:var(--amber);margin-top:2px">Estás mirando la Semana ${previewWeek} — esto no cambia la planificación real del atleta.</div>`:''}
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',-1)" title="Retroceder una semana">‹ Semana</button>
-        <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',1)" title="Avanzar una semana">Semana ›</button>
-        <button class="abtn abtn-d" onclick="resetAthleteRoutineWeek('${a.uid}')" title="Volver a Semana 1 desde hoy">Reiniciar a Sem. 1</button>
+        <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',-1)" title="Ver la semana anterior (no cambia la fecha real)">‹ Semana</button>
+        <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',1)" title="Ver la semana siguiente (no cambia la fecha real)">Semana ›</button>
+        ${!isViewingReal?`<button class="abtn abtn-p" onclick="resetRoutineWeekPreview('${a.uid}')" title="Volver a mostrar la semana real del atleta">Volver a la real</button>`:''}
+        <button class="abtn abtn-d" onclick="resetAthleteRoutineWeek('${a.uid}')" title="Reasigna la planificación para que arranque hoy en Semana 1 — cambia la semana real del atleta">Reiniciar a Sem. 1</button>
       </div>
     </div>
   </div>
@@ -6246,11 +6589,12 @@ function renderAtletaRutina(a) {
     ${sessionNames.map(sName => {
       const blocks = routine.sessions[sName] || [];
       const dayCollapsed = S._atletaRoutineCollapsedDays?.has(sName);
-      const dayDone = !!(a._personal?.history?.[sessionKey(athletePreviewWeek, sName)]?.done);
-      return `<div style="border-top:1px solid var(--border)${sName===todaySession?';background:var(--accent-dim)':''}">
+      const dayDone = !!(a._personal?.history?.[sessionKey(previewWeek, sName)]?.done);
+      const isToday = sName===todaySession && isViewingReal;
+      return `<div style="border-top:1px solid var(--border)${isToday?';background:var(--accent-dim)':''}">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer" onclick="toggleAtletaRoutineDay('${sName}')">
           <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px">
-            ${sName}${sName===todaySession?'<span style="font-size:9px;font-weight:800;background:var(--accent);color:#fff;padding:2px 6px;border-radius:10px;text-transform:none;letter-spacing:0">HOY</span>':''}
+            ${sName}${isToday?'<span style="font-size:9px;font-weight:800;background:var(--accent);color:#fff;padding:2px 6px;border-radius:10px;text-transform:none;letter-spacing:0">HOY</span>':''}
             ${dayDone?'<span style="color:var(--green);font-size:13px">✓</span>':''}
           </div>
           <span style="color:var(--text3);font-size:16px;transition:transform .15s;transform:rotate(${dayCollapsed?'-90':'0'}deg)">›</span>
@@ -6267,24 +6611,24 @@ function renderAtletaRutina(a) {
               ${(b.categories||[]).map(cat=>`
                 ${cat.label?`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label">${cat.label}</span></div></div>`:''}
                 ${(cat.exercises||[]).map(ex=>{
-                  const wp = getExPrescriptionForWeek(ex, athletePreviewWeek);
+                  const wp = getExPrescriptionForWeek(ex, previewWeek);
                   // Buscamos hacia atrás desde la semana actual del atleta —
                   // así, si completó este ejercicio en una semana anterior
                   // pero no en la actual, lo seguimos mostrando (aclarando de
                   // qué semana es), en vez de decir "no completó" a secas.
                   let doneData = {}, doneWeek = null;
-                  for(let w=athletePreviewWeek; w>=1; w--) {
+                  for(let w=previewWeek; w>=1; w--) {
                     const d = a._personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id];
                     if(d && (d.load || d.rpe || d.checked || d.athleteNote)) { doneData = d; doneWeek = w; break; }
                   }
                   const hasCompletion = !!(doneData.load || doneData.rpe);
                   const durationWeeksEx = routine?.durationWeeks || 1;
-                  const lastWeekEx = Math.max(durationWeeksEx, athletePreviewWeek);
+                  const lastWeekEx = Math.max(durationWeeksEx, previewWeek);
                   if (S._atletaRoutineCicloView === 'macro') {
                     return `
                     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
                       <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}</div>
-                      ${buildWeeklyProgressionTable(lastWeekEx, athletePreviewWeek, (w) => ({
+                      ${buildWeeklyProgressionTable(lastWeekEx, previewWeek, (w) => ({
                         wp: getExPrescriptionForWeek(ex, w),
                         d: a._personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id] || {}
                       }), {uid:a.uid, sName, exId:ex.id})}
@@ -6292,7 +6636,7 @@ function renderAtletaRutina(a) {
                   }
                   return `
                   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${athletePreviewWeek} · Ver todas ▤</span></div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span></div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
@@ -6301,14 +6645,14 @@ function renderAtletaRutina(a) {
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
                     ${(()=>{
-                      const effWeek = doneWeek||athletePreviewWeek;
+                      const effWeek = doneWeek||previewWeek;
                       const sNameEsc = sName.replace(/'/g,"\\'");
                       const intensityLbl = wp.intensityType||'RPE';
                       const loadTxt = doneData.load ? doneData.load+'kg' : '— kg';
                       const rpeTxt = intensityLbl+' '+(doneData.rpe!=null&&doneData.rpe!==''?doneData.rpe:'—');
                       const txtColor = hasCompletion ? 'var(--green)' : 'var(--text3)';
                       return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó${doneWeek&&doneWeek!==athletePreviewWeek?' (Semana '+doneWeek+')':''}</span>
+                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó${doneWeek&&doneWeek!==previewWeek?' (Semana '+doneWeek+')':''}</span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${loadTxt}</span>
                         <input class="done-field-inp" type="number" value="${doneData.load||''}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${effWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
@@ -7214,6 +7558,10 @@ function renderAdminMain() {
       <button class="abtn" onclick="importEstudiantesFixtures()">Importar</button>
     </div>
     <div class="admin-item">
+      <div><div class="admin-item-lbl">Completar calendario semanal (Handball-EDLP)</div><div class="admin-item-sub">Carga Físico y Pelota todos los lunes, martes y jueves desde hoy hasta el 30/11, en Liga de Honor, Cadetes, Juveniles y Juniors — no duplica si se corre de nuevo, y no toca lo que ya esté cargado</div></div>
+      <button class="abtn" onclick="fillWeeklyTrainingCalendar()">Completar</button>
+    </div>
+    <div class="admin-item">
       <div><div class="admin-item-lbl">Clasificar molestias/lesiones</div><div class="admin-item-sub">Decidí de una cuáles dolores marcados son lesión real y cuáles son molestia</div></div>
       <button class="abtn" onclick="openInjuryClassifyScreen()">Revisar</button>
     </div>
@@ -7407,7 +7755,7 @@ function drawCompareCharts() {
       type:'bar',
       data:{ labels:[nameA,nameB], datasets:[{ data:[sumA.avgWellness||0, sumB.avgWellness||0], backgroundColor:['#3b7dd8','#22c55e'], borderRadius:6 }] },
       options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
-        scales:{ y:{min:0,max:100,ticks:{color:'#1A1D26',font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:'#1A1D26',font:{size:11}},grid:{display:false}} } }
+        scales:{ y:{min:0,max:100,ticks:{color:cssVar('--text','#1A1D26'),font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:cssVar('--text','#1A1D26'),font:{size:11}},grid:{display:false}} } }
     });
   }
   const c2=document.getElementById('compare-chart-strength');
@@ -7420,8 +7768,8 @@ function drawCompareCharts() {
         {label:nameA, data:ids.map(id=>bestOf(evalsA,id)), backgroundColor:'#3b7dd8', borderRadius:4},
         {label:nameB, data:ids.map(id=>bestOf(evalsB,id)), backgroundColor:'#22c55e', borderRadius:4},
       ]},
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#1A1D26',font:{size:11}}}},
-        scales:{ y:{ticks:{color:'#1A1D26',font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:'#1A1D26',font:{size:9}},grid:{display:false}} } }
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:cssVar('--text','#1A1D26'),font:{size:11}}}},
+        scales:{ y:{ticks:{color:cssVar('--text','#1A1D26'),font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:cssVar('--text','#1A1D26'),font:{size:9}},grid:{display:false}} } }
     });
   }
 }
@@ -7442,6 +7790,7 @@ async function adminOpenAthlete(uid) {
   S.atletaSubview = 'perfil';
   S._atletaRoutineCollapsedDays = null;
   S._atletaRoutineCollapsedBlocks = null;
+  S._routineWeekPreview = null;
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
   try {
     await ensureAdminAthletes();
@@ -7588,13 +7937,14 @@ window.renderWeeklyReport = renderWeeklyReport;
 // Escribe la asignación en Firestore y refleja el cambio en el estado local
 // (viewingAthlete + lista de adminAthletes), sea que venga de "quitar
 // rutina" directo o de confirmar el modal de días de gimnasio.
-async function writeRoutineAssignment(uid, routineId, trainingWeekdays) {
+async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDate) {
   const today = new Date().toISOString().split('T')[0];
   const update = { assignedRoutine: routineId||null };
   // La semana de la planificación se cuenta desde el día que se la
   // asignás, no desde que el atleta se registró — por eso guardamos esta
-  // fecha cada vez que asignás (o reasignás) una rutina.
-  if(routineId) update.routineAssignedDate = today;
+  // fecha cada vez que asignás (o reasignás) una rutina. Por defecto es hoy,
+  // pero el admin puede elegir otra (ej: arrancar retroactivo desde el lunes).
+  if(routineId) update.routineAssignedDate = startDate||today;
   update.trainingWeekdays = routineId ? (trainingWeekdays||[]) : [];
   await setDoc(doc(db,'users',uid), update, {merge:true});
   if(S.viewingAthlete?.userData) Object.assign(S.viewingAthlete.userData, update);
@@ -7634,7 +7984,8 @@ function openWeekdayAssignModal(uid, routineId) {
   // Si ya tenía días elegidos (para esta u otra rutina), arrancamos de ahí —
   // es un punto de partida razonable que el admin puede ajustar.
   const prevSelected = (a && a.assignedRoutine===routineId && Array.isArray(a.trainingWeekdays)) ? a.trainingWeekdays : [];
-  S._weekdayAssign = { uid, routineId, sessionNames, selected: [...prevSelected] };
+  const today = new Date().toISOString().split('T')[0];
+  S._weekdayAssign = { uid, routineId, sessionNames, selected: [...prevSelected], startDate: today };
   document.getElementById('weekday-assign-title').textContent = 'Días de gimnasio · ' + routine.name;
   renderWeekdayAssignBody();
   document.getElementById('weekday-assign-overlay').classList.add('open');
@@ -7651,6 +8002,10 @@ function renderWeekdayAssignBody() {
     <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
       Esta rutina tiene <strong>${need}</strong> día${need===1?'':'s'} (${st.sessionNames.join(' · ')}).
       Elegí ${need} día${need===1?'':'s'} reales de la semana en que el atleta va al gimnasio.
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600;display:block;margin-bottom:4px">¿Desde qué día arranca la Semana 1?</label>
+      <input type="date" class="abtn" style="width:100%" value="${st.startDate}" onchange="setWeekdayAssignStartDate(this.value)">
     </div>
     <div style="display:flex;flex-direction:column;gap:6px">
       ${WEEKDAY_LABELS.map((label,dow)=>{
@@ -7684,6 +8039,13 @@ function toggleWeekdayAssignDay(dow) {
 }
 window.toggleWeekdayAssignDay = toggleWeekdayAssignDay;
 
+function setWeekdayAssignStartDate(val) {
+  const st = S._weekdayAssign;
+  if(!st || !val) return;
+  st.startDate = val;
+}
+window.setWeekdayAssignStartDate = setWeekdayAssignStartDate;
+
 function closeWeekdayAssignModal() {
   document.getElementById('weekday-assign-overlay').classList.remove('open');
   S._weekdayAssign = null;
@@ -7697,7 +8059,7 @@ async function confirmWeekdayAssign() {
   const st = S._weekdayAssign;
   if(!st || st.selected.length !== st.sessionNames.length) return;
   try {
-    await writeRoutineAssignment(st.uid, st.routineId, [...st.selected]);
+    await writeRoutineAssignment(st.uid, st.routineId, [...st.selected], st.startDate);
     showToast('✓ Rutina y días asignados');
     closeWeekdayAssignModal();
     renderMain();
@@ -7705,33 +8067,37 @@ async function confirmWeekdayAssign() {
 }
 window.confirmWeekdayAssign = confirmWeekdayAssign;
 
-// Corregir manualmente en qué semana de SU PROPIA planificación está un
-// atleta — por si el admin se confunde probando, o el atleta marcó algo por
-// error. Mover "una semana atrás" en el conteo significa correr la fecha de
-// asignación hacia ADELANTE 7 días (más cerca de hoy), y viceversa.
-async function adjustAthleteRoutineWeek(uid, delta) {
+// Hojear otras semanas de la planificación PARA MIRARLAS, sin tocar nada
+// real — antes esto reescribía routineAssignedDate en Firestore, lo cual
+// cambiaba de verdad la semana del atleta (incluso en su propio celular)
+// cada vez que el admin solo quería revisar contenido. Ahora es 100% local.
+function adjustAthleteRoutineWeek(uid, delta) {
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   if(!a) return;
-  const base = a.routineAssignedDate ? new Date(a.routineAssignedDate+'T00:00:00') : new Date();
-  base.setDate(base.getDate() - delta*7);
-  const newDate = base.toISOString().split('T')[0];
-  try {
-    await setDoc(doc(db,'users',uid), {routineAssignedDate:newDate}, {merge:true});
-    a.routineAssignedDate = newDate;
-    if(S.viewingAthlete?.uid===uid) S.viewingAthlete.userData.routineAssignedDate = newDate;
-    showToast('✓ Ahora está en Semana '+computeWeekFromDate(newDate));
-    renderMain();
-  } catch(e) { showToast('Error al ajustar'); }
+  const realWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate)
+    : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
+  if(!S._routineWeekPreview) S._routineWeekPreview = {};
+  const current = S._routineWeekPreview[uid] ?? realWeek;
+  S._routineWeekPreview[uid] = Math.max(1, current+delta);
+  renderMain();
 }
 window.adjustAthleteRoutineWeek = adjustAthleteRoutineWeek;
 
+function resetRoutineWeekPreview(uid) {
+  if(S._routineWeekPreview) delete S._routineWeekPreview[uid];
+  renderMain();
+}
+window.resetRoutineWeekPreview = resetRoutineWeekPreview;
+
 async function resetAthleteRoutineWeek(uid) {
+  if(!confirm('Esto reinicia la planificación real del atleta a Semana 1 a partir de hoy — lo va a ver así en su propio celular. ¿Confirmás?')) return;
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   const today = new Date().toISOString().split('T')[0];
   try {
     await setDoc(doc(db,'users',uid), {routineAssignedDate:today}, {merge:true});
     if(a) a.routineAssignedDate = today;
     if(S.viewingAthlete?.uid===uid) S.viewingAthlete.userData.routineAssignedDate = today;
+    if(S._routineWeekPreview) delete S._routineWeekPreview[uid];
     showToast('✓ Reiniciado a Semana 1');
     renderMain();
   } catch(e) { showToast('Error al reiniciar'); }
@@ -8809,21 +9175,42 @@ function renderEvalCompare() {
     const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
     const recs = sortEvalRecsByDate([...(ed[testId]||[])]);
     const last = recs.length ? recs[recs.length-1] : null;
-    return {name: a.name||a.email||'Atleta', value: last?last.height:null};
+    return {name: a.name||a.email||'Atleta', value: last?last.height:null, position: a.position||null};
   });
   const withData = allData.filter(x=>x.value!==null);
   const withoutData = allData.filter(x=>x.value===null);
   const testLabel = (EVAL_TESTS.find(t=>t.id===testId)||{}).label || testId;
 
+  // Agrupar por puesto solo tiene sentido si al menos algunos atletas de este
+  // grupo tienen la posición cargada (Panel Admin → ficha del atleta).
+  const positions = [...new Set(withData.map(d=>d.position).filter(Boolean))];
+  const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
+  const groupPos = S.evalCompareGroupPosition||'all';
+
   html += '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
   html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
   html += '<div style="font-size:15px;font-weight:600">Comparación — '+testLabel+'</div>';
-  html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro por atleta</div></div>';
+  html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro por atleta · verde = tercio superior, rojo = tercio a reforzar</div></div>';
+
+  if(positions.length) {
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--border)">'
+      + '<select class="abtn" onchange="setEvalCompareGroupBy(this.value)">'
+      +   '<option value="none" '+(groupBy==='none'?'selected':'')+'>Sin agrupar</option>'
+      +   '<option value="position" '+(groupBy==='position'?'selected':'')+'>Por puesto</option>'
+      + '</select>'
+      + (groupBy==='position' ? '<select class="abtn" onchange="setEvalCompareGroupPosition(this.value)">'
+          + '<option value="all" '+(groupPos==='all'?'selected':'')+'>Todos los puestos (promedio)</option>'
+          + positions.map(p=>'<option value="'+p+'" '+(groupPos===p?'selected':'')+'>'+p+'</option>').join('')
+          + '</select>' : '')
+      + '</div>';
+  }
+
   html += '<div style="padding:16px">';
 
-  if(withData.length>=1) {
+  const rows = buildEvalCompareRows(withData, groupBy, groupPos);
+  if(rows.length) {
     html += '<canvas class="eval-chart" id="chart-compare-'+testId+'" height="220" style="margin-bottom:12px"></canvas>';
-    withData.forEach(d=>{
+    rows.forEach(d=>{
       html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">'
         + '<span>'+d.name+'</span><span style="font-weight:700;color:var(--accent)">'+d.value+' cm</span></div>';
     });
@@ -8981,7 +9368,7 @@ function drawEvalCharts() {
             const val = ds.data[idx];
             if(val===null||val===undefined) return;
             ctx.save();
-            ctx.fillStyle = '#1A1D26';
+            ctx.fillStyle = cssVar('--text','#1A1D26');
             ctx.font = '600 10px Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
@@ -9033,8 +9420,8 @@ function drawEvalCharts() {
             tooltip:{...tooltipStyle, filter:item=>item.datasetIndex===0}
           },
           scales:{
-            x:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:9}, maxRotation:30}},
-            y:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:9}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:'#1A1D26',font:{size:9}}}
+            x:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:9}, maxRotation:30}},
+            y:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:9}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:cssVar('--text','#1A1D26'),font:{size:9}}}
           }
         },
         plugins:[barLabelsPlugin]
@@ -9070,8 +9457,8 @@ function drawEvalCharts() {
             responsive:true, maintainAspectRatio:true, aspectRatio:2.3,
             plugins:{legend:{display:false}, tooltip:tooltipStyle},
             scales:{
-              x:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:9}, maxRotation:30}},
-              y:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:9}}, min:0, title:{display:true,text:'% asimetría',color:'#1A1D26',font:{size:9}}}
+              x:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:9}, maxRotation:30}},
+              y:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:9}}, min:0, title:{display:true,text:'% asimetría',color:cssVar('--text','#1A1D26'),font:{size:9}}}
             }
           },
           plugins:[{
@@ -9082,7 +9469,7 @@ function drawEvalCharts() {
                 const val=chart.data.datasets[0].data[idx];
                 if(val===null||val===undefined) return;
                 ctx.save();
-                ctx.fillStyle='#1A1D26';
+                ctx.fillStyle=cssVar('--text','#1A1D26');
                 ctx.font='600 10px Inter, sans-serif';
                 ctx.textAlign='center';
                 ctx.textBaseline='bottom';
@@ -9100,18 +9487,21 @@ function drawEvalCharts() {
     const athletes = S.evalScopeUids
       ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid))
       : [{uid:'self',name:'Yo (admin)'}].concat(S.adminAthletes);
-    const compData = athletes.map(a=>{
+    const withData = athletes.map(a=>{
       const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
       const recs = sortEvalRecsByDate([...(ed[testId]||[])]);
       const last = recs.length ? recs[recs.length-1] : null;
-      return {name: a.name||a.email||'Admin', value: last?last.height:null};
+      return {name: a.name||a.email||'Admin', value: last?last.height:null, position: a.position||null};
     }).filter(x=>x.value!==null);
+    const positions = [...new Set(withData.map(d=>d.position).filter(Boolean))];
+    const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
+    const compData = buildEvalCompareRows(withData, groupBy, S.evalCompareGroupPosition||'all');
 
     const canvasId = 'chart-compare-'+testId;
     const c = document.getElementById(canvasId);
     if(c && compData.length) {
       const sc = computeDynamicScale(compData.map(d=>d.value));
-      const colors = compData.map((_,i)=>'hsl('+(210+i*35)+',65%,55%)');
+      const colors = tercileColors(compData.map(d=>d.value));
       S.evalChartInstances[canvasId] = new Chart(c, {
         type:'bar',
         data:{labels:compData.map(d=>d.name), datasets:[{data:compData.map(d=>d.value), backgroundColor:colors, borderRadius:6, borderWidth:0}]},
@@ -9119,8 +9509,8 @@ function drawEvalCharts() {
           responsive:true, maintainAspectRatio:true, aspectRatio:2,
           plugins:{legend:{display:false}, tooltip:{...tooltipStyle, callbacks:{label:ctx=>' '+ctx.raw+' cm'}}},
           scales:{
-            x:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:11}}},
-            y:{grid:{color:gridColor}, ticks:{color:'#1A1D26', font:{size:10}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:'#1A1D26',font:{size:10}}}
+            x:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:11}}},
+            y:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:10}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:cssVar('--text','#1A1D26'),font:{size:10}}}
           }
         },
         plugins:[{
@@ -9131,7 +9521,7 @@ function drawEvalCharts() {
               const val=chart.data.datasets[0].data[idx];
               if(!val) return;
               ctx.save();
-              ctx.fillStyle='#1A1D26';
+              ctx.fillStyle=cssVar('--text','#1A1D26');
               ctx.font='700 11px Inter, sans-serif';
               ctx.textAlign='center';
               ctx.textBaseline='bottom';
@@ -9241,6 +9631,54 @@ function switchCompareTest(testId) {
   setTimeout(drawEvalCharts, 80);
 }
 window.switchCompareTest = switchCompareTest;
+
+// De la lista plana de {name,value,position} arma las filas a graficar:
+// sin agrupar (tal cual), promedio por puesto, o solo los atletas de UN puesto.
+function buildEvalCompareRows(withData, groupBy, groupPos) {
+  if(groupBy!=='position') return withData;
+  if(groupPos==='all') {
+    const byPos = {};
+    withData.forEach(d=>{ const p=d.position||'Sin puesto'; (byPos[p]=byPos[p]||[]).push(d.value); });
+    return Object.entries(byPos).map(([pos,vals])=>({
+      name: pos, value: Math.round((vals.reduce((s,v)=>s+v,0)/vals.length)*10)/10
+    }));
+  }
+  return withData.filter(d=>d.position===groupPos);
+}
+window.buildEvalCompareRows = buildEvalCompareRows;
+
+// Colorea cada barra según su tercio DENTRO de este mismo conjunto — verde
+// el tercio superior, azul el medio, rojo el que está más lejos (a reforzar).
+// Es relativo al grupo que se está mirando, no una escala fija.
+function tercileColors(values) {
+  const n = values.length;
+  if(n<3) return values.map(()=>'#3b7dd8');
+  const order = values.map((v,i)=>i).sort((a,b)=>values[a]-values[b]);
+  const rankOf = new Array(n);
+  order.forEach((origIdx,pos)=>{ rankOf[origIdx] = pos/(n-1); });
+  return values.map((v,i)=>{
+    const rank = rankOf[i];
+    if(rank>=2/3) return '#22c55e';
+    if(rank>=1/3) return '#3b7dd8';
+    return '#ef4444';
+  });
+}
+window.tercileColors = tercileColors;
+
+function setEvalCompareGroupBy(v) {
+  S.evalCompareGroupBy = v;
+  if(v==='none') S.evalCompareGroupPosition='all';
+  renderMain();
+  setTimeout(drawEvalCharts, 80);
+}
+window.setEvalCompareGroupBy = setEvalCompareGroupBy;
+
+function setEvalCompareGroupPosition(v) {
+  S.evalCompareGroupPosition = v;
+  renderMain();
+  setTimeout(drawEvalCharts, 80);
+}
+window.setEvalCompareGroupPosition = setEvalCompareGroupPosition;
 
 function switchEvalView(viewId) {
   S.evalView = viewId;
@@ -9447,11 +9885,11 @@ function drawAthleteTrendChart() {
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{labels:{color:'#1A1D26',font:{size:11},boxWidth:12}},
+        legend:{labels:{color:cssVar('--text','#1A1D26'),font:{size:11},boxWidth:12}},
         tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
       },
       scales:{
-        x:{ ticks:{color:'#1A1D26',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8}, grid:{color:gridColor} },
+        x:{ ticks:{color:cssVar('--text','#1A1D26'),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8}, grid:{color:gridColor} },
         y:{ position:'left', min:0, max:100, ticks:{color:'#1f7a4d',font:{size:10},stepSize:25}, grid:{color:gridColor} },
         y1:{ position:'right', min:0, suggestedMax:2, ticks:{color:'#2f5fd8',font:{size:10}}, grid:{drawOnChartArea:false} },
       }
