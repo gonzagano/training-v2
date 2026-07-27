@@ -5937,10 +5937,16 @@ function openTDLib(blockId,teamId,dayIdx,ci){S.libTarget={blockId,catIdx:ci,team
 window.openTDLib=openTDLib;
 async function saveTeamDayBlocks(teamId,dayIdx){
   const team=S.teams.find(t=>t.id===teamId);if(!team)return;
-  const toSave=JSON.parse(JSON.stringify(team));
+  // Guarda SOLO trainingDays (que es lo único que esta pantalla toca), nunca
+  // el documento entero — mismo bug que saveTeam(): escribir el objeto
+  // completo pisaba calendar (y cualquier otro campo) con la copia en
+  // memoria, que podía estar vieja si el fixture se cargó en otra pestaña o
+  // sesión. Esta pantalla de edición de bloques es la que más seguido se usa,
+  // así que probablemente sea la causa real de que se te borraran partidos.
+  const toSave=JSON.parse(JSON.stringify(team.trainingDays||[]));
   const clean=obj=>{if(Array.isArray(obj))obj.forEach(clean);else if(obj&&typeof obj==='object'){delete obj._open;delete obj._editing;Object.values(obj).forEach(clean);}};
   clean(toSave);
-  try{await setDoc(doc(db,'teams',teamId),toSave);showToast('✓ Sesión guardada');S.teamDayEdit=null;renderMain();}catch(e){showToast('Error al guardar');}
+  try{await setDoc(doc(db,'teams',teamId),{trainingDays:toSave},{merge:true});showToast('✓ Sesión guardada');S.teamDayEdit=null;renderMain();}catch(e){showToast('Error al guardar');}
 }
 window.saveTeamDayBlocks=saveTeamDayBlocks;
 
@@ -6574,7 +6580,14 @@ function renderAtletaRutina(a) {
         <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',-1)" title="Ver la semana anterior (no cambia la fecha real)">‹ Semana</button>
         <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',1)" title="Ver la semana siguiente (no cambia la fecha real)">Semana ›</button>
         ${!isViewingReal?`<button class="abtn abtn-p" onclick="resetRoutineWeekPreview('${a.uid}')" title="Volver a mostrar la semana real del atleta">Volver a la real</button>`:''}
-        <button class="abtn abtn-d" onclick="resetAthleteRoutineWeek('${a.uid}')" title="Reasigna la planificación para que arranque hoy en Semana 1 — cambia la semana real del atleta">Reiniciar a Sem. 1</button>
+      </div>
+    </div>
+    <div class="admin-item" style="border-top:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--text3)">¿Está mal la semana real? Corregila acá (esto SÍ cambia lo que ve el atleta)</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="abtn" onclick="adminSetRealRoutineWeek('${a.uid}',${Math.max(1,realWeek-1)})" title="Corregir la semana real, un número menos">− Corregir</button>
+        <button class="abtn" onclick="adminSetRealRoutineWeek('${a.uid}',${realWeek+1})" title="Corregir la semana real, un número más">Corregir +</button>
+        <button class="abtn abtn-d" onclick="resetAthleteRoutineWeek('${a.uid}')" title="Reasigna la planificación para que arranque hoy en Semana 1">Reiniciar a Sem. 1</button>
       </div>
     </div>
   </div>
@@ -6612,15 +6625,12 @@ function renderAtletaRutina(a) {
                 ${cat.label?`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label">${cat.label}</span></div></div>`:''}
                 ${(cat.exercises||[]).map(ex=>{
                   const wp = getExPrescriptionForWeek(ex, previewWeek);
-                  // Buscamos hacia atrás desde la semana actual del atleta —
-                  // así, si completó este ejercicio en una semana anterior
-                  // pero no en la actual, lo seguimos mostrando (aclarando de
-                  // qué semana es), en vez de decir "no completó" a secas.
-                  let doneData = {}, doneWeek = null;
-                  for(let w=previewWeek; w>=1; w--) {
-                    const d = a._personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id];
-                    if(d && (d.load || d.rpe || d.checked || d.athleteNote)) { doneData = d; doneWeek = w; break; }
-                  }
+                  // Solo la semana EXACTA que se está mostrando — nada de
+                  // buscar hacia atrás. Antes, al hojear una semana "fantasma"
+                  // (que el atleta nunca hizo), se mostraba la carga/RPE de una
+                  // semana anterior como si fuera de esa semana, lo cual además
+                  // guardaba cualquier edición en la semana equivocada.
+                  const doneData = a._personal?.history?.[sessionKey(previewWeek, sName)]?.exercises?.[ex.id] || {};
                   const hasCompletion = !!(doneData.load || doneData.rpe);
                   const durationWeeksEx = routine?.durationWeeks || 1;
                   const lastWeekEx = Math.max(durationWeeksEx, previewWeek);
@@ -6645,21 +6655,20 @@ function renderAtletaRutina(a) {
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
                     ${(()=>{
-                      const effWeek = doneWeek||previewWeek;
                       const sNameEsc = sName.replace(/'/g,"\\'");
                       const intensityLbl = wp.intensityType||'RPE';
                       const loadTxt = doneData.load ? doneData.load+'kg' : '— kg';
                       const rpeTxt = intensityLbl+' '+(doneData.rpe!=null&&doneData.rpe!==''?doneData.rpe:'—');
                       const txtColor = hasCompletion ? 'var(--green)' : 'var(--text3)';
                       return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó${doneWeek&&doneWeek!==previewWeek?' (Semana '+doneWeek+')':''}</span>
+                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${loadTxt}</span>
-                        <input class="done-field-inp" type="number" value="${doneData.load||''}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${effWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
+                        <input class="done-field-inp" type="number" value="${doneData.load||''}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
                       </span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${rpeTxt}</span>
-                        <input class="done-field-inp" type="number" value="${doneData.rpe||''}" placeholder="${intensityLbl}" onblur="saveAthleteDoneField('${a.uid}',${effWeek},'${sNameEsc}','${ex.id}','rpe','${intensityLbl}',this)" onkeydown="if(event.key==='Enter')this.blur()">
+                        <input class="done-field-inp" type="number" value="${doneData.rpe||''}" placeholder="${intensityLbl}" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','rpe','${intensityLbl}',this)" onkeydown="if(event.key==='Enter')this.blur()">
                       </span>
                     </div>`;
                     })()}
@@ -8088,6 +8097,28 @@ function resetRoutineWeekPreview(uid) {
   renderMain();
 }
 window.resetRoutineWeekPreview = resetRoutineWeekPreview;
+
+// Corrección EXPLÍCITA y deliberada de la semana real — a diferencia de
+// adjustAthleteRoutineWeek (que ahora es solo vista), esto sí reescribe
+// routineAssignedDate a propósito, para cuando la semana real quedó mal
+// (por ejemplo, por un click viejo de antes de que existiera la vista segura).
+async function adminSetRealRoutineWeek(uid, week) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  if(!a) return;
+  const w = Math.max(1, week);
+  const base = new Date(); base.setHours(0,0,0,0);
+  base.setDate(base.getDate() - (w-1)*7);
+  const newDate = base.toISOString().split('T')[0];
+  try {
+    await setDoc(doc(db,'users',uid), {routineAssignedDate:newDate}, {merge:true});
+    a.routineAssignedDate = newDate;
+    if(S.viewingAthlete?.uid===uid) S.viewingAthlete.userData.routineAssignedDate = newDate;
+    if(S._routineWeekPreview) delete S._routineWeekPreview[uid];
+    showToast('✓ Semana real corregida a Semana '+w);
+    renderMain();
+  } catch(e) { showToast('Error al corregir'); }
+}
+window.adminSetRealRoutineWeek = adminSetRealRoutineWeek;
 
 async function resetAthleteRoutineWeek(uid) {
   if(!confirm('Esto reinicia la planificación real del atleta a Semana 1 a partir de hoy — lo va a ver así en su propio celular. ¿Confirmás?')) return;
