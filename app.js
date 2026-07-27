@@ -728,7 +728,7 @@ let S = {
   startDate: new Date().toISOString().split('T')[0],
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
-  videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [], illnesses: [],
+  videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [], illnesses: [], personalExtras: {},
   teams: [], pendingAthletes: [], notifications: [], progressView: { week: 1 },
   myTeam: null, // solo para atletas de equipo: el doc de su propio equipo
   teamSubview: 'rutina',      // 'rutina'|'wellness'|'stats'|'evals' dentro de un equipo
@@ -867,6 +867,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.injuries) S.injuries = d.injuries;
     if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
     if (d.illnesses) S.illnesses = d.illnesses;
+    if (d.personalExtras) S.personalExtras = d.personalExtras;
     if (d.notifications) S.notifications = d.notifications;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     if (d.startDate) S.startDate = d.startDate;
@@ -1008,6 +1009,12 @@ async function saveToFirestore() {
       history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
       wellness: S.wellness, injuries: S.injuries, injuryArchive: S.injuryArchive||[],
       illnesses: S.illnesses||[],
+      // personalExtras NO se re-guarda acá a propósito: el atleta nunca lo
+      // edita (solo lo lee), así que reescribirlo en cada save suyo
+      // arriesgaba el mismo bug que saveTeam() — pisar con una copia local
+      // vieja lo que el admin acaba de agregarle, si guardó algo (wellness,
+      // dolor) antes de refrescar la página. Solo lo escriben
+      // addPersonalExtraExercise/removePersonalExtraExercise, del lado admin.
       currentWeek: S.currentWeek, startDate: S.startDate,
       updatedAt: serverTimestamp()
     };
@@ -1139,6 +1146,31 @@ function getTodaysRoutineSession(sessionNames, assignedDate, trainingWeekdays) {
   return sessionNames[idx];
 }
 window.getTodaysRoutineSession = getTodaysRoutineSession;
+
+// Bloques de una rutina que le corresponden a ESTE atleta puntual en esta
+// sesión — se arma en dos pasos:
+// 1) Si esta rutina fue asignada a TODO un equipo (team.assignedRoutineId
+//    coincide), se filtra por el mapeo bloque→puesto que se configuró en
+//    ESE momento (no en el editor de rutinas — la rutina en sí es genérica,
+//    reusable para cualquier equipo/atleta). Un bloque sin puesto asignado
+//    lo ve todo el mundo.
+// 2) Se le suman, al final, los ejercicios "personales" que el admin le haya
+//    cargado a este atleta puntual — un bloque sintético que solo existe
+//    para él, sin tocar la rutina compartida ni afectar a sus compañeros.
+function getVisibleRoutineBlocks(routine, sessionName, teamId, position, personalExtras) {
+  const allBlocks = (routine?.sessions || {})[sessionName] || [];
+  const team = teamId ? S.teams.find(t=>t.id===teamId) : null;
+  const posMap = (team && routine?.id && team.assignedRoutineId===routine.id) ? (team.routineBlockPositions||{}) : null;
+  let blocks = posMap
+    ? allBlocks.filter(b=>{ const positions=posMap[b.id]; return !positions || !positions.length || positions.includes(position); })
+    : allBlocks;
+  const extras = (personalExtras||{})[sessionName] || [];
+  if(extras.length) {
+    blocks = [...blocks, {id:'personal-block', label:'Personal', title:'Ejercicios personales', colorKey:'bx', note:'', categories:[{id:'personal-cat', label:'Solo para vos', exercises:extras}]}];
+  }
+  return blocks;
+}
+window.getVisibleRoutineBlocks = getVisibleRoutineBlocks;
 
 // Los registros de un test (salto o fuerza) tienen que quedar SIEMPRE
 // ordenados por la fecha real del test, no por el orden en que se cargaron
@@ -1831,8 +1863,7 @@ function getCurrentBlocks() {
   if (S.isAdmin) return S.blocks;
   // Athletes ONLY see what was assigned by admin — never DEFAULT_BLOCKS
   if (S.assignedRoutine) {
-    const ses = S.assignedRoutine.sessions || {};
-    return ses[S.currentSession] || [];
+    return getVisibleRoutineBlocks(S.assignedRoutine, S.currentSession, S.userData?.teamId, S.userData?.position, S.personalExtras);
   }
   return []; // No assigned routine = empty, not default
 }
@@ -2451,6 +2482,11 @@ function addFromLib(libId) {
     if(!b)return;
     b.categories[catIdx].exercises.push({id:genId(),libId:libEx.id,name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''});
     closeLib();renderMain();
+  } else if(S.libTarget.isPersonal) {
+    // Adding a personal-only exercise for ONE specific athlete
+    const {uid,sessionName:pSName}=S.libTarget;
+    addPersonalExtraExercise(uid,pSName,{id:genId(),libId:libEx.id,name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''});
+    closeLib();
   } else if(isRoutine && S.editingRoutine) {
     // Adding to routine editor
     const b=(S.editingRoutine.sessions[sessionName]||[]).find(x=>x.id===blockId);
@@ -2521,6 +2557,11 @@ function createAndAddExercise() {
       const b=getTDBlock(blockId,teamId,dayIdx);
       if(b) b.categories[catIdx].exercises.push({id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
       scheduleSave(); closeLib(); renderMain();
+    } else if(S.libTarget.isPersonal) {
+      const {uid,sessionName:pSName}=S.libTarget;
+      scheduleSave(); // guarda el ejercicio nuevo en la biblioteca compartida
+      addPersonalExtraExercise(uid,pSName,{id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
+      closeLib();
     } else if(isRoutine && S.editingRoutine) {
       const b=(S.editingRoutine.sessions[sessionName]||[]).find(x=>x.id===blockId);
       if(b) b.categories[catIdx].exercises.push({id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
@@ -4600,9 +4641,166 @@ function renderMatchReadinessReport(team, members) {
 }
 window.renderMatchReadinessReport = renderMatchReadinessReport;
 
+// ── RUTINA DE EQUIPO CON SEGUIMIENTO INDIVIDUAL ──────────────────────────
+// A diferencia de team.trainingDays (compartido, sin seguimiento, todos ven
+// lo mismo), esto reutiliza el motor de rutinas individuales — cada jugador
+// la recibe como si se la hubieras asignado uno por uno (semana a semana,
+// %RM contra su propio 1RM, seguimiento de completado). La rutina en sí se
+// arma genérica en el Gestor de rutinas, sin pensar en puestos; el mapeo
+// bloque→puesto se define acá, al momento de asignarla a ESTE equipo — así
+// la misma rutina se puede reusar en otro equipo con otro mapeo distinto.
+function renderTeamRoutineAssignSection(team) {
+  let html = `<div class="admin-section">
+    <div class="admin-section-title">Rutina de equipo (con seguimiento individual)</div>`;
+  if(team.assignedRoutineId) {
+    const r = S.routines.find(x=>x.id===team.assignedRoutineId);
+    const memberUids = team.memberUids||[];
+    const assignedCount = memberUids.filter(uid=>(S.adminAthletes||[]).find(a=>a.uid===uid)?.assignedRoutine===team.assignedRoutineId).length;
+    html += `<div class="admin-item">
+      <div><div class="admin-item-lbl">${r?r.name:'(rutina eliminada)'}</div><div class="admin-item-sub">Asignada a ${assignedCount}/${memberUids.length} jugadores del roster</div></div>
+      <button class="abtn" onclick="openTeamRoutineAssign('${team.id}')">Cambiar</button>
+    </div>`;
+  } else {
+    html += `<div class="admin-item">
+      <div class="admin-item-sub">Todavía no le asignaste una rutina con seguimiento a este equipo.</div>
+      <button class="abtn abtn-p" onclick="openTeamRoutineAssign('${team.id}')">Asignar rutina</button>
+    </div>`;
+  }
+  if(S._teamRoutineAssign?.teamId===team.id) html += renderTeamRoutineAssignWizard();
+  html += `</div>`;
+  return html;
+}
+window.renderTeamRoutineAssignSection = renderTeamRoutineAssignSection;
+
+function renderTeamRoutineAssignWizard() {
+  const st = S._teamRoutineAssign;
+  const routine = S.routines.find(r=>r.id===st.routineId);
+  let html = `<div style="padding:12px 16px;border-top:1px solid var(--border)">
+    <select class="abtn" style="width:100%;margin-bottom:10px" onchange="setTeamRoutineAssignRoutine(this.value)">
+      <option value="">Elegí una rutina...</option>
+      ${S.routines.map(r=>`<option value="${r.id}" ${st.routineId===r.id?'selected':''}>${r.name}</option>`).join('')}
+    </select>`;
+  if(routine) {
+    const sessionNames = getOrderedSessionNames(routine);
+    html += `<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Marcá para qué puestos es cada bloque — dejalo sin marcar si es para todos.</div>`;
+    sessionNames.forEach(sName=>{
+      const blocks = routine.sessions[sName]||[];
+      if(!blocks.length) return;
+      html += `<div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;margin:10px 0 4px">${sName}</div>`;
+      blocks.forEach(b=>{
+        const sel = st.blockPositions[b.id] || [];
+        html += `<div style="padding:8px 0;border-top:1px solid var(--border)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:6px">${b.label} — ${b.title||''}</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            ${ALL_POSITIONS.map(p=>`<button class="abtn ${sel.includes(p)?'abtn-p':''}" style="font-size:11px;padding:4px 9px" onclick="toggleTeamRoutineBlockPosition('${b.id}','${p}')">${p}</button>`).join('')}
+          </div>
+          ${!sel.length?`<div style="font-size:10px;color:var(--text3);margin-top:3px">Sin marcar = lo ven todos</div>`:''}
+        </div>`;
+      });
+    });
+    const need = sessionNames.length;
+    const sortedSel = [...st.selectedWeekdays].sort((a,b)=>a-b);
+    html += `<div style="font-size:12px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border)">¿Qué días reales de la semana entrena el equipo? (elegí ${need})</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+        ${WEEKDAY_LABELS.map((label,dow)=>{
+          const checked = st.selectedWeekdays.includes(dow);
+          const order = checked ? sortedSel.indexOf(dow) : -1;
+          const mapped = (checked && order>=0) ? sessionNames[order % need] : null;
+          return `<button class="abtn ${checked?'abtn-p':''}" style="justify-content:space-between;display:flex;width:100%" onclick="toggleTeamRoutineWeekday(${dow})">
+            <span>${label}</span>${mapped?`<span style="font-size:11px;opacity:.85">${mapped}</span>`:''}
+          </button>`;
+        }).join('')}
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">¿Desde qué día arranca la Semana 1?</label>
+        <input type="date" class="abtn" style="width:100%" value="${st.startDate}" onchange="setTeamRoutineAssignStartDate(this.value)">
+      </div>`;
+    const ready = st.selectedWeekdays.length===need;
+    const memberCount = (S.teams.find(t=>t.id===st.teamId)?.memberUids||[]).length;
+    html += `<button class="abtn abtn-p" style="width:100%;${ready?'':'opacity:.4;pointer-events:none'}" onclick="confirmTeamRoutineAssign()">Asignar a todo el equipo (${memberCount} jugador${memberCount!==1?'es':''})</button>`;
+  }
+  html += `<button class="abtn" style="width:100%;margin-top:8px" onclick="closeTeamRoutineAssign()">Cancelar</button>
+  </div>`;
+  return html;
+}
+window.renderTeamRoutineAssignWizard = renderTeamRoutineAssignWizard;
+
+function openTeamRoutineAssign(teamId) {
+  const team = S.teams.find(t=>t.id===teamId);
+  S._teamRoutineAssign = {
+    teamId,
+    routineId: team?.assignedRoutineId||'',
+    blockPositions: team?.routineBlockPositions ? JSON.parse(JSON.stringify(team.routineBlockPositions)) : {},
+    selectedWeekdays: [],
+    startDate: new Date().toISOString().split('T')[0],
+  };
+  ensureAdminAthletes().then(renderMain);
+}
+window.openTeamRoutineAssign = openTeamRoutineAssign;
+
+function closeTeamRoutineAssign() { S._teamRoutineAssign = null; renderMain(); }
+window.closeTeamRoutineAssign = closeTeamRoutineAssign;
+
+function setTeamRoutineAssignRoutine(routineId) {
+  if(!S._teamRoutineAssign) return;
+  S._teamRoutineAssign.routineId = routineId;
+  S._teamRoutineAssign.blockPositions = {};
+  S._teamRoutineAssign.selectedWeekdays = [];
+  renderMain();
+}
+window.setTeamRoutineAssignRoutine = setTeamRoutineAssignRoutine;
+
+function toggleTeamRoutineBlockPosition(blockId, position) {
+  const st = S._teamRoutineAssign; if(!st) return;
+  if(!st.blockPositions[blockId]) st.blockPositions[blockId]=[];
+  const arr = st.blockPositions[blockId];
+  const i = arr.indexOf(position);
+  if(i>=0) arr.splice(i,1); else arr.push(position);
+  renderMain();
+}
+window.toggleTeamRoutineBlockPosition = toggleTeamRoutineBlockPosition;
+
+function toggleTeamRoutineWeekday(dow) {
+  const st = S._teamRoutineAssign; if(!st) return;
+  const i = st.selectedWeekdays.indexOf(dow);
+  if(i>=0) st.selectedWeekdays.splice(i,1); else st.selectedWeekdays.push(dow);
+  renderMain();
+}
+window.toggleTeamRoutineWeekday = toggleTeamRoutineWeekday;
+
+function setTeamRoutineAssignStartDate(val) {
+  const st = S._teamRoutineAssign; if(!st||!val) return;
+  st.startDate = val;
+}
+window.setTeamRoutineAssignStartDate = setTeamRoutineAssignStartDate;
+
+async function confirmTeamRoutineAssign() {
+  const st = S._teamRoutineAssign; if(!st || !st.routineId) return;
+  const team = S.teams.find(t=>t.id===st.teamId); if(!team) return;
+  const routine = S.routines.find(r=>r.id===st.routineId); if(!routine) return;
+  const sessionNames = getOrderedSessionNames(routine);
+  if(st.selectedWeekdays.length !== sessionNames.length) { showToast(`Elegí ${sessionNames.length} día${sessionNames.length!==1?'s':''} de entrenamiento`); return; }
+  const memberUids = team.memberUids||[];
+  if(!confirm(`Esto le asigna "${routine.name}" a los ${memberUids.length} jugadores del roster, reemplazando la rutina individual que tuviera cada uno. ¿Confirmás?`)) return;
+  showToast('Asignando…');
+  try {
+    await setDoc(doc(db,'teams',team.id), {assignedRoutineId:st.routineId, routineBlockPositions:st.blockPositions}, {merge:true});
+    team.assignedRoutineId = st.routineId;
+    team.routineBlockPositions = st.blockPositions;
+    for(const uid of memberUids) {
+      await writeRoutineAssignment(uid, st.routineId, [...st.selectedWeekdays], st.startDate);
+    }
+    showToast(`✓ Rutina asignada a ${memberUids.length} jugador${memberUids.length!==1?'es':''}`);
+    S._teamRoutineAssign = null;
+    renderMain();
+  } catch(e) { console.error(e); showToast('Error al asignar: '+e.message); }
+}
+window.confirmTeamRoutineAssign = confirmTeamRoutineAssign;
+
 function renderTeamRutina(team) {
   const days=team.trainingDays||[];
-  let html=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+  let html = renderTeamRoutineAssignSection(team);
+  html+=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <span style="font-size:11px;color:var(--text3)">Color:</span>
     ${TEAM_COLORS.map(c=>`<div onclick="setTeamColor('${team.id}','${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${team.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
   </div>`;
@@ -6017,6 +6215,51 @@ function deleteTDEx(exId,blockId,teamId,dayIdx,ci){const b=getTDBlock(blockId,te
 window.deleteTDEx=deleteTDEx;
 function openTDLib(blockId,teamId,dayIdx,ci){S.libTarget={blockId,catIdx:ci,teamId,dayIdx,isTD:true};S.activeFilters=new Set();document.getElementById('lib-search').value='';renderLibFilters();renderLibList();S._newExTags=new Set();renderTagChipPicker('lib-new-tags-picker','_newExTags');document.getElementById('lib-overlay').classList.add('open');}
 window.openTDLib=openTDLib;
+
+// Agregar un ejercicio SOLO para un atleta puntual, encima de la rutina que
+// comparte con su equipo — no toca la rutina compartida ni a sus compañeros.
+function openPersonalExtraLib(uid,sessionName){
+  S.libTarget={isPersonal:true,uid,sessionName};
+  S.activeFilters=new Set();
+  document.getElementById('lib-search').value='';
+  renderLibFilters();
+  renderLibList();
+  S._newExTags=new Set();
+  renderTagChipPicker('lib-new-tags-picker','_newExTags');
+  document.getElementById('lib-overlay').classList.add('open');
+}
+window.openPersonalExtraLib=openPersonalExtraLib;
+
+function getPersonalOwner(uid) {
+  if(S.viewingAthlete?.uid===uid) return S.viewingAthlete.personal;
+  return S.adminAthletes?.find(a=>a.uid===uid)?._personal || null;
+}
+
+async function addPersonalExtraExercise(uid,sessionName,exObj){
+  const personal=getPersonalOwner(uid);
+  if(!personal) return;
+  if(!personal.personalExtras) personal.personalExtras={};
+  if(!personal.personalExtras[sessionName]) personal.personalExtras[sessionName]=[];
+  personal.personalExtras[sessionName].push(exObj);
+  try {
+    await setDoc(doc(db,'personal',uid), {personalExtras:personal.personalExtras}, {merge:true});
+    showToast(`✓ ${exObj.name} agregado (solo para este atleta)`);
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.addPersonalExtraExercise=addPersonalExtraExercise;
+
+async function removePersonalExtraExercise(uid,sessionName,exId){
+  const personal=getPersonalOwner(uid);
+  if(!personal?.personalExtras?.[sessionName]) return;
+  personal.personalExtras[sessionName]=personal.personalExtras[sessionName].filter(e=>e.id!==exId);
+  try {
+    await setDoc(doc(db,'personal',uid), {personalExtras:personal.personalExtras}, {merge:true});
+    showToast('✓ Eliminado');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.removePersonalExtraExercise=removePersonalExtraExercise;
 async function saveTeamDayBlocks(teamId,dayIdx){
   const team=S.teams.find(t=>t.id===teamId);if(!team)return;
   // Guarda SOLO trainingDays (que es lo único que esta pantalla toca), nunca
@@ -6682,7 +6925,7 @@ function renderAtletaRutina(a) {
       </div>
     </div>
     ${sessionNames.map(sName => {
-      const blocks = routine.sessions[sName] || [];
+      const blocks = getVisibleRoutineBlocks(routine, sName, a.teamId, a.position, a._personal?.personalExtras);
       const dayCollapsed = S._atletaRoutineCollapsedDays?.has(sName);
       const dayDone = !!(a._personal?.history?.[sessionKey(previewWeek, sName)]?.done);
       const isToday = sName===todaySession && isViewingReal;
@@ -6728,7 +6971,7 @@ function renderAtletaRutina(a) {
                   }
                   return `
                   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span></div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span>${b.id==='personal-block'?`<span style="float:right;font-size:10px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
@@ -6762,6 +7005,7 @@ function renderAtletaRutina(a) {
             </div>
           </div>`;
         }).join('') : `<div style="padding:0 16px 12px;font-size:12px;color:var(--text3)">Sin ejercicios cargados</div>`)}
+        ${dayCollapsed ? '' : `<div style="padding:0 16px 12px"><button class="abtn" style="font-size:11px" onclick="openPersonalExtraLib('${a.uid}','${sName.replace(/'/g,"\\'")}')" title="Se lo agrega SOLO a ${a.name||a.email}, no afecta a sus compañeros">+ Ejercicio personal para ${(a.name||a.email||'').split(' ')[0]}</button></div>`}
       </div>`;
     }).join('')}
   </div>`;
@@ -9302,36 +9546,40 @@ function renderEvalCompare() {
   // Agrupar por puesto solo tiene sentido si al menos algunos atletas de este
   // grupo tienen la posición cargada (Panel Admin → ficha del atleta).
   const positions = [...new Set(withData.map(d=>d.position).filter(Boolean))];
-  const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
+  const groupBy = positions.length ? (S.evalCompareGroupBy||'position') : 'none';
   const groupPos = S.evalCompareGroupPosition||'all';
 
   html += '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
   html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
   html += '<div style="font-size:15px;font-weight:600">Comparación — '+testLabel+'</div>';
-  html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro por atleta · verde = tercio superior, rojo = tercio a reforzar</div></div>';
+  html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro por atleta</div></div>';
 
   if(positions.length) {
-    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--border)">'
+    html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border)">'
+      + '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Elegí cómo comparar:</div>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
       + '<select class="abtn" onchange="setEvalCompareGroupBy(this.value)">'
-      +   '<option value="none" '+(groupBy==='none'?'selected':'')+'>Sin agrupar</option>'
-      +   '<option value="position" '+(groupBy==='position'?'selected':'')+'>Por puesto</option>'
+      +   '<option value="none" '+(groupBy==='none'?'selected':'')+'>Todos los atletas juntos</option>'
+      +   '<option value="position" '+(groupBy==='position'?'selected':'')+'>Agrupado por puesto</option>'
       + '</select>'
       + (groupBy==='position' ? '<select class="abtn" onchange="setEvalCompareGroupPosition(this.value)">'
-          + '<option value="all" '+(groupPos==='all'?'selected':'')+'>Todos los puestos (promedio)</option>'
-          + positions.map(p=>'<option value="'+p+'" '+(groupPos===p?'selected':'')+'>'+p+'</option>').join('')
+          + '<option value="all" '+(groupPos==='all'?'selected':'')+'>Promedio de cada puesto</option>'
+          + positions.map(p=>'<option value="'+p+'" '+(groupPos===p?'selected':'')+'>Solo '+p+'</option>').join('')
           + '</select>' : '')
-      + '</div>';
+      + '</div></div>';
   }
 
   html += '<div style="padding:16px">';
 
   const rows = buildEvalCompareRows(withData, groupBy, groupPos);
   if(rows.length) {
-    html += '<canvas class="eval-chart" id="chart-compare-'+testId+'" height="220" style="margin-bottom:12px"></canvas>';
-    rows.forEach(d=>{
-      html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">'
-        + '<span>'+d.name+'</span><span style="font-weight:700;color:var(--accent)">'+d.value+' cm</span></div>';
-    });
+    const chartHeight = Math.max(110, rows.length*34+16);
+    html += '<div style="height:'+chartHeight+'px;position:relative;margin-bottom:10px"><canvas class="eval-chart" id="chart-compare-'+testId+'"></canvas></div>';
+    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:4px">'
+      + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block"></span>Tercio superior</span>'
+      + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#3b7dd8;display:inline-block"></span>Medio</span>'
+      + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>A reforzar</span>'
+      + '</div>';
   } else {
     html += '<div class="eval-no-data">Sin datos registrados.<br><span style="font-size:12px">Presioná Actualizar después de cargar evaluaciones.</span></div>';
   }
@@ -9487,7 +9735,7 @@ function drawEvalCharts() {
             if(val===null||val===undefined) return;
             ctx.save();
             ctx.fillStyle = cssVar('--text','#1A1D26');
-            ctx.font = '600 10px Inter, sans-serif';
+            ctx.font = '700 12px Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
             ctx.fillText(val+(ds._unit||'cm'), bar.x, bar.y-4);
@@ -9533,17 +9781,26 @@ function drawEvalCharts() {
         },
         options:{
           responsive:true, maintainAspectRatio:true, aspectRatio:2.3,
+          devicePixelRatio: window.devicePixelRatio || 1,
           plugins:{
             legend:{display:false},
             tooltip:{...tooltipStyle, filter:item=>item.datasetIndex===0}
           },
           scales:{
-            x:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:9}, maxRotation:30}},
-            y:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:9}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:cssVar('--text','#1A1D26'),font:{size:9}}}
+            x:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:10}, maxRotation:30}},
+            y:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:10}}, min:sc.min, max:sc.max, title:{display:true,text:t.unit||'cm',color:cssVar('--text','#1A1D26'),font:{size:10}}}
           }
         },
         plugins:[barLabelsPlugin]
       });
+      // Algunos navegadores miden mal el tamaño real del canvas si el layout
+      // (grid de 2 columnas en desktop, tarjetas recién insertadas) todavía no
+      // terminó de asentarse en el momento exacto del draw inicial — eso deja
+      // el canvas dibujado a una resolución más chica de la que después ocupa
+      // en pantalla, y CSS lo estira, lo cual se ve borroso (afecta sobre todo
+      // al texto chico de las etiquetas). Forzamos un resize() en el siguiente
+      // frame, ya con el layout definitivo, para que quede nítido.
+      requestAnimationFrame(()=>{ try{ S.evalChartInstances['chart-hist-'+t.id]?.resize(); }catch(e){} });
     });
 
     // Asymmetry chart (separate, always a line)
@@ -9612,7 +9869,7 @@ function drawEvalCharts() {
       return {name: a.name||a.email||'Admin', value: last?last.height:null, position: a.position||null};
     }).filter(x=>x.value!==null);
     const positions = [...new Set(withData.map(d=>d.position).filter(Boolean))];
-    const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
+    const groupBy = positions.length ? (S.evalCompareGroupBy||'position') : 'none';
     const compData = buildEvalCompareRows(withData, groupBy, S.evalCompareGroupPosition||'all');
 
     const canvasId = 'chart-compare-'+testId;
@@ -9620,15 +9877,22 @@ function drawEvalCharts() {
     if(c && compData.length) {
       const sc = computeDynamicScale(compData.map(d=>d.value));
       const colors = tercileColors(compData.map(d=>d.value));
+      // Barras HORIZONTALES a propósito: con muchos atletas, barras verticales
+      // obligan a rotar o achicar los nombres hasta hacerlos ilegibles. Acá el
+      // nombre queda como fila (siempre legible) y el gráfico crece hacia
+      // abajo (altura dinámica en renderEvalCompare), no se aplasta a lo ancho.
       S.evalChartInstances[canvasId] = new Chart(c, {
         type:'bar',
-        data:{labels:compData.map(d=>d.name), datasets:[{data:compData.map(d=>d.value), backgroundColor:colors, borderRadius:6, borderWidth:0}]},
+        data:{labels:compData.map(d=>d.name), datasets:[{data:compData.map(d=>d.value), backgroundColor:colors, borderRadius:4, borderWidth:0, maxBarThickness:22}]},
         options:{
-          responsive:true, maintainAspectRatio:true, aspectRatio:2,
+          indexAxis:'y',
+          responsive:true, maintainAspectRatio:false,
+          devicePixelRatio: window.devicePixelRatio || 1,
           plugins:{legend:{display:false}, tooltip:{...tooltipStyle, callbacks:{label:ctx=>' '+ctx.raw+' cm'}}},
+          layout:{padding:{right:36}},
           scales:{
-            x:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:11}}},
-            y:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:10}}, min:sc.min, max:sc.max, title:{display:true,text:'cm',color:cssVar('--text','#1A1D26'),font:{size:10}}}
+            x:{min:sc.min, max:sc.max, grid:{color:gridColor}, ticks:{color:cssVar('--text3','#7A8394'), font:{size:10}}},
+            y:{grid:{display:false}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:11}}}
           }
         },
         plugins:[{
@@ -9641,14 +9905,18 @@ function drawEvalCharts() {
               ctx.save();
               ctx.fillStyle=cssVar('--text','#1A1D26');
               ctx.font='700 11px Inter, sans-serif';
-              ctx.textAlign='center';
-              ctx.textBaseline='bottom';
-              ctx.fillText(val+'cm', bar.x, bar.y-3);
+              ctx.textAlign='left';
+              ctx.textBaseline='middle';
+              ctx.fillText(val+' cm', bar.x+6, bar.y);
               ctx.restore();
             });
           }
         }]
       });
+      // Ver comentario en el chart-hist-* de más arriba: resize() en el
+      // siguiente frame para que la resolución del canvas quede nítida contra
+      // el layout ya asentado, no el de a medio renderizar.
+      requestAnimationFrame(()=>{ try{ S.evalChartInstances[canvasId]?.resize(); }catch(e){} });
     }
   }
 }
