@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp }
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── TEMA (claro/oscuro) ──────────────────────────────────────────
@@ -1534,6 +1534,37 @@ async function importEstudiantesFixtures() {
 }
 window.importEstudiantesFixtures = importEstudiantesFixtures;
 
+// ── REPARAR VÍNCULOS DE EQUIPO ────────────────────────────────────────
+// Corrige atletas que tienen teamId cargado (se registraron bien) pero cuyo
+// uid no está en team.memberUids — el síntoma es que no aparecen en
+// "Evaluaciones" ni en ninguna pantalla scopeada al equipo, aunque sí
+// aparecen en su ficha individual. Causa: una condición de carrera al
+// registrarse (ver comentario en finishOnboarding) ya corregida, pero no
+// deshace el daño en cuentas que se registraron ANTES del arreglo.
+async function repairTeamMemberLinks() {
+  if(!confirm('Esto revisa todos los atletas registrados y vuelve a vincular al equipo a los que quedaron afuera por un bug ya corregido (no aparecían en Evaluaciones del equipo aunque estén registrados). ¿Confirmás?')) return;
+  showToast('Revisando vínculos…');
+  try {
+    await ensureAdminAthletes();
+    const tSnap = await getDocs(collection(db,'teams'));
+    const teams = tSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    let fixed = 0;
+    for(const a of S.adminAthletes) {
+      if(!a.teamId) continue;
+      const team = teams.find(t=>t.id===a.teamId);
+      if(!team) continue;
+      if((team.memberUids||[]).includes(a.uid)) continue;
+      await updateDoc(doc(db,'teams',a.teamId), {memberUids:arrayUnion(a.uid)});
+      fixed++;
+    }
+    const freshSnap = await getDocs(collection(db,'teams'));
+    S.teams = freshSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    showToast(`✓ ${fixed} atleta${fixed!==1?'s':''} reparado${fixed!==1?'s':''}`);
+    renderMain();
+  } catch(e) { console.error(e); showToast('Error al reparar: '+e.message); }
+}
+window.repairTeamMemberLinks = repairTeamMemberLinks;
+
 // ── COMPLETAR CALENDARIO SEMANAL — Handball-EDLP, Clausura 2026 ──────────
 // Lunes/Martes/Jueves = Físico + Pelota el mismo día (el modelo de datos ya
 // soporta varios eventos por fecha), desde hoy hasta fin de temporada. No
@@ -1613,14 +1644,20 @@ async function finishOnboarding() {
       update.teamId = teamId;
       // Vincular esta cuenta real (uid) al roster del equipo, sin romper
       // el campo `players` (nombres) que ya usa el editor de días de equipo.
+      // memberUids se agrega con arrayUnion (atómico en el servidor) — antes
+      // era leer el array, agregar el uid a mano y reescribirlo entero, lo
+      // cual perdía jugadores cuando dos se registraban casi a la vez: el
+      // segundo pisaba el array leído ANTES de que el primero terminara de
+      // guardar. players sigue con lectura previa porque necesita comparar
+      // nombres (namesLikelyMatch) para no duplicar, algo que arrayUnion no
+      // puede hacer solo — pero eso no es lo que causaba el bug reportado.
       const tRef = doc(db, 'teams', teamId);
+      await updateDoc(tRef, { memberUids: arrayUnion(S.user.uid) });
       const tSnap = await getDoc(tRef);
-      const tData = tSnap.exists() ? tSnap.data() : {};
-      const memberUids = tData.memberUids || [];
-      const players = tData.players || [];
-      if (!memberUids.includes(S.user.uid)) memberUids.push(S.user.uid);
-      if (!players.some(p=>namesLikelyMatch(p,update.name))) players.push(update.name);
-      await updateDoc(tRef, { memberUids, players });
+      const players = tSnap.exists() ? (tSnap.data().players || []) : [];
+      if (!players.some(p=>namesLikelyMatch(p,update.name))) {
+        await updateDoc(tRef, { players: [...players, update.name] });
+      }
 
       // Si el admin ya había cargado a este jugador de antemano (mismo
       // nombre, mismo equipo) con tests/evaluaciones, los migramos ahora a
@@ -4877,6 +4914,13 @@ function getPositionOptionsForSport(sport) {
 }
 window.getPositionOptionsForSport=getPositionOptionsForSport;
 
+// Todas las posiciones conocidas, de todos los deportes — se usa al asignar
+// una rutina a un equipo, para elegir a qué puestos le corresponde cada
+// bloque. No depende del deporte del equipo porque la rutina en sí es
+// genérica (se arma en el gestor de rutinas sin pensar en puestos todavía).
+const ALL_POSITIONS = [...new Set(Object.values(POSITION_OPTIONS).flat())];
+window.ALL_POSITIONS = ALL_POSITIONS;
+
 async function setAthletePosition(uid, position) {
   try {
     await setDoc(doc(db,'users',uid),{position},{merge:true});
@@ -7608,6 +7652,10 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Completar calendario semanal (Handball-EDLP)</div><div class="admin-item-sub">Carga Físico y Pelota todos los lunes, martes y jueves desde hoy hasta el 30/11, en Liga de Honor, Cadetes, Juveniles y Juniors — no duplica si se corre de nuevo, y no toca lo que ya esté cargado</div></div>
       <button class="abtn" onclick="fillWeeklyTrainingCalendar()">Completar</button>
+    </div>
+    <div class="admin-item">
+      <div><div class="admin-item-lbl">Reparar vínculos de equipo</div><div class="admin-item-sub">Si un atleta registrado no aparece en las Evaluaciones/Wellness de su equipo (aunque sí en su ficha individual), esto lo arregla</div></div>
+      <button class="abtn" onclick="repairTeamMemberLinks()">Reparar</button>
     </div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Clasificar molestias/lesiones</div><div class="admin-item-sub">Decidí de una cuáles dolores marcados son lesión real y cuáles son molestia</div></div>
