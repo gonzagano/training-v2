@@ -2358,6 +2358,17 @@ function renderLibList() {
     const matchF=S.activeFilters.size===0||[...S.activeFilters].some(f=>ex.tags?.includes(f));
     return matchQ&&matchF;
   });
+  // Los que cumplen TODAS las categorías elegidas van primero, después los
+  // que cumplen menos — y alfabético como desempate (y como único criterio
+  // si no hay filtros activos).
+  items = [...items].sort((a,b)=>{
+    if(S.activeFilters.size>0) {
+      const am=[...S.activeFilters].filter(f=>a.tags?.includes(f)).length;
+      const bm=[...S.activeFilters].filter(f=>b.tags?.includes(f)).length;
+      if(bm!==am) return bm-am;
+    }
+    return a.name.localeCompare(b.name);
+  });
   if(!items.length) { list.innerHTML=`<div class="empty-state">No se encontraron ejercicios</div>`; return; }
   list.innerHTML=items.map(ex=>`
     <div class="lib-item" onclick="addFromLib('${ex.id}')">
@@ -9659,6 +9670,21 @@ function setLibFilter(tag) {
 }
 window.setLibFilter = setLibFilter;
 
+// Elimina una categoría de TODOS los ejercicios que la tengan — no hay
+// una lista separada de categorías "disponibles", son simplemente las que
+// usa algún ejercicio, así que borrarla es sacarla de todos lados.
+function deleteLibraryTag(tag) {
+  const count = (S.library||[]).filter(e=>(e.tags||[]).includes(tag)).length;
+  if(!confirm(`¿Eliminar la categoría "${tag}"? Se va a sacar de los ${count} ejercicio${count!==1?'s':''} que la tienen. No se puede deshacer.`)) return;
+  (S.library||[]).forEach(ex=>{ if(ex.tags) ex.tags = ex.tags.filter(t=>t!==tag); });
+  if(S._libViewFilters) S._libViewFilters.delete(tag);
+  if(S.activeFilters) S.activeFilters.delete(tag);
+  scheduleSave();
+  showToast('✓ Categoría eliminada');
+  renderMain();
+}
+window.deleteLibraryTag = deleteLibraryTag;
+
 function switchCompareTest(testId) {
   S.evalCompareTest = testId;
   renderMain();
@@ -10488,12 +10514,25 @@ function renderLibViewBody() {
   if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
     (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
   if(filters.size) items = items.filter(e=>[...filters].some(f=>e.tags?.includes(f)));
-  items = [...items].sort((a,b)=>a.name.localeCompare(b.name));
+  // Los que cumplen TODAS las categorías elegidas van primero, después los
+  // que cumplen menos — y alfabético como desempate (y como único criterio
+  // si no hay filtros activos).
+  items = [...items].sort((a,b)=>{
+    if(filters.size>0) {
+      const am=[...filters].filter(f=>a.tags?.includes(f)).length;
+      const bm=[...filters].filter(f=>b.tags?.includes(f)).length;
+      if(bm!==am) return bm-am;
+    }
+    return a.name.localeCompare(b.name);
+  });
 
   return `<!-- Tag filters — multi-select: un click selecciona, otro click desselecciona -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
     <button class="lib-filter ${!filters.size?'active':''}" onclick="S._libViewFilters=new Set();updateLibViewResults()">Todos</button>
-    ${allTags.map(t=>'<button class="lib-filter '+(filters.has(t)?'active':'')+'" onclick="setLibFilter(\''+t+'\')">' + t + '</button>').join('')}
+    ${allTags.map(t=>`<span style="position:relative;display:inline-flex">
+      <button class="lib-filter ${filters.has(t)?'active':''}" onclick="setLibFilter('${t}')" style="padding-right:20px">${t}</button>
+      <span onclick="event.stopPropagation();deleteLibraryTag('${t}')" title="Eliminar categoría" style="position:absolute;top:2px;right:4px;width:14px;height:14px;border-radius:50%;background:var(--red);color:#fff;font-size:10px;line-height:14px;text-align:center;cursor:pointer;font-weight:700">×</span>
+    </span>`).join('')}
   </div>
 
   <!-- Exercise list -->
