@@ -3805,6 +3805,12 @@ function setTeamSubview(v) {
   if (v==='evals') {
     S.evalScopeUids = getTeamStatsMemberUids(S.teamView);
     if (!S.evalScopeUids.includes(S.evalAthleteId)) S.evalAthleteId = S.evalScopeUids[0] || null;
+    // Al entrar a Evaluaciones de un EQUIPO (no de un atleta suelto), arrancar
+    // mostrando la comparación de todo el plantel — antes caía en la ficha de
+    // "Registrar salto" del primer atleta de la lista, como si ese fuera el
+    // dato relevante del equipo, cuando en realidad era solo el primero por
+    // orden alfabético/de carga.
+    if (S.evalScopeUids.length > 1) S.evalView = 'compare';
     ensureAdminAthletes()
       .then(()=>{ S.evalScopeUids = getTeamStatsMemberUids(S.teamView); return ensureAthleteEvalData(S.evalAthleteId); })
       .then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); })
@@ -5456,6 +5462,24 @@ function renderAthleteSummaryCard(a) {
   const injuries = getActiveInjuriesSummary(p);
   const lastLog = getLatestSessionLog(p);
   const scoreColor = getWellnessState(score).color;
+
+  // Tira de los últimos 7 días — un cuadradito por día, coloreado según el
+  // wellness que marcó ESE día (mismo semáforo verde/ámbar/rojo de siempre),
+  // gris si no cargó nada. De un vistazo se ve la semana completa, no solo hoy.
+  const weekDates = getWeeklyComplianceDates(0);
+  const dayStrip = `<div style="display:flex;gap:3px;margin-top:10px">
+    ${weekDates.map(d=>{
+      const sc = computeHooperScore(p.wellness?.[d]);
+      const st = getWellnessState(sc);
+      const dt = new Date(d+'T00:00:00');
+      const initial = dt.toLocaleDateString('es-AR',{weekday:'narrow'});
+      return `<div style="flex:1;text-align:center" title="${d}${sc!=null?' · Wellness '+sc+'%':' · sin wellness'}">
+        <div style="font-size:8px;color:var(--text3);margin-bottom:2px;text-transform:uppercase">${initial}</div>
+        <div style="height:14px;border-radius:3px;background:${sc!=null?st.color:'var(--bg3)'}"></div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
   return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div>
@@ -5472,6 +5496,7 @@ function renderAthleteSummaryCard(a) {
       ${injuries.map(inj => `<div style="font-size:11px;color:var(--red);display:flex;align-items:center;gap:4px">⚠️ ${inj.zoneLabel}${inj.type ? ' · ' + INJURY_TYPES[inj.type] : ''} (${inj.pain}/10)</div>`).join('')}
     </div>` : ''}
     ${lastLog ? `<div style="margin-top:6px;font-size:11px;color:var(--text3)">Última sesión: RPE ${lastLog.rpe} · ${lastLog.date}</div>` : ''}
+    ${dayStrip}
   </div>`;
 }
 window.renderAthleteSummaryCard = renderAthleteSummaryCard;
@@ -5506,15 +5531,121 @@ function renderGroupWellness(memberUids, opts) {
         if(b==='Sin posición') return -1;
         return a.localeCompare(b);
       });
-      html += positions.map(pos=>renderTeamMetricsCard(pos, members.filter(a=>(a.position||'Sin posición')===pos))).join('');
+      // Antes se mostraba UNA tarjeta por puesto, todas apiladas siempre —
+      // con varios puestos era un choclo larguísimo para bajar. Ahora arranca
+      // oculto (solo el promedio del equipo) y el admin elige si quiere ver
+      // un puesto puntual o todos desplegados.
+      const posFilter = S.wellnessPosFilter || '';
+      html += `<div style="display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text3)">Ver por puesto:</span>
+        <select class="abtn" onchange="setWellnessPosFilter(this.value)">
+          <option value="" ${!posFilter?'selected':''}>Ocultar (solo promedio del equipo)</option>
+          <option value="__all__" ${posFilter==='__all__'?'selected':''}>Todos los puestos</option>
+          ${positions.map(p=>`<option value="${p}" ${posFilter===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>`;
+      if (posFilter==='__all__') {
+        html += positions.map(pos=>renderTeamMetricsCard(pos, members.filter(a=>(a.position||'Sin posición')===pos))).join('');
+      } else if (posFilter) {
+        html += renderTeamMetricsCard(posFilter, members.filter(a=>(a.position||'Sin posición')===posFilter));
+      }
     }
   }
 
+  html += renderWeeklyComplianceGrid(members);
+
+  // En desktop, una tarjeta por fila a lo ancho completo era muchísimo
+  // espacio vacío para lo poco que mostraba cada una — mismo criterio que ya
+  // usamos en el Dashboard (alertas / lesiones recientes en paralelo).
+  const isDesktopWellness = window.innerWidth >= 900;
   html += `<div style="margin:14px 0 12px;font-size:12px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
-    <div style="display:flex;flex-direction:column;gap:10px">${members.map(renderAthleteSummaryCard).join('')}</div>`;
+    <div style="display:${isDesktopWellness?'grid':'flex'};${isDesktopWellness?'grid-template-columns:1fr 1fr;':'flex-direction:column;'}gap:10px">${members.map(renderAthleteSummaryCard).join('')}</div>`;
   return html;
 }
 window.renderGroupWellness = renderGroupWellness;
+
+function setWellnessPosFilter(v) { S.wellnessPosFilter = v; renderMain(); }
+window.setWellnessPosFilter = setWellnessPosFilter;
+
+// ── VISTA SEMANAL DE CUMPLIMIENTO (wellness + carga) ───────────────────────
+// Antes solo se veía "completó hoy sí/no" — no alcanzaba para notar patrones
+// como "wellness y carga de hoy cargados juntos, pero nada el día anterior"
+// (típico de alguien que se olvidó de cargar ayer y lo hace hoy con la fecha
+// de hoy en vez de volver atrás). Wellness y carga van SEPARADOS a propósito
+// en cada celda — mezclarlos en un solo indicador escondería justo eso.
+function getWeeklyComplianceDates(offsetWeeks) {
+  const base = new Date(); base.setHours(0,0,0,0);
+  base.setDate(base.getDate() + (offsetWeeks||0)*7);
+  const dates = [];
+  for(let i=6; i>=0; i--) {
+    const d = new Date(base); d.setDate(d.getDate()-i);
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  return dates;
+}
+window.getWeeklyComplianceDates = getWeeklyComplianceDates;
+
+function setComplianceWeekOffset(delta) {
+  S._complianceWeekOffset = Math.min(0, (S._complianceWeekOffset||0) + delta);
+  renderMain();
+}
+window.setComplianceWeekOffset = setComplianceWeekOffset;
+
+function renderWeeklyComplianceGrid(members) {
+  const offset = S._complianceWeekOffset||0;
+  const dates = getWeeklyComplianceDates(offset);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const colW = 46;
+
+  const dayHead = dates.map(d=>{
+    const dt = new Date(d+'T00:00:00');
+    const isToday = d===todayStr;
+    return `<div style="width:${colW}px;flex-shrink:0;text-align:center;font-size:9.5px;font-weight:700;color:${isToday?'var(--accent)':'var(--text3)'};text-transform:uppercase">${dt.toLocaleDateString('es-AR',{weekday:'short'}).replace('.','')}<div style="font-weight:400;font-size:9px">${dt.getDate()}/${dt.getMonth()+1}</div></div>`;
+  }).join('');
+
+  const rows = members.map(a=>{
+    const p = a._personal||{};
+    const logs = p.history?._sessionLogs || p.sessionLogs || [];
+    const cells = dates.map(d=>{
+      const wDone = getWellnessScore(p.wellness?.[d]).allFilled;
+      const cDone = logs.some(l=>l.date===d);
+      return `<div style="width:${colW}px;flex-shrink:0;display:flex;justify-content:center;gap:3px;padding:7px 0;cursor:pointer" onclick="viewWellnessDay('${a.uid}','${d}')" title="${(a.name||a.email||'').replace(/"/g,'')} · ${d}">
+        <span style="width:8px;height:8px;border-radius:50%;background:${wDone?'var(--accent)':'var(--border2)'}"></span>
+        <span style="width:8px;height:8px;border-radius:50%;background:${cDone?'var(--warm)':'var(--border2)'}"></span>
+      </div>`;
+    }).join('');
+    return `<div style="display:flex;align-items:center;border-top:1px solid var(--border)">
+      <div style="width:104px;flex-shrink:0;font-size:12px;font-weight:600;padding:8px 6px 8px 0;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onclick="adminOpenAthlete('${a.uid}')">${a.name||a.email}</div>
+      <div style="display:flex">${cells}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="admin-section">
+    <div class="admin-item" style="border-bottom:1px solid var(--border)">
+      <div class="admin-section-title" style="margin:0">Cumplimiento semanal</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="abtn" onclick="setComplianceWeekOffset(-1)" title="Semana anterior">‹</button>
+        <span style="font-size:11px;color:var(--text3);white-space:nowrap">${offset===0?'Esta semana':(offset*-1)+' sem. atrás'}</span>
+        <button class="abtn" onclick="setComplianceWeekOffset(1)" title="Semana siguiente" ${offset>=0?'disabled style="opacity:.3;cursor:not-allowed"':''}>›</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <div style="min-width:${104+7*colW}px;padding:10px 16px 4px">
+        <div style="display:flex;align-items:center">
+          <div style="width:104px;flex-shrink:0"></div>
+          <div style="display:flex">${dayHead}</div>
+        </div>
+        ${rows}
+      </div>
+    </div>
+    <div style="display:flex;gap:14px;padding:10px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);flex-wrap:wrap">
+      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block"></span>Wellness completo</span>
+      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--warm);display:inline-block"></span>Carga cargada</span>
+      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--border2);display:inline-block"></span>Sin completar</span>
+    </div>
+  </div>`;
+}
+window.renderWeeklyComplianceGrid = renderWeeklyComplianceGrid;
 
 // Lesiones activas del plantel agrupadas por gravedad — mismo criterio de
 // gravedad clínica que el entrenador fija manualmente (independiente del
@@ -9285,7 +9416,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
   }
 
   const evalTabs = S.isAdmin
-    ? [{id:'entry',label:'Registrar test'},{id:'history',label:'Historial'}]
+    ? [{id:'entry',label:'Registrar test'},{id:'history',label:'Historial'},{id:'compare',label:'Comparar atletas'}]
     : [{id:'history',label:'Mi historial'}];
   const view = S.evalView||'entry';
   const activeView = evalTabs.find(t=>t.id===view) ? view : evalTabs[0].id;
@@ -9294,6 +9425,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
   html += '<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">'+tabsHtml+'</div>';
 
   if(activeView==='entry') html += renderStrengthEntry(edata);
+  else if(activeView==='compare') html += renderEvalCompare();
   else html += renderEvalHistory(edata, isDesktop, STRENGTH_TESTS);
 
   return html;
@@ -9523,8 +9655,13 @@ function renderEvalCompare() {
       + '<button class="abtn abtn-p" onclick="loadEvalAthletes()">Cargar atletas</button></div>';
   }
 
-  const testId = S.evalCompareTest||'cmj';
-  const tabsHtml = EVAL_TESTS.map(t=>'<button class="snav-tab '+(testId===t.id?'active':'')+'" onclick="switchCompareTest(\''+t.id+'\')">'+t.label+'</button>').join('');
+  // Fuerza Máxima y Saltabilidad comparan cada una sus propios tests — el
+  // testId de una lista no tiene por qué seguir siendo válido en la otra
+  // (ej: veníamos de comparar CMJ y cambiamos a la pestaña Fuerza Máxima).
+  const testList = S.evalCategory==='fuerza' ? STRENGTH_TESTS : EVAL_TESTS;
+  let testId = S.evalCompareTest||testList[0].id;
+  if(!testList.find(t=>t.id===testId)) testId = testList[0].id;
+  const tabsHtml = testList.map(t=>'<button class="snav-tab '+(testId===t.id?'active':'')+'" onclick="switchCompareTest(\''+t.id+'\')">'+t.label+'</button>').join('');
   let html = '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">'+tabsHtml+'</div>';
 
   // Si estamos dentro de un equipo o de un atleta individual (S.evalScopeUids
@@ -9541,7 +9678,7 @@ function renderEvalCompare() {
   });
   const withData = allData.filter(x=>x.value!==null);
   const withoutData = allData.filter(x=>x.value===null);
-  const testLabel = (EVAL_TESTS.find(t=>t.id===testId)||{}).label || testId;
+  const testLabel = (testList.find(t=>t.id===testId)||{}).label || testId;
 
   // Agrupar por puesto solo tiene sentido si al menos algunos atletas de este
   // grupo tienen la posición cargada (Panel Admin → ficha del atleta).
@@ -9858,7 +9995,10 @@ function drawEvalCharts() {
     }
 
   } else if(chartView==='compare') {
-    const testId = S.evalCompareTest||'cmj';
+    const testList = S.evalCategory==='fuerza' ? STRENGTH_TESTS : EVAL_TESTS;
+    let testId = S.evalCompareTest||testList[0].id;
+    if(!testList.find(t=>t.id===testId)) testId = testList[0].id;
+    const testUnit = (testList.find(t=>t.id===testId)||{}).unit || 'cm';
     const athletes = S.evalScopeUids
       ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid))
       : [{uid:'self',name:'Yo (admin)'}].concat(S.adminAthletes);
@@ -9888,7 +10028,7 @@ function drawEvalCharts() {
           indexAxis:'y',
           responsive:true, maintainAspectRatio:false,
           devicePixelRatio: window.devicePixelRatio || 1,
-          plugins:{legend:{display:false}, tooltip:{...tooltipStyle, callbacks:{label:ctx=>' '+ctx.raw+' cm'}}},
+          plugins:{legend:{display:false}, tooltip:{...tooltipStyle, callbacks:{label:ctx=>' '+ctx.raw+' '+testUnit}}},
           layout:{padding:{right:36}},
           scales:{
             x:{min:sc.min, max:sc.max, grid:{color:gridColor}, ticks:{color:cssVar('--text3','#7A8394'), font:{size:10}}},
@@ -9907,7 +10047,7 @@ function drawEvalCharts() {
               ctx.font='700 11px Inter, sans-serif';
               ctx.textAlign='left';
               ctx.textBaseline='middle';
-              ctx.fillText(val+' cm', bar.x+6, bar.y);
+              ctx.fillText(val+' '+testUnit, bar.x+6, bar.y);
               ctx.restore();
             });
           }
