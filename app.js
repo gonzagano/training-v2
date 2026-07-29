@@ -4,6 +4,21 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, si
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+// ── FECHAS EN HORARIO LOCAL, NUNCA UTC ────────────────────────────
+// .toISOString() siempre da la fecha en UTC. Para Argentina (UTC-3), entre
+// las 21:00 y la medianoche hora local, UTC ya pasó a "mañana" — así que
+// todo lo que calculaba "hoy" comparando contra la fecha UTC (wellness,
+// carga, lesiones, calendario, rutinas...) quedaba mal esas 3 horas todas
+// las noches: alguien completando el wellness del lunes a la noche lo
+// guardaba con fecha martes. Estas dos funciones son el reemplazo — siempre
+// trabajan con el calendario LOCAL del dispositivo, nunca UTC.
+function toLocalDateStr(d) {
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function todayLocal() { return toLocalDateStr(new Date()); }
+window.toLocalDateStr = toLocalDateStr;
+window.todayLocal = todayLocal;
+
 // ── TEMA (claro/oscuro) ──────────────────────────────────────────
 // El modo oscuro es opcional: no toca el tema claro por defecto, solo
 // alterna un atributo que activa el bloque de variables oscuras en CSS.
@@ -251,7 +266,7 @@ window.isRealInjury = isRealInjury;
 function getInjuryTrend(inj) {
   const hist = inj?.history||[];
   if(!hist.length) return null;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const prior = [...hist].filter(h=>h.date!==today).sort((a,b)=>a.date.localeCompare(b.date)).pop();
   if(!prior) return null;
   const current = inj.pain;
@@ -275,7 +290,7 @@ function openPainTrendModal(uid, zoneId) {
   }
   if(!inj) return;
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const points = [...(inj.history||[])].sort((a,b)=>a.date.localeCompare(b.date));
   if(!points.length || points[points.length-1].date!==today) points.push({date:today, pain:inj.pain});
 
@@ -725,7 +740,7 @@ window.closeInfoModalIfOutside = closeInfoModalIfOutside;
 let S = {
   user: null, isAdmin: false, userData: null,
   currentView: 'dashboard', currentSession: 'A', currentWeek: 1,
-  startDate: new Date().toISOString().split('T')[0],
+  startDate: todayLocal(),
   blocks: JSON.parse(JSON.stringify(DEFAULT_BLOCKS)),
   library: JSON.parse(JSON.stringify(DEFAULT_LIBRARY)),
   videos: {}, history: {}, wellness: {}, injuries: {}, injuryArchive: [], illnesses: [], personalExtras: {},
@@ -1624,7 +1639,7 @@ async function fillWeeklyTrainingCalendar() {
       while(d<=endDate) {
         const dow = d.getDay(); // 1=lunes, 2=martes, 4=jueves
         if(dow===1||dow===2||dow===4) {
-          const dateStr = d.toISOString().split('T')[0];
+          const dateStr = toLocalDateStr(d);
           const existing = getCalendarEvents(team, dateStr);
           const existingTypes = existing.map(e=>e.type);
           const toAdd = ['fisico','pelota'].filter(t=>!existingTypes.includes(t)).map(type=>({type}));
@@ -2111,7 +2126,7 @@ function toggleCheck(exId) {
   const el=rowEl?.querySelector('.ex-check');
   if(el) el.classList.toggle('checked',d.checked);
   if(!getSD(S.currentWeek,S.currentSession).date)
-    getSD(S.currentWeek,S.currentSession).date=new Date().toISOString().split('T')[0];
+    getSD(S.currentWeek,S.currentSession).date=todayLocal();
   scheduleSave();
   updateBlockCheckmark(rowEl);
 }
@@ -2147,7 +2162,7 @@ function setField(exId,field,val) {
   const d=getED(S.currentWeek,S.currentSession,exId);
   d[field]=val;
   if(!getSD(S.currentWeek,S.currentSession).date)
-    getSD(S.currentWeek,S.currentSession).date=new Date().toISOString().split('T')[0];
+    getSD(S.currentWeek,S.currentSession).date=todayLocal();
   scheduleSave();
 }
 window.setField=setField;
@@ -2162,7 +2177,7 @@ window.setRPE=setRPE;
 
 function finishSession() {
   const sd=getSD(S.currentWeek,S.currentSession);
-  sd.done=true; sd.date=new Date().toISOString().split('T')[0];
+  sd.done=true; sd.date=todayLocal();
   scheduleSave();
   // Show session feedback modal
   S.feedbackSession={week:S.currentWeek, session:S.currentSession};
@@ -2192,7 +2207,7 @@ async function submitSessionFeedback() {
   if(!rpe||!mins) { showToast('Completá RPE y duración'); return; }
 
   const ua = rpe * mins;
-  const date = new Date().toISOString().split('T')[0];
+  const date = todayLocal();
   const log = { date, week:S.currentWeek, session:S.currentSession, rpe, mins, ua, feel, injury, activity:'gimnasio' };
 
   // Save to sessionLogs — si ya había un log de gimnasio hoy (por ejemplo cargado
@@ -2278,6 +2293,13 @@ function updateLoadDraft(date,activity,field,value) {
       if(ua) { el.textContent=`${draft.mins} min × RPE ${draft.rpe} = ${ua} UA`; el.style.display=''; }
       else { el.textContent=''; el.style.display='none'; }
     }
+    // Igual que el numerito de UA de arriba: se actualiza a mano para no
+    // reconstruir el input y perder el foco/teclado en el celular.
+    const stillMissing = draft.rpe>0 && !draft.mins;
+    const minsEl = document.getElementById(`load-mins-${date}-${activity}`);
+    if(minsEl) minsEl.style.cssText = stillMissing ? 'border:2px solid var(--red);background:var(--red-dim)' : '';
+    const warnEl = document.getElementById(`load-mins-warn-${date}-${activity}`);
+    if(warnEl) warnEl.style.display = stillMissing ? '' : 'none';
   } else {
     renderMain();
   }
@@ -2285,11 +2307,12 @@ function updateLoadDraft(date,activity,field,value) {
 window.updateLoadDraft=updateLoadDraft;
 
 function saveLoadLog(date) {
-  const today=new Date().toISOString().split('T')[0];
+  const today=todayLocal();
   date = date || today;
   if(!S.history) S.history={};
   if(!S.history._sessionLogs) S.history._sessionLogs=[];
   let savedAny=false;
+  const incomplete=[]; // actividades con RPE pero sin minutos (o viceversa) — antes se perdían sin avisar
   LOAD_ACTIVITIES.forEach(act=>{
     const draft=(S.loadDraft?.[date]?.[act.key])||null;
     const existing=getLoadLog(act.key,date);
@@ -2301,12 +2324,21 @@ function saveLoadLog(date) {
       S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity===act.key));
       S.history._sessionLogs.push({date, activity:act.key, session:getLoadActivityDisplay(act, S.userData?.sport).label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe});
       savedAny=true;
+    } else if((mins && !rpe) || (!mins && rpe)) {
+      // Cargó una mitad y no la otra — esto es justo lo que se perdía en
+      // silencio antes: el toast de éxito tapaba que esa actividad puntual
+      // no se había guardado.
+      incomplete.push(getLoadActivityDisplay(act, S.userData?.sport).label + (mins&&!rpe ? ' (falta RPE)' : ' (falta minutos)'));
     }
   });
-  if(!savedAny) { showToast('Completá minutos y RPE de al menos una actividad'); return; }
+  if(!savedAny && !incomplete.length) { showToast('Completá minutos y RPE de al menos una actividad'); return; }
   if(S.loadDraft) delete S.loadDraft[date];
   scheduleSave();
-  showToast(date===today ? '✓ Carga de hoy guardada' : `✓ Carga del ${date} guardada`);
+  if(incomplete.length) {
+    showToast((savedAny?'✓ Carga guardada, pero falta completar: ':'Falta completar: ')+incomplete.join(', '));
+  } else {
+    showToast(date===today ? '✓ Carga de hoy guardada' : `✓ Carga del ${date} guardada`);
+  }
   renderMain();
 }
 window.saveLoadLog=saveLoadLog;
@@ -2880,11 +2912,11 @@ const WELLNESS_BACKFILL_DAYS = 13; // hasta 2 semanas atrás para completar día
 // completar y cuáles están vacíos, para no depender solo de una flecha ‹ ›
 // sin ninguna señal visual de qué días faltan.
 function renderWellnessDayStrip(wKey) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const days = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
-    days.push({ key: d.toISOString().split('T')[0], dow: d.toLocaleDateString('es-AR', { weekday: 'narrow' }), num: d.getDate() });
+    days.push({ key: toLocalDateStr(d), dow: d.toLocaleDateString('es-AR', { weekday: 'narrow' }), num: d.getDate() });
   }
   const cells = days.map(d => {
     const rec = S.wellness[d.key];
@@ -2902,21 +2934,21 @@ function renderWellnessDayStrip(wKey) {
   return `<div style="display:flex;gap:5px;margin-bottom:10px">${cells}</div>`;
 }
 function goToWellnessDate(key) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   S.wellnessViewDate = (key === today) ? null : key;
   renderMain();
 }
 window.goToWellnessDate = goToWellnessDate;
 
 function shiftWellnessDate(delta) {
-  const today=new Date().toISOString().split('T')[0];
+  const today=todayLocal();
   const base=S.wellnessViewDate||today;
   const d=new Date(base+'T00:00:00');
   d.setDate(d.getDate()+delta);
-  const newDate=d.toISOString().split('T')[0];
+  const newDate=toLocalDateStr(d);
   if(newDate>today) return;
   const minD=new Date(); minD.setDate(minD.getDate()-WELLNESS_BACKFILL_DAYS);
-  if(newDate<minD.toISOString().split('T')[0]) return;
+  if(newDate<toLocalDateStr(minD)) return;
   S.wellnessViewDate=(newDate===today)?null:newDate;
   renderMain();
 }
@@ -2930,11 +2962,15 @@ function renderLoadItemRow(act, wKey, sport) {
   const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe,note:existing.note||''}:{mins:'',rpe:0,note:''});
   const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
   const display = getLoadActivityDisplay(act, sport);
+  // Marcaron el RPE (tocar un puntito es rápido y llamativo) pero se
+  // olvidan de los minutos (un campo de texto chico, fácil de saltear) — se
+  // perdía la carga entera en silencio. Esto lo resalta ANTES de guardar.
+  const missingMins = draft.rpe>0 && !draft.mins;
   return `<div class="load-item">
     <div class="load-item-label"><span>${display.emoji}</span><span>${display.label}</span></div>
     ${act.isGame?`<input type="text" maxlength="60" class="load-mins-inp" style="width:100%;text-align:left;margin-bottom:8px" placeholder="Rival / categoría (opcional, ej: vs Club X — Juvenil)" value="${draft.note||''}" onblur="updateLoadDraft('${wKey}','${act.key}','note',this.value)">`:''}
     <div class="load-item-row">
-      <input type="number" min="0" max="300" class="load-mins-inp" placeholder="min" value="${draft.mins||''}" oninput="updateLoadDraft('${wKey}','${act.key}','mins',this.value)">
+      <input type="number" min="0" max="300" id="load-mins-${wKey}-${act.key}" class="load-mins-inp" placeholder="⬅ Minutos (obligatorio)" style="${missingMins?'border:2px solid var(--red);background:var(--red-dim)':''}" value="${draft.mins||''}" oninput="updateLoadDraft('${wKey}','${act.key}','mins',this.value)">
       <div class="load-rpe-scale">
         ${Array.from({length:11},(_,i)=>i).map(v=>{
           const color=v===0?'var(--text3)':`hsl(${Math.round((10-v)/10*120)},65%,45%)`;
@@ -2942,6 +2978,7 @@ function renderLoadItemRow(act, wKey, sport) {
         }).join('')}
       </div>
     </div>
+    <div id="load-mins-warn-${wKey}-${act.key}" style="font-size:11px;color:var(--red);font-weight:600;margin-top:2px;${missingMins?'':'display:none'}">⚠ Falta poner los minutos — sin eso, no se guarda esta actividad</div>
     ${ua?`<div class="load-ua-preview" id="load-ua-preview-${wKey}-${act.key}">${draft.mins} min × RPE ${draft.rpe} = ${ua} UA</div>`:`<div class="load-ua-preview" id="load-ua-preview-${wKey}-${act.key}" style="display:none"></div>`}
   </div>`;
 }
@@ -2957,7 +2994,7 @@ function toggleExtraGym() {
 window.toggleExtraGym = toggleExtraGym;
 
 function renderWellness() {
-  const today=new Date().toISOString().split('T')[0];
+  const today=todayLocal();
   const wKey=S.wellnessViewDate||today;
   const isToday=wKey===today;
   if(!S.wellness[wKey]) S.wellness[wKey]={};
@@ -2968,7 +3005,7 @@ function renderWellness() {
 
   const isDesktop = window.innerWidth >= 900;
 
-  const minAllowed=(()=>{const d=new Date();d.setDate(d.getDate()-WELLNESS_BACKFILL_DAYS);return d.toISOString().split('T')[0];})();
+  const minAllowed=(()=>{const d=new Date();d.setDate(d.getDate()-WELLNESS_BACKFILL_DAYS);return toLocalDateStr(d);})();
   const canGoBack=wKey>minAllowed, canGoForward=wKey<today;
   const dateLabel=isToday?'Hoy':new Date(wKey+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
 
@@ -3275,7 +3312,7 @@ function refreshWellnessScoreSection(wKey) {
   const w = S.wellness[wKey] || {};
   const {pct, allFilled} = getWellnessScore(w);
   const wState = getWellnessState(allFilled?pct:null);
-  const isToday = wKey === new Date().toISOString().split('T')[0];
+  const isToday = wKey === todayLocal();
   const el = document.getElementById(`wellness-score-section-${wKey}`);
   if(!el) return;
   el.innerHTML = `
@@ -3402,7 +3439,7 @@ window.adminSetInjuryRtpPhase = adminSetInjuryRtpPhase;
 // que vive en su propia sección chica, sin ocupar lugar en el monigote ni en
 // las alertas del dashboard.
 function getActiveIllness(illnesses) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   return (illnesses||[]).find(x=>!x.endDate || x.endDate>=today) || null;
 }
 window.getActiveIllness = getActiveIllness;
@@ -3437,7 +3474,7 @@ window.renderIllnessSection = renderIllnessSection;
 async function addIllness(note) {
   if(!S.illnesses) S.illnesses=[];
   if(getActiveIllness(S.illnesses)) { showToast('Ya hay una enfermedad activa registrada'); return; }
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   S.illnesses.push({id:genId(), startDate:today, endDate:null, note:(note||'').trim()});
   S._showIllnessForm = false;
   scheduleSave();
@@ -3449,7 +3486,7 @@ window.addIllness = addIllness;
 function resolveIllness(id) {
   const it = (S.illnesses||[]).find(x=>x.id===id);
   if(!it) return;
-  it.endDate = new Date().toISOString().split('T')[0];
+  it.endDate = todayLocal();
   scheduleSave();
   showToast('✓ Marcado como recuperado');
   renderMain();
@@ -3465,7 +3502,7 @@ async function adminAddIllness(uid, note) {
   if(!personal) return;
   if(!personal.illnesses) personal.illnesses=[];
   if(getActiveIllness(personal.illnesses)) { showToast('Ya hay una enfermedad activa registrada'); return; }
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   personal.illnesses.push({id:genId(), startDate:today, endDate:null, note:(note||'').trim()});
   try {
     await setDoc(doc(db,'personal',uid), {illnesses:personal.illnesses}, {merge:true});
@@ -3481,7 +3518,7 @@ async function adminResolveIllness(uid, id) {
   if(!personal) return;
   const it = (personal.illnesses||[]).find(x=>x.id===id);
   if(!it) return;
-  it.endDate = new Date().toISOString().split('T')[0];
+  it.endDate = todayLocal();
   try {
     await setDoc(doc(db,'personal',uid), {illnesses:personal.illnesses}, {merge:true});
     showToast('✓ Marcado como recuperado');
@@ -3503,8 +3540,8 @@ function archiveInjury(zid) {
     zoneId: zid,
     zoneLabel: zone?zone.label:zid,
     type: inj.type||'',
-    startDate: hist.length?hist[0].date:new Date().toISOString().split('T')[0],
-    resolvedDate: new Date().toISOString().split('T')[0],
+    startDate: hist.length?hist[0].date:todayLocal(),
+    resolvedDate: todayLocal(),
     peakPain: hist.length?Math.max(...hist.map(h=>h.pain),inj.pain):inj.pain,
     history: hist
   });
@@ -3521,7 +3558,7 @@ window.removeInjury=removeInjury;
 function saveInjury(zid) {
   const inj=S.injuries[zid]; if(!inj) return;
   if(!inj.history) inj.history=[];
-  inj.history.push({date:new Date().toISOString().split('T')[0],pain:inj.pain,note:inj.note||'',type:inj.type||''});
+  inj.history.push({date:todayLocal(),pain:inj.pain,note:inj.note||'',type:inj.type||''});
   if(inj.pain===0) { archiveInjury(zid); delete S.injuries[zid]; }
   S.selectedZone=null; scheduleSave(); showToast('✓ Molestia guardada'); renderMain();
 }
@@ -3531,7 +3568,7 @@ window.saveInjury=saveInjury;
 function renderInjuryFollowup() {
   const active=Object.entries(S.injuries).filter(([,v])=>v.pain>0);
   if(!active.length) return '';
-  const today=new Date().toISOString().split('T')[0];
+  const today=todayLocal();
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   return `<div class="wellness-card" style="margin-bottom:16px">
     <div class="wellness-title">Seguimiento de molestias</div>
@@ -3558,7 +3595,7 @@ window.renderInjuryFollowup=renderInjuryFollowup;
 
 function updateInjuryFollowup(zid,val) {
   const inj=S.injuries[zid]; if(!inj) return;
-  const today=new Date().toISOString().split('T')[0];
+  const today=todayLocal();
   inj.pain=val;
   if(!inj.history) inj.history=[];
   const last=inj.history[inj.history.length-1];
@@ -3642,7 +3679,7 @@ function renderStats() {
     Object.entries(sd.exercises).forEach(([id,d])=>{ if(d.checked){totalC++;freq[id]=(freq[id]||0)+1;} });
   });
   const today=new Date();
-  const last7=Array.from({length:7},(_,i)=>{ const d=new Date(today); d.setDate(d.getDate()-6+i); return d.toISOString().split('T')[0]; });
+  const last7=Array.from({length:7},(_,i)=>{ const d=new Date(today); d.setDate(d.getDate()-6+i); return toLocalDateStr(d); });
   const doneDs=new Set();
   for(let w=1;w<=S.currentWeek;w++) sessionList.forEach(s=>{
     const sd=getSD(w,s); if(sd.done&&sd.date) doneDs.add(sd.date);
@@ -3890,11 +3927,11 @@ window.setCalendarViewMode=setCalendarViewMode;
 
 function shiftCalendarRef(delta) {
   const mode = S.calendarViewMode||'month';
-  const ref = new Date((S.calendarRefDate||new Date().toISOString().split('T')[0])+'T00:00:00');
+  const ref = new Date((S.calendarRefDate||todayLocal())+'T00:00:00');
   if(mode==='day') ref.setDate(ref.getDate()+delta);
   else if(mode==='week') ref.setDate(ref.getDate()+delta*7);
   else ref.setMonth(ref.getMonth()+delta);
-  S.calendarRefDate = ref.toISOString().split('T')[0];
+  S.calendarRefDate = toLocalDateStr(ref);
   renderMain();
 }
 window.shiftCalendarRef=shiftCalendarRef;
@@ -3920,13 +3957,13 @@ function renderTeamCalendar(team) {
 window.renderTeamCalendar=renderTeamCalendar;
 
 function renderCalendarMonthView(team) {
-  const refDate = new Date((S.calendarRefDate||new Date().toISOString().split('T')[0])+'T00:00:00');
+  const refDate = new Date((S.calendarRefDate||todayLocal())+'T00:00:00');
   const y=refDate.getFullYear(), m=refDate.getMonth();
   const firstDay = new Date(y,m,1);
   const daysInMonth = new Date(y,m+1,0).getDate();
   const startWeekday = (firstDay.getDay()+6)%7;
   const monthLabel = firstDay.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const selected = S.calendarSelectedDate||null;
 
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -3962,11 +3999,11 @@ function renderCalendarMonthView(team) {
 window.renderCalendarMonthView=renderCalendarMonthView;
 
 function renderCalendarWeekView(team) {
-  const refDate = new Date((S.calendarRefDate||new Date().toISOString().split('T')[0])+'T00:00:00');
+  const refDate = new Date((S.calendarRefDate||todayLocal())+'T00:00:00');
   const dow = (refDate.getDay()+6)%7;
   const monday = new Date(refDate); monday.setDate(monday.getDate()-dow);
   const days = Array.from({length:7},(_,i)=>{ const d=new Date(monday); d.setDate(d.getDate()+i); return d; });
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const weekLabel = `${days[0].toLocaleDateString('es-AR',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('es-AR',{day:'numeric',month:'short'})}`;
   const selected = S.calendarSelectedDate||null;
   const dayInitials = ['L','M','X','J','V','S','D'];
@@ -3981,7 +4018,7 @@ function renderCalendarWeekView(team) {
   </div>
   <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px">
     ${days.map((d,i)=>{
-      const dateStr=d.toISOString().split('T')[0];
+      const dateStr=toLocalDateStr(d);
       const events=getCalendarEvents(team,dateStr);
       const isToday=dateStr===today, isSelected=dateStr===selected;
       return `<div onclick="selectCalendarDay('${dateStr}')" style="aspect-ratio:1;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:3px;padding:4px 2px;
@@ -4001,7 +4038,7 @@ function renderCalendarWeekView(team) {
 window.renderCalendarWeekView=renderCalendarWeekView;
 
 function renderCalendarDayView(team) {
-  const refDate = S.calendarRefDate || new Date().toISOString().split('T')[0];
+  const refDate = S.calendarRefDate || todayLocal();
   const dateLabel = new Date(refDate+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
@@ -4135,12 +4172,12 @@ function renderTeamReport(team) {
 window.renderTeamReport=renderTeamReport;
 
 function renderTeamReportResumen(team, members) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const periodDays = 30;
   const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
-  const periodStartStr = periodStart.toISOString().split('T')[0];
+  const periodStartStr = toLocalDateStr(periodStart);
   const prevPeriodStart = new Date(); prevPeriodStart.setDate(prevPeriodStart.getDate()-periodDays*2);
-  const prevPeriodStartStr = prevPeriodStart.toISOString().split('T')[0];
+  const prevPeriodStartStr = toLocalDateStr(prevPeriodStart);
 
   const injSum = getTeamInjurySummary(members);
   let altas=0, bajas=0;
@@ -4311,9 +4348,9 @@ window.renderTeamReportResumen=renderTeamReportResumen;
 
 // ── REUNIÓN DE STAFF ─────────────────────────────────────────
 function renderStaffMeetingReport(team, members) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+  const sevenDaysAgoStr = toLocalDateStr(sevenDaysAgo);
 
   // Lesiones reales vs. molestias — acá SÍ se ven las dos, es la vista de
   // adentro del equipo (a diferencia del Dashboard, que solo alerta lesiones).
@@ -4404,7 +4441,7 @@ window.renderStaffMeetingReport = renderStaffMeetingReport;
 function computeMedicalReportStats(members) {
   const periodDays = 90;
   const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
-  const periodStartStr = periodStart.toISOString().split('T')[0];
+  const periodStartStr = toLocalDateStr(periodStart);
 
   let activeToday=0, grave=0, moderada=0, leve=0, totalHistoric=0;
   const zoneCounts = {};
@@ -4545,7 +4582,7 @@ window.drawMedicalReportCharts = drawMedicalReportCharts;
 // mismo dato que ya carga el editor de calendario (rival, local/visitante,
 // escudo), sin pedir nada nuevo.
 function getNextMatch(team) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const cal = team.calendar || {};
   const dates = Object.keys(cal).filter(d=>d>=today).sort();
   for(const d of dates) {
@@ -4557,10 +4594,10 @@ function getNextMatch(team) {
 window.getNextMatch = getNextMatch;
 
 function renderMatchReadinessReport(team, members) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const nextMatch = getNextMatch(team);
   const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+  const sevenDaysAgoStr = toLocalDateStr(sevenDaysAgo);
 
   let noWellness7d = 0;
   const rows = members.map(a=>{
@@ -4738,7 +4775,7 @@ function openTeamRoutineAssign(teamId) {
     routineId: team?.assignedRoutineId||'',
     blockPositions: team?.routineBlockPositions ? JSON.parse(JSON.stringify(team.routineBlockPositions)) : {},
     selectedWeekdays: [],
-    startDate: new Date().toISOString().split('T')[0],
+    startDate: todayLocal(),
   };
   ensureAdminAthletes().then(renderMain);
 }
@@ -4870,7 +4907,7 @@ function renderTeamRutina(team) {
           <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
         </div>`;
       }
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayLocal();
       const w = match._personal?.wellness?.[today];
       const {pct, allFilled} = getWellnessScore(w);
       const wState = getWellnessState(allFilled?pct:null);
@@ -5037,7 +5074,7 @@ function getWellnessSparklineData(personalData, days) {
   const vals=[];
   for(let i=days-1;i>=0;i--){
     const d=new Date(today); d.setDate(d.getDate()-i);
-    const ds=d.toISOString().split('T')[0];
+    const ds=toLocalDateStr(d);
     const {pct,allFilled}=getWellnessScore(wellness[ds]);
     vals.push(allFilled?pct:null);
   }
@@ -5377,7 +5414,7 @@ function getActiveInjuriesSummary(personal) {
 function computeAthleteLoadSummary(a) {
   const logs=(a._personal?.history?._sessionLogs)||[];
   const m=calcLoadMetrics(logs);
-  const today=new Date().toISOString().split('T')[0];
+  const today=todayLocal();
   const todayUA=logs.filter(l=>l.date===today).reduce((s,l)=>s+(l.ua||0),0);
   const wellness=a._personal?.wellness||{};
   const last7=Object.entries(wellness).sort((x,y)=>y[0].localeCompare(x[0])).slice(0,7);
@@ -5455,7 +5492,7 @@ window.renderTeamMetricsCard=renderTeamMetricsCard;
 // Ficha compacta de un atleta: wellness de hoy, alerta de lesión, último RPE.
 // La reutilizamos acá y, más adelante, en las tarjetas del Dashboard.
 function renderAthleteSummaryCard(a) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const p = a._personal || {};
   const todayWellness = p.wellness ? p.wellness[today] : null;
   const score = todayWellness ? computeHooperScore(todayWellness) : null;
@@ -5515,7 +5552,7 @@ function renderGroupWellness(memberUids, opts) {
       : `<div class="empty-state">El equipo elegido para comparar todavía no tiene datos.</div>`;
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const doneCount = members.filter(a => a._personal?.wellness?.[today]).length;
 
   // El promedio "del equipo" no dice nada cuando el grupo es un solo atleta
@@ -5579,7 +5616,7 @@ function getWeeklyComplianceDates(offsetWeeks) {
   const dates = [];
   for(let i=6; i>=0; i--) {
     const d = new Date(base); d.setDate(d.getDate()-i);
-    dates.push(d.toISOString().split('T')[0]);
+    dates.push(toLocalDateStr(d));
   }
   return dates;
 }
@@ -5594,7 +5631,7 @@ window.setComplianceWeekOffset = setComplianceWeekOffset;
 function renderWeeklyComplianceGrid(members) {
   const offset = S._complianceWeekOffset||0;
   const dates = getWeeklyComplianceDates(offset);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayLocal();
   const colW = 46;
 
   const dayHead = dates.map(d=>{
@@ -6074,7 +6111,7 @@ function drawTeamReportTrendChart(members, canvasId) {
   const today = new Date();
   for(let i=DAYS-1;i>=0;i--){
     const d=new Date(today); d.setDate(d.getDate()-i);
-    const dateStr=d.toISOString().split('T')[0];
+    const dateStr=toLocalDateStr(d);
     labels.push(dateStr.slice(5));
 
     const wPcts = members.map(a=>{
@@ -6133,7 +6170,7 @@ function renderTriageTable(members) {
   if(!collapsed) {
     const sortKey = S._triageSortKey || 'acwr';
     const sortDir = S._triageSortDir || 'desc';
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
 
     let rows = members.map(a=>{
       const summary = computeAthleteLoadSummary(a);
@@ -6739,7 +6776,7 @@ function renderPerfilTab(a) {
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
 
-  const today=new Date().toISOString().split('T')[0];
+  const today=todayLocal();
   const todayW = wellness[today];
   const {pct:todayPct, allFilled:todayFilled} = getWellnessScore(todayW);
   const wState = getWellnessState(todayFilled?todayPct:null);
@@ -7700,7 +7737,7 @@ window.handleCrestUpload = handleCrestUpload;
 function changeWeek(d) {
   const start = new Date(S.startDate+'T00:00:00');
   start.setDate(start.getDate() - d*7);
-  S.startDate = start.toISOString().split('T')[0];
+  S.startDate = toLocalDateStr(start);
   S.currentWeek = computeWeekFromDate(S.startDate);
   scheduleSave();
   renderAll();
@@ -7710,7 +7747,7 @@ window.changeWeek=changeWeek;
 function exportData() {
   const blob=new Blob([JSON.stringify({blocks:S.blocks,history:S.history,wellness:S.wellness,injuries:S.injuries},null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download=`training-backup-${new Date().toISOString().split('T')[0]}.json`; a.click();
+  a.download=`training-backup-${todayLocal()}.json`; a.click();
   showToast('Datos exportados');
 }
 window.exportData=exportData;
@@ -7734,7 +7771,7 @@ function shiftWellnessDetailDate(delta) {
   d.setDate(d.getDate()+delta);
   const today = new Date(); today.setHours(0,0,0,0);
   if(d>today) return; // no tiene sentido navegar a futuro
-  S.wellnessDetailDate = d.toISOString().split('T')[0];
+  S.wellnessDetailDate = toLocalDateStr(d);
   renderMain();
 }
 window.shiftWellnessDetailDate = shiftWellnessDetailDate;
@@ -7755,7 +7792,7 @@ function renderWellnessDetail() {
   const {pct, allFilled} = getWellnessScore(w);
   const state = getWellnessState(allFilled?pct:null);
   const dateLabel = new Date(date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
-  const isToday = date===new Date().toISOString().split('T')[0];
+  const isToday = date===todayLocal();
 
   let html = `<div class="team-detail-header">
     <button class="back-btn" onclick="S.adminView='${S._wellnessDetailReturnView||'athlete_detail'}';renderMain()">‹</button>
@@ -7843,7 +7880,7 @@ window.openTrainedTodayScreen = openTrainedTodayScreen;
 // quién entrenó hoy, con qué duración/RPE por actividad, y si de paso marcó
 // alguna molestia o lesión en el mapa corporal ese mismo día.
 function renderTrainedTodayScreen() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const athletes = S.dashAthletes || [];
   const rows = [];
   athletes.forEach(a=>{
@@ -7888,7 +7925,7 @@ function toggleSection(key) {
 window.toggleSection = toggleSection;
 
 function renderReminderScreen() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const athletes = S.dashAthletes || [];
   const pending = [];
   const done = [];
@@ -7944,7 +7981,7 @@ async function sendInAppReminder() {
   if(!msg) { showToast('Escribí un mensaje'); return; }
   const pendingUids = S._reminderPendingUids || [];
   if(!pendingUids.length) { showToast('No hay nadie pendiente'); return; }
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   showToast('Enviando…');
   let sentCount = 0;
   for(const uid of pendingUids) {
@@ -8328,7 +8365,7 @@ function renderWeeklyReport() {
 
   const today = new Date();
   const days = [];
-  for(let i=6;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i); days.push(d.toISOString().split('T')[0]); }
+  for(let i=6;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i); days.push(toLocalDateStr(d)); }
   const rangeLabel = days[0]+' — '+days[6];
 
   const m = calcLoadMetrics(logs);
@@ -8400,7 +8437,7 @@ function renderWeeklyReport() {
       ? `<ul style="font-size:12px;margin:0 0 10px;padding-left:18px">${injuries.map(([id,inj])=>`<li>${id} — ${severityInfo(inj.severity)?.label||'Leve'} · dolor de hoy ${inj.pain}/10${inj.note?' · '+inj.note:''}</li>`).join('')}</ul>`
       : `<div style="font-size:12px;color:#777;margin-bottom:10px">Sin molestias registradas.</div>`}
 
-    <div style="font-size:10px;color:#999;text-align:right;margin-top:24px">Generado el ${new Date().toISOString().split('T')[0]}</div>
+    <div style="font-size:10px;color:#999;text-align:right;margin-top:24px">Generado el ${todayLocal()}</div>
   </div>`;
 }
 window.renderWeeklyReport = renderWeeklyReport;
@@ -8409,7 +8446,7 @@ window.renderWeeklyReport = renderWeeklyReport;
 // (viewingAthlete + lista de adminAthletes), sea que venga de "quitar
 // rutina" directo o de confirmar el modal de días de gimnasio.
 async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDate) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const update = { assignedRoutine: routineId||null };
   // La semana de la planificación se cuenta desde el día que se la
   // asignás, no desde que el atleta se registró — por eso guardamos esta
@@ -8455,7 +8492,7 @@ function openWeekdayAssignModal(uid, routineId) {
   // Si ya tenía días elegidos (para esta u otra rutina), arrancamos de ahí —
   // es un punto de partida razonable que el admin puede ajustar.
   const prevSelected = (a && a.assignedRoutine===routineId && Array.isArray(a.trainingWeekdays)) ? a.trainingWeekdays : [];
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   S._weekdayAssign = { uid, routineId, sessionNames, selected: [...prevSelected], startDate: today };
   document.getElementById('weekday-assign-title').textContent = 'Días de gimnasio · ' + routine.name;
   renderWeekdayAssignBody();
@@ -8570,7 +8607,7 @@ async function adminSetRealRoutineWeek(uid, week) {
   const w = Math.max(1, week);
   const base = new Date(); base.setHours(0,0,0,0);
   base.setDate(base.getDate() - (w-1)*7);
-  const newDate = base.toISOString().split('T')[0];
+  const newDate = toLocalDateStr(base);
   try {
     await setDoc(doc(db,'users',uid), {routineAssignedDate:newDate}, {merge:true});
     a.routineAssignedDate = newDate;
@@ -8585,7 +8622,7 @@ window.adminSetRealRoutineWeek = adminSetRealRoutineWeek;
 async function resetAthleteRoutineWeek(uid) {
   if(!confirm('Esto reinicia la planificación real del atleta a Semana 1 a partir de hoy — lo va a ver así en su propio celular. ¿Confirmás?')) return;
   const a = S.adminAthletes?.find(x=>x.uid===uid);
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   try {
     await setDoc(doc(db,'users',uid), {routineAssignedDate:today}, {merge:true});
     if(a) a.routineAssignedDate = today;
@@ -8600,9 +8637,9 @@ window.resetAthleteRoutineWeek = resetAthleteRoutineWeek;
 async function changeAthleteWeek(uid, delta) {
   const p = S.viewingAthlete?.personal;
   if(!p) return;
-  const start = new Date((p.startDate||new Date().toISOString().split('T')[0])+'T00:00:00');
+  const start = new Date((p.startDate||todayLocal())+'T00:00:00');
   start.setDate(start.getDate() - delta*7);
-  const newStart = start.toISOString().split('T')[0];
+  const newStart = toLocalDateStr(start);
   const newWeek = computeWeekFromDate(newStart);
   if(newWeek<1) return;
   p.startDate = newStart;
@@ -9433,7 +9470,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
 window.renderStrengthEvals = renderStrengthEvals;
 
 function renderStrengthEntry(edata) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   let html = `<div class="wellness-card">
     <div class="wellness-title">Registrar test de 1RM</div>
     <div class="wellness-sub">Cargá el máximo levantado en cada ejercicio — dejá en blanco los que no corresponda hoy</div>
@@ -9459,7 +9496,7 @@ function renderStrengthEntry(edata) {
 window.renderStrengthEntry=renderStrengthEntry;
 
 async function saveStrengthEvals() {
-  const date = document.getElementById('einp-strength-date')?.value || new Date().toISOString().split('T')[0];
+  const date = document.getElementById('einp-strength-date')?.value || todayLocal();
   let saved=0;
   const uid = S.evalAthleteId||'self';
   for(const t of STRENGTH_TESTS) {
@@ -9522,7 +9559,7 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
   });
 
   html += '<div class="eval-field full" style="margin-top:4px"><label class="eval-lbl">Fecha</label>'
-    + '<input class="eval-inp" type="date" id="einp-date-all" value="'+new Date().toISOString().split('T')[0]+'"></div>';
+    + '<input class="eval-inp" type="date" id="einp-date-all" value="'+todayLocal()+'"></div>';
   html += '<div class="eval-field full"><span class="eval-toggle-secondary" onclick="toggleEvalSecondary()">'
     + (sec?'▲ Ocultar':'▼ Mostrar')+' tiempo de vuelo y velocidad</span></div>';
 
@@ -9777,7 +9814,7 @@ function renderAthleteTeamCompare(myData) {
 window.renderAthleteTeamCompare = renderAthleteTeamCompare;
 
 async function saveAllEvals() {
-  const date = document.getElementById('einp-date-all')?.value || new Date().toISOString().split('T')[0];
+  const date = document.getElementById('einp-date-all')?.value || todayLocal();
   const tof  = document.getElementById('einp-tof-cmj')?.value;
   const vel  = document.getElementById('einp-vel-cmj')?.value;
   let saved = 0;
@@ -10401,7 +10438,7 @@ function drawAthleteTrendChart() {
 
   for(let i=DAYS-1;i>=0;i--){
     const d=new Date(today); d.setDate(d.getDate()-i);
-    const dateStr=d.toISOString().split('T')[0];
+    const dateStr=toLocalDateStr(d);
     labels.push(dateStr.slice(5));
     const logsUpToDate=logs.filter(l=>l.date<=dateStr);
     const m=calcLoadMetrics(logsUpToDate);
@@ -10650,7 +10687,7 @@ window.adminSetIsInjury = adminSetIsInjury;
 
 function renderDashboardContent() {
   const athletes = S.dashAthletes;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const isDesktop = window.innerWidth >= 900;
   
   // Aggregate stats
@@ -10663,7 +10700,7 @@ function renderDashboardContent() {
 
   // Alert detection: ACWR risk + wellness silence (2+ days without check-in)
   const twoDaysAgo = new Date(); twoDaysAgo.setDate(twoDaysAgo.getDate()-2);
-  const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+  const twoDaysAgoStr = toLocalDateStr(twoDaysAgo);
 
   const acwrAlerts = athletes.filter(a=>{
     const logs = a._personal?.history?._sessionLogs||[];
@@ -10816,7 +10853,7 @@ function renderDashboardAthleteList() {
   const athletes = S.dashAthletes||[];
   const search = (S.dashSearch||'').toLowerCase();
   const teamFilter = S.dashTeamFilter||null;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
 
   let filtered = athletes;
   if(teamFilter==='individual') filtered = filtered.filter(a=>!a.teamId);
@@ -10892,7 +10929,7 @@ window.adminOpenAthleteDash=adminOpenAthleteDash;
 
 // Athlete home (non-admin) — brief summary
 function renderAthleteHome() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const logs = S.history?._sessionLogs||[];
   const todayLogs = logs.filter(l=>l.date===today);
   const metrics = calcLoadMetrics(logs);
