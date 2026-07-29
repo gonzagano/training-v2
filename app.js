@@ -1607,12 +1607,15 @@ window.onboardingPrev = onboardingPrev;
 async function findOrCreateTeam(institution, category, sport) {
   const tSnap = await getDocs(collection(db, 'teams'));
   const allTeams = tSnap.docs.map(dd => ({ id: dd.id, ...dd.data() }));
-  // Primero por institution (el campo correcto), y si no aparece (equipos
-  // creados antes de que ese campo existiera, como los que ya tenías armados)
-  // caemos a comparar por nombre — así no se pierde ni se duplica ningún
-  // equipo ya existente.
-  const existing = allTeams.find(t => t.institution === institution && t.category === category)
-    || allTeams.find(t => t.name === institution && t.category === category);
+  // Normalizado (sin mayúsculas, sin espacios de más, sin tildes) para no
+  // duplicar un equipo por una diferencia de forma ("Liga De Honor " vs
+  // "Liga de Honor") — antes era comparación exacta, y una sola letra
+  // distinta creaba un equipo fantasma nuevo con los partidos importados,
+  // mientras el equipo real (con los jugadores) se quedaba sin nada.
+  const norm = s => (s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const institutionN = norm(institution), categoryN = norm(category);
+  const existing = allTeams.find(t => norm(t.institution)===institutionN && norm(t.category)===categoryN)
+    || allTeams.find(t => norm(t.name)===institutionN && norm(t.category)===categoryN);
   if (existing) {
     // Aprovechamos y le completamos el campo institution si le faltaba, para
     // que la próxima vez ya matchee directo por la vía correcta.
@@ -1683,6 +1686,7 @@ async function importEstudiantesFixtures() {
       {category:'Juniors', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
     ];
     let addedTotal = 0;
+    const emptyTeams = [];
     for(const {category, fixtures} of targets) {
       const teamId = await findOrCreateTeam('Handball-EDLP', category, 'Handball');
       let team = S.teams.find(t=>t.id===teamId);
@@ -1691,6 +1695,12 @@ async function importEstudiantesFixtures() {
         team = {id:teamId, ...snap.data()};
         S.teams.push(team);
       }
+      // Chequeo de seguridad: si el equipo que encontró/creó para esta
+      // categoría no tiene NINGÚN jugador, es casi seguro que no es el
+      // equipo real (el que ya tiene el plantel armado) — probablemente se
+      // creó uno nuevo por no encontrar el existente. Avisamos ANTES de que
+      // el admin se entere recién al refrescar y no ver nada.
+      if(!(team.players?.length) && !(team.memberUids?.length)) emptyTeams.push(category);
       if(!team.calendar) team.calendar={};
       for(const fx of fixtures) {
         const existing = getCalendarEvents(team, fx.date);
@@ -1702,6 +1712,9 @@ async function importEstudiantesFixtures() {
       }
     }
     showToast(`✓ Fixture importado — ${addedTotal} partidos agregados`);
+    if(emptyTeams.length) {
+      alert(`OJO: el equipo de ${emptyTeams.join(', ')} al que se le acaban de agregar los partidos NO TIENE JUGADORES cargados. Probablemente no sea el equipo real (puede haberse creado uno nuevo por no encontrar el existente) — revisá en "Equipos" que los partidos aparezcan en el plantel correcto antes de confiar en esto.`);
+    }
     renderMain();
   } catch(e) { console.error(e); showToast('Error al importar: '+e.message); }
 }
