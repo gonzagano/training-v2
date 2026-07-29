@@ -7967,13 +7967,25 @@ async function bulkFixMisdatedWellnessToday() {
       if(hasWellnessToday) {
         fsUpdate[`wellness.${target}`] = personal.wellness[todayStr];
         fsUpdate[`wellness.${todayStr}`] = deleteField();
+        personal.wellness[target] = personal.wellness[todayStr];
+        delete personal.wellness[todayStr];
       }
       if(hasLogsToday) {
         logs.forEach(l=>{ if(l.date===todayStr) l.date=target; });
         fsUpdate['history._sessionLogs'] = logs;
         fsUpdate['sessionLogs'] = logs;
+        if(!personal.history) personal.history = {};
+        personal.history._sessionLogs = logs;
+        personal.sessionLogs = logs;
       }
       await setDoc(pRef, fsUpdate, {merge:true});
+      // Firestore ya quedó bien, pero si este atleta tenía su _personal
+      // cacheado en memoria (ensureGroupPersonalData no lo vuelve a pedir una
+      // vez cargado), la pantalla seguía mostrando la versión vieja hasta
+      // recargar la página entera. Actualizamos la copia en memoria acá
+      // mismo para que se vea corregido al toque, sin recargar nada.
+      a._personal = personal;
+      if(S.viewingAthlete?.uid===a.uid) S.viewingAthlete.personal = personal;
       moved++;
     }
     showToast(`✓ Corregidos: ${moved}${skipped?` · sin día libre en los últimos 3 días: ${skipped}`:''}`);
