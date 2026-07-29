@@ -7929,6 +7929,59 @@ async function moveWellnessDayData(uid, oldDate, newDate) {
 }
 window.moveWellnessDayData = moveWellnessDayData;
 
+// Corrección masiva, una sola vez: para TODOS los atletas registrados (de
+// cualquier equipo), lo que tengan cargado con fecha de HOY se mueve al día
+// anterior más cercano que esté libre — cascada ayer → antesdeayer → hace 3
+// días. Quien no tenga nada cargado hoy queda intacto. Trae cada documento
+// personal fresco desde Firestore (no confía en la caché local, que puede
+// estar vieja para atletas que no se abrieron en esta sesión) para no
+// arriesgar pisar datos con una copia desactualizada.
+async function bulkFixMisdatedWellnessToday() {
+  const todayStr = todayLocal();
+  const cascadeDates = [];
+  { const d=new Date(todayStr+'T00:00:00'); for(let i=1;i<=3;i++){ d.setDate(d.getDate()-1); cascadeDates.push(toLocalDateStr(d)); } }
+
+  if(!confirm(`Esto revisa a TODOS los atletas de todos los equipos y mueve lo que hayan cargado hoy (${todayStr}) al día anterior disponible (prueba en orden: ${cascadeDates.join(', ')}). A quien no tenga nada cargado hoy no se lo toca. ¿Confirmás?`)) return;
+  showToast('Revisando...');
+  try {
+    await ensureAdminAthletes();
+    let moved=0, skipped=0;
+    for(const a of S.adminAthletes) {
+      const pRef = doc(db,'personal',a.uid);
+      const pSnap = await getDoc(pRef);
+      if(!pSnap.exists()) continue;
+      const personal = pSnap.data();
+      const hasWellnessToday = !!(personal.wellness && personal.wellness[todayStr]);
+      const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
+      const hasLogsToday = logs.some(l=>l.date===todayStr);
+      if(!hasWellnessToday && !hasLogsToday) continue;
+
+      let target = null;
+      for(const cand of cascadeDates) {
+        const occupied = !!(personal.wellness && personal.wellness[cand]) || logs.some(l=>l.date===cand);
+        if(!occupied) { target = cand; break; }
+      }
+      if(!target) { skipped++; continue; }
+
+      const fsUpdate = {};
+      if(hasWellnessToday) {
+        fsUpdate[`wellness.${target}`] = personal.wellness[todayStr];
+        fsUpdate[`wellness.${todayStr}`] = deleteField();
+      }
+      if(hasLogsToday) {
+        logs.forEach(l=>{ if(l.date===todayStr) l.date=target; });
+        fsUpdate['history._sessionLogs'] = logs;
+        fsUpdate['sessionLogs'] = logs;
+      }
+      await setDoc(pRef, fsUpdate, {merge:true});
+      moved++;
+    }
+    showToast(`✓ Corregidos: ${moved}${skipped?` · sin día libre en los últimos 3 días: ${skipped}`:''}`);
+    renderMain();
+  } catch(e) { console.error(e); showToast('Error al corregir: '+e.message); }
+}
+window.bulkFixMisdatedWellnessToday = bulkFixMisdatedWellnessToday;
+
 // ── RECORDATORIOS: quién falta completar wellness/carga hoy ─────────────
 function openReminderScreen() {
   S.adminView = 'reminders';
@@ -8146,6 +8199,10 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Reparar vínculos de equipo</div><div class="admin-item-sub">Si un atleta registrado no aparece en las Evaluaciones/Wellness de su equipo (aunque sí en su ficha individual), esto lo arregla</div></div>
       <button class="abtn" onclick="repairTeamMemberLinks()">Reparar</button>
+    </div>
+    <div class="admin-item">
+      <div><div class="admin-item-lbl">Corregir cargas mal fechadas de hoy</div><div class="admin-item-sub">Para TODOS los equipos: a quien tenga wellness/carga cargados con fecha de hoy, se lo mueve al día anterior más cercano que tenga libre (ayer → antesdeayer → 3 días atrás). A quien no tenga nada cargado hoy no se lo toca</div></div>
+      <button class="abtn abtn-d" onclick="bulkFixMisdatedWellnessToday()">Corregir</button>
     </div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Clasificar molestias/lesiones</div><div class="admin-item-sub">Decidí de una cuáles dolores marcados son lesión real y cuáles son molestia</div></div>
