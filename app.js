@@ -19,6 +19,23 @@ function todayLocal() { return toLocalDateStr(new Date()); }
 window.toLocalDateStr = toLocalDateStr;
 window.todayLocal = todayLocal;
 
+// "Día efectivo" para cargar wellness/carga: antes de la madrugada (antes de
+// las 5am) sigue mostrando AYER por defecto — quien entrena de noche y carga
+// sus datos recién pasada la medianoche está reportando la sesión de ayer,
+// no una sesión de hoy que ni empezó. Es solo el valor por DEFECTO: quien de
+// verdad quiera cargar algo del día calendario real puede tocar "Volver a
+// hoy" y avanzar, eso sigue disponible siempre.
+const WELLNESS_DAY_CUTOFF_HOUR = 5;
+function getEffectiveTodayDate() {
+  const now = new Date();
+  if (now.getHours() < WELLNESS_DAY_CUTOFF_HOUR) {
+    const d = new Date(now); d.setDate(d.getDate()-1);
+    return toLocalDateStr(d);
+  }
+  return toLocalDateStr(now);
+}
+window.getEffectiveTodayDate = getEffectiveTodayDate;
+
 // ── TEMA (claro/oscuro) ──────────────────────────────────────────
 // El modo oscuro es opcional: no toca el tema claro por defecto, solo
 // alterna un atributo que activa el bloque de variables oscuras en CSS.
@@ -2934,27 +2951,36 @@ function renderWellnessDayStrip(wKey) {
   return `<div style="display:flex;gap:5px;margin-bottom:10px">${cells}</div>`;
 }
 function goToWellnessDate(key) {
-  const today = todayLocal();
-  S.wellnessViewDate = (key === today) ? null : key;
+  // null = "día efectivo por defecto" (ver getEffectiveTodayDate) — si
+  // colapsara contra el HOY real durante el corte de madrugada, tocar el
+  // día de hoy en la tira lo mandaría de nuevo a ayer en el próximo render.
+  S.wellnessViewDate = (key === getEffectiveTodayDate()) ? null : key;
   renderMain();
 }
 window.goToWellnessDate = goToWellnessDate;
 
 function shiftWellnessDate(delta) {
   const today=todayLocal();
-  const base=S.wellnessViewDate||today;
+  const base=S.wellnessViewDate||getEffectiveTodayDate();
   const d=new Date(base+'T00:00:00');
   d.setDate(d.getDate()+delta);
   const newDate=toLocalDateStr(d);
   if(newDate>today) return;
   const minD=new Date(); minD.setDate(minD.getDate()-WELLNESS_BACKFILL_DAYS);
   if(newDate<toLocalDateStr(minD)) return;
-  S.wellnessViewDate=(newDate===today)?null:newDate;
+  // null significa "usar el día efectivo por defecto" — así que solo se
+  // puede colapsar a null cuando aterrizás justo en ese día efectivo, nunca
+  // en el "hoy" real si todavía es antes del corte de madrugada (si no, la
+  // próxima vez que se recalcule volvería a caer en ayer, no en donde estás).
+  S.wellnessViewDate=(newDate===getEffectiveTodayDate())?null:newDate;
   renderMain();
 }
 window.shiftWellnessDate=shiftWellnessDate;
 
-function goToTodayWellness() { S.wellnessViewDate=null; renderMain(); }
+// Este SIEMPRE lleva al día calendario real, incluso durante el corte de
+// madrugada donde el default es "ayer" — es el override explícito para
+// quien de verdad quiere cargar algo del día de hoy antes de las 5am.
+function goToTodayWellness() { S.wellnessViewDate=todayLocal(); renderMain(); }
 window.goToTodayWellness=goToTodayWellness;
 
 function renderLoadItemRow(act, wKey, sport) {
@@ -2995,7 +3021,7 @@ window.toggleExtraGym = toggleExtraGym;
 
 function renderWellness() {
   const today=todayLocal();
-  const wKey=S.wellnessViewDate||today;
+  const wKey=S.wellnessViewDate||getEffectiveTodayDate();
   const isToday=wKey===today;
   if(!S.wellness[wKey]) S.wellness[wKey]={};
   const w=S.wellness[wKey];
@@ -7847,9 +7873,61 @@ function renderWellnessDetail() {
       </div>`;
     }).join('') : `<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin carga registrada este día.</div>`}
   </div>`;
+
+  // Caso típico: alguien carga la sesión de ayer pasados unos minutos de la
+  // medianoche y le queda fechada "hoy" — no es un bug (a esa hora ya es
+  // técnicamente el día siguiente), pero conviene poder corregirlo a mano.
+  if(Object.keys(w).length || logs.length) {
+    const prevDay = (()=>{ const d=new Date(date+'T00:00:00'); d.setDate(d.getDate()-1); return toLocalDateStr(d); })();
+    html += `<div class="admin-section">
+      <div class="admin-section-title">¿Se equivocaron de día?</div>
+      <div style="padding:12px 16px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Mueve el wellness y la carga de este día a otra fecha — típico caso: cargaron la sesión de ayer recién pasada la medianoche.</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="date" id="move-wellness-date-inp" class="abtn" value="${prevDay}">
+          <button class="abtn abtn-d" onclick="moveWellnessDayData('${uid}','${date}',document.getElementById('move-wellness-date-inp').value)">Mover a esa fecha</button>
+        </div>
+      </div>
+    </div>`;
+  }
   return html;
 }
 window.renderWellnessDetail=renderWellnessDetail;
+
+async function moveWellnessDayData(uid, oldDate, newDate) {
+  if(!newDate) { showToast('Elegí una fecha'); return; }
+  if(newDate===oldDate) { showToast('Es la misma fecha'); return; }
+  const personal = getPersonalOwner(uid);
+  if(!personal) { showToast('No se encontró el registro del atleta'); return; }
+  const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
+  const hasWellness = !!(personal.wellness && personal.wellness[oldDate]);
+  const hasLogs = logs.some(l=>l.date===oldDate);
+  if(!hasWellness && !hasLogs) { showToast('No hay datos ese día para mover'); return; }
+  const collision = !!((personal.wellness && personal.wellness[newDate]) || logs.some(l=>l.date===newDate));
+  if(!confirm(`¿Mover el wellness y la carga del ${oldDate} al ${newDate}?`+(collision?' Ojo: ya hay datos cargados ese día — se pueden mezclar.':''))) return;
+
+  const fsUpdate = {};
+  if(hasWellness) {
+    fsUpdate[`wellness.${newDate}`] = personal.wellness[oldDate];
+    fsUpdate[`wellness.${oldDate}`] = deleteField();
+  }
+  if(hasLogs) {
+    logs.forEach(l=>{ if(l.date===oldDate) l.date=newDate; });
+    fsUpdate['history._sessionLogs'] = logs;
+    fsUpdate['sessionLogs'] = logs;
+  }
+  try {
+    await setDoc(doc(db,'personal',uid), fsUpdate, {merge:true});
+    if(hasWellness) {
+      personal.wellness[newDate] = personal.wellness[oldDate];
+      delete personal.wellness[oldDate];
+    }
+    showToast('✓ Movido al '+newDate);
+    S.wellnessDetailDate = newDate;
+    renderMain();
+  } catch(e) { showToast('Error al mover: '+e.message); }
+}
+window.moveWellnessDayData = moveWellnessDayData;
 
 // ── RECORDATORIOS: quién falta completar wellness/carga hoy ─────────────
 function openReminderScreen() {
