@@ -383,12 +383,12 @@ async function syncEvalToOneRM(uid, testId, value) {
   if (uid === 'self') {
     if(!S.oneRM) S.oneRM = {};
     S.oneRM[liftId] = value;
-    try { await setDoc(doc(db,'personal',S.user.uid), {oneRM:S.oneRM}, {merge:true}); } catch(e){ /* no bloquea el guardado del test */ }
+    try { await setDoc(doc(db,'personal',S.user.uid), {[`oneRM.${liftId}`]:value}, {merge:true}); } catch(e){ /* no bloquea el guardado del test */ }
     return;
   }
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   if(a) { if(!a._personal) a._personal={}; if(!a._personal.oneRM) a._personal.oneRM={}; a._personal.oneRM[liftId]=value; }
-  try { await setDoc(doc(db,'personal',uid), {oneRM:(a?._personal?.oneRM)||{[liftId]:value}}, {merge:true}); } catch(e){ /* no bloquea el guardado del test */ }
+  try { await setDoc(doc(db,'personal',uid), {[`oneRM.${liftId}`]:value}, {merge:true}); } catch(e){ /* no bloquea el guardado del test */ }
 }
 window.syncEvalToOneRM = syncEvalToOneRM;
 
@@ -399,7 +399,7 @@ async function adminSaveOneRM(uid, liftId, value) {
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   if(a) { if(!a._personal) a._personal={}; if(!a._personal.oneRM) a._personal.oneRM={}; a._personal.oneRM[liftId]=val; }
   try {
-    await setDoc(doc(db,'personal',uid), {oneRM:(a?._personal?.oneRM)||{[liftId]:val}}, {merge:true});
+    await setDoc(doc(db,'personal',uid), {[`oneRM.${liftId}`]:val}, {merge:true});
     showToast('✓ RM guardado');
   } catch(e) { showToast('Error al guardar'); }
 }
@@ -2864,21 +2864,39 @@ window.setAtletaRoutineCicloView = setAtletaRoutineCicloView;
 
 // Permite al admin corregir carga/RPE que el atleta cargó mal — escribe
 // directo en el historial personal del atleta (mismo documento que él usa).
+// IMPORTANTE: nunca mandar el objeto "history" entero — ese mapa también
+// contiene _sessionLogs (la carga cruda que el atleta va cargando desde su
+// celular, en vivo). a._personal es una copia en memoria que se trajo al
+// abrir el equipo/atleta y puede quedar vieja mientras el admin corrige
+// varios atletas seguidos — mandar el objeto completo pisaba con esa foto
+// vieja cualquier sesión nueva que el atleta hubiera cargado mientras tanto.
+// Por eso acá se escribe SOLO el campo puntual tocado, por dot-path.
 async function adminSetExerciseField(uid, wKey, sName, exId, field, value) {
   const a = S.adminAthletes?.find(x=>x.uid===uid) || (S.viewingAthlete?.uid===uid ? S.viewingAthlete : null);
   if(!a) return;
   if(!a._personal) a._personal = {};
   if(!a._personal.history) a._personal.history = {};
   const sk = sessionKey(wKey, sName);
-  if(!a._personal.history[sk]) a._personal.history[sk] = {};
-  if(!a._personal.history[sk].exercises) a._personal.history[sk].exercises = {};
-  if(!a._personal.history[sk].exercises[exId]) a._personal.history[sk].exercises[exId] = {};
-  const rec = a._personal.history[sk].exercises[exId];
   const num = value===''? null : parseDecimal(value);
-  rec[field] = (num===null || isNaN(num)) ? null : num;
-  if(rec.load || rec.rpe) rec.checked = true;
   try {
-    await setDoc(doc(db,'personal',uid), {history:a._personal.history}, {merge:true});
+    // Traemos el registro puntual de ESTE ejercicio fresco del servidor
+    // antes de tocarlo, en vez de completar sobre la copia en memoria del
+    // admin (que puede tener horas de vieja dentro de la misma sesión,
+    // S.adminAthletes solo se carga una vez) — así ningún campo hermano
+    // (load/rpe/nota) que el atleta haya cargado más reciente se pierde.
+    let rec = {};
+    try {
+      const snap = await getDoc(doc(db,'personal',uid));
+      rec = snap.exists() ? (snap.data().history?.[sk]?.exercises?.[exId] || {}) : {};
+    } catch(e) { rec = a._personal.history[sk]?.exercises?.[exId] || {}; }
+    rec = {...rec};
+    rec[field] = (num===null || isNaN(num)) ? null : num;
+    if(rec.load || rec.rpe) rec.checked = true;
+    const path = `history.${sk}.exercises.${exId}`;
+    await setDoc(doc(db,'personal',uid), {[path]: rec}, {merge:true});
+    if(!a._personal.history[sk]) a._personal.history[sk] = {};
+    if(!a._personal.history[sk].exercises) a._personal.history[sk].exercises = {};
+    a._personal.history[sk].exercises[exId] = rec;
     showToast('✓ Guardado');
   } catch(e) { showToast('Error al guardar'); }
   renderMain();
@@ -3542,6 +3560,20 @@ function setInjurySeverity(zid,severity) {
 }
 window.setInjurySeverity=setInjurySeverity;
 
+// Trae fresca del servidor la ficha de UNA zona puntual antes de que el
+// admin le cambie un campo — S.viewingAthlete.personal viene de la misma
+// caché de equipo (a._personal) que solo se carga una vez por sesión y
+// nunca se refresca sola, así que puede tener horas de vieja. Sin esto, si
+// el atleta hubiera cargado dolor de hoy o agregado a la zona desde su
+// celular mientras el admin tenía la ficha abierta, ese dato se perdía al
+// guardar la corrección (solo el campo que el admin toca, encima).
+async function fetchFreshInjuryZone(uid, zoneId) {
+  try {
+    const snap = await getDoc(doc(db,'personal',uid));
+    return snap.exists() ? (snap.data().injuries?.[zoneId] || {}) : {};
+  } catch(e) { return null; }
+}
+
 // El admin corrige/fija la gravedad clínica real de una molestia desde la
 // ficha del atleta — independiente de lo que el dolor de hoy muestre. Es
 // justo el caso de "meniscos operado, en rehab, sin dolor hoy, pero sigue
@@ -3549,9 +3581,12 @@ window.setInjurySeverity=setInjurySeverity;
 async function adminSetInjurySeverity(uid, zoneId, severity) {
   const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
   if(!personal || !personal.injuries || !personal.injuries[zoneId]) return;
-  personal.injuries[zoneId].severity = severity;
   try {
-    await setDoc(doc(db,'personal',uid), {injuries:personal.injuries}, {merge:true});
+    let zone = await fetchFreshInjuryZone(uid, zoneId);
+    if(zone===null) zone = {...personal.injuries[zoneId]};
+    zone.severity = severity;
+    await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+    personal.injuries[zoneId] = zone;
     showToast('✓ Gravedad actualizada');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -3561,9 +3596,12 @@ window.adminSetInjurySeverity = adminSetInjurySeverity;
 async function adminSetInjuryRtpPhase(uid, zoneId, phase) {
   const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
   if(!personal || !personal.injuries || !personal.injuries[zoneId]) return;
-  personal.injuries[zoneId].rtpPhase = phase;
   try {
-    await setDoc(doc(db,'personal',uid), {injuries:personal.injuries}, {merge:true});
+    let zone = await fetchFreshInjuryZone(uid, zoneId);
+    if(zone===null) zone = {...personal.injuries[zoneId]};
+    zone.rtpPhase = phase;
+    await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+    personal.injuries[zoneId] = zone;
     showToast('✓ Fase de retorno actualizada');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -3636,15 +3674,32 @@ window.resolveIllness = resolveIllness;
 function toggleAdminIllnessForm() { S._showAdminIllnessForm = !S._showAdminIllnessForm; renderMain(); }
 window.toggleAdminIllnessForm = toggleAdminIllnessForm;
 
+// illnesses es un array (no un mapa), así que no se puede tocar un elemento
+// suelto con dot-path — antes de escribir, se trae la lista real del
+// servidor y se mezcla por id: se descarta la versión vieja de ESTE id (si
+// existía) y se agrega/reemplaza con la versión local, dejando cualquier
+// otro id (ej. registrado por el propio atleta mientras tanto) intacto.
+async function mergeIllnessToServer(uid, localEntry) {
+  let serverList = [];
+  try {
+    const snap = await getDoc(doc(db,'personal',uid));
+    if(snap.exists()) serverList = snap.data().illnesses || [];
+  } catch(e) { serverList = []; }
+  const merged = [...serverList.filter(x=>x.id!==localEntry.id), localEntry];
+  await setDoc(doc(db,'personal',uid), {illnesses:merged}, {merge:true});
+  return merged;
+}
+
 async function adminAddIllness(uid, note) {
   const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
   if(!personal) return;
   if(!personal.illnesses) personal.illnesses=[];
   if(getActiveIllness(personal.illnesses)) { showToast('Ya hay una enfermedad activa registrada'); return; }
   const today = todayLocal();
-  personal.illnesses.push({id:genId(), startDate:today, endDate:null, note:(note||'').trim()});
+  const newIll = {id:genId(), startDate:today, endDate:null, note:(note||'').trim()};
+  personal.illnesses.push(newIll);
   try {
-    await setDoc(doc(db,'personal',uid), {illnesses:personal.illnesses}, {merge:true});
+    personal.illnesses = await mergeIllnessToServer(uid, newIll);
     S._showAdminIllnessForm = false;
     showToast('✓ Enfermedad registrada');
     renderMain();
@@ -3659,7 +3714,7 @@ async function adminResolveIllness(uid, id) {
   if(!it) return;
   it.endDate = todayLocal();
   try {
-    await setDoc(doc(db,'personal',uid), {illnesses:personal.illnesses}, {merge:true});
+    personal.illnesses = await mergeIllnessToServer(uid, it);
     showToast('✓ Marcado como recuperado');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -6552,7 +6607,7 @@ async function addPersonalExtraExercise(uid,sessionName,exObj){
   if(!personal.personalExtras[sessionName]) personal.personalExtras[sessionName]=[];
   personal.personalExtras[sessionName].push(exObj);
   try {
-    await setDoc(doc(db,'personal',uid), {personalExtras:personal.personalExtras}, {merge:true});
+    await setDoc(doc(db,'personal',uid), {[`personalExtras.${sessionName}`]: personal.personalExtras[sessionName]}, {merge:true});
     showToast(`✓ ${exObj.name} agregado (solo para este atleta)`);
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -6564,7 +6619,7 @@ async function removePersonalExtraExercise(uid,sessionName,exId){
   if(!personal?.personalExtras?.[sessionName]) return;
   personal.personalExtras[sessionName]=personal.personalExtras[sessionName].filter(e=>e.id!==exId);
   try {
-    await setDoc(doc(db,'personal',uid), {personalExtras:personal.personalExtras}, {merge:true});
+    await setDoc(doc(db,'personal',uid), {[`personalExtras.${sessionName}`]: personal.personalExtras[sessionName]}, {merge:true});
     showToast('✓ Eliminado');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -7809,7 +7864,7 @@ async function saveOneRM(liftId, value) {
   if(!S.oneRM) S.oneRM={};
   S.oneRM[liftId]=val;
   try {
-    await setDoc(doc(db,'personal',S.user.uid), {oneRM:S.oneRM}, {merge:true});
+    await setDoc(doc(db,'personal',S.user.uid), {[`oneRM.${liftId}`]:val}, {merge:true});
     showToast('✓ Marca guardada');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -8030,11 +8085,11 @@ async function moveWellnessDayData(uid, oldDate, newDate) {
   if(newDate===oldDate) { showToast('Es la misma fecha'); return; }
   const personal = getPersonalOwner(uid);
   if(!personal) { showToast('No se encontró el registro del atleta'); return; }
-  const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
+  const cachedLogs = personal.history?._sessionLogs || personal.sessionLogs || [];
   const hasWellness = !!(personal.wellness && personal.wellness[oldDate]);
-  const hasLogs = logs.some(l=>l.date===oldDate);
+  const hasLogs = cachedLogs.some(l=>l.date===oldDate);
   if(!hasWellness && !hasLogs) { showToast('No hay datos ese día para mover'); return; }
-  const collision = !!((personal.wellness && personal.wellness[newDate]) || logs.some(l=>l.date===newDate));
+  const collision = !!((personal.wellness && personal.wellness[newDate]) || cachedLogs.some(l=>l.date===newDate));
   if(!confirm(`¿Mover el wellness y la carga del ${oldDate} al ${newDate}?`+(collision?' Ojo: ya hay datos cargados ese día — se pueden mezclar.':''))) return;
 
   const fsUpdate = {};
@@ -8042,16 +8097,29 @@ async function moveWellnessDayData(uid, oldDate, newDate) {
     fsUpdate[`wellness.${newDate}`] = personal.wellness[oldDate];
     fsUpdate[`wellness.${oldDate}`] = deleteField();
   }
+  let freshLogs = null;
   if(hasLogs) {
-    logs.forEach(l=>{ if(l.date===oldDate) l.date=newDate; });
-    fsUpdate['history._sessionLogs'] = logs;
-    fsUpdate['sessionLogs'] = logs;
+    // Traemos la carga real del servidor justo antes de mover, en vez de
+    // confiar en la copia que el admin tiene cacheada desde que abrió esta
+    // ficha — si el atleta cargó una sesión nueva desde su celular mientras
+    // tanto, esa copia vieja la hubiera borrado al reescribir el array entero.
+    try {
+      const snap = await getDoc(doc(db,'personal',uid));
+      freshLogs = snap.exists() ? (snap.data().history?._sessionLogs || snap.data().sessionLogs || []) : [];
+    } catch(e) { freshLogs = cachedLogs; }
+    freshLogs.forEach(l=>{ if(l.date===oldDate) l.date=newDate; });
+    fsUpdate['history._sessionLogs'] = freshLogs;
+    fsUpdate['sessionLogs'] = freshLogs;
   }
   try {
     await setDoc(doc(db,'personal',uid), fsUpdate, {merge:true});
     if(hasWellness) {
       personal.wellness[newDate] = personal.wellness[oldDate];
       delete personal.wellness[oldDate];
+    }
+    if(freshLogs) {
+      if(!personal.history) personal.history = {};
+      personal.history._sessionLogs = freshLogs;
     }
     showToast('✓ Movido al '+newDate);
     S.wellnessDetailDate = newDate;
@@ -10960,9 +11028,12 @@ async function adminSetIsInjury(uid, zoneId, val) {
   const a = (S.dashAthletes||[]).find(x=>x.uid===uid) || (S.adminAthletes||[]).find(x=>x.uid===uid);
   const personal = a?._personal;
   if(!personal?.injuries?.[zoneId]) return;
-  personal.injuries[zoneId].isInjury = val;
   try {
-    await setDoc(doc(db,'personal',uid), {injuries:personal.injuries}, {merge:true});
+    let zone = await fetchFreshInjuryZone(uid, zoneId);
+    if(zone===null) zone = {...personal.injuries[zoneId]};
+    zone.isInjury = val;
+    await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+    personal.injuries[zoneId] = zone;
     showToast(val?'✓ Marcada como lesión':'✓ Marcada como molestia');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
