@@ -894,8 +894,14 @@ onAuthStateChanged(auth, async (user) => {
     const d = pSnap.data();
     if (d.evals) S.evals = d.evals;
     if (d.oneRM) S.oneRM = d.oneRM;
-    if (d.sessionLogs) { if(!S.history) S.history={}; S.history._sessionLogs=d.sessionLogs; }
+    // "history" (anidado) es la fuente de verdad; "sessionLogs" (campo suelto,
+    // legado) es solo un respaldo para docs viejos que todavía no tengan
+    // _sessionLogs adentro de history. Antes el orden era al revés en la
+    // práctica (se pisaba history entero después), así que si algún doc
+    // viejo tenía sessionLogs pero no history._sessionLogs, se perdía.
     if (d.history) S.history = d.history;
+    if (!S.history) S.history = {};
+    if (!S.history._sessionLogs && d.sessionLogs) S.history._sessionLogs = d.sessionLogs;
     if (d.wellness) S.wellness = d.wellness;
     if (d.injuries) S.injuries = d.injuries;
     if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
@@ -8085,36 +8091,44 @@ async function moveWellnessDayData(uid, oldDate, newDate) {
   if(newDate===oldDate) { showToast('Es la misma fecha'); return; }
   const personal = getPersonalOwner(uid);
   if(!personal) { showToast('No se encontró el registro del atleta'); return; }
-  const cachedLogs = personal.history?._sessionLogs || personal.sessionLogs || [];
-  const hasWellness = !!(personal.wellness && personal.wellness[oldDate]);
-  const hasLogs = cachedLogs.some(l=>l.date===oldDate);
-  if(!hasWellness && !hasLogs) { showToast('No hay datos ese día para mover'); return; }
-  const collision = !!((personal.wellness && personal.wellness[newDate]) || cachedLogs.some(l=>l.date===newDate));
+
+  // Todo el chequeo Y el movimiento se hacen sobre una lectura FRESCA del
+  // servidor, nunca sobre "personal" (la caché del admin, que se trae una
+  // sola vez por sesión y puede tener horas de vieja). Antes solo la carga
+  // se releía fresca y el wellness seguía usando la copia vieja — eso podía
+  // hacer que el wellness "movido" en realidad pisara con un valor
+  // desactualizado, o que un día que en el servidor ya no tenía nada (el
+  // atleta lo había corregido él mismo, o un movimiento previo ya lo había
+  // vaciado) se detectara como "hay datos" por la caché y confundiera todo.
+  let fresh;
+  try {
+    const snap = await getDoc(doc(db,'personal',uid));
+    fresh = snap.exists() ? snap.data() : {};
+  } catch(e) { showToast('Error al leer el registro: '+e.message); return; }
+  const freshWellness = fresh.wellness || {};
+  const freshLogsAll = fresh.history?._sessionLogs || fresh.sessionLogs || [];
+  const hasWellness = !!freshWellness[oldDate];
+  const hasLogs = freshLogsAll.some(l=>l.date===oldDate);
+  if(!hasWellness && !hasLogs) { showToast('No hay datos ese día para mover (revisá si ya se movieron antes)'); return; }
+  const collision = !!(freshWellness[newDate] || freshLogsAll.some(l=>l.date===newDate));
   if(!confirm(`¿Mover el wellness y la carga del ${oldDate} al ${newDate}?`+(collision?' Ojo: ya hay datos cargados ese día — se pueden mezclar.':''))) return;
 
   const fsUpdate = {};
   if(hasWellness) {
-    fsUpdate[`wellness.${newDate}`] = personal.wellness[oldDate];
+    fsUpdate[`wellness.${newDate}`] = freshWellness[oldDate];
     fsUpdate[`wellness.${oldDate}`] = deleteField();
   }
   let freshLogs = null;
   if(hasLogs) {
-    // Traemos la carga real del servidor justo antes de mover, en vez de
-    // confiar en la copia que el admin tiene cacheada desde que abrió esta
-    // ficha — si el atleta cargó una sesión nueva desde su celular mientras
-    // tanto, esa copia vieja la hubiera borrado al reescribir el array entero.
-    try {
-      const snap = await getDoc(doc(db,'personal',uid));
-      freshLogs = snap.exists() ? (snap.data().history?._sessionLogs || snap.data().sessionLogs || []) : [];
-    } catch(e) { freshLogs = cachedLogs; }
-    freshLogs.forEach(l=>{ if(l.date===oldDate) l.date=newDate; });
+    freshLogs = freshLogsAll.map(l => l.date===oldDate ? {...l, date:newDate} : l);
     fsUpdate['history._sessionLogs'] = freshLogs;
     fsUpdate['sessionLogs'] = freshLogs;
   }
   try {
     await setDoc(doc(db,'personal',uid), fsUpdate, {merge:true});
+    if(!personal.wellness) personal.wellness = {};
     if(hasWellness) {
-      personal.wellness[newDate] = personal.wellness[oldDate];
+      personal.wellness[newDate] = freshWellness[oldDate];
       delete personal.wellness[oldDate];
     }
     if(freshLogs) {
