@@ -246,6 +246,7 @@ function setOstrcAnswer(zid, q, val) {
   if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'leve',isInjury:false,history:[]};
   if(!S.injuries[zid].ostrc) S.injuries[zid].ostrc={};
   S.injuries[zid].ostrc[q]=val;
+  markInjuryDirty(zid);
   renderMain();
 }
 window.setOstrcAnswer=setOstrcAnswer;
@@ -1033,14 +1034,54 @@ function scheduleSave() {
   saveTimer = setTimeout(saveToFirestore, 1500);
 }
 
+// ── QUÉ SE TOCÓ REALMENTE ESTA SESIÓN (para guardar sin pisar nada ajeno) ──
+// PWAs instaladas (agregadas a la pantalla de inicio) suelen quedar
+// "congeladas" en memoria por horas o días en vez de recargarse cada vez
+// que se abren — el celular las suspende y las retoma tal cual estaban. Si
+// mientras tanto un admin corrigió algo (una fecha de wellness movida, una
+// lesión reclasificada) y DESPUÉS esa sesión vieja guarda cualquier cosa,
+// el guardado de siempre (wellness/carga ENTEROS con lo que hubiera en
+// memoria) pisaba la corrección — el dato volvía a aparecer mal, tal cual
+// se reportó. La solución: guardar SOLO las fechas que esta sesión tocó de
+// verdad, nunca el objeto completo.
+function markWellnessDirty(date) {
+  if(!S._dirtyWellnessDates) S._dirtyWellnessDates = new Set();
+  S._dirtyWellnessDates.add(date);
+}
+window.markWellnessDirty = markWellnessDirty;
+
+function markCargaDirty(date) {
+  if(!S._dirtyCargaDates) S._dirtyCargaDates = new Set();
+  S._dirtyCargaDates.add(date);
+}
+window.markCargaDirty = markCargaDirty;
+
+function markInjuryDirty(zid) {
+  if(!S._dirtyInjuryZones) S._dirtyInjuryZones = new Set();
+  S._dirtyInjuryZones.add(zid);
+}
+window.markInjuryDirty = markInjuryDirty;
+
+function markEvalDirty(testId) {
+  if(!S._dirtyEvalTests) S._dirtyEvalTests = new Set();
+  S._dirtyEvalTests.add(testId);
+}
+window.markEvalDirty = markEvalDirty;
+
+function markIllnessDirty(id) {
+  if(!S._dirtyIllnessIds) S._dirtyIllnessIds = new Set();
+  S._dirtyIllnessIds.add(id);
+}
+window.markIllnessDirty = markIllnessDirty;
+
 async function saveToFirestore() {
   if (!S.user) return;
   try {
-    // Athletes with assigned routines don't save blocks (read-only from routine)
     const dataToSave = {
-      history: S.history, evals: S.evals||{}, sessionLogs: (S.history._sessionLogs||[]),
-      wellness: S.wellness, injuries: S.injuries, injuryArchive: S.injuryArchive||[],
-      illnesses: S.illnesses||[],
+      // injuryArchive queda como campo completo a propósito: es historial que
+      // solo el propio atleta escribe (nadie más lo toca desde el lado
+      // admin), así que no hay con quién colisionar.
+      injuryArchive: S.injuryArchive||[],
       // personalExtras NO se re-guarda acá a propósito: el atleta nunca lo
       // edita (solo lo lee), así que reescribirlo en cada save suyo
       // arriesgaba el mismo bug que saveTeam() — pisar con una copia local
@@ -1050,6 +1091,63 @@ async function saveToFirestore() {
       currentWeek: S.currentWeek, startDate: S.startDate,
       updatedAt: serverTimestamp()
     };
+    // Evaluaciones: por test puntual (dot-path) — el admin puede cargar un
+    // test para este mismo atleta desde su propia sesión (saveAthleteEvalsDoc)
+    // mientras esta sesión sigue abierta; si mandáramos el mapa "evals"
+    // entero, el próximo guardado de wellness/carga de esta sesión pisaría
+    // ese test recién cargado por el admin.
+    (S._dirtyEvalTests||new Set()).forEach(testId=>{
+      if(S.evals[testId]) dataToSave['evals.'+testId] = S.evals[testId];
+    });
+    // Wellness: SOLO las fechas que esta sesión modificó, por campo puntual
+    // (dot-path) — así una fecha que un admin ya movió/borró en otro lado
+    // nunca se puede "resucitar" con una copia vieja, aunque esta sesión
+    // todavía la tenga en memoria.
+    (S._dirtyWellnessDates||new Set()).forEach(date=>{
+      if(S.wellness[date]) dataToSave['wellness.'+date] = S.wellness[date];
+    });
+    // Lesiones/molestias: mismo criterio, por zona puntual — si la zona ya
+    // no existe en memoria es porque se resolvió/quitó, así que se borra en
+    // Firestore con deleteField() en vez de mandar el mapa entero (que podía
+    // pisar una gravedad o fase de retorno que el entrenador acababa de fijar).
+    (S._dirtyInjuryZones||new Set()).forEach(zid=>{
+      dataToSave['injuries.'+zid] = S.injuries[zid] ? S.injuries[zid] : deleteField();
+    });
+    // Carga (_sessionLogs): es un array, no se puede tocar una fecha suelta
+    // con dot-path — leemos lo que hay guardado de verdad ahora mismo,
+    // sacamos las fechas que esta sesión tocó (van a quedar reemplazadas) y
+    // le sumamos las versiones locales de esas fechas. Cualquier otra fecha
+    // (tocada por un admin mientras tanto) queda tal cual estaba en el server.
+    const dirtyCarga = S._dirtyCargaDates||new Set();
+    if(dirtyCarga.size) {
+      let serverLogs = [];
+      try {
+        const snap = await getDoc(doc(db,'personal',S.user.uid));
+        if(snap.exists()) serverLogs = snap.data().history?._sessionLogs || snap.data().sessionLogs || [];
+      } catch(e) { serverLogs = S.history._sessionLogs||[]; }
+      const keptServerLogs = serverLogs.filter(l=>!dirtyCarga.has(l.date));
+      const localDirtyLogs = (S.history._sessionLogs||[]).filter(l=>dirtyCarga.has(l.date));
+      const mergedLogs = [...keptServerLogs, ...localDirtyLogs];
+      dataToSave['history._sessionLogs'] = mergedLogs;
+      dataToSave.sessionLogs = mergedLogs;
+      S.history._sessionLogs = mergedLogs;
+    }
+    // Enfermedades: mismo criterio que la carga — es un array, así que
+    // mezclamos por id en vez de mandar la lista entera. adminAddIllness /
+    // adminResolveIllness ya escriben esto mismo desde el lado admin, así
+    // que sin esto el próximo guardado del propio atleta podía revivir una
+    // enfermedad que el admin acababa de marcar como recuperada.
+    const dirtyIll = S._dirtyIllnessIds||new Set();
+    if(dirtyIll.size) {
+      let serverIll = [];
+      try {
+        const snap = await getDoc(doc(db,'personal',S.user.uid));
+        if(snap.exists()) serverIll = snap.data().illnesses || [];
+      } catch(e) { serverIll = S.illnesses||[]; }
+      const keptServerIll = serverIll.filter(x=>!dirtyIll.has(x.id));
+      const localDirtyIll = (S.illnesses||[]).filter(x=>dirtyIll.has(x.id));
+      dataToSave.illnesses = [...keptServerIll, ...localDirtyIll];
+    }
     if (S.isAdmin) {
       // Admin saves their own personal blocks
       dataToSave.blocks = S.blocks;
@@ -1057,6 +1155,11 @@ async function saveToFirestore() {
       await setDoc(doc(db, 'shared', 'library'), { library: S.library, videos: S.videos }, { merge: true });
     }
     await setDoc(doc(db, 'personal', S.user.uid), dataToSave, { merge: true });
+    S._dirtyWellnessDates = new Set();
+    S._dirtyCargaDates = new Set();
+    S._dirtyInjuryZones = new Set();
+    S._dirtyEvalTests = new Set();
+    S._dirtyIllnessIds = new Set();
   } catch(e) { console.error('Save error', e); }
 }
 
@@ -2233,6 +2336,7 @@ async function submitSessionFeedback() {
   if(!S.history._sessionLogs) S.history._sessionLogs=[];
   S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity==='gimnasio'));
   S.history._sessionLogs.push(log);
+  markCargaDirty(date);
   scheduleSave();
 
   closeSessionFeedback();
@@ -2340,6 +2444,7 @@ function saveLoadLog(date) {
       // saca cualquier log previo de esta actividad en esa fecha, para no duplicar carga
       S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity===act.key));
       S.history._sessionLogs.push({date, activity:act.key, session:getLoadActivityDisplay(act, S.userData?.sport).label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe});
+      markCargaDirty(date);
       savedAny=true;
     } else if((mins && !rpe) || (!mins && rpe)) {
       // Cargó una mitad y no la otra — esto es justo lo que se perdía en
@@ -3368,6 +3473,7 @@ function updateSleepHours(wKey,input) {
   if(wrap){const sp=wrap.querySelector('.hooper-label span:last-child');if(sp){sp.textContent=`${h}h · ${cat.label}`;sp.style.color=cat.color;}}
   if(!S.wellness[wKey]) S.wellness[wKey]={};
   S.wellness[wKey]['sueño_horas']=h;
+  markWellnessDirty(wKey);
   scheduleSave();
   refreshWellnessScoreSection(wKey);
 }
@@ -3375,12 +3481,15 @@ window.updateSleepHours=updateSleepHours;
 
 function setHooper(wKey,key,val) {
   if(!S.wellness[wKey]) S.wellness[wKey]={};
-  S.wellness[wKey][key]=val; scheduleSave(); renderMain();
+  S.wellness[wKey][key]=val;
+  markWellnessDirty(wKey);
+  scheduleSave(); renderMain();
 }
 window.setHooper=setHooper;
 
 function submitWellness(wKey) {
   S.wellness[wKey].date=wKey; S.wellness[wKey].submitted=true;
+  markWellnessDirty(wKey);
   scheduleSave();
   showToast('✓ Wellness de hoy guardado');
   const main=document.getElementById('main');
@@ -3404,31 +3513,32 @@ function setPain(zid,val) {
     // "lesión" a propósito si corresponde (ver setIsInjury).
     S.injuries[zid]={pain:0,note:'',type:'',severity:suggestedSeverity,isInjury:false,history:[]};
   }
-  S.injuries[zid].pain=val; renderMain();
+  S.injuries[zid].pain=val; markInjuryDirty(zid); renderMain();
 }
 window.setPain=setPain;
 
 function setPainNote(zid,val) {
   if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'leve',isInjury:false,history:[]};
   S.injuries[zid].note=val;
+  markInjuryDirty(zid);
 }
 window.setPainNote=setPainNote;
 
 function setIsInjury(zid,val) {
   if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'leve',isInjury:false,history:[]};
-  S.injuries[zid].isInjury=val; renderMain();
+  S.injuries[zid].isInjury=val; markInjuryDirty(zid); renderMain();
 }
 window.setIsInjury=setIsInjury;
 
 function setInjuryType(zid,type) {
   if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',isInjury:true,history:[]};
-  S.injuries[zid].type=type; renderMain();
+  S.injuries[zid].type=type; markInjuryDirty(zid); renderMain();
 }
 window.setInjuryType=setInjuryType;
 
 function setInjurySeverity(zid,severity) {
   if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',isInjury:true,history:[]};
-  S.injuries[zid].severity=severity; renderMain();
+  S.injuries[zid].severity=severity; markInjuryDirty(zid); renderMain();
 }
 window.setInjurySeverity=setInjurySeverity;
 
@@ -3501,7 +3611,9 @@ async function addIllness(note) {
   if(!S.illnesses) S.illnesses=[];
   if(getActiveIllness(S.illnesses)) { showToast('Ya hay una enfermedad activa registrada'); return; }
   const today = todayLocal();
-  S.illnesses.push({id:genId(), startDate:today, endDate:null, note:(note||'').trim()});
+  const newIll = {id:genId(), startDate:today, endDate:null, note:(note||'').trim()};
+  S.illnesses.push(newIll);
+  markIllnessDirty(newIll.id);
   S._showIllnessForm = false;
   scheduleSave();
   showToast('✓ Enfermedad registrada');
@@ -3513,6 +3625,7 @@ function resolveIllness(id) {
   const it = (S.illnesses||[]).find(x=>x.id===id);
   if(!it) return;
   it.endDate = todayLocal();
+  markIllnessDirty(id);
   scheduleSave();
   showToast('✓ Marcado como recuperado');
   renderMain();
@@ -3577,6 +3690,7 @@ function removeInjury(zid) {
   if(!S.injuries[zid]) return;
   archiveInjury(zid);
   delete S.injuries[zid];
+  markInjuryDirty(zid);
   S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada y guardada en el historial'); renderMain();
 }
 window.removeInjury=removeInjury;
@@ -3586,6 +3700,7 @@ function saveInjury(zid) {
   if(!inj.history) inj.history=[];
   inj.history.push({date:todayLocal(),pain:inj.pain,note:inj.note||'',type:inj.type||''});
   if(inj.pain===0) { archiveInjury(zid); delete S.injuries[zid]; }
+  markInjuryDirty(zid);
   S.selectedZone=null; scheduleSave(); showToast('✓ Molestia guardada'); renderMain();
 }
 window.saveInjury=saveInjury;
@@ -3605,14 +3720,14 @@ function renderInjuryFollowup() {
       const doneToday = hist.length>0 && hist[hist.length-1].date===today;
       const scaleBtns=Array.from({length:11},(_,i)=>{
         const cls=inj.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn';
-        return `<button class="${cls}" ${doneToday?'disabled':''} onclick="updateInjuryFollowup('${zid}',${i})">${i}</button>`;
+        return `<button class="${cls}" onclick="updateInjuryFollowup('${zid}',${i})">${i}</button>`;
       }).join('');
       return `<div style="padding:12px 16px;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <div style="font-size:13px;font-weight:600">${zone?.label||zid}${inj.type?` · ${INJURY_TYPES[inj.type]}`:''}</div>
-          ${doneToday?'<span style="font-size:11px;color:var(--green)">✓ Registrado hoy</span>':''}
+          ${doneToday?'<span style="font-size:11px;color:var(--text3)">✓ Registrado hoy — tocá otro número para corregir</span>':''}
         </div>
-        <div class="pain-scale" style="display:flex;gap:4px;flex-wrap:wrap;${doneToday?'opacity:.5':''}">${scaleBtns}</div>
+        <div class="pain-scale" style="display:flex;gap:4px;flex-wrap:wrap">${scaleBtns}</div>
       </div>`;
     }).join('')}
   </div>`;
@@ -3628,6 +3743,7 @@ function updateInjuryFollowup(zid,val) {
   if(last && last.date===today) { last.pain=val; last.note=inj.note||''; last.type=inj.type||''; }
   else inj.history.push({date:today,pain:val,note:inj.note||'',type:inj.type||''});
   if(val===0) { archiveInjury(zid); delete S.injuries[zid]; }
+  markInjuryDirty(zid);
   scheduleSave(); showToast('✓ Seguimiento guardado'); renderMain();
 }
 window.updateInjuryFollowup=updateInjuryFollowup;
@@ -6478,6 +6594,21 @@ async function openTeam(id) {
   S.teamSubview='rutina';
   S.currentView='teams';
   renderBottomBar(); renderMain();
+  // Refrescamos ESTE equipo desde Firestore antes de mostrarlo. S.teams se
+  // carga una sola vez al loguearse — si la app queda abierta varios días
+  // (típico en una PWA instalada), esa copia en memoria queda vieja y el
+  // calendario/roster parecía "borrarse" cuando en realidad Firestore tenía
+  // todo bien: solo se estaba mostrando una foto vieja.
+  try {
+    const fresh = await getDoc(doc(db,'teams',id));
+    if(fresh.exists()) {
+      const freshTeam = {id, ...fresh.data()};
+      const idx = S.teams.findIndex(t=>t.id===id);
+      if(idx>=0) S.teams[idx]=freshTeam; else S.teams.push(freshTeam);
+      S.teamView = freshTeam;
+      renderMain();
+    }
+  } catch(e) { console.error('Error refrescando equipo', e); }
   // Sin esto, si entrás a Equipos sin haber pasado antes por "Atletas",
   // S.adminAthletes queda vacío y el roster no puede reconocer a NADIE como
   // "cuenta vinculada" aunque estén perfectamente registrados.
@@ -7929,70 +8060,66 @@ async function moveWellnessDayData(uid, oldDate, newDate) {
 }
 window.moveWellnessDayData = moveWellnessDayData;
 
-// Corrección masiva, una sola vez: para TODOS los atletas registrados (de
-// cualquier equipo), lo que tengan cargado con fecha de HOY se mueve al día
-// anterior más cercano que esté libre — cascada ayer → antesdeayer → hace 3
-// días. Quien no tenga nada cargado hoy queda intacto. Trae cada documento
-// personal fresco desde Firestore (no confía en la caché local, que puede
-// estar vieja para atletas que no se abrieron en esta sesión) para no
-// arriesgar pisar datos con una copia desactualizada.
-async function bulkFixMisdatedWellnessToday() {
-  const todayStr = todayLocal();
-  const cascadeDates = [];
-  { const d=new Date(todayStr+'T00:00:00'); for(let i=1;i<=3;i++){ d.setDate(d.getDate()-1); cascadeDates.push(toLocalDateStr(d)); } }
-
-  if(!confirm(`Esto revisa a TODOS los atletas de todos los equipos y mueve lo que hayan cargado hoy (${todayStr}) al día anterior disponible (prueba en orden: ${cascadeDates.join(', ')}). A quien no tenga nada cargado hoy no se lo toca. ¿Confirmás?`)) return;
-  showToast('Revisando...');
-  try {
-    await ensureAdminAthletes();
-    let moved=0, skipped=0;
-    for(const a of S.adminAthletes) {
-      const pRef = doc(db,'personal',a.uid);
-      const pSnap = await getDoc(pRef);
-      if(!pSnap.exists()) continue;
-      const personal = pSnap.data();
-      const hasWellnessToday = !!(personal.wellness && personal.wellness[todayStr]);
-      const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
-      const hasLogsToday = logs.some(l=>l.date===todayStr);
-      if(!hasWellnessToday && !hasLogsToday) continue;
-
-      let target = null;
-      for(const cand of cascadeDates) {
-        const occupied = !!(personal.wellness && personal.wellness[cand]) || logs.some(l=>l.date===cand);
-        if(!occupied) { target = cand; break; }
-      }
-      if(!target) { skipped++; continue; }
-
-      const fsUpdate = {};
-      if(hasWellnessToday) {
-        fsUpdate[`wellness.${target}`] = personal.wellness[todayStr];
-        fsUpdate[`wellness.${todayStr}`] = deleteField();
-        personal.wellness[target] = personal.wellness[todayStr];
-        delete personal.wellness[todayStr];
-      }
-      if(hasLogsToday) {
-        logs.forEach(l=>{ if(l.date===todayStr) l.date=target; });
-        fsUpdate['history._sessionLogs'] = logs;
-        fsUpdate['sessionLogs'] = logs;
-        if(!personal.history) personal.history = {};
-        personal.history._sessionLogs = logs;
-        personal.sessionLogs = logs;
-      }
-      await setDoc(pRef, fsUpdate, {merge:true});
-      // Firestore ya quedó bien, pero si este atleta tenía su _personal
-      // cacheado en memoria (ensureGroupPersonalData no lo vuelve a pedir una
-      // vez cargado), la pantalla seguía mostrando la versión vieja hasta
-      // recargar la página entera. Actualizamos la copia en memoria acá
-      // mismo para que se vea corregido al toque, sin recargar nada.
-      a._personal = personal;
-      if(S.viewingAthlete?.uid===a.uid) S.viewingAthlete.personal = personal;
-      moved++;
-    }
-    showToast(`✓ Corregidos: ${moved}${skipped?` · sin día libre en los últimos 3 días: ${skipped}`:''}`);
-    renderMain();
-  } catch(e) { console.error(e); showToast('Error al corregir: '+e.message); }
+// ── REVISAR CARGAS EN DOMINGO (movidas mal por una corrección automática
+// anterior que ya no existe) ─────────────────────────────────────────────
+// Domingo no es día de entrenamiento para ningún equipo — si alguien tiene
+// wellness o carga cargados ahí, es casi seguro un resto de esa corrección.
+// A propósito NO mueve nada solo: solo LISTA a quién le quedó mal y te deja
+// elegir a qué día pertenece de verdad, uno por uno, con la misma
+// herramienta segura de mover un día puntual que ya usás desde el detalle
+// de wellness.
+async function openSundayReviewScreen() {
+  await ensureAdminAthletes();
+  await ensureGroupPersonalData(S.adminAthletes.map(a=>a.uid));
+  S.adminView = 'sunday_review';
+  S.currentView = 'admin';
+  renderBottomBar();
+  renderMain();
 }
-window.bulkFixMisdatedWellnessToday = bulkFixMisdatedWellnessToday;
+window.openSundayReviewScreen = openSundayReviewScreen;
+
+function renderSundayReviewScreen() {
+  const todayD = new Date(todayLocal()+'T00:00:00');
+  const dow = todayD.getDay(); // 0=domingo
+  const sunday = new Date(todayD); sunday.setDate(todayD.getDate()-dow);
+  const sundayStr = toLocalDateStr(sunday);
+  const mkDate = (offset)=>{ const d=new Date(sunday); d.setDate(sunday.getDate()+offset); return toLocalDateStr(d); };
+  const mondayStr=mkDate(1), tuesdayStr=mkDate(2), wednesdayStr=mkDate(3);
+
+  const hasDay = (p,d) => !!(p.wellness && p.wellness[d]) || (p.history?._sessionLogs||p.sessionLogs||[]).some(l=>l.date===d);
+
+  const affected = (S.adminAthletes||[]).filter(a => hasDay(a._personal||{}, sundayStr));
+
+  let html = `<div class="team-detail-header">
+    <button class="back-btn" onclick="S.adminView='main';renderMain()">‹</button>
+    <div class="team-detail-title">Revisar cargas en domingo</div>
+  </div>
+  <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Domingo ${sundayStr} no es día de entrenamiento — si alguien tiene algo cargado ahí, probablemente quedó mal movido. Elegí a qué día pertenece de verdad cada uno.</div>`;
+
+  if(!affected.length) {
+    html += `<div class="empty-state">✓ Nadie tiene datos cargados el domingo ${sundayStr}.</div>`;
+    return html;
+  }
+
+  html += affected.map(a=>{
+    const p = a._personal||{};
+    const tag = (d,label) => hasDay(p,d) ? `${label}: ya tiene datos` : `${label}: libre`;
+    return `<div class="admin-section">
+      <div class="admin-item">
+        <div><div class="admin-item-lbl">${a.name||a.email}</div>
+        <div class="admin-item-sub">${tag(mondayStr,'Lunes')} · ${tag(tuesdayStr,'Martes')} · ${tag(wednesdayStr,'Miércoles')}</div></div>
+      </div>
+      <div style="display:flex;gap:6px;padding:0 16px 12px;flex-wrap:wrap">
+        <button class="abtn" onclick="moveWellnessDayData('${a.uid}','${sundayStr}','${mondayStr}')">Es del lunes</button>
+        <button class="abtn" onclick="moveWellnessDayData('${a.uid}','${sundayStr}','${tuesdayStr}')">Es del martes</button>
+        <button class="abtn" onclick="moveWellnessDayData('${a.uid}','${sundayStr}','${wednesdayStr}')">Es del miércoles</button>
+        <button class="abtn" onclick="adminOpenAthlete('${a.uid}')">Ver ficha completa</button>
+      </div>
+    </div>`;
+  }).join('');
+  return html;
+}
+window.renderSundayReviewScreen = renderSundayReviewScreen;
 
 // ── RECORDATORIOS: quién falta completar wellness/carga hoy ─────────────
 function openReminderScreen() {
@@ -8153,6 +8280,7 @@ function renderAdmin() {
     case 'trained_today': return renderTrainedTodayScreen();
     case 'injury_classify': return renderInjuryClassifyScreen();
     case 'name_order_review': return renderNameOrderReview();
+    case 'sunday_review': return renderSundayReviewScreen();
     default:               return renderAdminMain();
   }
 }
@@ -8213,8 +8341,8 @@ function renderAdminMain() {
       <button class="abtn" onclick="repairTeamMemberLinks()">Reparar</button>
     </div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Corregir cargas mal fechadas de hoy</div><div class="admin-item-sub">Para TODOS los equipos: a quien tenga wellness/carga cargados con fecha de hoy, se lo mueve al día anterior más cercano que tenga libre (ayer → antesdeayer → 3 días atrás). A quien no tenga nada cargado hoy no se lo toca</div></div>
-      <button class="abtn abtn-d" onclick="bulkFixMisdatedWellnessToday()">Corregir</button>
+      <div><div class="admin-item-lbl">Revisar cargas en domingo</div><div class="admin-item-sub">Domingo no es día de entrenamiento — te lista a quién le quedó algo cargado ahí (por ejemplo, restos de una corrección anterior) y elegís vos a qué día pertenece de verdad, uno por uno</div></div>
+      <button class="abtn abtn-d" onclick="openSundayReviewScreen()">Revisar</button>
     </div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Clasificar molestias/lesiones</div><div class="admin-item-sub">Decidí de una cuáles dolores marcados son lesión real y cuáles son molestia</div></div>
@@ -9656,6 +9784,7 @@ async function saveStrengthEvals() {
       if(!S.evals[t.id]) S.evals[t.id]=[];
       S.evals[t.id].push(rec);
       sortEvalRecsByDate(S.evals[t.id]);
+      markEvalDirty(t.id);
     } else {
       if(!S._athleteEvalsCache) S._athleteEvalsCache={};
       if(!S._athleteEvalsCache[uid]) S._athleteEvalsCache[uid]={};
@@ -9979,6 +10108,7 @@ async function saveAllEvals() {
       if(!S.evals[t.id]) S.evals[t.id]=[];
       S.evals[t.id].push(rec);
       sortEvalRecsByDate(S.evals[t.id]);
+      markEvalDirty(t.id);
     } else {
       if(!S._athleteEvalsCache) S._athleteEvalsCache={};
       if(!S._athleteEvalsCache[uid]) S._athleteEvalsCache[uid]={};
@@ -10290,7 +10420,14 @@ window.pendingDocId=pendingDocId;
 
 async function saveAthleteEvalsDoc(uid, evals) {
   const ref = isPendingId(uid) ? doc(db,'pendingAthletes',pendingDocId(uid)) : doc(db,'personal',uid);
-  await setDoc(ref, {evals}, {merge:true});
+  // Dot-path por testId, nunca {evals} entero — si no, la próxima vez que el
+  // propio atleta guarde CUALQUIER cosa suya (wellness, carga) desde una
+  // sesión vieja, su copia local desactualizada del mapa "evals" completo
+  // pisaría el test que el admin acaba de cargar acá, aunque sea de otro
+  // ejercicio. Mismo criterio que wellness/injuries en saveToFirestore().
+  const payload = {};
+  Object.keys(evals||{}).forEach(testId => { payload['evals.'+testId] = evals[testId]; });
+  if(Object.keys(payload).length) await setDoc(ref, payload, {merge:true});
 }
 window.saveAthleteEvalsDoc=saveAthleteEvalsDoc;
 
@@ -10314,7 +10451,7 @@ async function deleteEvalRecord(testId, idx) {
   if(!confirm('¿Eliminar este registro?')) return;
   const uid = S.evalAthleteId||'self';
   if(uid==='self') {
-    if(S.evals[testId]) { S.evals[testId].splice(idx,1); scheduleSave(); }
+    if(S.evals[testId]) { S.evals[testId].splice(idx,1); markEvalDirty(testId); scheduleSave(); }
   } else {
     if(S._athleteEvalsCache?.[uid]?.[testId]) {
       S._athleteEvalsCache[uid][testId].splice(idx,1);
