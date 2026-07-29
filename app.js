@@ -3162,7 +3162,8 @@ function renderWellness() {
 
   const minAllowed=(()=>{const d=new Date();d.setDate(d.getDate()-WELLNESS_BACKFILL_DAYS);return toLocalDateStr(d);})();
   const canGoBack=wKey>minAllowed, canGoForward=wKey<today;
-  const dateLabel=isToday?'Hoy':new Date(wKey+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  const fullDateStr=new Date(wKey+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  const dateLabel=isToday?`Hoy - ${fullDateStr}`:fullDateStr;
 
   // Desktop: two-column layout. Mobile: stacked.
   let html = `<div class="page-header">
