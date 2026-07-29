@@ -1337,6 +1337,20 @@ window.computeWeekFromDate = computeWeekFromDate;
 // que gestiona muchos atletas cada uno en una semana distinta de su propia
 // planificación, mostrar "Semana 3" era ambiguo (¿semana 3 de quién?). Esto
 // no depende de ningún atleta puntual.
+// Los jugadores de EQUIPO no tienen un programa propio que avanza semana a
+// semana desde que se registraron — entrenan según el calendario del
+// equipo. Mostrarles "Semana 1", "Semana 2"... (contado desde su alta) no
+// significa nada real y confunde. Para ellos (y para el admin) mostramos la
+// semana calendario actual con su rango de fechas; solo a un atleta
+// individual con programa propio le sigue sirviendo el número de semana.
+function isTeamAthlete() { return S.userData?.athleteType === 'team'; }
+window.isTeamAthlete = isTeamAthlete;
+function getWeekHeaderLabel(prefix) {
+  if(S.isAdmin || isTeamAthlete()) return (prefix?'Semana actual · ':'')+getCurrentWeekRangeLabel();
+  return `Semana ${S.currentWeek}`;
+}
+window.getWeekHeaderLabel = getWeekHeaderLabel;
+
 function getCurrentWeekRangeLabel() {
   const now = new Date();
   const dow = (now.getDay()+6)%7; // lunes=0
@@ -1975,7 +1989,7 @@ function renderBottomBar() {
   const dwr = document.getElementById('desktop-week-range');
   const sf = document.getElementById('sidebar-footer');
   if(dw) dw.style.display = isDesktop ? 'flex' : 'none';
-  if(dwr) dwr.textContent = S.isAdmin ? getCurrentWeekRangeLabel() : `Semana ${S.currentWeek}`;
+  if(dwr) dwr.textContent = getWeekHeaderLabel();
   if(sf) sf.style.display = isDesktop ? 'block' : 'none';
 
   // Sync desktop user info
@@ -1992,8 +2006,8 @@ function renderAll() { renderSubnav(); renderMain(); }
 
 function renderSubnav() {
   const nav=document.getElementById('subnav');
-  const wp=document.getElementById('week-pill'); if(wp) wp.textContent = S.isAdmin ? getCurrentWeekRangeLabel() : `Sem ${S.currentWeek}`;
-  const dwr=document.getElementById('desktop-week-range'); if(dwr) dwr.textContent = S.isAdmin ? getCurrentWeekRangeLabel() : `Semana ${S.currentWeek}`;
+  const wp=document.getElementById('week-pill'); if(wp) wp.textContent = (S.isAdmin||isTeamAthlete()) ? getCurrentWeekRangeLabel() : `Sem ${S.currentWeek}`;
+  const dwr=document.getElementById('desktop-week-range'); if(dwr) dwr.textContent = getWeekHeaderLabel();
   if(S.currentView!=='session') { nav.innerHTML=''; return; }
   // Sessions: for admin use A/B/C/D; for athlete with routine use routine session names
   const sessions = getSessionList();
@@ -2081,7 +2095,7 @@ function renderSession() {
   const sessionLabel = S.isAdmin ? `Sesión ${S.currentSession}` : (S.currentSession||'Sesión');
   const header = `<div class="page-header">
     <div class="page-title">${sessionLabel}</div>
-    <div class="page-subtitle">Semana ${S.currentWeek} · ${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+    <div class="page-subtitle">${getWeekHeaderLabel(true)} · ${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>`;
   if (!blocks.length) {
     if (!S.isAdmin) {
@@ -2098,7 +2112,11 @@ function renderSession() {
 
 function renderBlock(b) {
   const cc=b.colorKey||'bx';
-  const open=b._open!==false;
+  // Todos los bloques arrancan colapsados — el atleta (o el admin revisando
+  // su rutina) los va desplegando uno por uno, en vez de encontrarse toda la
+  // sesión abierta y tener que scrollear entre bloques que no le interesan
+  // todavía.
+  const open=b._open===true;
   const exampleColors = {b1:'var(--teal)',b2:'var(--blue)',b3:'var(--purple)',b4:'var(--amber)',bx:'var(--text2)'};
   // Si TODOS los ejercicios de este bloque están tildados, mostramos un
   // check verde en el encabezado — así se ve el progreso aunque el bloque
@@ -3383,6 +3401,7 @@ function renderZoneDetail() {
     }).join('')}
     ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px">Puntaje: ${sc}/100</div>`:''; })()}
     <textarea class="pain-note-inp" placeholder="Observaciones..." onchange="setPainNote('${zid}',this.value)">${inj.note||''}</textarea>
+    ${renderInjuryStudies(zid, inj)}
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="wellness-submit" style="flex:2" onclick="saveInjury('${zid}')">Guardar ${isInjury?'lesión':'molestia'}</button>
       ${isExisting?`<button style="flex:1;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:var(--rsm);cursor:pointer;font-size:13px" onclick="removeInjury('${zid}')">Quitar</button>`:''}
@@ -3435,6 +3454,120 @@ function renderResolvedInjuries() {
   </div>`;
 }
 window.renderResolvedInjuries=renderResolvedInjuries;
+
+// ── ESTUDIOS MÉDICOS (resonancia, placa, etc.) — SIEMPRE opcional, nunca
+// obligatorio para registrar una lesión/molestia. No hay almacenamiento de
+// archivos conectado en esta app (no hay Firebase Storage ni similar), así
+// que se guarda como imagen comprimida directo en el documento, igual que el
+// escudo del rival del calendario — por eso el límite de tamaño.
+function addInjuryStudy(zid, input) {
+  const file = input.files[0];
+  if(!file) return;
+  const finish = (dataUrl) => {
+    if(dataUrl.length > 900000) { showToast('El archivo es muy pesado (máx. ~700KB) — probá con una foto más chica o más comprimida'); return; }
+    if(!S.injuries[zid]) S.injuries[zid]={pain:0,note:'',type:'',severity:'',isInjury:false,history:[]};
+    if(!S.injuries[zid].studies) S.injuries[zid].studies=[];
+    S.injuries[zid].studies.push({id:genId(), name:file.name, type:file.type, url:dataUrl, uploadedAt:todayLocal()});
+    markInjuryDirty(zid);
+    scheduleSave();
+    showToast('✓ Estudio agregado');
+    renderMain();
+  };
+  readStudyFile(file, finish);
+}
+window.addInjuryStudy = addInjuryStudy;
+
+function removeInjuryStudy(zid, studyId) {
+  if(!S.injuries[zid]?.studies) return;
+  S.injuries[zid].studies = S.injuries[zid].studies.filter(s=>s.id!==studyId);
+  markInjuryDirty(zid);
+  scheduleSave();
+  renderMain();
+}
+window.removeInjuryStudy = removeInjuryStudy;
+
+// Comparte la lógica de lectura/compresión entre el lado atleta y el lado
+// admin — si es imagen, la reduce a un lado máximo razonable para que se
+// pueda leer una placa/resonancia (no la mini miniatura de un escudo);
+// si es otro tipo de archivo (ej. PDF), la manda tal cual con el mismo tope
+// de tamaño.
+function readStudyFile(file, cb) {
+  const isImage = file.type.startsWith('image/');
+  const reader = new FileReader();
+  if(isImage) {
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxSide = 1100;
+        const scale = Math.min(1, maxSide/Math.max(img.width,img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width*scale); canvas.height = Math.round(img.height*scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        cb(canvas.toDataURL('image/jpeg', 0.78));
+      };
+      img.src = e.target.result;
+    };
+  } else {
+    reader.onload = (e) => cb(e.target.result);
+  }
+  reader.readAsDataURL(file);
+}
+
+async function adminAddInjuryStudy(uid, zoneId, input) {
+  const file = input.files[0];
+  if(!file) return;
+  const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
+  if(!personal || !personal.injuries || !personal.injuries[zoneId]) return;
+  readStudyFile(file, async (dataUrl) => {
+    if(dataUrl.length > 900000) { showToast('El archivo es muy pesado (máx. ~700KB) — probá con una foto más chica o más comprimida'); return; }
+    try {
+      let zone = await fetchFreshInjuryZone(uid, zoneId);
+      if(zone===null) zone = {...personal.injuries[zoneId]};
+      if(!zone.studies) zone.studies=[];
+      zone.studies.push({id:genId(), name:file.name, type:file.type, url:dataUrl, uploadedAt:todayLocal()});
+      await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+      personal.injuries[zoneId] = zone;
+      showToast('✓ Estudio agregado');
+      renderMain();
+    } catch(e) { showToast('Error al guardar'); }
+  });
+}
+window.adminAddInjuryStudy = adminAddInjuryStudy;
+
+async function adminRemoveInjuryStudy(uid, zoneId, studyId) {
+  const personal = S.viewingAthlete?.uid===uid ? S.viewingAthlete.personal : null;
+  if(!personal?.injuries?.[zoneId]) return;
+  try {
+    let zone = await fetchFreshInjuryZone(uid, zoneId);
+    if(zone===null) zone = {...personal.injuries[zoneId]};
+    zone.studies = (zone.studies||[]).filter(s=>s.id!==studyId);
+    await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+    personal.injuries[zoneId] = zone;
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.adminRemoveInjuryStudy = adminRemoveInjuryStudy;
+
+// ownerUid: pasar el uid del atleta cuando lo renderiza el ADMIN desde la
+// ficha de otro atleta; dejar vacío/omitir para el propio atleta (self).
+function renderInjuryStudies(zid, inj, ownerUid) {
+  const studies = inj.studies||[];
+  const isAdmin = !!ownerUid;
+  const addFn = isAdmin ? `adminAddInjuryStudy('${ownerUid}','${zid}',this)` : `addInjuryStudy('${zid}',this)`;
+  const rmFn = (sid) => isAdmin ? `adminRemoveInjuryStudy('${ownerUid}','${zid}','${sid}')` : `removeInjuryStudy('${zid}','${sid}')`;
+  return `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Estudios (resonancia, placa, etc.) — opcional</div>
+    ${studies.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${studies.map(s=>`
+      <div style="position:relative">
+        ${(s.type||'').startsWith('image/')
+          ? `<img src="${s.url}" onclick="window.open('${s.url}','_blank')" style="width:64px;height:64px;object-fit:cover;border-radius:var(--rxs);border:1px solid var(--border2);cursor:pointer">`
+          : `<a href="${s.url}" target="_blank" style="width:64px;height:64px;display:flex;align-items:center;justify-content:center;border-radius:var(--rxs);border:1px solid var(--border2);background:var(--bg3);font-size:10px;text-align:center;padding:4px;color:var(--text3);text-decoration:none;overflow:hidden">${(s.name||'Archivo').slice(0,16)}</a>`}
+        <span onclick="${rmFn(s.id)}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;font-size:12px;line-height:18px;text-align:center;cursor:pointer">×</span>
+      </div>`).join('')}</div>`:''}
+    <label class="abtn" style="cursor:pointer;font-size:11px;display:inline-block">+ Subir estudio<input type="file" accept="image/*,.pdf" style="display:none" onchange="${addFn}"></label>
+  </div>`;
+}
+window.renderInjuryStudies = renderInjuryStudies;
 
 function getRPEColor(v) {
   if(v<=3) return '#34c97a';
@@ -3590,7 +3723,13 @@ window.setInjurySeverity=setInjurySeverity;
 async function fetchFreshInjuryZone(uid, zoneId) {
   try {
     const snap = await getDoc(doc(db,'personal',uid));
-    return snap.exists() ? (snap.data().injuries?.[zoneId] || {}) : {};
+    if(!snap.exists()) return null;
+    const zone = snap.data().injuries?.[zoneId];
+    // Si el servidor no tiene nada para esta zona, NUNCA devolver un objeto
+    // vacío — el que llama lo tomaría como válido y escribiría solo el campo
+    // que tocó, borrando pain/historia/tipo/etc. Devolver null fuerza a usar
+    // la copia local como base en vez de un objeto pelado.
+    return (zone && typeof zone==='object') ? zone : null;
   } catch(e) { return null; }
 }
 
@@ -4003,6 +4142,7 @@ function renderStats() {
 
 // ── TEAMS ─────────────────────────────────────────────────────
 function renderTeams() {
+  if(S._teamViewLoadingId) return `<div style="text-align:center;padding:40px;color:var(--text3)">Cargando equipo…</div>`;
   if(S.teamView) return renderTeamDetail(S.teamView);
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
     <div style="font-size:16px;font-weight:700">Equipos</div>
@@ -4066,7 +4206,15 @@ function setTeamSubview(v) {
     // orden alfabético/de carga.
     if (S.evalScopeUids.length > 1) S.evalView = 'compare';
     ensureAdminAthletes()
-      .then(()=>{ S.evalScopeUids = getTeamStatsMemberUids(S.teamView); return ensureAthleteEvalData(S.evalAthleteId); })
+      .then(()=>{
+        S.evalScopeUids = getTeamStatsMemberUids(S.teamView);
+        // Comparar atletas necesita los datos de TODO el plantel, no solo del
+        // primero — antes solo se traía el del atleta seleccionado, así que
+        // "Comparar atletas" arrancaba mostrando a uno solo y el resto como
+        // "Sin datos" hasta que tocabas "Actualizar datos de atletas" a mano.
+        if (S.evalScopeUids.length > 1) return loadAllAthleteEvals(true);
+        return ensureAthleteEvalData(S.evalAthleteId);
+      })
       .then(()=>{ renderMain(); setTimeout(drawEvalCharts,80); })
       .catch((e)=>{ console.error('Error al cargar Evaluaciones del equipo', e); showToast('Error: '+(e?.message||e)); renderMain(); });
     return;
@@ -4166,12 +4314,132 @@ function renderTeamCalendar(team) {
     <button class="lib-filter ${mode==='week'?'active':''}" onclick="setCalendarViewMode('week')">Semana</button>
     <button class="lib-filter ${mode==='month'?'active':''}" onclick="setCalendarViewMode('month')">Mes</button>
   </div>`;
+  html += renderCalendarRepeatTool(team);
   if(mode==='day') html += renderCalendarDayView(team);
   else if(mode==='week') html += renderCalendarWeekView(team);
   else html += renderCalendarMonthView(team);
   return html;
 }
 window.renderTeamCalendar=renderTeamCalendar;
+
+// ── REPETIR ACTIVIDAD SEMANALMENTE (tipo Google Calendar) ─────────────
+// En vez de cargar entrenamiento día por día a mano, el admin elige el tipo
+// de actividad, qué días de la semana, y hasta qué fecha — y esto la carga
+// en todas las fechas que matcheen, en UNA sola escritura a Firestore (no
+// una por fecha). Nunca pisa lo que ya esté cargado: por cada fecha, si ese
+// tipo de actividad ya está puesto ese día, se salta (mismo criterio que el
+// importador de fixture).
+function toggleCalendarRepeat() {
+  S._calRepeatOpen = !S._calRepeatOpen;
+  if(S._calRepeatOpen && !S._calRepeatTypes) {
+    S._calRepeatTypes = new Set();
+    S._calRepeatDows = new Set();
+    S._calRepeatStart = todayLocal();
+    const d = new Date(); d.setMonth(d.getMonth()+4);
+    S._calRepeatEnd = toLocalDateStr(d);
+  }
+  renderMain();
+}
+window.toggleCalendarRepeat = toggleCalendarRepeat;
+
+function toggleCalendarRepeatType(typeId) {
+  if(!S._calRepeatTypes) S._calRepeatTypes = new Set();
+  if(S._calRepeatTypes.has(typeId)) S._calRepeatTypes.delete(typeId); else S._calRepeatTypes.add(typeId);
+  renderMain();
+}
+window.toggleCalendarRepeatType = toggleCalendarRepeatType;
+
+function toggleCalendarRepeatDow(dow) {
+  if(!S._calRepeatDows) S._calRepeatDows = new Set();
+  if(S._calRepeatDows.has(dow)) S._calRepeatDows.delete(dow); else S._calRepeatDows.add(dow);
+  renderMain();
+}
+window.toggleCalendarRepeatDow = toggleCalendarRepeatDow;
+
+function setCalendarRepeatDate(field, val) {
+  if(field==='start') S._calRepeatStart = val; else S._calRepeatEnd = val;
+}
+window.setCalendarRepeatDate = setCalendarRepeatDate;
+
+function renderCalendarRepeatTool(team) {
+  const open = S._calRepeatOpen;
+  let html = `<div class="admin-section" style="margin-bottom:14px">
+    <div class="admin-item" style="cursor:pointer" onclick="toggleCalendarRepeat()">
+      <div class="admin-section-title" style="margin:0">🔁 Repetir actividad semanalmente</div>
+      <span style="color:var(--text3);font-size:12px">${open?'▲ cerrar':'▼ abrir'}</span>
+    </div>`;
+  if(open) {
+    const types = S._calRepeatTypes||new Set();
+    const dows = S._calRepeatDows||new Set();
+    const dowLabels=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+    html += `<div style="padding:12px 16px">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Actividad a repetir</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        ${CALENDAR_TYPES.filter(t=>t.id!=='partido').map(t=>`<button class="lib-filter ${types.has(t.id)?'active':''}" onclick="toggleCalendarRepeatType('${t.id}')">${t.label}</button>`).join('')}
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Días de la semana</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        ${dowLabels.map((lbl,i)=>`<button class="lib-filter ${dows.has(i)?'active':''}" onclick="toggleCalendarRepeatDow(${i})">${lbl}</button>`).join('')}
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Desde</div>
+          <input type="date" class="abtn" value="${S._calRepeatStart||todayLocal()}" onchange="setCalendarRepeatDate('start',this.value)">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Hasta</div>
+          <input type="date" class="abtn" value="${S._calRepeatEnd||todayLocal()}" onchange="setCalendarRepeatDate('end',this.value)">
+        </div>
+      </div>
+      <button class="abtn abtn-p" style="width:100%" onclick="applyCalendarRepeat('${team.id}')">Aplicar</button>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">No pisa nada ya cargado: si ese día ya tiene esa actividad, se salta. Los partidos no se repiten acá — se cargan uno por uno porque cada uno tiene un rival distinto.</div>
+    </div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+window.renderCalendarRepeatTool = renderCalendarRepeatTool;
+
+async function applyCalendarRepeat(teamId) {
+  const team = S.teams.find(t=>t.id===teamId); if(!team) return;
+  const types = [...(S._calRepeatTypes||[])];
+  const dows = S._calRepeatDows||new Set();
+  if(!types.length) { showToast('Elegí al menos un tipo de actividad'); return; }
+  if(!dows.size) { showToast('Elegí al menos un día de la semana'); return; }
+  const start = S._calRepeatStart||todayLocal();
+  const end = S._calRepeatEnd||start;
+  if(end<start) { showToast('La fecha final tiene que ser después de la inicial'); return; }
+  const typeLabels = types.map(t=>CALENDAR_TYPES.find(x=>x.id===t)?.label||t).join(', ');
+  const dowLabels = [...dows].sort((a,b)=>a-b).map(d=>['lunes','martes','miércoles','jueves','viernes','sábado','domingo'][d]).join(', ');
+  if(!confirm(`¿Agregar ${typeLabels} todos los ${dowLabels} desde ${start} hasta ${end}? No duplica lo que ya esté cargado ese día.`)) return;
+  showToast('Aplicando…');
+  if(!team.calendar) team.calendar={};
+  const fsUpdate = {};
+  let addedTotal = 0;
+  const d = new Date(start+'T00:00:00');
+  const endD = new Date(end+'T00:00:00');
+  while(d<=endD) {
+    const dow = (d.getDay()+6)%7;
+    if(dows.has(dow)) {
+      const dateStr = toLocalDateStr(d);
+      let events = getCalendarEvents(team, dateStr);
+      let changed = false;
+      types.forEach(typeId=>{
+        if(!events.some(e=>e.type===typeId)) { events=[...events,{type:typeId}]; changed=true; addedTotal++; }
+      });
+      if(changed) { team.calendar[dateStr]=events; fsUpdate[`calendar.${dateStr}`]=events; }
+    }
+    d.setDate(d.getDate()+1);
+  }
+  if(!addedTotal) { showToast('No había nada nuevo para agregar en ese rango'); return; }
+  try {
+    await setDoc(doc(db,'teams',teamId), fsUpdate, {merge:true});
+    showToast(`✓ ${addedTotal} actividades agregadas`);
+    S._calRepeatOpen = false;
+    renderMain();
+  } catch(e) { showToast('Error al guardar: '+e.message); }
+}
+window.applyCalendarRepeat = applyCalendarRepeat;
 
 function renderCalendarMonthView(team) {
   const refDate = new Date((S.calendarRefDate||todayLocal())+'T00:00:00');
@@ -5660,8 +5928,11 @@ function avgMetric(summaries,key) {
 }
 window.avgMetric=avgMetric;
 
-// Tarjeta de métricas promedio (equipo completo o un grupo por posición)
-function renderTeamMetricsCard(title,members) {
+// Tarjeta de métricas promedio (equipo completo o un grupo por posición).
+// showLoad=false oculta las 3 tarjetas de carga (UA) — se usa en Estadísticas
+// para no repetir lo que ya se ve en Wellness; ahí sí quedan.
+function renderTeamMetricsCard(title,members,showLoad) {
+  if(showLoad===undefined) showLoad=true;
   const summaries=members.map(computeAthleteLoadSummary);
   const avgW=avgMetric(summaries,'avgWellness');
   const avgToday=avgMetric(summaries,'todayUA');
@@ -5689,7 +5960,7 @@ function renderTeamMetricsCard(title,members) {
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
         <div style="font-size:9px;color:${monSt.color}">${monSt.label}</div>
       </div>
-      <div style="background:var(--bg2);padding:12px;text-align:center">
+      ${showLoad?`<div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:16px;font-weight:700" ${avgToday!==null?`data-countup="${Math.round(avgToday)}"`:''}>${avgToday!==null?Math.round(avgToday):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga hoy (UA) ${infoBtn('ua')}</div>
       </div>
@@ -5700,7 +5971,7 @@ function renderTeamMetricsCard(title,members) {
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:16px;font-weight:700" ${avgChronic!==null?`data-countup="${Math.round(avgChronic)}"`:''}>${avgChronic!==null?Math.round(avgChronic):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga crónica (UA)</div>
-      </div>
+      </div>`:''}
     </div>
   </div>`;
 }
@@ -5939,11 +6210,11 @@ function renderTeamInjuryChart(members) {
         <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:var(--green)"></div><span style="font-size:13px">Leves</span><span style="margin-left:auto;font-weight:700">${sum.leve}</span></div>
       </div>
     </div>
-    <div style="padding:2px 16px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text2);font-size:12px;font-weight:600" onclick="toggleSection('team-injury-detail')">
-      <span>${S.collapsedSections?.has('team-injury-detail')?'Mostrar':'Ocultar'} detalle por jugador</span>
-      <span style="transition:transform .15s;display:inline-block;transform:rotate(${S.collapsedSections?.has('team-injury-detail')?'-90':'0'}deg)">›</span>
+    <div style="padding:2px 16px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text2);font-size:12px;font-weight:600" onclick="toggleSection('team-injury-detail-open')">
+      <span>${S.collapsedSections?.has('team-injury-detail-open')?'Ocultar':'Mostrar'} detalle por jugador</span>
+      <span style="transition:transform .15s;display:inline-block;transform:rotate(${S.collapsedSections?.has('team-injury-detail-open')?'0':'-90'}deg)">›</span>
     </div>
-    ${S.collapsedSections?.has('team-injury-detail')?'':`<div style="padding:0 16px 14px">
+    ${S.collapsedSections?.has('team-injury-detail-open')?`<div style="padding:0 16px 14px">
       ${sum.details.sort((a,b)=>{const r={grave:3,moderada:2,leve:1}; return (r[b.sev]||1)-(r[a.sev]||1) || b.pain-a.pain;}).map(d=>{
         const col = d.sev==='grave'?'var(--red)':d.sev==='moderada'?'var(--amber)':'var(--green)';
         const sevLabel = severityInfo(d.sev)?.label||'Leve';
@@ -5951,7 +6222,7 @@ function renderTeamInjuryChart(members) {
           <span>${d.athlete} <span style="color:var(--text3)">— ${d.zoneId}</span></span>
           <span style="color:${col};font-weight:600">${sevLabel} · dolor ${d.pain}/10</span>
         </div>`;
-      }).join('')}</div>`}
+      }).join('')}</div>`:''}
   </div>`;
 }
 window.renderTeamInjuryChart=renderTeamInjuryChart;
@@ -6200,7 +6471,10 @@ const QUADRANT_METRICS = [
 window.QUADRANT_METRICS = QUADRANT_METRICS;
 
 function quadrantMetricValue(a, id) {
-  const bestOf = (mid) => { const r=a._personal?.evals?.[mid]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
+  // Siempre el ÚLTIMO test, nunca el récord histórico — un atleta con una
+  // marca vieja excelente pero lesionado hoy (ej. menisco) no puede aparecer
+  // como si estuviera en su mejor momento; el cuadrante tiene que reflejar
+  // dónde está PARADO ahora, no su techo histórico.
   const lastOf = (mid) => { const r=a._personal?.evals?.[mid]||[]; if(!r.length) return null; return sortEvalRecsByDate([...r]).slice(-1)[0].height; };
   if(id==='ice') {
     const cmj=lastOf('cmj'), sj=lastOf('sj');
@@ -6210,7 +6484,7 @@ function quadrantMetricValue(a, id) {
     const abal=lastOf('abalakov'), cmj=lastOf('cmj');
     return (abal!=null && cmj) ? parseFloat(((abal-cmj)/cmj*100).toFixed(1)) : null;
   }
-  return bestOf(id);
+  return lastOf(id);
 }
 window.quadrantMetricValue = quadrantMetricValue;
 
@@ -6461,7 +6735,7 @@ function renderGroupStats(memberUids, opts) {
   // detalle semanal de otros jugadores, que son cosas exclusivas de la
   // ficha real del equipo.
   if (opts && opts.compareOnly) {
-    let cHtml = members.length > 1 ? renderTeamMetricsCard('Promedio del equipo con el que se compara', members) : '';
+    let cHtml = members.length > 1 ? renderTeamMetricsCard('Promedio del equipo con el que se compara', members, false) : '';
     cHtml += renderTeamRadarSection(members);
     cHtml += renderTeamQuadrantSection(members);
     return cHtml;
@@ -6474,7 +6748,7 @@ function renderGroupStats(memberUids, opts) {
 
   // 1) Promedio general del equipo — no tiene sentido para un solo atleta
   // (sería literalmente la misma tarjeta repetida dos veces)
-  html += members.length > 1 ? renderTeamMetricsCard('Promedio del equipo', members) : '';
+  html += members.length > 1 ? renderTeamMetricsCard('Promedio del equipo', members, false) : '';
 
   // 1b) Lesiones activas del plantel, por gravedad
   html += renderTeamInjuryChart(members);
@@ -6495,28 +6769,12 @@ function renderGroupStats(memberUids, opts) {
     });
     html += positions.map(pos=>{
       const group = members.filter(a=>(a.position||'Sin posición')===pos);
-      return renderTeamMetricsCard(pos, group);
+      return renderTeamMetricsCard(pos, group, false);
     }).join('');
   } else if (members.length === 1) {
-    html += renderTeamMetricsCard(members[0].name||members[0].email, members);
+    html += renderTeamMetricsCard(members[0].name||members[0].email, members, false);
   }
 
-  // 3) Detalle semanal por atleta (como antes)
-  const rows = members.map(a => {
-    const logs = (a._personal?.history?._sessionLogs) || [];
-    const weekLogs = logs.filter(l => l.week === S.currentWeek);
-    const avgRpe = weekLogs.length ? (weekLogs.reduce((s, l) => s + (l.rpe || 0), 0) / weekLogs.length).toFixed(1) : '—';
-    const totalUA = weekLogs.reduce((s, l) => s + (l.ua || 0), 0);
-    return `<div class="admin-item" style="justify-content:space-between;flex-wrap:wrap">
-      <div><div style="font-size:13px;font-weight:600">${a.name || a.email}</div><div style="font-size:11px;color:var(--text3)">${a.position||''}</div></div>
-      <div style="font-size:12px;color:var(--text3);display:flex;gap:14px">
-        <span>${weekLogs.length} sesiones</span>
-        <span>RPE prom: ${avgRpe}</span>
-        <span>UA: ${totalUA}</span>
-      </div>
-    </div>`;
-  }).join('');
-  html += `<div class="admin-section"><div class="admin-section-title">Detalle por atleta · Semana ${S.currentWeek}</div>${rows}</div>`;
   return html;
 }
 window.renderGroupStats = renderGroupStats;
@@ -6542,7 +6800,7 @@ function renderTeamDayEditor(team,{teamId,dayIdx}){
 }
 
 function renderTeamDayBlock(b,teamId,dayIdx){
-  const cc=b.colorKey||'bx',open=b._open!==false;
+  const cc=b.colorKey||'bx',open=b._open===true;
   let inner='';
   b.categories.forEach((cat,ci)=>{
     inner+=`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label" ondblclick="editTDCatLabel(this,'${b.id}','${teamId}',${dayIdx},${ci})">${cat.label}</span><input class="cat-label-inp" id="tdcatinp-${b.id}-${ci}" onblur="saveTDCatLabel('${b.id}','${teamId}',${dayIdx},${ci},this)" onkeydown="if(event.key==='Enter')this.blur()"></div><span class="cat-del" onclick="deleteTDCat('${b.id}','${teamId}',${dayIdx},${ci})">− cat</span></div>`;
@@ -6665,25 +6923,31 @@ window.saveTeamDayBlocks=saveTeamDayBlocks;
 
 
 async function openTeam(id) {
-  S.teamView=S.teams.find(t=>t.id===id)||null;
   S.teamSubview='rutina';
   S.currentView='teams';
+  // Mostramos "Cargando…" en vez del equipo viejo cacheado mientras se trae
+  // la versión fresca de Firestore. Antes se mostraba la copia vieja YA
+  // interactiva mientras el fetch fresco corría atrás — si el admin
+  // alcanzaba a cargar algo (un partido, una actividad) en esos primeros
+  // instantes, esa edición se guardaba bien en Firestore, pero cuando el
+  // fetch fresco (que había arrancado un poco antes) terminaba, pisaba en
+  // pantalla lo recién cargado con una foto un pelín más vieja — eso era el
+  // "no se guarda" del calendario. Ahora no se puede tocar nada hasta que
+  // la versión fresca ya esté puesta.
+  S._teamViewLoadingId = id;
   renderBottomBar(); renderMain();
-  // Refrescamos ESTE equipo desde Firestore antes de mostrarlo. S.teams se
-  // carga una sola vez al loguearse — si la app queda abierta varios días
-  // (típico en una PWA instalada), esa copia en memoria queda vieja y el
-  // calendario/roster parecía "borrarse" cuando en realidad Firestore tenía
-  // todo bien: solo se estaba mostrando una foto vieja.
+  let freshTeam = null;
   try {
     const fresh = await getDoc(doc(db,'teams',id));
     if(fresh.exists()) {
-      const freshTeam = {id, ...fresh.data()};
+      freshTeam = {id, ...fresh.data()};
       const idx = S.teams.findIndex(t=>t.id===id);
       if(idx>=0) S.teams[idx]=freshTeam; else S.teams.push(freshTeam);
-      S.teamView = freshTeam;
-      renderMain();
     }
   } catch(e) { console.error('Error refrescando equipo', e); }
+  S._teamViewLoadingId = null;
+  S.teamView = freshTeam || S.teams.find(t=>t.id===id) || null;
+  renderMain();
   // Sin esto, si entrás a Equipos sin haber pasado antes por "Atletas",
   // S.adminAthletes queda vacío y el roster no puede reconocer a NADIE como
   // "cuenta vinculada" aunque estén perfectamente registrados.
@@ -7176,6 +7440,7 @@ function renderPerfilTab(a) {
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${RTP_PHASES.map(p=>`<button onclick="adminSetInjuryRtpPhase('${uid}','${id}','${p.id}')" style="flex:1;min-width:80px;padding:6px;border-radius:var(--rxs);border:1px solid ${inj.rtpPhase===p.id?'var(--accent)':'var(--border2)'};background:${inj.rtpPhase===p.id?'var(--accent-dim)':'transparent'};color:${inj.rtpPhase===p.id?'var(--accent)':'var(--text3)'};font-weight:${inj.rtpPhase===p.id?'700':'400'};font-size:11px;cursor:pointer">${p.label}</button>`).join('')}
         </div>`:''}
+        ${renderInjuryStudies(id, inj, uid)}
       </div>`;
     }).join('')}</div>`:`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin molestias registradas.</div>`}
   </div>
@@ -8156,66 +8421,6 @@ async function moveWellnessDayData(uid, oldDate, newDate) {
 }
 window.moveWellnessDayData = moveWellnessDayData;
 
-// ── REVISAR CARGAS EN DOMINGO (movidas mal por una corrección automática
-// anterior que ya no existe) ─────────────────────────────────────────────
-// Domingo no es día de entrenamiento para ningún equipo — si alguien tiene
-// wellness o carga cargados ahí, es casi seguro un resto de esa corrección.
-// A propósito NO mueve nada solo: solo LISTA a quién le quedó mal y te deja
-// elegir a qué día pertenece de verdad, uno por uno, con la misma
-// herramienta segura de mover un día puntual que ya usás desde el detalle
-// de wellness.
-async function openSundayReviewScreen() {
-  await ensureAdminAthletes();
-  await ensureGroupPersonalData(S.adminAthletes.map(a=>a.uid));
-  S.adminView = 'sunday_review';
-  S.currentView = 'admin';
-  renderBottomBar();
-  renderMain();
-}
-window.openSundayReviewScreen = openSundayReviewScreen;
-
-function renderSundayReviewScreen() {
-  const todayD = new Date(todayLocal()+'T00:00:00');
-  const dow = todayD.getDay(); // 0=domingo
-  const sunday = new Date(todayD); sunday.setDate(todayD.getDate()-dow);
-  const sundayStr = toLocalDateStr(sunday);
-  const mkDate = (offset)=>{ const d=new Date(sunday); d.setDate(sunday.getDate()+offset); return toLocalDateStr(d); };
-  const mondayStr=mkDate(1), tuesdayStr=mkDate(2), wednesdayStr=mkDate(3);
-
-  const hasDay = (p,d) => !!(p.wellness && p.wellness[d]) || (p.history?._sessionLogs||p.sessionLogs||[]).some(l=>l.date===d);
-
-  const affected = (S.adminAthletes||[]).filter(a => hasDay(a._personal||{}, sundayStr));
-
-  let html = `<div class="team-detail-header">
-    <button class="back-btn" onclick="S.adminView='main';renderMain()">‹</button>
-    <div class="team-detail-title">Revisar cargas en domingo</div>
-  </div>
-  <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Domingo ${sundayStr} no es día de entrenamiento — si alguien tiene algo cargado ahí, probablemente quedó mal movido. Elegí a qué día pertenece de verdad cada uno.</div>`;
-
-  if(!affected.length) {
-    html += `<div class="empty-state">✓ Nadie tiene datos cargados el domingo ${sundayStr}.</div>`;
-    return html;
-  }
-
-  html += affected.map(a=>{
-    const p = a._personal||{};
-    const tag = (d,label) => hasDay(p,d) ? `${label}: ya tiene datos` : `${label}: libre`;
-    return `<div class="admin-section">
-      <div class="admin-item">
-        <div><div class="admin-item-lbl">${a.name||a.email}</div>
-        <div class="admin-item-sub">${tag(mondayStr,'Lunes')} · ${tag(tuesdayStr,'Martes')} · ${tag(wednesdayStr,'Miércoles')}</div></div>
-      </div>
-      <div style="display:flex;gap:6px;padding:0 16px 12px;flex-wrap:wrap">
-        <button class="abtn" onclick="moveWellnessDayData('${a.uid}','${sundayStr}','${mondayStr}')">Es del lunes</button>
-        <button class="abtn" onclick="moveWellnessDayData('${a.uid}','${sundayStr}','${tuesdayStr}')">Es del martes</button>
-        <button class="abtn" onclick="moveWellnessDayData('${a.uid}','${sundayStr}','${wednesdayStr}')">Es del miércoles</button>
-        <button class="abtn" onclick="adminOpenAthlete('${a.uid}')">Ver ficha completa</button>
-      </div>
-    </div>`;
-  }).join('');
-  return html;
-}
-window.renderSundayReviewScreen = renderSundayReviewScreen;
 
 // ── RECORDATORIOS: quién falta completar wellness/carga hoy ─────────────
 function openReminderScreen() {
@@ -8376,7 +8581,6 @@ function renderAdmin() {
     case 'trained_today': return renderTrainedTodayScreen();
     case 'injury_classify': return renderInjuryClassifyScreen();
     case 'name_order_review': return renderNameOrderReview();
-    case 'sunday_review': return renderSundayReviewScreen();
     default:               return renderAdminMain();
   }
 }
@@ -8405,10 +8609,6 @@ function renderAdminMain() {
   <div class="admin-section">
     <div class="admin-section-title">Sistema</div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Mi sesión de entrenamiento</div><div class="admin-item-sub">Tu propia rutina personal</div></div>
-      <button class="abtn abtn-p" onclick="switchView('session')">Ir →</button>
-    </div>
-    <div class="admin-item">
       <div><div class="admin-item-lbl">Equipos</div><div class="admin-item-sub">${S.teams.length} equipo${S.teams.length!==1?'s':''}</div></div>
       <button class="abtn abtn-p" onclick="switchView('teams')">Ver →</button>
     </div>
@@ -8435,10 +8635,6 @@ function renderAdminMain() {
     <div class="admin-item">
       <div><div class="admin-item-lbl">Reparar vínculos de equipo</div><div class="admin-item-sub">Si un atleta registrado no aparece en las Evaluaciones/Wellness de su equipo (aunque sí en su ficha individual), esto lo arregla</div></div>
       <button class="abtn" onclick="repairTeamMemberLinks()">Reparar</button>
-    </div>
-    <div class="admin-item">
-      <div><div class="admin-item-lbl">Revisar cargas en domingo</div><div class="admin-item-sub">Domingo no es día de entrenamiento — te lista a quién le quedó algo cargado ahí (por ejemplo, restos de una corrección anterior) y elegís vos a qué día pertenece de verdad, uno por uno</div></div>
-      <button class="abtn abtn-d" onclick="openSundayReviewScreen()">Revisar</button>
     </div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Clasificar molestias/lesiones</div><div class="admin-item-sub">Decidí de una cuáles dolores marcados son lesión real y cuáles son molestia</div></div>
@@ -9163,7 +9359,7 @@ function renderRoutineEditor() {
 
 function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
   const cc=b.colorKey||'bx';
-  const open=b._open!==false;
+  const open=b._open===true;
   let inner=``;
   if(b.note) inner+=`<p class="block-note">${b.note}</p>`;
 
@@ -10092,7 +10288,7 @@ function renderEvalCompare() {
   // Agrupar por puesto solo tiene sentido si al menos algunos atletas de este
   // grupo tienen la posición cargada (Panel Admin → ficha del atleta).
   const positions = [...new Set(withData.map(d=>d.position).filter(Boolean))];
-  const groupBy = positions.length ? (S.evalCompareGroupBy||'position') : 'none';
+  const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
   const groupPos = S.evalCompareGroupPosition||'all';
 
   html += '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
@@ -10419,7 +10615,7 @@ function drawEvalCharts() {
       return {name: a.name||a.email||'Admin', value: last?last.height:null, position: a.position||null};
     }).filter(x=>x.value!==null);
     const positions = [...new Set(withData.map(d=>d.position).filter(Boolean))];
-    const groupBy = positions.length ? (S.evalCompareGroupBy||'position') : 'none';
+    const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
     const compData = buildEvalCompareRows(withData, groupBy, S.evalCompareGroupPosition||'all');
 
     const canvasId = 'chart-compare-'+testId;
@@ -10681,9 +10877,9 @@ async function loadEvalAthletes() {
 }
 window.loadEvalAthletes = loadEvalAthletes;
 
-async function loadAllAthleteEvals() {
+async function loadAllAthleteEvals(silent) {
   if(!S.isAdmin || !S.adminAthletes.length) return;
-  showToast('Cargando datos...');
+  if(!silent) showToast('Cargando datos...');
   if(!S._athleteEvalsCache) S._athleteEvalsCache = {};
   const targets = S.evalScopeUids ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid)) : S.adminAthletes;
   for(const a of targets) {
@@ -10692,9 +10888,7 @@ async function loadAllAthleteEvals() {
       if(snap.exists()) S._athleteEvalsCache[a.uid] = snap.data().evals || {};
     } catch(e) {}
   }
-  showToast('✓ Datos actualizados');
-  renderMain();
-  setTimeout(drawEvalCharts, 80);
+  if(!silent) { showToast('✓ Datos actualizados'); renderMain(); setTimeout(drawEvalCharts, 80); }
 }
 window.loadAllAthleteEvals = loadAllAthleteEvals;
 
