@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gmetrics-v2';
+const CACHE_NAME = 'gmetrics-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -36,8 +36,19 @@ self.addEventListener('activate', (event) => {
 // "no aplicarse" — no era que el dato se revirtiera, era que el celular
 // seguía corriendo código de días atrás. Con no-store, este fetch siempre
 // pega a la red de verdad.
+//
+// CRÍTICO: solo interceptamos pedidos al PROPIO origen (el shell de la app:
+// index.html, app.js, styles.css, íconos). Todo lo demás —Firestore,
+// Firebase Auth, la fuente de Google, el CDN de Chart.js— pasa de largo SIN
+// tocar, dejando que el navegador lo maneje directo. Antes esto interceptaba
+// TODO pedido de la página, Firestore incluido — un service worker
+// reconstruyendo esos pedidos (aunque sea solo agregando {cache:'no-store'})
+// puede romper la conexión en vivo de Firestore de forma intermitente, lo
+// que explicaría wellness que "no sube" sin ningún error visible. Ahora
+// Firestore queda completamente afuera de este service worker.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(
     fetch(event.request, {cache:'no-store'})
       .then((res) => {
