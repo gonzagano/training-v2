@@ -4054,7 +4054,7 @@ function renderStats() {
 
   let html=`<div class="page-header">
     <div class="page-title">Estadísticas</div>
-    <div class="page-subtitle">Semana ${S.currentWeek} · ${totalS} sesión${totalS!==1?'es':''} completada${totalS!==1?'s':''}</div>
+    <div class="page-subtitle">${getWeekHeaderLabel(true)}${isTeamAthlete()?'':` · ${totalS} sesión${totalS!==1?'es':''} completada${totalS!==1?'s':''}`}</div>
   </div>`;
 
   // Metric cards — 2x2 grid, no emojis, proper card styling
@@ -4158,7 +4158,7 @@ function renderTeams() {
         </div>
         <span class="team-sport-badge">${t.sport||'Deporte'}</span>
       </div>
-      <div class="team-meta">${(t.players||[]).length} jugadores · ${(t.trainingDays||[]).length} días de entrenamiento</div>
+      <div class="team-meta">${(t.players||[]).length} jugadores · ${Object.keys(t.calendar||{}).length} días con actividad en el calendario</div>
     </div>`).join('');
   return html;
 }
@@ -4375,7 +4375,7 @@ function renderCalendarRepeatTool(team) {
     html += `<div style="padding:12px 16px">
       <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Actividad a repetir</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        ${CALENDAR_TYPES.filter(t=>t.id!=='partido').map(t=>`<button class="lib-filter ${types.has(t.id)?'active':''}" onclick="toggleCalendarRepeatType('${t.id}')">${t.label}</button>`).join('')}
+        ${CALENDAR_TYPES.map(t=>`<button class="lib-filter ${types.has(t.id)?'active':''}" onclick="toggleCalendarRepeatType('${t.id}')">${t.label}</button>`).join('')}
       </div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Días de la semana</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
@@ -4392,7 +4392,7 @@ function renderCalendarRepeatTool(team) {
         </div>
       </div>
       <button class="abtn abtn-p" style="width:100%" onclick="applyCalendarRepeat('${team.id}')">Aplicar</button>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">No pisa nada ya cargado: si ese día ya tiene esa actividad, se salta. Los partidos no se repiten acá — se cargan uno por uno porque cada uno tiene un rival distinto.</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">No pisa nada ya cargado: si ese día ya tiene esa actividad, se salta. Si elegís Partido, se crea sin rival cargado en cada fecha — después entrás día por día a poner el rival y Local/Visitante.</div>
     </div>`;
   }
   html += `</div>`;
@@ -4425,7 +4425,10 @@ async function applyCalendarRepeat(teamId) {
       let events = getCalendarEvents(team, dateStr);
       let changed = false;
       types.forEach(typeId=>{
-        if(!events.some(e=>e.type===typeId)) { events=[...events,{type:typeId}]; changed=true; addedTotal++; }
+        if(!events.some(e=>e.type===typeId)) {
+          const newEvent = typeId==='partido' ? {type:'partido', opponent:'', homeAway:'local'} : {type:typeId};
+          events=[...events,newEvent]; changed=true; addedTotal++;
+        }
       });
       if(changed) { team.calendar[dateStr]=events; fsUpdate[`calendar.${dateStr}`]=events; }
     }
@@ -6412,7 +6415,12 @@ function drawTeamRadarChart(members) {
     rawB = RADAR_METRICS.map(m=>earliestOf(athlete,m.id));
     labelA = 'Ahora'; labelB = 'Primer registro';
   } else {
-    rawA = RADAR_METRICS.map(m=>bestOf(athlete,m.id));
+    // El atleta individual se compara con su ÚLTIMO test (dónde está parado
+    // ahora), mientras que el promedio del equipo sigue usando la MEJOR
+    // marca histórica de cada compañero — mismo criterio que "Promedio del
+    // equipo" en el resto de la app. Son dos preguntas distintas: "¿cómo
+    // está este jugador hoy?" vs "¿cuál es el techo del plantel?".
+    rawA = RADAR_METRICS.map(m=>latestOf(athlete,m.id));
     rawB = RADAR_METRICS.map(m=>{
       const vals = members.filter(a=>a.uid!==athlete.uid).map(a=>bestOf(a,m.id)).filter(v=>v!=null);
       return vals.length ? Math.round((vals.reduce((s,v)=>s+v,0)/vals.length)*10)/10 : null;
@@ -8052,7 +8060,7 @@ function renderSettings() {
       <input class="abtn" type="number" style="text-align:right;width:80px" value="${S.oneRM?.[rm.id]||''}" placeholder="kg" onblur="saveOneRM('${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
   </div>
-  <div class="card">
+  ${isTeamAthlete() ? '' : `<div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Semana actual</div>
     <div class="settings-item">
       <div><div class="settings-lbl">Semana ${S.currentWeek}</div><div class="settings-sub">${weekLabel(S.currentWeek)}</div></div>
@@ -8065,7 +8073,7 @@ function renderSettings() {
       <div><div class="settings-lbl">Fecha inicio</div></div>
       <input type="date" class="abtn" value="${S.startDate}" onchange="S.startDate=this.value;S.currentWeek=computeWeekFromDate(S.startDate);scheduleSave();renderMain()" style="cursor:pointer">
     </div>
-  </div>
+  </div>`}
   <div class="card">
     <div class="settings-item">
       <div><div class="settings-lbl">Actualizar app</div><div class="settings-sub">Bajá la última versión ahora mismo (por si el celular guardó una copia vieja)</div></div>
@@ -11144,7 +11152,7 @@ function getRecentInjuryFeed(athletes, limit) {
       if(!inj.pain||inj.pain<=0||!isRealInjury(inj)) return;
       const lastDate = inj.history?.length ? inj.history[inj.history.length-1].date : null;
       const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
-      feed.push({athlete:a, zoneLabel, type:inj.type, severity:inj.severity||'leve', pain:inj.pain, date:lastDate||'', status:'active'});
+      feed.push({athlete:a, zoneLabel, type:inj.type, severity:inj.severity||'leve', pain:inj.pain, note:inj.note||'', date:lastDate||'', status:'active'});
     });
   });
   feed.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
@@ -11361,7 +11369,10 @@ function renderDashboardContent() {
 
     let recentFeed = getRecentInjuryFeed(athletes);
     if(catFilter) recentFeed = recentFeed.filter(r=>getAthleteCategoryLabel(r.athlete)===catFilter);
-    recentFeed.sort((a,b)=>injuryCategoryRank(getAthleteCategoryLabel(a.athlete))-injuryCategoryRank(getAthleteCategoryLabel(b.athlete)) || (b.date||'').localeCompare(a.date||''));
+    // Solo por fecha de última actualización, la más reciente arriba — antes
+    // agrupaba por categoría primero, así que una lesión de hoy podía quedar
+    // más abajo que una de hace semanas solo por el orden de categorías.
+    recentFeed.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
     html += renderDashInjuryCategoryFilters();
 
@@ -11384,15 +11395,21 @@ function renderDashboardContent() {
 
     const recentPanel = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden;height:100%">
       <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Lesiones recientes (${recentFeed.length})</div>
-      ${recentFeed.length?recentFeed.map(r=>`
+      ${recentFeed.length?recentFeed.map(r=>{
+        const daysAgo = r.date ? Math.round((new Date(todayLocal()+'T00:00:00') - new Date(r.date+'T00:00:00'))/86400000) : null;
+        const whenLabel = daysAgo==null ? 'sin fecha' : daysAgo<=0 ? 'hoy' : daysAgo===1 ? 'ayer' : `hace ${daysAgo} días`;
+        const whenColor = daysAgo==null ? 'var(--text3)' : daysAgo<=1 ? 'var(--accent)' : daysAgo<=3 ? 'var(--text2)' : 'var(--text3)';
+        return `
         <div style="padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
             <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.athlete.name||r.athlete.email}</div>
             <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
           </div>
           ${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain, athlete:r.athlete})}
-          <div style="font-size:10px;color:var(--text3);margin-top:4px">${r.date||''}</div>
-        </div>`).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin lesiones activas${catFilter?' en '+catFilter:''}.</div>`}
+          ${r.note?`<div style="font-size:12px;color:var(--text2);margin-top:5px;line-height:1.4">"${r.note}"</div>`:''}
+          <div style="font-size:11.5px;font-weight:700;color:${whenColor};margin-top:5px">Última actualización: ${whenLabel}${r.date?` (${r.date})`:''}</div>
+        </div>`;
+      }).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin lesiones activas${catFilter?' en '+catFilter:''}.</div>`}
     </div>`;
 
     html += isDesktop
@@ -11455,6 +11472,10 @@ function renderDashboardAthleteList() {
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name+(team.category?' · '+team.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+          <span style="display:inline-flex;gap:3px;flex-shrink:0" title="Wellness ${wAllFilled?'completo':'sin completar'} hoy · Carga ${todayLog.length?'cargada':'sin cargar'} hoy">
+            <span style="width:7px;height:7px;border-radius:50%;background:${wAllFilled?getWellnessState(wPct).color:'var(--border2)'}"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:${todayLog.length?'var(--warm)':'var(--border2)'}"></span>
+          </span>
           ${wAllFilled?sparklineSvg(getWellnessSparklineData(a._personal,7), getWellnessState(wPct).color, 36, 16):''}
           ${wAllFilled?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${getWellnessState(wPct).color};font-weight:600;white-space:nowrap">${wPct}%</span>`:''}
           ${metrics?.acwr!=null?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${acwrStatus.color};font-weight:600;white-space:nowrap">ACWR ${metrics.acwr.toFixed(2)}</span>`:''}
