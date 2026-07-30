@@ -1040,6 +1040,22 @@ function scheduleSave() {
   saveTimer = setTimeout(saveToFirestore, 1500);
 }
 
+// Para acciones de "esto ya está, lo mando" (terminar wellness, guardar
+// carga, guardar una molestia) — NUNCA el guardado con demora de 1.5s de
+// scheduleSave(). Ese debounce está pensado para no spamear Firestore
+// mientras el atleta todavía está tipeando/tocando cosas, pero si el
+// resultado (guardado o no) recién se sabe 1.5s después de un toast de
+// "listo" que ya se mostró, y el atleta cierra la app apenas ve ese
+// mensaje (comportamiento carasímil en el celular), ese guardado pendiente
+// nunca llega a salir — quedaba la sensación de "completé todo y no le
+// llegó nada al entrenador". Acá se guarda de una, y el toast de éxito solo
+// se muestra después de que el guardado realmente confirmó.
+async function saveNow() {
+  clearTimeout(saveTimer);
+  return await saveToFirestore();
+}
+window.saveNow = saveNow;
+
 // ── QUÉ SE TOCÓ REALMENTE ESTA SESIÓN (para guardar sin pisar nada ajeno) ──
 // PWAs instaladas (agregadas a la pantalla de inicio) suelen quedar
 // "congeladas" en memoria por horas o días en vez de recargarse cada vez
@@ -1166,7 +1182,8 @@ async function saveToFirestore() {
     S._dirtyInjuryZones = new Set();
     S._dirtyEvalTests = new Set();
     S._dirtyIllnessIds = new Set();
-  } catch(e) { console.error('Save error', e); }
+    return true;
+  } catch(e) { console.error('Save error', e); return false; }
 }
 
 // ── HELPERS ───────────────────────────────────────────────────
@@ -2464,7 +2481,7 @@ function updateLoadDraft(date,activity,field,value) {
 }
 window.updateLoadDraft=updateLoadDraft;
 
-function saveLoadLog(date) {
+async function saveLoadLog(date) {
   const today=todayLocal();
   date = date || today;
   if(!S.history) S.history={};
@@ -2492,7 +2509,11 @@ function saveLoadLog(date) {
   });
   if(!savedAny && !incomplete.length) { showToast('Completá minutos y RPE de al menos una actividad'); return; }
   if(S.loadDraft) delete S.loadDraft[date];
-  scheduleSave();
+  if(savedAny) {
+    showToast('Guardando…');
+    const ok = await saveNow();
+    if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); renderMain(); return; }
+  }
   if(incomplete.length) {
     showToast((savedAny?'✓ Carga guardada, pero falta completar: ':'Falta completar: ')+incomplete.join(', '));
   } else {
@@ -3658,18 +3679,46 @@ function setHooper(wKey,key,val) {
 }
 window.setHooper=setHooper;
 
-function submitWellness(wKey) {
+async function submitWellness(wKey) {
   S.wellness[wKey].date=wKey; S.wellness[wKey].submitted=true;
   markWellnessDirty(wKey);
-  scheduleSave();
-  showToast('✓ Wellness de hoy guardado');
+  showToast('Guardando…');
+  const ok = await saveNow();
+  showToast(ok ? '✓ Wellness de hoy guardado' : 'No se pudo guardar — revisá tu conexión y volvé a intentar');
   const main=document.getElementById('main');
   if(main) main.scrollTo({top:0,behavior:'smooth'});
   renderMain();
 }
 window.submitWellness=submitWellness;
 
-function selectZone(zid) { S.selectedZone=zid; renderMain(); }
+// Antes de dejar tocar el dolor de una zona, chequeamos UNA vez por sesión
+// si el servidor la tiene activa de verdad. Un celular con la app abierta
+// (o suspendida en segundo plano) por horas puede seguir teniendo en
+// memoria una molestia YA resuelta (pain llegó a 0, se archivó) con su
+// historial viejo — si el atleta vuelve a marcar dolor en esa MISMA zona
+// sin este chequeo, ese historial viejo se seguía extendiendo con la fecha
+// de hoy: quedaba mezclado el dolor de una molestia vieja con el de una
+// nueva, y por eso parecía "viene doliendo hace días" cuando era recién de
+// hoy. Si el servidor no tiene nada para esa zona, arrancamos de cero acá
+// también.
+async function reconcileInjuryZoneOnce(zid) {
+  if(!S._reconciledInjuryZones) S._reconciledInjuryZones = new Set();
+  if(S._reconciledInjuryZones.has(zid)) return;
+  S._reconciledInjuryZones.add(zid);
+  if(!S.injuries[zid]?.history?.length) return;
+  try {
+    const snap = await getDoc(doc(db,'personal',S.user.uid));
+    const serverZone = snap.exists() ? snap.data().injuries?.[zid] : undefined;
+    if(!serverZone) S.injuries[zid].history = [];
+  } catch(e) {}
+}
+window.reconcileInjuryZoneOnce = reconcileInjuryZoneOnce;
+
+async function selectZone(zid) {
+  S.selectedZone=zid; renderMain();
+  await reconcileInjuryZoneOnce(zid);
+  if(S.selectedZone===zid) renderMain();
+}
 window.selectZone=selectZone;
 
 function setPain(zid,val) {
@@ -3900,22 +3949,37 @@ function archiveInjury(zid) {
   });
 }
 
-function removeInjury(zid) {
+async function removeInjury(zid) {
   if(!S.injuries[zid]) return;
   archiveInjury(zid);
   delete S.injuries[zid];
   markInjuryDirty(zid);
-  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia quitada y guardada en el historial'); renderMain();
+  S.selectedZone=null;
+  showToast('Guardando…');
+  const ok = await saveNow();
+  showToast(ok ? '✓ Molestia quitada y guardada en el historial' : 'No se pudo guardar — revisá tu conexión y volvé a intentar');
+  renderMain();
 }
 window.removeInjury=removeInjury;
 
-function saveInjury(zid) {
+async function saveInjury(zid) {
   const inj=S.injuries[zid]; if(!inj) return;
   if(!inj.history) inj.history=[];
-  inj.history.push({date:todayLocal(),pain:inj.pain,note:inj.note||'',type:inj.type||''});
+  const today=todayLocal();
+  const last=inj.history[inj.history.length-1];
+  // Si ya se guardó algo de esta zona HOY (ej. tocaste "Guardar" dos veces
+  // seguidas para ajustar el dolor), corregimos esa entrada en vez de
+  // agregar una segunda — antes sumaba una entrada nueva cada vez, así que
+  // el historial de un solo día podía terminar con varios registros.
+  if(last && last.date===today) { last.pain=inj.pain; last.note=inj.note||''; last.type=inj.type||''; }
+  else inj.history.push({date:today,pain:inj.pain,note:inj.note||'',type:inj.type||''});
   if(inj.pain===0) { archiveInjury(zid); delete S.injuries[zid]; }
   markInjuryDirty(zid);
-  S.selectedZone=null; scheduleSave(); showToast('✓ Molestia guardada'); renderMain();
+  S.selectedZone=null;
+  showToast('Guardando…');
+  const ok = await saveNow();
+  showToast(ok ? '✓ Molestia guardada' : 'No se pudo guardar — revisá tu conexión y volvé a intentar');
+  renderMain();
 }
 window.saveInjury=saveInjury;
 
@@ -3948,7 +4012,8 @@ function renderInjuryFollowup() {
 }
 window.renderInjuryFollowup=renderInjuryFollowup;
 
-function updateInjuryFollowup(zid,val) {
+async function updateInjuryFollowup(zid,val) {
+  await reconcileInjuryZoneOnce(zid);
   const inj=S.injuries[zid]; if(!inj) return;
   const today=todayLocal();
   inj.pain=val;
@@ -3958,7 +4023,10 @@ function updateInjuryFollowup(zid,val) {
   else inj.history.push({date:today,pain:val,note:inj.note||'',type:inj.type||''});
   if(val===0) { archiveInjury(zid); delete S.injuries[zid]; }
   markInjuryDirty(zid);
-  scheduleSave(); showToast('✓ Seguimiento guardado'); renderMain();
+  showToast('Guardando…');
+  const ok = await saveNow();
+  showToast(ok ? '✓ Seguimiento guardado' : 'No se pudo guardar — revisá tu conexión y volvé a intentar');
+  renderMain();
 }
 window.updateInjuryFollowup=updateInjuryFollowup;
 
@@ -4540,11 +4608,32 @@ window.renderCalendarDayView=renderCalendarDayView;
 
 // Lista de eventos de un día puntual, con alta/baja y edición inline de
 // rival/local-visitante para los eventos de tipo "Partido".
+// ── EDICIÓN DE UN DÍA DEL CALENDARIO — mismo modelo que la rutina ──────────
+// Antes cada click (agregar actividad, sacar una, tipear el rival) disparaba
+// su propio guardado a Firestore, uno por uno. Con conexión lenta o dos
+// clicks rápidos seguidos, esas escrituras podían pisarse entre sí o
+// perderse una en el camino sin que se notara — el síntoma era "cargo algo y
+// no queda guardado". La rutina nunca tuvo ese problema porque funciona
+// distinto: editás todo LOCAL y recién se manda a Firestore una sola vez,
+// entera, cuando tocás "Guardar". Ahora el calendario hace exactamente lo
+// mismo: todo lo de abajo (agregar/quitar actividad, rival, escudo) es
+// edición local nomás — nada se manda a Firestore hasta que tocás "Guardar
+// cambios de este día".
+function markCalendarDayDirty(dateStr) {
+  if(!S._calDirtyDates) S._calDirtyDates = new Set();
+  S._calDirtyDates.add(dateStr);
+}
+window.markCalendarDayDirty = markCalendarDayDirty;
+
 function renderCalendarDayEditor(team, dateStr) {
   const events = getCalendarEvents(team, dateStr);
   const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  const isDirty = S._calDirtyDates?.has(dateStr);
   return `<div class="admin-section">
-    <div class="admin-section-title" style="text-transform:capitalize">${dateLabel}</div>
+    <div class="admin-section-title" style="text-transform:capitalize;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>${dateLabel}</span>
+      ${isDirty?'<span style="font-size:11px;font-weight:700;color:var(--amber)">● cambios sin guardar</span>':''}
+    </div>
     ${events.length?events.map((e,i)=>{
       const t=CALENDAR_TYPES.find(x=>x.id===e.type);
       return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
@@ -4570,45 +4659,62 @@ function renderCalendarDayEditor(team, dateStr) {
         ${CALENDAR_TYPES.map(t=>`<button class="lib-filter" onclick="addCalendarEvent('${team.id}','${dateStr}','${t.id}')">+ ${t.label}</button>`).join('')}
       </div>
     </div>
+    <div style="padding:0 16px 16px">
+      <button class="abtn abtn-p" style="width:100%" onclick="saveCalendarDay('${team.id}','${dateStr}')">${isDirty?'Guardar cambios de este día':'✓ Guardado'}</button>
+    </div>
   </div>`;
 }
 window.renderCalendarDayEditor=renderCalendarDayEditor;
 
-async function addCalendarEvent(teamId, dateStr, type) {
+function addCalendarEvent(teamId, dateStr, type) {
   const team = S.teams.find(t=>t.id===teamId); if(!team) return;
   if(!team.calendar) team.calendar={};
   const events = getCalendarEvents(team,dateStr);
   const newEvent = type==='partido' ? {type,opponent:'',homeAway:'local'} : {type};
-  const updated = [...events, newEvent];
-  team.calendar[dateStr]=updated;
-  try { await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: updated}, {merge:true}); renderMain(); }
-  catch(e){ showToast('Error al guardar'); }
+  team.calendar[dateStr] = [...events, newEvent];
+  markCalendarDayDirty(dateStr);
+  renderMain();
 }
 window.addCalendarEvent=addCalendarEvent;
 
-async function removeCalendarEvent(teamId, dateStr, idx) {
+function removeCalendarEvent(teamId, dateStr, idx) {
   const team = S.teams.find(t=>t.id===teamId); if(!team) return;
   const events = getCalendarEvents(team,dateStr);
   events.splice(idx,1);
   team.calendar[dateStr] = events;
-  try {
-    if(events.length) await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: events}, {merge:true});
-    else await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: deleteField()}, {merge:true});
-    renderMain();
-  } catch(e){ showToast('Error al guardar'); }
+  markCalendarDayDirty(dateStr);
+  renderMain();
 }
 window.removeCalendarEvent=removeCalendarEvent;
 
-async function setCalendarEventField(teamId, dateStr, idx, field, value) {
+function setCalendarEventField(teamId, dateStr, idx, field, value) {
   const team = S.teams.find(t=>t.id===teamId); if(!team) return;
   const events = getCalendarEvents(team,dateStr);
   if(!events[idx]) return;
   events[idx][field]=value;
   team.calendar[dateStr]=events;
-  try { await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: events}, {merge:true}); }
-  catch(e){ showToast('Error al guardar'); }
+  markCalendarDayDirty(dateStr);
 }
 window.setCalendarEventField=setCalendarEventField;
+
+// Escribe TODO el día de una — un solo viaje a Firestore, igual que
+// "Guardar" en la rutina. Sigue siendo un merge por fecha puntual (dot-path),
+// nunca el calendario entero, así que un partido cargado en otra pestaña/
+// sesión mientras tanto no se pierde — solo cambia lo mismo que ya cambiaba
+// antes, ahora en un solo paquete en vez de uno por click.
+async function saveCalendarDay(teamId, dateStr) {
+  const team = S.teams.find(t=>t.id===teamId); if(!team) return;
+  const events = getCalendarEvents(team, dateStr);
+  showToast('Guardando…');
+  try {
+    if(events.length) await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: events}, {merge:true});
+    else await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: deleteField()}, {merge:true});
+    S._calDirtyDates?.delete(dateStr);
+    showToast('✓ Guardado');
+    renderMain();
+  } catch(e) { showToast('Error al guardar: '+e.message); }
+}
+window.saveCalendarDay = saveCalendarDay;
 
 // ══════════════════════════════════════════════════════════════
 // ── INFORME EXPORTABLE DEL EQUIPO ────────────────────────────
@@ -6943,6 +7049,7 @@ async function openTeam(id) {
   // "no se guarda" del calendario. Ahora no se puede tocar nada hasta que
   // la versión fresca ya esté puesta.
   S._teamViewLoadingId = id;
+  S._calDirtyDates = new Set();
   renderBottomBar(); renderMain();
   let freshTeam = null;
   try {
@@ -8219,7 +8326,7 @@ function handleCrestUpload(input, teamId, dateStr, idx) {
   const reader = new FileReader();
   reader.onload = (e) => {
     const img = new Image();
-    img.onload = async () => {
+    img.onload = () => {
       const size = 80;
       const canvas = document.createElement('canvas');
       canvas.width = size; canvas.height = size;
@@ -8229,8 +8336,10 @@ function handleCrestUpload(input, teamId, dateStr, idx) {
       ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
       const dataUrl = canvas.toDataURL('image/png', 0.85);
       if(dataUrl.length > 300000) { showToast('La imagen es muy pesada, probá con otra'); return; }
-      await setCalendarEventField(teamId, dateStr, idx, 'crestUrl', dataUrl);
-      showToast('✓ Escudo cargado');
+      // Local nomás, como el resto del día — se manda a Firestore recién con
+      // "Guardar cambios de este día".
+      setCalendarEventField(teamId, dateStr, idx, 'crestUrl', dataUrl);
+      showToast('Escudo listo — no te olvides de tocar "Guardar cambios de este día"');
       renderMain();
     };
     img.src = e.target.result;
