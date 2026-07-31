@@ -4538,6 +4538,27 @@ async function applyCalendarRepeat(teamId) {
 }
 window.applyCalendarRepeat = applyCalendarRepeat;
 
+// Antes, de lejos (mes/semana sin entrar al día) solo se veía un puntito de
+// color por actividad — no se podía saber si era gimnasio, práctica o
+// partido sin tocar. Ahora cada actividad es un rectángulo chico con el
+// nombre, para leerlo de un vistazo sin abrir nada.
+function renderCalendarEventChips(events, maxChips) {
+  if(!events.length) return '';
+  const shown = events.slice(0, maxChips);
+  const extra = events.length - shown.length;
+  return `<div style="display:flex;flex-direction:column;gap:2px;width:100%">
+    ${shown.map(e=>{
+      const t = CALENDAR_TYPES.find(x=>x.id===e.type);
+      const color = t?t.color:'var(--text3)';
+      const label = (e.type==='partido' && e.opponent) ? e.opponent : (t?t.label:e.type);
+      const crest = (e.type==='partido' && e.crestUrl) ? `<img src="${e.crestUrl}" style="width:9px;height:9px;border-radius:50%;object-fit:cover;flex-shrink:0">` : '';
+      return `<div style="background:${color}26;color:${color};border-radius:3px;padding:1px 3px;font-size:8.5px;font-weight:700;line-height:1.5;width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:2px;overflow:hidden">${crest}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</span></div>`;
+    }).join('')}
+    ${extra>0?`<div style="font-size:8px;color:var(--text3);text-align:center">+${extra}</div>`:''}
+  </div>`;
+}
+window.renderCalendarEventChips = renderCalendarEventChips;
+
 function renderCalendarMonthView(team) {
   const refDate = new Date((S.calendarRefDate||todayLocal())+'T00:00:00');
   const y=refDate.getFullYear(), m=refDate.getMonth();
@@ -4565,13 +4586,10 @@ function renderCalendarMonthView(team) {
       const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
       const events = getCalendarEvents(team,dateStr);
       const isToday = dateStr===today, isSelected = dateStr===selected;
-      return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:42px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:3px;font-size:12px;padding:4px 2px;
+      return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:64px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:2px;font-size:12px;padding:4px 2px;
         background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
         <span style="color:${isToday?'var(--accent)':'var(--text)'}">${day}</span>
-        <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:100%">
-          ${events.slice(0,3).map(e=>{const t=CALENDAR_TYPES.find(x=>x.id===e.type);return `<div style="width:5px;height:5px;border-radius:50%;background:${t?t.color:'var(--text3)'}"></div>`;}).join('')}
-          ${events.length>3?`<span style="font-size:8px;color:var(--text3)">+${events.length-3}</span>`:''}
-        </div>
+        ${renderCalendarEventChips(events, 3)}
       </div>`;
     }).join('')}
   </div>
@@ -4603,14 +4621,11 @@ function renderCalendarWeekView(team) {
       const dateStr=toLocalDateStr(d);
       const events=getCalendarEvents(team,dateStr);
       const isToday=dateStr===today, isSelected=dateStr===selected;
-      return `<div onclick="selectCalendarDay('${dateStr}')" style="aspect-ratio:1;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:3px;padding:4px 2px;
+      return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:88px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:3px;padding:4px 2px;
         background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
         <span style="font-size:9px;color:var(--text3);font-weight:600">${dayInitials[i]}</span>
         <span style="font-size:14px;color:${isToday?'var(--accent)':'var(--text)'}">${d.getDate()}</span>
-        <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:100%">
-          ${events.slice(0,3).map(e=>{const t=CALENDAR_TYPES.find(x=>x.id===e.type);return `<div style="width:5px;height:5px;border-radius:50%;background:${t?t.color:'var(--text3)'}"></div>`;}).join('')}
-          ${events.length>3?`<span style="font-size:8px;color:var(--text3)">+${events.length-3}</span>`:''}
-        </div>
+        ${renderCalendarEventChips(events, 4)}
       </div>`;
     }).join('')}
   </div>
@@ -10416,7 +10431,10 @@ function renderEvalHistory(edata, isDesktop, testList) {
           + '<span>'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+(isPR?' <span style="color:var(--warm);font-size:11px;font-weight:700">🏆 PR</span>':'')+'</span>'
           + jumpLevelTagHtml(t.id,r.height) + '</div>'
           + '<div class="eval-record-date">'+r.date+(r.tof?' · '+r.tof+'ms':'')+'</div></div>';
-        if(!isAsym) html += '<span class="eval-record-del" onclick="deleteEvalRecord(\''+t.id+'\','+(recsFwd.length-1-i)+')">×</span>';
+        // Solo el admin puede borrar un test ya cargado — un jugador lo podía
+        // borrar sin querer (un toque de más en el "×") y no había forma de
+        // recuperarlo. El admin sigue pudiendo corregir un dato mal cargado.
+        if(!isAsym && S.isAdmin) html += '<span class="eval-record-del" onclick="deleteEvalRecord(\''+t.id+'\','+(recsFwd.length-1-i)+')">×</span>';
         html += '</div>';
       });
     } else {
@@ -10429,6 +10447,15 @@ function renderEvalHistory(edata, isDesktop, testList) {
   return html;
 }
 
+// Antes esto era UN gráfico de barras por test (CMJ, SJ, Abalakov...),
+// cambiando de a uno con pestañas — con un plantel de 12-16 jugadores el
+// gráfico se estiraba a 500-600px de alto y encima solo mostraba UNA métrica
+// a la vez, así que comparar dos tests obligaba a ir y volver entre
+// pestañas. Ahora es una tabla compacta: una fila por atleta, una columna
+// por cada test — todas las métricas se ven juntas, cada celda coloreada
+// por tercio (igual criterio que antes, pero por columna), y el alto total
+// no depende de cuántos tests haya, solo de cuántos atletas — mucho más
+// chico y entra en pantalla sin scrollear de más.
 function renderEvalCompare() {
   if(!S.adminAthletes.length) {
     return '<div style="text-align:center;padding:30px;color:var(--text3)">'
@@ -10436,41 +10463,66 @@ function renderEvalCompare() {
       + '<button class="abtn abtn-p" onclick="loadEvalAthletes()">Cargar atletas</button></div>';
   }
 
-  // Fuerza Máxima y Saltabilidad comparan cada una sus propios tests — el
-  // testId de una lista no tiene por qué seguir siendo válido en la otra
-  // (ej: veníamos de comparar CMJ y cambiamos a la pestaña Fuerza Máxima).
   const testList = S.evalCategory==='fuerza' ? STRENGTH_TESTS : EVAL_TESTS;
-  let testId = S.evalCompareTest||testList[0].id;
-  if(!testList.find(t=>t.id===testId)) testId = testList[0].id;
-  const tabsHtml = testList.map(t=>'<button class="snav-tab '+(testId===t.id?'active':'')+'" onclick="switchCompareTest(\''+t.id+'\')">'+t.label+'</button>').join('');
-  let html = '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">'+tabsHtml+'</div>';
 
-  // Si estamos dentro de un equipo o de un atleta individual (S.evalScopeUids
-  // seteado), la comparación se acota a ESE grupo — nada de "Yo (admin)" ni
-  // de atletas de otro lado. Sin acotar, es el comportamiento anterior.
   const athletes = S.evalScopeUids
     ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid))
     : [{uid:'self', name:'Yo (admin)', email:''}].concat(S.adminAthletes);
-  const allData = athletes.map(a=>{
-    const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
-    const recs = sortEvalRecsByDate([...(ed[testId]||[])]);
-    const last = recs.length ? recs[recs.length-1] : null;
-    return {name: a.name||a.email||'Atleta', value: last?last.height:null, position: a.position||null};
-  });
-  const withData = allData.filter(x=>x.value!==null);
-  const withoutData = allData.filter(x=>x.value===null);
-  const testLabel = (testList.find(t=>t.id===testId)||{}).label || testId;
 
-  // Agrupar por puesto solo tiene sentido si al menos algunos atletas de este
-  // grupo tienen la posición cargada (Panel Admin → ficha del atleta).
-  const positions = [...new Set(withData.map(d=>d.position).filter(Boolean))];
+  // Un valor por atleta por test (último registro), más la posición para
+  // poder agrupar/filtrar igual que antes.
+  const perAthlete = athletes.map(a=>{
+    const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
+    const values = {};
+    testList.forEach(t=>{
+      const recs = sortEvalRecsByDate([...(ed[t.id]||[])]);
+      values[t.id] = recs.length ? recs[recs.length-1].height : null;
+    });
+    return {name: a.name||a.email||'Atleta', position: a.position||null, values};
+  });
+  const withAnyData = perAthlete.filter(a=>testList.some(t=>a.values[t.id]!=null));
+  const withoutAnyData = perAthlete.filter(a=>!testList.some(t=>a.values[t.id]!=null));
+
+  const positions = [...new Set(withAnyData.map(d=>d.position).filter(Boolean))];
   const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
   const groupPos = S.evalCompareGroupPosition||'all';
 
-  html += '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
+  // Agrupado por puesto: una fila por puesto, cada test promediado.
+  let rows;
+  if(groupBy==='position') {
+    const pool = groupPos==='all' ? withAnyData : withAnyData.filter(d=>d.position===groupPos);
+    if(groupPos==='all') {
+      const byPos = {};
+      pool.forEach(d=>{ const p=d.position||'Sin puesto'; (byPos[p]=byPos[p]||[]).push(d); });
+      rows = Object.entries(byPos).map(([pos,members])=>{
+        const values = {};
+        testList.forEach(t=>{
+          const vals = members.map(m=>m.values[t.id]).filter(v=>v!=null);
+          values[t.id] = vals.length ? Math.round((vals.reduce((s,v)=>s+v,0)/vals.length)*10)/10 : null;
+        });
+        return {name: pos, values};
+      });
+    } else {
+      rows = pool;
+    }
+  } else {
+    rows = withAnyData;
+  }
+
+  // Color por tercio, calculado POR COLUMNA (cada test se compara contra sí
+  // mismo, no contra otro test con otra escala/unidad).
+  const colColors = {};
+  testList.forEach(t=>{
+    const vals = rows.map(r=>r.values[t.id]).filter(v=>v!=null);
+    const colors = tercileColors(vals);
+    let ci=0;
+    colColors[t.id] = rows.map(r=>r.values[t.id]==null ? null : colors[ci++]);
+  });
+
+  let html = '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
   html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
-  html += '<div style="font-size:15px;font-weight:600">Comparación — '+testLabel+'</div>';
-  html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro por atleta</div></div>';
+  html += '<div style="font-size:15px;font-weight:600">Comparación de atletas</div>';
+  html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro de cada test, por atleta</div></div>';
 
   if(positions.length) {
     html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border)">'
@@ -10487,13 +10539,28 @@ function renderEvalCompare() {
       + '</div></div>';
   }
 
-  html += '<div style="padding:16px">';
+  html += '<div style="padding:12px 16px">';
 
-  const rows = buildEvalCompareRows(withData, groupBy, groupPos);
   if(rows.length) {
-    const chartHeight = Math.max(110, rows.length*34+16);
-    html += '<div style="height:'+chartHeight+'px;position:relative;margin-bottom:10px"><canvas class="eval-chart" id="chart-compare-'+testId+'"></canvas></div>';
-    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:4px">'
+    html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:11.5px">';
+    html += '<thead><tr>'
+      + '<th style="text-align:left;padding:5px 8px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2);white-space:nowrap">Atleta</th>'
+      + testList.map(t=>'<th style="text-align:center;padding:5px 6px;color:var(--text3);font-weight:600;white-space:nowrap">'+t.label+'<br><span style="font-weight:400;opacity:.7">('+t.unit+')</span></th>').join('')
+      + '</tr></thead><tbody>';
+    rows.forEach((r,ri)=>{
+      html += '<tr style="border-top:1px solid var(--border)">';
+      html += '<td style="padding:6px 8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;position:sticky;left:0;background:var(--bg2)">'+r.name+'</td>';
+      testList.forEach(t=>{
+        const v = r.values[t.id];
+        const color = colColors[t.id][ri];
+        html += '<td style="text-align:center;padding:6px 4px">'
+          + (v!=null ? '<span style="display:inline-block;min-width:36px;padding:2px 6px;border-radius:10px;background:'+color+'1f;color:'+color+';font-weight:700">'+v+'</span>' : '<span style="color:var(--text3)">—</span>')
+          + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-top:10px">'
       + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block"></span>Tercio superior</span>'
       + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#3b7dd8;display:inline-block"></span>Medio</span>'
       + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>A reforzar</span>'
@@ -10501,13 +10568,14 @@ function renderEvalCompare() {
   } else {
     html += '<div class="eval-no-data">Sin datos registrados.<br><span style="font-size:12px">Presioná Actualizar después de cargar evaluaciones.</span></div>';
   }
-  if(withoutData.length) {
-    html += '<div style="font-size:11px;color:var(--text3);margin-top:8px">Sin datos: '+withoutData.map(d=>d.name).join(', ')+'</div>';
+  if(withoutAnyData.length) {
+    html += '<div style="font-size:11px;color:var(--text3);margin-top:8px">Sin ningún test cargado: '+withoutAnyData.map(d=>d.name).join(', ')+'</div>';
   }
   html += '<button class="abtn abtn-p" style="width:100%;margin-top:12px" onclick="loadAllAthleteEvals()">↻ Actualizar datos de atletas</button>';
   html += '</div></div>';
   return html;
 }
+window.renderEvalCompare = renderEvalCompare;
 
 function renderAthleteTeamCompare(myData) {
   const myTeam = (S.teams||[]).find(t=>(t.players||[]).some(p=>p===S.userData?.name || p===S.userData?.email));
@@ -10776,71 +10844,9 @@ function drawEvalCharts() {
       }
     }
 
-  } else if(chartView==='compare') {
-    const testList = S.evalCategory==='fuerza' ? STRENGTH_TESTS : EVAL_TESTS;
-    let testId = S.evalCompareTest||testList[0].id;
-    if(!testList.find(t=>t.id===testId)) testId = testList[0].id;
-    const testUnit = (testList.find(t=>t.id===testId)||{}).unit || 'cm';
-    const athletes = S.evalScopeUids
-      ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid))
-      : [{uid:'self',name:'Yo (admin)'}].concat(S.adminAthletes);
-    const withData = athletes.map(a=>{
-      const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
-      const recs = sortEvalRecsByDate([...(ed[testId]||[])]);
-      const last = recs.length ? recs[recs.length-1] : null;
-      return {name: a.name||a.email||'Admin', value: last?last.height:null, position: a.position||null};
-    }).filter(x=>x.value!==null);
-    const positions = [...new Set(withData.map(d=>d.position).filter(Boolean))];
-    const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
-    const compData = buildEvalCompareRows(withData, groupBy, S.evalCompareGroupPosition||'all');
-
-    const canvasId = 'chart-compare-'+testId;
-    const c = document.getElementById(canvasId);
-    if(c && compData.length) {
-      const sc = computeDynamicScale(compData.map(d=>d.value));
-      const colors = tercileColors(compData.map(d=>d.value));
-      // Barras HORIZONTALES a propósito: con muchos atletas, barras verticales
-      // obligan a rotar o achicar los nombres hasta hacerlos ilegibles. Acá el
-      // nombre queda como fila (siempre legible) y el gráfico crece hacia
-      // abajo (altura dinámica en renderEvalCompare), no se aplasta a lo ancho.
-      S.evalChartInstances[canvasId] = new Chart(c, {
-        type:'bar',
-        data:{labels:compData.map(d=>d.name), datasets:[{data:compData.map(d=>d.value), backgroundColor:colors, borderRadius:4, borderWidth:0, maxBarThickness:22}]},
-        options:{
-          indexAxis:'y',
-          responsive:true, maintainAspectRatio:false,
-          devicePixelRatio: window.devicePixelRatio || 1,
-          plugins:{legend:{display:false}, tooltip:{...tooltipStyle, callbacks:{label:ctx=>' '+ctx.raw+' '+testUnit}}},
-          layout:{padding:{right:36}},
-          scales:{
-            x:{min:sc.min, max:sc.max, grid:{color:gridColor}, ticks:{color:cssVar('--text3','#7A8394'), font:{size:10}}},
-            y:{grid:{display:false}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:11}}}
-          }
-        },
-        plugins:[{
-          id:'comparelabels',
-          afterDatasetsDraw(chart){
-            const ctx=chart.ctx;
-            chart.getDatasetMeta(0).data.forEach((bar,idx)=>{
-              const val=chart.data.datasets[0].data[idx];
-              if(!val) return;
-              ctx.save();
-              ctx.fillStyle=cssVar('--text','#1A1D26');
-              ctx.font='700 11px Inter, sans-serif';
-              ctx.textAlign='left';
-              ctx.textBaseline='middle';
-              ctx.fillText(val+' '+testUnit, bar.x+6, bar.y);
-              ctx.restore();
-            });
-          }
-        }]
-      });
-      // Ver comentario en el chart-hist-* de más arriba: resize() en el
-      // siguiente frame para que la resolución del canvas quede nítida contra
-      // el layout ya asentado, no el de a medio renderizar.
-      requestAnimationFrame(()=>{ try{ S.evalChartInstances[canvasId]?.resize(); }catch(e){} });
-    }
   }
+  // "compare" ya no dibuja un gráfico Chart.js — ver renderEvalCompare(),
+  // ahora es una tabla (más chica, muestra todos los tests a la vez).
 }
 window.drawEvalCharts = drawEvalCharts;
 
@@ -10916,6 +10922,9 @@ async function ensureAthleteEvalData(uid) {
 window.ensureAthleteEvalData = ensureAthleteEvalData;
 
 async function deleteEvalRecord(testId, idx) {
+  // Blindaje además de sacar el botón de la vista del jugador — nadie que no
+  // sea admin puede borrar un test cargado, ni por acá ni por consola.
+  if(!S.isAdmin) return;
   if(!confirm('¿Eliminar este registro?')) return;
   const uid = S.evalAthleteId||'self';
   if(uid==='self') {
