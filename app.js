@@ -5983,6 +5983,24 @@ async function ensureGroupPersonalData(memberUids) {
 }
 window.ensureGroupPersonalData = ensureGroupPersonalData;
 
+// Misma idea que ensureGroupPersonalData, pero SIN saltarse a quien ya está
+// cacheado — trae a todo el grupo fresco de Firestore siempre. Se usa en los
+// momentos donde ver el dato de HOY importa más que ahorrarse la lectura (ej.
+// al abrir un equipo): la caché de toda-la-sesión de ensureGroupPersonalData
+// está bien para no releer todo el tiempo sin querer, pero significa que
+// wellness/carga recién cargados por un jugador no se veían hasta recargar
+// la página entera.
+async function refreshGroupPersonalData(memberUids) {
+  await ensureAdminAthletes();
+  const members = S.adminAthletes.filter(a => memberUids.includes(a.uid));
+  if (!members.length) return;
+  try {
+    const results = await Promise.all(members.map(a => getDoc(doc(db, 'personal', a.uid))));
+    members.forEach((a, i) => { a._personal = results[i].exists() ? results[i].data() : {}; });
+  } catch(e) { console.error('Error refrescando datos del equipo', e); }
+}
+window.refreshGroupPersonalData = refreshGroupPersonalData;
+
 function computeHooperScore(w) {
   if (!w) return null;
   const {pct, allFilled} = getWellnessScore(w);
@@ -7068,8 +7086,12 @@ async function openTeam(id) {
   // "cuenta vinculada" aunque estén perfectamente registrados.
   await ensureAdminAthletes();
   // Wellness y lesiones de cada jugador, para mostrarlas directamente en el
-  // roster (no solo en la ficha individual de cada uno).
-  if(S.teamView) await ensureGroupPersonalData(getTeamStatsMemberUids(S.teamView));
+  // roster (no solo en la ficha individual de cada uno). SIEMPRE frescas acá
+  // — ensureGroupPersonalData se salta a quien ya esté cacheado, así que si
+  // ya habías entrado a este equipo antes en la misma sesión, sin esto
+  // seguías viendo wellness/carga de la primera vez que entraste, no lo que
+  // los jugadores acaban de cargar.
+  if(S.teamView) await refreshGroupPersonalData(getTeamStatsMemberUids(S.teamView));
   renderMain();
 }
 window.openTeam=openTeam;
@@ -8995,6 +9017,17 @@ async function adminOpenAthlete(uid) {
       a = { uid, ...(uSnap.exists()?uSnap.data():{email:'—',name:'—'}) };
       S.adminAthletes.push(a);
     }
+    // ensureGroupPersonalData solo trae lo que TODAVÍA no está cacheado —
+    // como esa caché vive toda la sesión del admin, si ya habías entrado a
+    // este atleta antes (aunque sea hace horas), se mostraba esa foto vieja
+    // de nuevo sin volver a preguntarle a Firestore. Acá, específicamente al
+    // abrir la ficha, siempre traemos a ESTE atleta fresco — es el momento
+    // exacto en el que más importa ver lo último, sobre todo wellness/carga
+    // recién cargados.
+    try {
+      const freshSnap = await getDoc(doc(db,'personal',uid));
+      a._personal = freshSnap.exists() ? freshSnap.data() : {};
+    } catch(e) {}
     await ensureGroupPersonalData(getEffectiveGroupUids(a));
     S.atletaView = a;
     S.viewingAthlete = { uid, userData:a, personal:a._personal||{} };
