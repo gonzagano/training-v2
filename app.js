@@ -383,12 +383,12 @@ async function syncEvalToOneRM(uid, testId, value) {
   if (uid === 'self') {
     if(!S.oneRM) S.oneRM = {};
     S.oneRM[liftId] = value;
-    try { await setDoc(doc(db,'personal',S.user.uid), {[`oneRM.${liftId}`]:value}, {merge:true}); } catch(e){ /* no bloquea el guardado del test */ }
+    try { await updateDocSafe(doc(db,'personal',S.user.uid), {[`oneRM.${liftId}`]:value}); } catch(e){ /* no bloquea el guardado del test */ }
     return;
   }
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   if(a) { if(!a._personal) a._personal={}; if(!a._personal.oneRM) a._personal.oneRM={}; a._personal.oneRM[liftId]=value; }
-  try { await setDoc(doc(db,'personal',uid), {[`oneRM.${liftId}`]:value}, {merge:true}); } catch(e){ /* no bloquea el guardado del test */ }
+  try { await updateDocSafe(doc(db,'personal',uid), {[`oneRM.${liftId}`]:value}); } catch(e){ /* no bloquea el guardado del test */ }
 }
 window.syncEvalToOneRM = syncEvalToOneRM;
 
@@ -399,7 +399,7 @@ async function adminSaveOneRM(uid, liftId, value) {
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   if(a) { if(!a._personal) a._personal={}; if(!a._personal.oneRM) a._personal.oneRM={}; a._personal.oneRM[liftId]=val; }
   try {
-    await setDoc(doc(db,'personal',uid), {[`oneRM.${liftId}`]:val}, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), {[`oneRM.${liftId}`]:val});
     showToast('✓ RM guardado');
   } catch(e) { showToast('Error al guardar'); }
 }
@@ -1040,6 +1040,32 @@ function scheduleSave() {
   saveTimer = setTimeout(saveToFirestore, 1500);
 }
 
+// ── BUG DE BASE, CONFIRMADO CONTRA FIRESTORE REAL ──────────────────────
+// setDoc(ref, {'wellness.2026-07-30': valor}, {merge:true}) NO mete "valor"
+// adentro del mapa "wellness" en la clave "2026-07-30" — crea un campo de
+// primer nivel que se llama LITERALMENTE "wellness.2026-07-30" (con el punto
+// como parte del nombre). Esa interpretación de "ruta con puntos" es SOLO de
+// updateDoc(), no de setDoc() con merge. Por eso cada guardado puntual por
+// fecha/zona de esta app (wellness, lesiones, evaluaciones, calendario, 1RM,
+// extras personales) venía "guardando bien" sin ningún error, pero nadie
+// nunca leía ese campo con nombre raro — al recargar, desaparecía. Este
+// helper usa updateDoc() de verdad (que sí entiende las rutas con puntos), y
+// si el documento todavía no existe (updateDoc no lo crea solo, a diferencia
+// de setDoc+merge), lo crea vacío primero y reintenta.
+async function updateDocSafe(ref, dotPathData) {
+  try {
+    await updateDoc(ref, dotPathData);
+  } catch(e) {
+    if (e.code === 'not-found') {
+      await setDoc(ref, {}, { merge: true });
+      await updateDoc(ref, dotPathData);
+    } else {
+      throw e;
+    }
+  }
+}
+window.updateDocSafe = updateDocSafe;
+
 // Para acciones de "esto ya está, lo mando" (terminar wellness, guardar
 // carga, guardar una molestia) — NUNCA el guardado con demora de 1.5s de
 // scheduleSave(). Ese debounce está pensado para no spamear Firestore
@@ -1176,7 +1202,7 @@ async function saveToFirestore() {
       // Biblioteca y videos son compartidos — van a su propio documento, no al personal
       await setDoc(doc(db, 'shared', 'library'), { library: S.library, videos: S.videos }, { merge: true });
     }
-    await setDoc(doc(db, 'personal', S.user.uid), dataToSave, { merge: true });
+    await updateDocSafe(doc(db, 'personal', S.user.uid), dataToSave);
     S._dirtyWellnessDates = new Set();
     S._dirtyCargaDates = new Set();
     S._dirtyInjuryZones = new Set();
@@ -1738,7 +1764,7 @@ async function importEstudiantesFixtures() {
         if(existing.some(e=>e.type==='partido' && e.opponent===fx.opponent)) continue;
         const updated = [...existing, {type:'partido', opponent:fx.opponent, homeAway:fx.homeAway}];
         team.calendar[fx.date] = updated;
-        await setDoc(doc(db,'teams',teamId), {[`calendar.${fx.date}`]: updated}, {merge:true});
+        await updateDocSafe(doc(db,'teams',teamId), {[`calendar.${fx.date}`]: updated});
         addedTotal++;
       }
     }
@@ -1816,7 +1842,7 @@ async function fillWeeklyTrainingCalendar() {
           if(toAdd.length) {
             const updated = [...existing, ...toAdd];
             team.calendar[dateStr] = updated;
-            await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: updated}, {merge:true});
+            await updateDocSafe(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: updated});
             addedTotal += toAdd.length;
           }
         }
@@ -2951,7 +2977,7 @@ async function adminSetExerciseField(uid, wKey, sName, exId, field, value) {
     rec[field] = (num===null || isNaN(num)) ? null : num;
     if(rec.load || rec.rpe) rec.checked = true;
     const path = `history.${sk}.exercises.${exId}`;
-    await setDoc(doc(db,'personal',uid), {[path]: rec}, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), {[path]: rec});
     if(!a._personal.history[sk]) a._personal.history[sk] = {};
     if(!a._personal.history[sk].exercises) a._personal.history[sk].exercises = {};
     a._personal.history[sk].exercises[exId] = rec;
@@ -3546,7 +3572,7 @@ async function adminAddInjuryStudy(uid, zoneId, input) {
       if(zone===null) zone = {...personal.injuries[zoneId]};
       if(!zone.studies) zone.studies=[];
       zone.studies.push({id:genId(), name:file.name, type:file.type, url:dataUrl, uploadedAt:todayLocal()});
-      await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+      await updateDocSafe(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone});
       personal.injuries[zoneId] = zone;
       showToast('✓ Estudio agregado');
       renderMain();
@@ -3562,7 +3588,7 @@ async function adminRemoveInjuryStudy(uid, zoneId, studyId) {
     let zone = await fetchFreshInjuryZone(uid, zoneId);
     if(zone===null) zone = {...personal.injuries[zoneId]};
     zone.studies = (zone.studies||[]).filter(s=>s.id!==studyId);
-    await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone});
     personal.injuries[zoneId] = zone;
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -3793,7 +3819,7 @@ async function adminSetInjurySeverity(uid, zoneId, severity) {
     let zone = await fetchFreshInjuryZone(uid, zoneId);
     if(zone===null) zone = {...personal.injuries[zoneId]};
     zone.severity = severity;
-    await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone});
     personal.injuries[zoneId] = zone;
     showToast('✓ Gravedad actualizada');
     renderMain();
@@ -3808,7 +3834,7 @@ async function adminSetInjuryRtpPhase(uid, zoneId, phase) {
     let zone = await fetchFreshInjuryZone(uid, zoneId);
     if(zone===null) zone = {...personal.injuries[zoneId]};
     zone.rtpPhase = phase;
-    await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone});
     personal.injuries[zoneId] = zone;
     showToast('✓ Fase de retorno actualizada');
     renderMain();
@@ -4504,7 +4530,7 @@ async function applyCalendarRepeat(teamId) {
   }
   if(!addedTotal) { showToast('No había nada nuevo para agregar en ese rango'); return; }
   try {
-    await setDoc(doc(db,'teams',teamId), fsUpdate, {merge:true});
+    await updateDocSafe(doc(db,'teams',teamId), fsUpdate);
     showToast(`✓ ${addedTotal} actividades agregadas`);
     S._calRepeatOpen = false;
     renderMain();
@@ -4707,8 +4733,8 @@ async function saveCalendarDay(teamId, dateStr) {
   const events = getCalendarEvents(team, dateStr);
   showToast('Guardando…');
   try {
-    if(events.length) await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: events}, {merge:true});
-    else await setDoc(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: deleteField()}, {merge:true});
+    if(events.length) await updateDocSafe(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: events});
+    else await updateDocSafe(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: deleteField()});
     S._calDirtyDates?.delete(dateStr);
     showToast('✓ Guardado');
     renderMain();
@@ -7017,7 +7043,7 @@ async function addPersonalExtraExercise(uid,sessionName,exObj){
   if(!personal.personalExtras[sessionName]) personal.personalExtras[sessionName]=[];
   personal.personalExtras[sessionName].push(exObj);
   try {
-    await setDoc(doc(db,'personal',uid), {[`personalExtras.${sessionName}`]: personal.personalExtras[sessionName]}, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), {[`personalExtras.${sessionName}`]: personal.personalExtras[sessionName]});
     showToast(`✓ ${exObj.name} agregado (solo para este atleta)`);
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -7029,7 +7055,7 @@ async function removePersonalExtraExercise(uid,sessionName,exId){
   if(!personal?.personalExtras?.[sessionName]) return;
   personal.personalExtras[sessionName]=personal.personalExtras[sessionName].filter(e=>e.id!==exId);
   try {
-    await setDoc(doc(db,'personal',uid), {[`personalExtras.${sessionName}`]: personal.personalExtras[sessionName]}, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), {[`personalExtras.${sessionName}`]: personal.personalExtras[sessionName]});
     showToast('✓ Eliminado');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -8286,7 +8312,7 @@ async function saveOneRM(liftId, value) {
   if(!S.oneRM) S.oneRM={};
   S.oneRM[liftId]=val;
   try {
-    await setDoc(doc(db,'personal',S.user.uid), {[`oneRM.${liftId}`]:val}, {merge:true});
+    await updateDocSafe(doc(db,'personal',S.user.uid), {[`oneRM.${liftId}`]:val});
     showToast('✓ Marca guardada');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -8543,7 +8569,7 @@ async function moveWellnessDayData(uid, oldDate, newDate) {
     fsUpdate['sessionLogs'] = freshLogs;
   }
   try {
-    await setDoc(doc(db,'personal',uid), fsUpdate, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), fsUpdate);
     if(!personal.wellness) personal.wellness = {};
     if(hasWellness) {
       personal.wellness[newDate] = freshWellness[oldDate];
@@ -10869,7 +10895,7 @@ async function saveAthleteEvalsDoc(uid, evals) {
   // ejercicio. Mismo criterio que wellness/injuries en saveToFirestore().
   const payload = {};
   Object.keys(evals||{}).forEach(testId => { payload['evals.'+testId] = evals[testId]; });
-  if(Object.keys(payload).length) await setDoc(ref, payload, {merge:true});
+  if(Object.keys(payload).length) await updateDocSafe(ref, payload);
 }
 window.saveAthleteEvalsDoc=saveAthleteEvalsDoc;
 
@@ -11404,7 +11430,7 @@ async function adminSetIsInjury(uid, zoneId, val) {
     let zone = await fetchFreshInjuryZone(uid, zoneId);
     if(zone===null) zone = {...personal.injuries[zoneId]};
     zone.isInjury = val;
-    await setDoc(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone}, {merge:true});
+    await updateDocSafe(doc(db,'personal',uid), {[`injuries.${zoneId}`]: zone});
     personal.injuries[zoneId] = zone;
     showToast(val?'✓ Marcada como lesión':'✓ Marcada como molestia');
     renderMain();
