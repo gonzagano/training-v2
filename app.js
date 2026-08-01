@@ -2154,6 +2154,165 @@ function formatExSummary(ex) {
 window.formatExSummary=formatExSummary;
 
 // ── SESSION ───────────────────────────────────────────────────
+// ── CALCULADORA DE %RM — "Mi Rutina" ────────────────────────────────────
+// Vive siempre en la vista de rutina del jugador, tenga o no rutina asignada
+// (de equipo, individual, o ninguna todavía) — para consultar rápido con qué
+// peso trabajar en cada %, sin hacer la cuenta a mano. Elegida entre 4
+// prototipos mostrados al prep: un ejercicio a la vez con pestañas arriba,
+// tabla en orden descendente 100%→45% (se entrena de más pesado a más
+// liviano, no al revés).
+const RM_CALC_LIFTS = [
+  { liftId:'press_plano', short:'Press Plano', hasVelocity:true,
+    velTable:[[45,1.04],[50,0.95],[55,0.87],[60,0.78],[65,0.70],[70,0.62],[75,0.55],[80,0.47],[85,0.39],[90,0.32],[95,0.25],[100,0.18]] },
+  { liftId:'sentadilla_barra', short:'Sentadilla', hasVelocity:true,
+    velTable:[[45,1.21],[50,1.14],[55,1.07],[60,1.00],[65,0.92],[70,0.84],[75,0.76],[80,0.68],[85,0.59],[90,0.51],[95,0.42],[100,0.32]] },
+  { liftId:'peso_muerto', short:'Peso Muerto', hasVelocity:true,
+    velTable:[[45,0.94],[50,0.87],[55,0.81],[60,0.75],[65,0.69],[70,0.62],[75,0.56],[80,0.50],[85,0.44],[90,0.37],[95,0.31],[100,0.25]] },
+  { liftId:'cargada_potencia', short:'Cargada de Potencia', hasVelocity:false, velTable:null },
+];
+window.RM_CALC_LIFTS = RM_CALC_LIFTS;
+
+const RM_CALC_PCTS = [100,95,90,85,80,75,70,65,60,55,50,45];
+function rmCalcRepHint(pct) {
+  if(pct>=100) return '1';
+  if(pct>=95) return '2';
+  if(pct>=90) return '2-4';
+  if(pct>=85) return 'hasta 6';
+  if(pct>=80) return '7-8';
+  if(pct>=75) return '9-12';
+  if(pct>=70) return '13-15';
+  if(pct>=65) return '16-18';
+  if(pct>=60) return '19-20';
+  return '20+';
+}
+
+function rmCalcEpley(weight, reps) {
+  if(!weight || !reps) return null;
+  return weight * (1 + reps/30);
+}
+// Interpola sobre la tabla de velocidad (a mayor %RM, menor velocidad) para
+// encontrar el %RM correspondiente a la velocidad medida, y de ahí el 1RM —
+// misma tabla que ya se usa en la planilla de velocidad de ejecución.
+function rmCalcFromVelocity(lift, kg, v) {
+  if(!lift.velTable || !kg || !v) return null;
+  const t = lift.velTable;
+  if(v >= t[0][1]) return kg/(t[0][0]/100);
+  if(v <= t[t.length-1][1]) return kg/(t[t.length-1][0]/100);
+  for(let i=0;i<t.length-1;i++){
+    const [p1,v1]=t[i], [p2,v2]=t[i+1];
+    if(v<=v1 && v>=v2){
+      const frac=(v1-v)/(v1-v2);
+      return kg/((p1+frac*(p2-p1))/100);
+    }
+  }
+  return null;
+}
+
+function getRMCalcState(liftId) {
+  if(!S._rmCalc) S._rmCalc = {};
+  if(!S._rmCalc[liftId]) {
+    S._rmCalc[liftId] = { mode: S.oneRM?.[liftId] ? 'loaded' : 'epley', epleyWeight:null, epleyReps:null, velKg:null, velV:null };
+  }
+  return S._rmCalc[liftId];
+}
+function rmCalcActiveLift() {
+  return (S._rmCalcActiveLift && RM_CALC_LIFTS.find(l=>l.liftId===S._rmCalcActiveLift)) ? S._rmCalcActiveLift : RM_CALC_LIFTS[0].liftId;
+}
+function setRMCalcActiveLift(liftId) { S._rmCalcActiveLift = liftId; renderMain(); }
+window.setRMCalcActiveLift = setRMCalcActiveLift;
+function setRMCalcMode(liftId, mode) { getRMCalcState(liftId).mode = mode; renderMain(); }
+window.setRMCalcMode = setRMCalcMode;
+function setRMCalcField(liftId, field, value) {
+  getRMCalcState(liftId)[field] = value===''||value===null ? null : parseDecimal(value);
+  renderMain();
+}
+window.setRMCalcField = setRMCalcField;
+
+function currentRMCalcValue(lift) {
+  const s = getRMCalcState(lift.liftId);
+  if(s.mode==='epley') return rmCalcEpley(s.epleyWeight, s.epleyReps);
+  if(s.mode==='velocity') return rmCalcFromVelocity(lift, s.velKg, s.velV);
+  return S.oneRM?.[lift.liftId] || null;
+}
+
+function rmCalcInputsHtml(lift, s) {
+  if(s.mode==='loaded') {
+    const rmVal = S.oneRM?.[lift.liftId];
+    if(rmVal) return `<div style="font-size:12px;color:var(--text3)">Tu 1RM cargado: <b style="color:var(--text2)">${rmVal} kg</b></div>`;
+    return `<div style="font-size:12px;color:var(--amber)">Todavía no tenés un RM cargado para ${lift.short} — cargalo en Ajustes, o estimalo con Repeticiones o Velocidad.</div>`;
+  }
+  const fld = (label,f,val,placeholder,step) => `<div style="flex:1">
+      <label style="display:block;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">${label}</label>
+      <input class="field-inp" style="width:100%" type="number" inputmode="decimal" ${step?`step="${step}"`:''} value="${val??''}" placeholder="${placeholder}" onchange="setRMCalcField('${lift.liftId}','${f}',this.value)">
+    </div>`;
+  if(s.mode==='epley') {
+    return `<div style="display:flex;gap:8px">${fld('Peso (kg)','epleyWeight',s.epleyWeight,'ej. 60')}${fld('Repeticiones','epleyReps',s.epleyReps,'ej. 6')}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:6px">Hacé una serie cerca del fallo (1 a 10 reps) y cargá cuánto pesaste y cuántas hiciste.</div>`;
+  }
+  return `<div style="display:flex;gap:8px">${fld('Peso (kg)','velKg',s.velKg,'ej. 80')}${fld('Velocidad (m/s)','velV',s.velV,'ej. 0.39','0.01')}</div>
+  <div style="font-size:11px;color:var(--text3);margin-top:6px">Cargá el peso movido y la velocidad de ejecución de esa serie.</div>`;
+}
+
+function rmCalcTableHtml(rm) {
+  if(rm==null) return `<div style="font-size:12px;color:var(--text3);padding:8px 0">Completá los datos de arriba para ver la tabla.</div>`;
+  const rows = RM_CALC_PCTS.map(p=>({ pct:p, kg: Math.round(rm*p/100*10)/10 }));
+  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">
+    <thead><tr>
+      <th style="text-align:left;font-size:9.5px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">%RM</th>
+      <th style="text-align:right;font-size:9.5px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Kg</th>
+      <th style="text-align:right;font-size:9.5px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Reps aprox.</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r=>{
+        const zoneColor = r.pct>=85?'var(--red)':r.pct>=65?'var(--amber)':'var(--green)';
+        const zoneDim = r.pct>=85?'var(--red-dim)':r.pct>=65?'var(--amber-dim)':'var(--green-dim)';
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:7px 0"><span style="display:inline-block;min-width:34px;padding:2px 6px;border-radius:5px;font-size:11px;font-weight:700;color:${zoneColor};background:${zoneDim}">${r.pct}%</span></td>
+          <td style="text-align:right;font-weight:700;font-size:13px;padding:7px 0">${r.kg}</td>
+          <td style="text-align:right;font-size:11px;color:var(--text3);padding:7px 0">${rmCalcRepHint(r.pct)}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function renderRMCalcSection() {
+  const key = 'rm-calc';
+  const collapsed = S.collapsedSections?.has(key);
+  const activeId = rmCalcActiveLift();
+  const lift = RM_CALC_LIFTS.find(l=>l.liftId===activeId);
+  const s = getRMCalcState(lift.liftId);
+  const rm = currentRMCalcValue(lift);
+
+  const body = collapsed ? '' : `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      ${RM_CALC_LIFTS.map(l=>`<button class="snav-tab ${l.liftId===activeId?'active':''}" onclick="setRMCalcActiveLift('${l.liftId}')">${l.short}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="lib-filter ${s.mode==='loaded'?'active':''}" onclick="setRMCalcMode('${lift.liftId}','loaded')">Mi RM cargado</button>
+      <button class="lib-filter ${s.mode==='epley'?'active':''}" onclick="setRMCalcMode('${lift.liftId}','epley')">Repeticiones</button>
+      <button class="lib-filter ${s.mode==='velocity'?'active':''}" ${!lift.hasVelocity?'disabled style="opacity:.4;cursor:not-allowed"':''} onclick="setRMCalcMode('${lift.liftId}','velocity')">Velocidad</button>
+    </div>
+    ${rmCalcInputsHtml(lift, s)}
+    <div style="display:flex;align-items:baseline;gap:6px;background:var(--accent-dim);border-radius:var(--rsm);padding:10px 12px;margin:12px 0">
+      <span style="font-size:20px;font-weight:800;color:var(--accent)">${rm!=null?Math.round(rm*10)/10:'—'}</span>
+      <span style="font-size:12px;color:var(--text2);font-weight:600">kg · 1RM estimado</span>
+    </div>
+    ${rmCalcTableHtml(rm)}`;
+
+  return `<div class="wellness-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleSection('${key}')">
+      <div>
+        <div class="wellness-title">🏋️ Calculadora de %RM</div>
+        <div class="wellness-sub">Con qué peso trabajar hoy, en cada ejercicio</div>
+      </div>
+      <span style="color:var(--text3);font-size:15px;transform:rotate(${collapsed?'-90':'0'}deg);transition:transform .15s">›</span>
+    </div>
+    ${body}
+  </div>`;
+}
+window.renderRMCalcSection = renderRMCalcSection;
+
 function renderSession() {
   const blocks = getCurrentBlocks();
   const sessionLabel = S.isAdmin ? `Sesión ${S.currentSession}` : (S.currentSession||'Sesión');
@@ -2161,18 +2320,20 @@ function renderSession() {
     <div class="page-title">${sessionLabel}</div>
     <div class="page-subtitle">${getWeekHeaderLabel(true)} · ${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>`;
+  const rmCalc = !S.isAdmin ? renderRMCalcSection() : '';
   if (!blocks.length) {
     if (!S.isAdmin) {
-      return header + `<div class="empty-state" style="padding:40px 20px">
+      return header + rmCalc + `<div class="empty-state" style="padding:40px 20px">
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">Sin rutina asignada</div>
         <div style="font-size:13px;color:var(--text3);line-height:1.6">Tu entrenador está preparando tu planificación.<br>Pronto vas a ver tu rutina acá.</div>
       </div>`;
     }
     return header + `<div class="empty-state">Sin bloques en esta sesión.</div>`;
   }
-  return header + blocks.map(b=>renderBlock(b)).join('')
+  return header + rmCalc + blocks.map(b=>renderBlock(b)).join('')
     + `<button class="finish-btn" onclick="finishSession()">✓ Marcar sesión como completada</button>`;
 }
+window.renderSession = renderSession;
 
 function renderBlock(b) {
   const cc=b.colorKey||'bx';
@@ -6305,13 +6466,18 @@ function renderGroupWellness(memberUids, opts) {
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
 
   // Vista de comparación pura (para un atleta individual que eligió
-  // compararse con un equipo desde su Perfil): solo el promedio agregado —
-  // nunca el listado de compañeros ni sus datos puntuales, eso es exclusivo
-  // de la ficha real del equipo en Equipos.
+  // compararse con un equipo desde su Perfil): SU PROPIA ficha (esto se
+  // había perdido en un pase anterior — el atleta desaparecía por completo,
+  // solo quedaba el promedio) más el promedio agregado del equipo — nunca el
+  // listado de compañeros ni sus datos puntuales, eso es exclusivo de la
+  // ficha real del equipo en Equipos.
   if (opts && opts.compareOnly) {
-    return members.length > 1
+    const selfMember = members.find(m=>m.uid===opts.selfUid);
+    let html = selfMember ? renderAthleteSummaryCard(selfMember) : '';
+    html += members.length > 1
       ? renderTeamMetricsCard('Promedio del equipo con el que se compara', members)
       : `<div class="empty-state">El equipo elegido para comparar todavía no tiene datos.</div>`;
+    return html;
   }
 
   const today = todayLocal();
@@ -6618,7 +6784,7 @@ const RADAR_METRICS = [
   {id:'rm_press_banca', label:'Banca'}, {id:'rm_peso_muerto', label:'Muerto'}, {id:'rm_sentadilla', label:'Sentadilla'},
 ];
 
-function renderTeamRadarSection(members) {
+function renderTeamRadarSection(members, lockedAthleteId) {
   const key = 'team-radar';
   const collapsed = S.collapsedSections?.has(key);
   let html = `<div class="admin-section">${collapsibleHeader(key,'📡 Perfil de atleta (radar)')}`;
@@ -6632,13 +6798,18 @@ function renderTeamRadarSection(members) {
       // forzamos ese modo en vez de no mostrar nada.
       const soloAthlete = members.length === 1;
       const mode = soloAthlete ? 'self' : (S.radarMode || 'equipo');
-      const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
+      // lockedAthleteId (ficha individual comparándose con un equipo): el
+      // radar siempre muestra a ESE atleta, sin selector — mostrar el
+      // selector acá dejaría elegir y ver el radar de cualquier compañero
+      // del equipo de comparación, la misma fuga que ya se evita en el resto
+      // de esta vista.
+      const athleteId = lockedAthleteId || (S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||''));
       const scaleLabel = soloAthlete ? 'su propio mejor valor registrado' : 'el mejor valor del equipo';
       html += soloAthlete ? '' : `<div style="padding:0 16px 10px;display:flex;gap:6px">
         <button class="lib-filter ${mode==='equipo'?'active':''}" onclick="setRadarMode('equipo')">vs. equipo</button>
         <button class="lib-filter ${mode==='self'?'active':''}" onclick="setRadarMode('self')">vs. uno mismo</button>
       </div>`;
-      html += members.length>1 ? `<div style="padding:0 16px 12px">
+      html += (members.length>1 && !lockedAthleteId) ? `<div style="padding:0 16px 12px">
         <select class="abtn" style="width:100%;text-align:left" onchange="setRadarAthlete(this.value)">
           ${members.map(a=>`<option value="${a.uid}" ${athleteId===a.uid?'selected':''}>${a.name||a.email}</option>`).join('')}
         </select>
@@ -6660,14 +6831,14 @@ window.setRadarAthlete = setRadarAthlete;
 function setRadarMode(mode) { S.radarMode = mode; renderMain(); }
 window.setRadarMode = setRadarMode;
 
-function drawTeamRadarChart(members) {
+function drawTeamRadarChart(members, lockedAthleteId) {
   if(typeof Chart==='undefined') return;
   if(!members.length) return;
   const canvas = document.getElementById('team-radar-chart');
   if(!canvas) return;
   const soloAthlete = members.length === 1;
   const mode = soloAthlete ? 'self' : (S.radarMode || 'equipo');
-  const athleteId = S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||'');
+  const athleteId = lockedAthleteId || (S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||''));
   const athlete = members.find(a=>a.uid===athleteId);
   if(!athlete) return;
 
@@ -7009,14 +7180,18 @@ function renderGroupStats(memberUids, opts) {
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
 
   // Vista de comparación pura (atleta individual comparándose con un
-  // equipo elegido en su Perfil): solo gráficos duros de comparación
-  // (promedio, radar, cuadrante) — nada de molestias, ranking clickeable ni
-  // detalle semanal de otros jugadores, que son cosas exclusivas de la
-  // ficha real del equipo.
+  // equipo elegido en su Perfil): promedio agregado + su propio radar —
+  // nada de molestias, ranking clickeable ni detalle semanal de otros
+  // jugadores, que son cosas exclusivas de la ficha real del equipo.
+  // El radar se BLOQUEA en el propio atleta (sin el selector de compañeros)
+  // y el cuadrante queda afuera directamente: a diferencia del radar (una
+  // sola línea punteada de promedio, sin identificar a nadie), el cuadrante
+  // grafica un punto con nombre por cada integrante del equipo — mostrarlo
+  // acá era exactamente la fuga de datos de compañeros que este modo existe
+  // para evitar.
   if (opts && opts.compareOnly) {
     let cHtml = members.length > 1 ? renderTeamMetricsCard('Promedio del equipo con el que se compara', members, false) : '';
-    cHtml += renderTeamRadarSection(members);
-    cHtml += renderTeamQuadrantSection(members);
+    cHtml += renderTeamRadarSection(members, opts.selfUid);
     return cHtml;
   }
 
@@ -7517,8 +7692,8 @@ function renderAtletaDetail(a) {
   </div>`;
 
   if (sub === 'rutina') html += renderAtletaRutina(a);
-  else if (sub === 'wellness') html += renderGroupWellness(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId});
-  else if (sub === 'stats') html += renderGroupStats(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId});
+  else if (sub === 'wellness') html += renderGroupWellness(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId, selfUid: a.uid});
+  else if (sub === 'stats') html += renderGroupStats(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId, selfUid: a.uid});
   else if (sub === 'evals') html += renderEvals();
   else html += renderPerfilTab(a);
   return html;
@@ -7536,7 +7711,14 @@ function drawAtletaTabCharts() {
   } else if (S.atletaSubview === 'stats') {
     const uids = getEffectiveGroupUids(a);
     const mem = (S.adminAthletes||[]).filter(x=>uids.includes(x.uid));
-    drawTeamInjuryChart(mem); drawTeamRadarChart(mem); drawTeamQuadrantChart(mem);
+    if (a.compareTeamId) {
+      // Ficha individual comparándose con un equipo: solo el radar
+      // (bloqueado en el propio atleta) — sin gráfico de lesiones ni
+      // cuadrante, que no se renderizan en este modo (ver renderGroupStats).
+      drawTeamRadarChart(mem, a.uid);
+    } else {
+      drawTeamInjuryChart(mem); drawTeamRadarChart(mem); drawTeamQuadrantChart(mem);
+    }
   }
 }
 window.drawAtletaTabCharts = drawAtletaTabCharts;
