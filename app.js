@@ -4633,18 +4633,35 @@ window.applyCalendarRepeat = applyCalendarRepeat;
 // nombre, para leerlo de un vistazo sin abrir nada.
 function renderCalendarEventChips(events, maxChips) {
   if(!events.length) return '';
-  const shown = events.slice(0, maxChips);
-  const extra = events.length - shown.length;
-  return `<div style="display:flex;flex-direction:column;gap:2px;width:100%">
-    ${shown.map(e=>{
+  const partidos = events.filter(e=>e.type==='partido');
+  const others = events.filter(e=>e.type!=='partido');
+  const shownOthers = others.slice(0, maxChips);
+  const extraOthers = others.length - shownOthers.length;
+  // Día de partido: se pide de un vistazo (sin entrar al día) quién es el
+  // rival, su escudo bien visible y si jugamos de Local (rojo) o Visitante
+  // (azul) — por eso este día tiene su propio recuadro más grande en vez del
+  // chip fino que usan gimnasio/práctica.
+  const matchBoxes = partidos.map(e=>{
+    const isLocal = e.homeAway!=='visitante';
+    const badgeColor = isLocal ? 'var(--red)' : 'var(--blue)';
+    const badgeLabel = isLocal ? 'LOCAL' : 'VISITANTE';
+    const name = e.opponent || 'Rival';
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:100%">
+      <span style="font-size:8.5px;font-weight:700;text-align:center;line-height:1.15;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${name}</span>
+      ${e.crestUrl?`<img src="${e.crestUrl}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid var(--border2)">`:`<div style="width:30px;height:30px;border-radius:50%;background:var(--bg3);border:1px solid var(--border2)"></div>`}
+      <span style="font-size:7.5px;font-weight:800;letter-spacing:.02em;padding:1px 5px;border-radius:3px;color:#fff;background:${badgeColor}">${badgeLabel}</span>
+    </div>`;
+  }).join('');
+  const otherChips = shownOthers.length ? `<div style="display:flex;flex-direction:column;gap:2px;width:100%">
+    ${shownOthers.map(e=>{
       const t = CALENDAR_TYPES.find(x=>x.id===e.type);
       const color = t?t.color:'var(--text3)';
-      const label = (e.type==='partido' && e.opponent) ? e.opponent : (t?t.label:e.type);
-      const crest = (e.type==='partido' && e.crestUrl) ? `<img src="${e.crestUrl}" style="width:9px;height:9px;border-radius:50%;object-fit:cover;flex-shrink:0">` : '';
-      return `<div style="background:${color}26;color:${color};border-radius:3px;padding:1px 3px;font-size:8.5px;font-weight:700;line-height:1.5;width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:2px;overflow:hidden">${crest}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</span></div>`;
+      const label = t?t.label:e.type;
+      return `<div style="background:${color}26;color:${color};border-radius:3px;padding:1px 3px;font-size:8.5px;font-weight:700;line-height:1.5;width:100%;box-sizing:border-box;overflow:hidden;text-align:center;white-space:nowrap;text-overflow:ellipsis">${label}</div>`;
     }).join('')}
-    ${extra>0?`<div style="font-size:8px;color:var(--text3);text-align:center">+${extra}</div>`:''}
-  </div>`;
+    ${extraOthers>0?`<div style="font-size:8px;color:var(--text3);text-align:center">+${extraOthers}</div>`:''}
+  </div>` : '';
+  return `<div style="display:flex;flex-direction:column;gap:3px;width:100%;align-items:center">${matchBoxes}${otherChips}</div>`;
 }
 window.renderCalendarEventChips = renderCalendarEventChips;
 
@@ -11731,6 +11748,20 @@ function renderDashboardAthleteList() {
       const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
       const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
       const team = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
+      // Últimos 7 días (mismo criterio y colores que "Cumplimiento semanal"
+      // en Equipos), no solo hoy — un punto de wellness y uno de carga por
+      // día, así se ve el patrón de la semana de un vistazo, no un solo día.
+      const weekDates = getWeeklyComplianceDates(0);
+      const weekStrip = `<span style="display:inline-flex;gap:2px;flex-shrink:0" title="Últimos 7 días — wellness arriba, carga abajo">
+        ${weekDates.map(d=>{
+          const wDone = getWellnessScore(a._personal?.wellness?.[d]).allFilled;
+          const cDone = logs.some(l=>l.date===d);
+          return `<span style="display:flex;flex-direction:column;gap:2px">
+            <span style="width:6px;height:6px;border-radius:50%;background:${wDone?'var(--accent)':'var(--border2)'}"></span>
+            <span style="width:6px;height:6px;border-radius:50%;background:${cDone?'var(--warm)':'var(--border2)'}"></span>
+          </span>`;
+        }).join('')}
+      </span>`;
       return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
@@ -11738,10 +11769,7 @@ function renderDashboardAthleteList() {
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name+(team.category?' · '+team.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
-          <span style="display:inline-flex;gap:3px;flex-shrink:0" title="Wellness ${wAllFilled?'completo':'sin completar'} hoy · Carga ${todayLog.length?'cargada':'sin cargar'} hoy">
-            <span style="width:7px;height:7px;border-radius:50%;background:${wAllFilled?getWellnessState(wPct).color:'var(--border2)'}"></span>
-            <span style="width:7px;height:7px;border-radius:50%;background:${todayLog.length?'var(--warm)':'var(--border2)'}"></span>
-          </span>
+          ${weekStrip}
           ${wAllFilled?sparklineSvg(getWellnessSparklineData(a._personal,7), getWellnessState(wPct).color, 36, 16):''}
           ${wAllFilled?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${getWellnessState(wPct).color};font-weight:600;white-space:nowrap">${wPct}%</span>`:''}
           ${metrics?.acwr!=null?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${acwrStatus.color};font-weight:600;white-space:nowrap">ACWR ${metrics.acwr.toFixed(2)}</span>`:''}
