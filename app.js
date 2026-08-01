@@ -1122,6 +1122,21 @@ function markIllnessDirty(id) {
 }
 window.markIllnessDirty = markIllnessDirty;
 
+// Progreso de rutina (pesos, reps, el tilde de "hecho" por ejercicio) —
+// BUG GRAVE encontrado y corregido acá: esto vivía en S.history[sessionKey],
+// pero saveToFirestore() nunca lo incluía en ningún guardado — ni con el
+// debounce de siempre, ni al tocar "Guardar rutina" (finishSession() solo
+// marca sd.done=true y llama scheduleSave(), que tampoco lo mandaba). Un
+// atleta podía completar toda una sesión, cerrar la app sin haber
+// terminado (típico: entrena, se va, sigue después) y perder todo lo
+// tipeado — nunca había llegado a guardarse en ningún momento. Ahora cada
+// campo tocado marca su sessionKey como sucio, y si o sí se incluye acá.
+function markRoutineDirty(sk) {
+  if(!S._dirtyRoutineSessions) S._dirtyRoutineSessions = new Set();
+  S._dirtyRoutineSessions.add(sk);
+}
+window.markRoutineDirty = markRoutineDirty;
+
 async function saveToFirestore() {
   if (!S.user) return;
   try {
@@ -1160,6 +1175,11 @@ async function saveToFirestore() {
     // pisar una gravedad o fase de retorno que el entrenador acababa de fijar).
     (S._dirtyInjuryZones||new Set()).forEach(zid=>{
       dataToSave['injuries.'+zid] = S.injuries[zid] ? S.injuries[zid] : deleteField();
+    });
+    // Progreso de rutina — por sesión puntual (dot-path), la que se tocó de
+    // verdad esta vez.
+    (S._dirtyRoutineSessions||new Set()).forEach(sk=>{
+      if(S.history[sk]) dataToSave['history.'+sk] = S.history[sk];
     });
     // Carga (_sessionLogs): es un array, no se puede tocar una fecha suelta
     // con dot-path — leemos lo que hay guardado de verdad ahora mismo,
@@ -1208,6 +1228,7 @@ async function saveToFirestore() {
     S._dirtyInjuryZones = new Set();
     S._dirtyEvalTests = new Set();
     S._dirtyIllnessIds = new Set();
+    S._dirtyRoutineSessions = new Set();
     return true;
   } catch(e) { console.error('Save error', e); return false; }
 }
@@ -2197,7 +2218,7 @@ function renderBlock(b) {
     const rpe=sd.rpe||7.5;
     inner+=`<div class="rpe-row">
       <span class="rpe-lbl">RPE objetivo:</span>
-      <input type="range" class="rpe-slider" min="5" max="10" step="0.5" value="${rpe}" oninput="setRPE(this.value)">
+      <input type="range" class="rpe-slider" min="5" max="10" step="0.5" value="${rpe}" oninput="setRPELive(this.value)" onchange="setRPE(this.value)">
       <span class="rpe-val" id="rpe-val">${rpe}</span>
       <span class="rpe-desc" id="rpe-desc">${rpeDesc(rpe)}</span>
     </div>`;
@@ -2310,6 +2331,18 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
 }
 
 // ── SESSION ACTIONS ───────────────────────────────────────────
+
+// Guarda el progreso de la sesión actual DE UNA, sin toast de "guardando"
+// (esto tira varias veces por sesión — un toast por cada tilde/campo sería
+// un fogonazo constante) — solo avisa si de verdad falló, porque eso sí
+// importa que se note.
+async function saveRoutineFieldSilently() {
+  markRoutineDirty(sessionKey(S.currentWeek, S.currentSession));
+  const ok = await saveNow();
+  if(!ok) showToast('No se pudo guardar tu progreso — revisá tu conexión');
+}
+window.saveRoutineFieldSilently = saveRoutineFieldSilently;
+
 function toggleBlock(id) {
   const el=document.getElementById('block-'+id);
   el.classList.toggle('open');
@@ -2327,7 +2360,7 @@ function toggleCheck(exId) {
   if(el) el.classList.toggle('checked',d.checked);
   if(!getSD(S.currentWeek,S.currentSession).date)
     getSD(S.currentWeek,S.currentSession).date=todayLocal();
-  scheduleSave();
+  saveRoutineFieldSilently();
   updateBlockCheckmark(rowEl);
 }
 window.toggleCheck=toggleCheck;
@@ -2363,22 +2396,33 @@ function setField(exId,field,val) {
   d[field]=val;
   if(!getSD(S.currentWeek,S.currentSession).date)
     getSD(S.currentWeek,S.currentSession).date=todayLocal();
-  scheduleSave();
+  saveRoutineFieldSilently();
 }
 window.setField=setField;
 
-function setRPE(val) {
-  getSD(S.currentWeek,S.currentSession).rpe=parseFloat(val);
+// Igual criterio que la barra de horas de sueño: mientras se arrastra
+// (oninput) solo se actualiza la etiqueta, nada se guarda ni se toca en
+// otro lado de la pantalla — recién al soltar (onchange) se guarda de
+// verdad, para no repetir el mismo bug de "el toque cae en otro lado".
+function setRPELive(val) {
   const v=document.getElementById('rpe-val'), d=document.getElementById('rpe-desc');
   if(v) v.textContent=val; if(d) d.textContent=rpeDesc(val);
-  scheduleSave();
+}
+window.setRPELive=setRPELive;
+
+function setRPE(val) {
+  setRPELive(val);
+  getSD(S.currentWeek,S.currentSession).rpe=parseFloat(val);
+  saveRoutineFieldSilently();
 }
 window.setRPE=setRPE;
 
-function finishSession() {
+async function finishSession() {
   const sd=getSD(S.currentWeek,S.currentSession);
   sd.done=true; sd.date=todayLocal();
-  scheduleSave();
+  markRoutineDirty(sessionKey(S.currentWeek,S.currentSession));
+  const ok = await saveNow();
+  if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
   // Show session feedback modal
   S.feedbackSession={week:S.currentWeek, session:S.currentSession};
   openSessionFeedback();
@@ -2417,7 +2461,9 @@ async function submitSessionFeedback() {
   S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity==='gimnasio'));
   S.history._sessionLogs.push(log);
   markCargaDirty(date);
-  scheduleSave();
+  showToast('Guardando…');
+  const ok = await saveNow();
+  if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
 
   closeSessionFeedback();
   showToast(`✓ Sesión guardada · ${ua} UA`);
@@ -3305,7 +3351,7 @@ function renderWellness() {
       <span style="font-size:10px;color:var(--text3);white-space:nowrap">0h</span>
       <input type="range" min="0" max="12" step="0.5" value="${hours||0}"
         style="flex:1;-webkit-appearance:none;height:6px;border-radius:3px;outline:none;cursor:pointer;accent-color:${sleepCat?sleepCat.color:'var(--border2)'};background:linear-gradient(to right,${sleepCat?sleepCat.color:'var(--border2)'} ${sleepPct}%,var(--bg3) ${sleepPct}%)"
-        oninput="updateSleepHours('${wKey}',this)">
+        oninput="updateSleepHoursLive(this)" onchange="updateSleepHours('${wKey}',this)">
       <span style="font-size:10px;color:var(--text3);white-space:nowrap">12h+</span>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:2px">0-3h insuficiente · 4-5h poco · 6-7h suficiente · 8h+ excelente</div>
@@ -3681,7 +3727,16 @@ function refreshWellnessScoreSection(wKey) {
 }
 window.refreshWellnessScoreSection = refreshWellnessScoreSection;
 
-function updateSleepHours(wKey,input) {
+// Mientras se arrastra (oninput, dispara en CADA tick del gesto) solo se
+// toca la barra y su propia etiqueta — nada más en la pantalla se mueve.
+// Antes esto también reescribía la caja de score/botón "Guardar" en cada
+// tick (refreshWellnessScoreSection), y como ese botón aparece/desaparece
+// según si el wellness quedó completo, la pantalla se corría de golpe justo
+// en medio del arrastre — al soltar el dedo, el toque cae sobre lo que
+// quedó debajo (otra pestaña, otro botón) en vez de nada. La actualización
+// "pesada" (guardar el valor, refrescar el score/botón) ahora pasa solo al
+// SOLTAR (onchange), cuando el gesto ya terminó y mover contenido no molesta.
+function updateSleepHoursLive(input) {
   const h=+input.value;
   const cat=sleepHoursCategory(h);
   const pct=Math.round((h/12)*100);
@@ -3689,6 +3744,12 @@ function updateSleepHours(wKey,input) {
   input.style.accentColor=cat.color;
   const wrap=input.closest('.hooper-item');
   if(wrap){const sp=wrap.querySelector('.hooper-label span:last-child');if(sp){sp.textContent=`${h}h · ${cat.label}`;sp.style.color=cat.color;}}
+}
+window.updateSleepHoursLive=updateSleepHoursLive;
+
+function updateSleepHours(wKey,input) {
+  const h=+input.value;
+  updateSleepHoursLive(input);
   if(!S.wellness[wKey]) S.wellness[wKey]={};
   S.wellness[wKey]['sueño_horas']=h;
   markWellnessDirty(wKey);
@@ -3706,6 +3767,14 @@ function setHooper(wKey,key,val) {
 window.setHooper=setHooper;
 
 async function submitWellness(wKey) {
+  // Si es el wellness de HOY y hay una molestia activa sin puntuar hoy, no
+  // se deja terminar sin pasar por ahí primero — antes era fácil completar
+  // el wellness de siempre y saltearse esto sin darse cuenta.
+  if(wKey===todayLocal() && hasPendingInjuryFollowup()) {
+    showToast('Antes de guardar, puntuá tu dolor de hoy más arriba ↑');
+    document.getElementById('injury-followup-section')?.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
   S.wellness[wKey].date=wKey; S.wellness[wKey].submitted=true;
   markWellnessDirty(wKey);
   showToast('Guardando…');
@@ -4010,18 +4079,25 @@ async function saveInjury(zid) {
 window.saveInjury=saveInjury;
 
 // ── SEGUIMIENTO DIARIO DE LESIONES (dentro de Wellness) ────────
+// Antes esto se veía igual de "neutral" que cualquier otra tarjeta —
+// jugadores completaban el wellness de siempre y se salteaban esto sin
+// notarlo, porque nada acá comunicaba "esto es obligatorio, todos los
+// días". Ahora: si falta puntuar hoy, la tarjeta se ve con borde/fondo de
+// alerta y un título que lo dice directo — y además submitWellness() no te
+// deja terminar el wellness de HOY sin pasar por acá primero (ver más abajo).
 function renderInjuryFollowup() {
   const active=Object.entries(S.injuries).filter(([,v])=>v.pain>0);
   if(!active.length) return '';
   const today=todayLocal();
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
-  return `<div class="wellness-card" style="margin-bottom:16px">
-    <div class="wellness-title">Seguimiento de molestias</div>
-    <div class="wellness-sub">Contanos cómo estás hoy de cada una</div>
+  const isDoneToday = (inj) => { const hist=inj.history||[]; return hist.length>0 && hist[hist.length-1].date===today; };
+  const anyPending = active.some(([,inj])=>!isDoneToday(inj));
+  return `<div class="wellness-card" id="injury-followup-section" style="margin-bottom:16px${anyPending?';border:1.5px solid var(--amber);background:var(--amber-dim)':''}">
+    <div class="wellness-title">${anyPending?'⚠️ Te falta puntuar tu dolor de hoy':'Seguimiento de molestias'}</div>
+    <div class="wellness-sub">${anyPending?'Es obligatorio TODOS los días mientras tengas una molestia activa — aunque sea para marcar que ya no te duele':'Contanos cómo estás hoy de cada una'}</div>
     ${active.map(([zid,inj])=>{
       const zone=allZones.find(z=>z.id===zid);
-      const hist=inj.history||[];
-      const doneToday = hist.length>0 && hist[hist.length-1].date===today;
+      const doneToday = isDoneToday(inj);
       const scaleBtns=Array.from({length:11},(_,i)=>{
         const cls=inj.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn';
         return `<button class="${cls}" onclick="updateInjuryFollowup('${zid}',${i})">${i}</button>`;
@@ -4029,7 +4105,7 @@ function renderInjuryFollowup() {
       return `<div style="padding:12px 16px;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <div style="font-size:13px;font-weight:600">${zone?.label||zid}${inj.type?` · ${INJURY_TYPES[inj.type]}`:''}</div>
-          ${doneToday?'<span style="font-size:11px;color:var(--text3)">✓ Registrado hoy — tocá otro número para corregir</span>':''}
+          ${doneToday?'<span style="font-size:11px;color:var(--text3)">✓ Registrado hoy — tocá otro número para corregir</span>':'<span style="font-size:11px;color:var(--amber);font-weight:700">Falta hoy</span>'}
         </div>
         <div class="pain-scale" style="display:flex;gap:4px;flex-wrap:wrap">${scaleBtns}</div>
       </div>`;
@@ -4037,6 +4113,19 @@ function renderInjuryFollowup() {
   </div>`;
 }
 window.renderInjuryFollowup=renderInjuryFollowup;
+
+// true si hay alguna molestia/lesión activa a la que le falte el puntaje de
+// HOY — lo usa submitWellness() para no dejar terminar el wellness de hoy
+// sin pasar antes por el seguimiento de dolor.
+function hasPendingInjuryFollowup() {
+  const today=todayLocal();
+  return Object.values(S.injuries||{}).some(inj=>{
+    if(!(inj.pain>0)) return false;
+    const hist=inj.history||[];
+    return !(hist.length>0 && hist[hist.length-1].date===today);
+  });
+}
+window.hasPendingInjuryFollowup = hasPendingInjuryFollowup;
 
 async function updateInjuryFollowup(zid,val) {
   await reconcileInjuryZoneOnce(zid);
