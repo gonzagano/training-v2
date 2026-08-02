@@ -1411,9 +1411,36 @@ function isTeamAthlete() { return S.userData?.athleteType === 'team'; }
 window.isTeamAthlete = isTeamAthlete;
 function getWeekHeaderLabel(prefix) {
   if(S.isAdmin || isTeamAthlete()) return (prefix?'Semana actual · ':'')+getCurrentWeekRangeLabel();
-  return `Semana ${S.currentWeek}`;
+  return `Semana ${getRoutineWeek()}`;
 }
 window.getWeekHeaderLabel = getWeekHeaderLabel;
+
+// ── REPASAR OTRAS SEMANAS DE LA RUTINA (solo atleta individual) ───────────
+// Nunca toca S.startDate ni S.currentWeek reales — es puramente "qué semana
+// estoy MIRANDO", separado del progreso real (que sigue su curso solo, según
+// la fecha). Antes la única forma de ver otra semana era el selector de
+// "Semana actual" en Ajustes, que en realidad CORRÍA la fecha de inicio real
+// del programa — mezclaba "repasar" con "mover mi plan", que es justo lo que
+// no se quería. Solo para atletas individuales: los de equipo no planifican
+// semana a semana con tanta anticipación, así que no hace falta.
+function getRoutineWeek() {
+  return S._routineViewWeek || S.currentWeek;
+}
+window.getRoutineWeek = getRoutineWeek;
+
+function browseRoutineWeek(delta) {
+  const base = S._routineViewWeek || S.currentWeek;
+  const target = Math.max(1, base + delta);
+  S._routineViewWeek = (target === S.currentWeek) ? null : target;
+  renderAll();
+}
+window.browseRoutineWeek = browseRoutineWeek;
+
+function resetRoutineWeekView() {
+  S._routineViewWeek = null;
+  renderAll();
+}
+window.resetRoutineWeekView = resetRoutineWeekView;
 
 function getCurrentWeekRangeLabel() {
   const now = new Date();
@@ -1966,6 +1993,7 @@ function switchView(v) {
     return;
   }
   if (v!=='wellness') S.wellnessViewDate=null; // siempre vuelve a "hoy" al reingresar
+  if (v==='session') { S.rmCalcTabActive=false; S._routineViewWeek=null; } // Mi Rutina siempre entra por hoy, día y semana reales — nunca donde había quedado repasando
   S.currentView=v;
   renderBottomBar();
   renderAll();
@@ -2075,13 +2103,19 @@ function renderSubnav() {
   if(S.currentView!=='session') { nav.innerHTML=''; return; }
   // Sessions: for admin use A/B/C/D; for athlete with routine use routine session names
   const sessions = getSessionList();
-  nav.innerHTML=sessions.map(s=>{
-    const sd=getSD(S.currentWeek,s);
+  let tabsHtml = sessions.map(s=>{
+    const sd=getSD(getRoutineWeek(),s);
     const done=sd.done;
-    const active=S.currentSession===s;
+    const active=!S.rmCalcTabActive && S.currentSession===s;
     return `<button class="snav-tab ${active?'active':''} ${done&&!active?'done':''}"
       onclick="selectSession('${s}')">${done&&!active?'✓ ':''}${s}</button>`;
   }).join('');
+  // La calculadora de %RM es una solapa más acá adentro, al final de los
+  // días — no algo que se abre primero ni un "día" más de la rutina.
+  if(!S.isAdmin) {
+    tabsHtml += `<button class="snav-tab ${S.rmCalcTabActive?'active':''}" onclick="openRMCalcTab()">🧮 Calculadora</button>`;
+  }
+  nav.innerHTML = tabsHtml;
 }
 
 function getSessionList() {
@@ -2102,9 +2136,15 @@ function getCurrentBlocks() {
 window.getCurrentBlocks=getCurrentBlocks;
 
 function selectSession(s) {
-  S.currentSession=s; renderAll();
+  S.currentSession=s; S.rmCalcTabActive=false; renderAll();
 }
 window.selectSession = selectSession;
+
+function openRMCalcTab() {
+  S.rmCalcTabActive = true;
+  renderAll();
+}
+window.openRMCalcTab = openRMCalcTab;
 
 function renderMain() {
   const m=document.getElementById('main');
@@ -2276,9 +2316,9 @@ function rmCalcTableHtml(rm) {
   </table></div>`;
 }
 
-function renderRMCalcSection() {
+function renderRMCalcSection(standalone) {
   const key = 'rm-calc';
-  const collapsed = S.collapsedSections?.has(key);
+  const collapsed = standalone ? false : !!S.collapsedSections?.has(key);
   const activeId = rmCalcActiveLift();
   const lift = RM_CALC_LIFTS.find(l=>l.liftId===activeId);
   const s = getRMCalcState(lift.liftId);
@@ -2300,6 +2340,9 @@ function renderRMCalcSection() {
     </div>
     ${rmCalcTableHtml(rm)}`;
 
+  if(standalone) {
+    return `<div class="wellness-card">${body}</div>`;
+  }
   return `<div class="wellness-card">
     <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleSection('${key}')">
       <div>
@@ -2314,23 +2357,43 @@ function renderRMCalcSection() {
 window.renderRMCalcSection = renderRMCalcSection;
 
 function renderSession() {
+  // La calculadora es su propia solapa dentro de "Mi Rutina" (ver
+  // renderSubnav) — entrar a la rutina SIEMPRE muestra primero el día que
+  // corresponde, nunca la calculadora; solo aparece si el jugador la elige
+  // a propósito tocando esa solapa.
+  if (!S.isAdmin && S.rmCalcTabActive) {
+    const header = `<div class="page-header">
+      <div class="page-title">Calculadora de %RM</div>
+      <div class="page-subtitle">Con qué peso trabajar hoy, en cada ejercicio</div>
+    </div>`;
+    return header + renderRMCalcSection(true);
+  }
   const blocks = getCurrentBlocks();
   const sessionLabel = S.isAdmin ? `Sesión ${S.currentSession}` : (S.currentSession||'Sesión');
+  const isBrowsingWeek = !!S._routineViewWeek;
   const header = `<div class="page-header">
     <div class="page-title">${sessionLabel}</div>
-    <div class="page-subtitle">${getWeekHeaderLabel(true)} · ${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+    <div class="page-subtitle">${isBrowsingWeek ? 'Repasando semana '+getRoutineWeek() : getWeekHeaderLabel(true)+' · '+new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>`;
-  const rmCalc = !S.isAdmin ? renderRMCalcSection() : '';
+  // Repasar otras semanas — solo el atleta individual, nunca de equipo ni
+  // admin (ver comentario en getRoutineWeek). No mueve nada real: solo
+  // cambia qué semana se está mirando en esta pantalla.
+  const weekBrowser = (!S.isAdmin && !isTeamAthlete()) ? `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:-6px 0 16px">
+    <button class="abtn" onclick="browseRoutineWeek(-1)" title="Semana anterior">‹</button>
+    <span style="font-size:12px;font-weight:700;color:${isBrowsingWeek?'var(--accent)':'var(--text3)'}">Semana ${getRoutineWeek()}${isBrowsingWeek?' · repasando':''}</span>
+    <button class="abtn" onclick="browseRoutineWeek(1)" title="Semana siguiente">›</button>
+    ${isBrowsingWeek?`<button class="abtn" onclick="resetRoutineWeekView()">Volver a hoy</button>`:''}
+  </div>` : '';
   if (!blocks.length) {
     if (!S.isAdmin) {
-      return header + rmCalc + `<div class="empty-state" style="padding:40px 20px">
+      return header + weekBrowser + `<div class="empty-state" style="padding:40px 20px">
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">Sin rutina asignada</div>
         <div style="font-size:13px;color:var(--text3);line-height:1.6">Tu entrenador está preparando tu planificación.<br>Pronto vas a ver tu rutina acá.</div>
       </div>`;
     }
     return header + `<div class="empty-state">Sin bloques en esta sesión.</div>`;
   }
-  return header + rmCalc + blocks.map(b=>renderBlock(b)).join('')
+  return header + weekBrowser + blocks.map(b=>renderBlock(b)).join('')
     + `<button class="finish-btn" onclick="finishSession()">✓ Marcar sesión como completada</button>`;
 }
 window.renderSession = renderSession;
@@ -2349,7 +2412,7 @@ function renderBlock(b) {
   let totalEx=0, doneEx=0;
   b.categories.forEach(cat=>cat.exercises.forEach(ex=>{
     totalEx++;
-    if(getED(S.currentWeek,S.currentSession,ex.id).checked) doneEx++;
+    if(getED(getRoutineWeek(),S.currentSession,ex.id).checked) doneEx++;
   }));
   const blockAllDone = totalEx>0 && doneEx===totalEx;
   let inner=`<p class="block-note">${b.note||''}</p>`;
@@ -2375,7 +2438,7 @@ function renderBlock(b) {
       Agregar subcategoría</button>`;
   }
   if(b.hasRPE) {
-    const sd=getSD(S.currentWeek,S.currentSession);
+    const sd=getSD(getRoutineWeek(),S.currentSession);
     const rpe=sd.rpe||7.5;
     inner+=`<div class="rpe-row">
       <span class="rpe-lbl">RPE objetivo:</span>
@@ -2401,7 +2464,7 @@ function renderBlock(b) {
 }
 
 function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
-  const d=getED(S.currentWeek,S.currentSession,ex.id);
+  const d=getED(getRoutineWeek(),S.currentSession,ex.id);
   // Ejercicios agregados ANTES de que existiera libId no tienen ese vínculo — como
   // respaldo, buscamos por nombre exacto en la biblioteca para no perder el video.
   const libMatch = ex.libId ? null : S.library.find(l=>l.name.trim().toLowerCase()===(ex.name||'').trim().toLowerCase());
@@ -2411,7 +2474,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const isAthleteMode=!S.isAdmin && !!S.assignedRoutine;
   // Routine prescription values — resueltas según la semana actual, con
   // progresión/regresión si la rutina la tiene cargada.
-  const wp = getExPrescriptionForWeek(ex, S.currentWeek);
+  const wp = getExPrescriptionForWeek(ex, getRoutineWeek());
   const prescSeries = wp.series;
   const prescReps   = wp.reps;
   const prescPct    = wp.pct;
@@ -2498,7 +2561,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
 // un fogonazo constante) — solo avisa si de verdad falló, porque eso sí
 // importa que se note.
 async function saveRoutineFieldSilently() {
-  markRoutineDirty(sessionKey(S.currentWeek, S.currentSession));
+  markRoutineDirty(sessionKey(getRoutineWeek(), S.currentSession));
   const ok = await saveNow();
   if(!ok) showToast('No se pudo guardar tu progreso — revisá tu conexión');
 }
@@ -2514,13 +2577,13 @@ function toggleBlock(id) {
 window.toggleBlock=toggleBlock;
 
 function toggleCheck(exId) {
-  const d=getED(S.currentWeek,S.currentSession,exId);
+  const d=getED(getRoutineWeek(),S.currentSession,exId);
   d.checked=!d.checked;
   const rowEl=document.querySelector(`#exrow-${exId}`);
   const el=rowEl?.querySelector('.ex-check');
   if(el) el.classList.toggle('checked',d.checked);
-  if(!getSD(S.currentWeek,S.currentSession).date)
-    getSD(S.currentWeek,S.currentSession).date=todayLocal();
+  if(!getSD(getRoutineWeek(),S.currentSession).date)
+    getSD(getRoutineWeek(),S.currentSession).date=todayLocal();
   saveRoutineFieldSilently();
   updateBlockCheckmark(rowEl);
 }
@@ -2553,10 +2616,10 @@ function updateBlockCheckmark(rowEl) {
 window.updateBlockCheckmark = updateBlockCheckmark;
 
 function setField(exId,field,val) {
-  const d=getED(S.currentWeek,S.currentSession,exId);
+  const d=getED(getRoutineWeek(),S.currentSession,exId);
   d[field]=val;
-  if(!getSD(S.currentWeek,S.currentSession).date)
-    getSD(S.currentWeek,S.currentSession).date=todayLocal();
+  if(!getSD(getRoutineWeek(),S.currentSession).date)
+    getSD(getRoutineWeek(),S.currentSession).date=todayLocal();
   saveRoutineFieldSilently();
 }
 window.setField=setField;
@@ -2573,19 +2636,19 @@ window.setRPELive=setRPELive;
 
 function setRPE(val) {
   setRPELive(val);
-  getSD(S.currentWeek,S.currentSession).rpe=parseFloat(val);
+  getSD(getRoutineWeek(),S.currentSession).rpe=parseFloat(val);
   saveRoutineFieldSilently();
 }
 window.setRPE=setRPE;
 
 async function finishSession() {
-  const sd=getSD(S.currentWeek,S.currentSession);
+  const sd=getSD(getRoutineWeek(),S.currentSession);
   sd.done=true; sd.date=todayLocal();
-  markRoutineDirty(sessionKey(S.currentWeek,S.currentSession));
+  markRoutineDirty(sessionKey(getRoutineWeek(),S.currentSession));
   const ok = await saveNow();
   if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
   // Show session feedback modal
-  S.feedbackSession={week:S.currentWeek, session:S.currentSession};
+  S.feedbackSession={week:getRoutineWeek(), session:S.currentSession};
   openSessionFeedback();
   renderSubnav();
 }
@@ -7400,6 +7463,16 @@ async function openTeam(id) {
       if(idx>=0) S.teams[idx]=freshTeam; else S.teams.push(freshTeam);
     }
   } catch(e) { console.error('Error refrescando equipo', e); }
+  // BUG encontrado y corregido acá: "toco atrás y no vuelve, tengo que
+  // tocar Equipos de nuevo para que ahí sí funcione". Si mientras este fetch
+  // estaba en vuelo el admin ya volvió atrás (o abrió otro equipo), este
+  // resultado quedó viejo — aplicarlo igual pisaba el "volver" que ya había
+  // hecho: el fetch terminaba un instante después del toque en ‹ y volvía a
+  // poner el equipo en pantalla, como si el botón atrás no hubiera hecho
+  // nada. S._teamViewLoadingId es la señal de "a quién le importa este
+  // resultado todavía" — el botón atrás la limpia, así que si ya no coincide
+  // con el id de este fetch, no hay que tocar nada más.
+  if (S._teamViewLoadingId !== id) return;
   S._teamViewLoadingId = null;
   S.teamView = freshTeam || S.teams.find(t=>t.id===id) || null;
   renderMain();
@@ -7809,9 +7882,18 @@ function renderPerfilTab(a) {
       const {pct,allFilled}=getWellnessScore(w);
       if(!allFilled) return '';
       const col=getWellnessState(pct).color;
+      // Antes esta fila era fecha a la izquierda y % a la derecha, con todo
+      // el medio vacío — para ver QUÉ compone ese % (fatiga, dolor, sueño...)
+      // había que entrar al detalle del día. Ahora un chip chico por ítem,
+      // con su emoji correspondiente, deja verlo de un vistazo sin entrar.
+      const itemChips = WELLNESS_ITEMS.map(item=>{
+        const opt = item.options.find(o=>o.v===w[item.key]);
+        return `<span title="${item.label}: ${opt?opt.label:'—'}" style="font-size:12px;line-height:1;width:19px;height:19px;border-radius:5px;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0">${opt?opt.emoji:'—'}</span>`;
+      }).join('');
       return `<div class="admin-item" style="cursor:pointer" onclick="viewWellnessDay('${uid}','${date}')">
-        <span style="font-size:12px;color:var(--text3)">${date}</span>
-        <span style="font-size:14px;font-weight:600;color:${col}">${pct}% ›</span>
+        <span style="font-size:12px;color:var(--text3);flex-shrink:0">${date}</span>
+        <span style="display:flex;gap:3px;justify-content:center;flex:1">${itemChips}</span>
+        <span style="font-size:14px;font-weight:600;color:${col};flex-shrink:0">${pct}% ›</span>
       </div>`;
     }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div>`}
   </div>
@@ -9328,6 +9410,7 @@ async function adminOpenAthlete(uid) {
     S._athleteSiblingUids = computeAthleteSiblingUids();
   }
   S._inAthleteDetail = true;
+  S._athleteOpenLoadingUid = uid;
   S.adminView='athlete_detail';
   S.currentView='admin';
   S.atletaSubview = 'perfil';
@@ -9358,6 +9441,11 @@ async function adminOpenAthlete(uid) {
       a._personal = freshSnap.exists() ? freshSnap.data() : {};
     } catch(e) {}
     await ensureGroupPersonalData(getEffectiveGroupUids(a));
+    // Mismo bug de fondo que openTeam(): si mientras este fetch corría el
+    // admin ya volvió atrás (o abrió a otro atleta), este resultado quedó
+    // viejo — aplicarlo pisaría esa navegación y dejaría al admin "pegado"
+    // en una ficha de la que ya se había ido.
+    if (S._athleteOpenLoadingUid !== uid) return;
     S.atletaView = a;
     S.viewingAthlete = { uid, userData:a, personal:a._personal||{} };
   } catch(e) { S.viewingAthlete=null; S.atletaView=null; }
@@ -9373,6 +9461,7 @@ function goBackFromAthleteDetail() {
   S._athleteDetailReturnCtx = null;
   S._athleteSiblingUids = null;
   S._inAthleteDetail = false;
+  S._athleteOpenLoadingUid = null;
   S.viewingAthlete = null;
   S.atletaView = null;
   if(ctx) {
@@ -9720,6 +9809,7 @@ function renderAdminRoutines() {
           <div style="font-size:14px;font-weight:600">${r.name}</div>
           <div style="display:flex;gap:6px">
             <button class="abtn abtn-p" onclick="editRoutine('${r.id}')">Editar</button>
+            <button class="abtn" onclick="duplicateRoutine('${r.id}')" title="Duplicar — para partir de esta y cambiar solo lo que necesitás">⧉ Duplicar</button>
             <button class="abtn abtn-d" onclick="deleteRoutine('${r.id}')">×</button>
           </div>
         </div>
@@ -9733,6 +9823,7 @@ function renderAdminRoutines() {
   }
   return html;
 }
+window.renderAdminRoutines = renderAdminRoutines;
 
 async function createRoutine() {
   const name = prompt('Nombre de la rutina (ej: Fuerza Base Baloncesto):');
@@ -9768,6 +9859,34 @@ function editRoutine(id) {
   renderMain();
 }
 window.editRoutine=editRoutine;
+
+// Copia completa de una rutina existente (todas sus sesiones, bloques y
+// ejercicios) bajo un id y nombre nuevos, y abre el editor directo sobre la
+// copia — para cuando dos rutinas son casi iguales y solo hace falta
+// cambiarles algún detalle, en vez de recrearlas ejercicio por ejercicio.
+async function duplicateRoutine(id) {
+  const r = S.routines.find(x=>x.id===id);
+  if(!r) return;
+  const name = prompt('Nombre de la copia:', r.name+' (copia)');
+  if(!name) return;
+  const newId = genId();
+  const copy = JSON.parse(JSON.stringify(r));
+  copy.id = newId;
+  copy.name = name;
+  copy.createdAt = new Date().toISOString();
+  try {
+    await setDoc(doc(db,'routines',newId), copy);
+    S.routines.push(copy);
+    showToast('✓ Rutina duplicada');
+    S.editingRoutine = JSON.parse(JSON.stringify(copy));
+    const sessions = sortSessionNames(Object.keys(S.editingRoutine.sessions||{}));
+    S._routineEditSession = sessions[0]||null;
+    S._routineEditorPrev = 'routines';
+    S.adminView='routine_edit';
+    renderMain();
+  } catch(e) { showToast('Error al duplicar'); }
+}
+window.duplicateRoutine = duplicateRoutine;
 
 async function deleteRoutine(id) {
   if(!confirm('¿Eliminar esta rutina?')) return;
@@ -10797,16 +10916,6 @@ function renderEvalCompare() {
     rows = withAnyData;
   }
 
-  // Color por tercio, calculado POR COLUMNA (cada test se compara contra sí
-  // mismo, no contra otro test con otra escala/unidad).
-  const colColors = {};
-  testList.forEach(t=>{
-    const vals = rows.map(r=>r.values[t.id]).filter(v=>v!=null);
-    const colors = tercileColors(vals);
-    let ci=0;
-    colColors[t.id] = rows.map(r=>r.values[t.id]==null ? null : colors[ci++]);
-  });
-
   let html = '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
   html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
   html += '<div style="font-size:15px;font-weight:600">Comparación de atletas</div>';
@@ -10829,26 +10938,33 @@ function renderEvalCompare() {
 
   html += '<div style="padding:12px 16px">';
 
-  if(rows.length) {
-    html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:11.5px">';
-    html += '<thead><tr>'
-      + '<th style="text-align:left;padding:5px 8px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2);white-space:nowrap">Atleta</th>'
-      + testList.map(t=>'<th style="text-align:center;padding:5px 6px;color:var(--text3);font-weight:600;white-space:nowrap">'+t.label+'<br><span style="font-weight:400;opacity:.7">('+t.unit+')</span></th>').join('')
-      + '</tr></thead><tbody>';
-    rows.forEach((r,ri)=>{
-      html += '<tr style="border-top:1px solid var(--border)">';
-      html += '<td style="padding:6px 8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;position:sticky;left:0;background:var(--bg2)">'+r.name+'</td>';
-      testList.forEach(t=>{
-        const v = r.values[t.id];
-        const color = colColors[t.id][ri];
-        html += '<td style="text-align:center;padding:6px 4px">'
-          + (v!=null ? '<span style="display:inline-block;min-width:36px;padding:2px 6px;border-radius:10px;background:'+color+'1f;color:'+color+';font-weight:700">'+v+'</span>' : '<span style="color:var(--text3)">—</span>')
-          + '</td>';
+  // Un gráfico de barras horizontales por test — no una tabla de números —
+  // así se ve de un vistazo quién está arriba y quién abajo en cada métrica,
+  // sin tener que leer y comparar cifras columna por columna.
+  const anyTestHasData = rows.length && testList.some(t=>rows.some(r=>r.values[t.id]!=null));
+  if(anyTestHasData) {
+    testList.forEach(t=>{
+      const vals = rows.map(r=>({name:r.name, v:r.values[t.id]})).filter(x=>x.v!=null);
+      if(!vals.length) return;
+      vals.sort((a,b)=>b.v-a.v);
+      const colors = tercileColors(vals.map(x=>x.v));
+      const maxV = Math.max(...vals.map(x=>x.v)) * 1.05;
+      html += '<div style="margin-bottom:18px">'
+        + '<div style="font-size:12px;font-weight:700;margin-bottom:8px">'+t.label+' <span style="font-weight:400;color:var(--text3)">('+t.unit+')</span></div>';
+      vals.forEach((x,i)=>{
+        const pct = maxV>0 ? Math.max(4,(x.v/maxV)*100) : 0;
+        const color = colors[i];
+        html += '<div style="margin-bottom:6px">'
+          + '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-bottom:2px">'
+          + '<span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+x.name+'</span>'
+          + '<span style="font-weight:700;color:'+color+';flex-shrink:0">'+x.v+'</span></div>'
+          + '<div style="height:7px;background:var(--bg3);border-radius:4px;overflow:hidden">'
+          + '<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:4px"></div></div>'
+          + '</div>';
       });
-      html += '</tr>';
+      html += '</div>';
     });
-    html += '</tbody></table></div>';
-    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-top:10px">'
+    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-top:4px">'
       + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block"></span>Tercio superior</span>'
       + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#3b7dd8;display:inline-block"></span>Medio</span>'
       + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>A reforzar</span>'
@@ -11613,17 +11729,44 @@ function getRecentInjuryFeed(athletes, limit) {
   const feed = [];
   athletes.forEach(a=>{
     const injuries = a._personal?.injuries||{};
+    const dismissed = a._personal?.dashboardInjuryDismissed||[];
     Object.entries(injuries).forEach(([zoneId,inj])=>{
       if(!inj.pain||inj.pain<=0||!isRealInjury(inj)) return;
       const lastDate = inj.history?.length ? inj.history[inj.history.length-1].date : null;
+      // Ocultada del panel del Dashboard a propósito (dismissDashboardInjury)
+      // — atada a zoneId+fecha, no solo a zoneId: si esta lesión se actualiza
+      // más adelante (nuevo dolor, nueva entrada de seguimiento) la fecha
+      // cambia y vuelve a aparecer sola, en vez de quedar escondida para
+      // siempre por error. Nunca toca la ficha real del atleta ni del
+      // equipo — esto es solo qué se MUESTRA en este panel puntual.
+      if(dismissed.includes(zoneId+'|'+(lastDate||''))) return;
       const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
-      feed.push({athlete:a, zoneLabel, type:inj.type, severity:inj.severity||'leve', pain:inj.pain, note:inj.note||'', date:lastDate||'', status:'active'});
+      feed.push({athlete:a, zoneId, zoneLabel, type:inj.type, severity:inj.severity||'leve', pain:inj.pain, note:inj.note||'', date:lastDate||'', status:'active'});
     });
   });
   feed.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
   return limit ? feed.slice(0, limit) : feed;
 }
 window.getRecentInjuryFeed = getRecentInjuryFeed;
+
+// Sacar una lesión puntual del panel "Lesiones recientes" del Dashboard —
+// NO la da de alta, NO la borra de la ficha del atleta ni del equipo, solo
+// deja de ocupar lugar en este resumen. Se guarda en el propio doc personal
+// del atleta (separado del campo injuries) para que persista entre sesiones
+// del admin.
+async function dismissDashboardInjury(uid, zoneId, lastDate) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  if(!a) return;
+  if(!a._personal) a._personal = {};
+  const key = zoneId+'|'+(lastDate||'');
+  const list = a._personal.dashboardInjuryDismissed||[];
+  if(list.includes(key)) return;
+  a._personal.dashboardInjuryDismissed = [...list, key];
+  renderMain();
+  try { await updateDocSafe(doc(db,'personal',uid), {dashboardInjuryDismissed: a._personal.dashboardInjuryDismissed}); }
+  catch(e) { showToast('No se pudo guardar — se va a mostrar de nuevo si recargás'); }
+}
+window.dismissDashboardInjury = dismissDashboardInjury;
 
 // Color de dolor 0-10 — mismo criterio que ya usan los botones del mapa
 // corporal (pain-btn p-low/p-med/p-high), reusado acá para los badges.
@@ -11868,7 +12011,10 @@ function renderDashboardContent() {
         <div style="padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
             <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.athlete.name||r.athlete.email}</div>
-            <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <button onclick="event.stopPropagation();dismissDashboardInjury('${r.athlete.uid}','${r.zoneId}','${r.date}')" title="Sacar de este panel — sigue viva en la ficha del atleta" style="appearance:none;border:none;background:var(--bg3);color:var(--text3);width:20px;height:20px;border-radius:50%;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">×</button>
+              <span style="color:var(--text3);font-size:16px">›</span>
+            </div>
           </div>
           ${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain, athlete:r.athlete})}
           ${r.note?`<div style="font-size:12px;color:var(--text2);margin-top:5px;line-height:1.4">"${r.note}"</div>`:''}
@@ -12253,7 +12399,10 @@ document.addEventListener('click', e => {
   const action = btn.getAttribute('data-back');
   switch(action) {
     case 'team-list':
-      S.teamView=null; S.teamDayEdit=null; S.teamDayIdx=0;
+      // _teamViewLoadingId también se limpia acá: si había un fetch de
+      // openTeam en vuelo, esto le avisa que ya no importa su resultado —
+      // ver el comentario en openTeam().
+      S.teamView=null; S.teamDayEdit=null; S.teamDayIdx=0; S._teamViewLoadingId=null;
       S.currentView='teams'; renderBottomBar(); renderMain(); break;
     case 'team-day':
       S.teamDayEdit=null;
@@ -12318,8 +12467,20 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   });
 
   // Swipe horizontal entre secciones de la barra inferior
+  // BUG encontrado y corregido acá: este listener mide CUALQUIER arrastre
+  // horizontal dentro de #main, sin fijarse en qué elemento empezó — así que
+  // arrastrar una barra deslizante (horas de sueño, RPE) se leía como un
+  // swipe de cambio de pestaña. En el peor caso, navigateSwipe() reemplazaba
+  // #main entero A MITAD del gesto, antes de que el input llegara a disparar
+  // su propio onchange — el valor arrastrado se perdía sin guardarse nunca
+  // (volvía a 0 al re-renderizar), además de mandar al usuario a otra
+  // pestaña sin querer. Ahora un toque que arranca sobre un <input
+  // type="range"> nunca arma el swipe — el slider queda libre para manejar
+  // su propio gesto sin que nada más en la pantalla se mueva.
   let sStartX=0, sStartY=0, swiping=false;
   main.addEventListener('touchstart', e=>{
+    const t=e.target;
+    if(t && t.tagName==='INPUT' && t.type==='range') { swiping=false; return; }
     sStartX=e.touches[0].clientX; sStartY=e.touches[0].clientY; swiping=true;
   }, {passive:true});
   main.addEventListener('touchend', e=>{
