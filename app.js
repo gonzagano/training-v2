@@ -531,6 +531,23 @@ function sleepHoursCategory(hours) {
 }
 window.sleepHoursCategory=sleepHoursCategory;
 
+// Color semántico para un valor 1-5 de wellness (fatiga, sueño, estrés,
+// dolor, ánimo) — reusa los mismos tokens rojo/ámbar/verde de siempre en vez
+// de inventar un gradiente HSL aparte, para que el significado del color sea
+// consistente en toda la app (1 = mal = rojo, 5 = bien = verde).
+function wellnessValColor(val) {
+  if(!val) return null;
+  const map = {
+    1: {solid:'var(--red)',   dim:'var(--red-dim)'},
+    2: {solid:'var(--amber)', dim:'var(--amber-dim)'},
+    3: {solid:'var(--blue)',  dim:'var(--blue-dim)'},
+    4: {solid:'var(--teal)',  dim:'var(--teal-dim)'},
+    5: {solid:'var(--green)', dim:'var(--green-dim)'},
+  };
+  return map[val] || null;
+}
+window.wellnessValColor = wellnessValColor;
+
 // Score compuesto de wellness: promedio de sub-puntajes normalizados (0–1, 1=mejor)
 // entre los 5 ítems Likert + el ítem de horas de sueño. Se expresa como % (0–100, mayor=mejor).
 function getWellnessScore(w) {
@@ -8860,19 +8877,30 @@ function renderWellnessDetail() {
   if(!Object.keys(w).length) {
     html += `<div class="empty-state">Sin datos de wellness cargados este día.</div>`;
   } else {
-  html += `<div class="wellness-card">`;
+  // Antes cada ítem era una línea de texto con un emoji al lado — había que
+  // reconocer el emoji para entender si algo estaba bien o mal. Ahora cada
+  // ítem es un recuadro con SU PROPIO color de fondo (rojo→ámbar→azul→
+  // teal→verde según la escala 1-5, sin emojis) — se lee de un vistazo por
+  // el color solo, sin adivinar nada.
+  html += `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">`;
   WELLNESS_ITEMS.forEach(item=>{
     const val = w[item.key];
     const opt = item.options.find(o=>o.v===val);
-    const color = val ? `hsl(${Math.round((val-1)/4*120)},65%,45%)` : 'var(--text3)';
-    html += `<div class="hooper-item">
-      <div class="hooper-label"><span>${item.label}</span><span style="color:${color};font-weight:700;font-size:13px">${opt?opt.emoji+' '+opt.label:'— sin dato'}</span></div>
+    const c = wellnessValColor(val);
+    html += `<div style="background:${c?c.dim:'var(--bg3)'};border-radius:var(--rsm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span style="font-size:12.5px;font-weight:600;color:var(--text2)">${item.label}</span>
+      <span style="font-size:14px;font-weight:800;color:${c?c.solid:'var(--text3)'}">${opt?opt.label:'— sin dato'}</span>
     </div>`;
   });
   const hours = w.sueño_horas;
   const cat = (hours!==undefined && hours!==null && hours!=='') ? sleepHoursCategory(hours) : null;
-  html += `<div class="hooper-item">
-    <div class="hooper-label"><span>Horas de sueño</span><span style="color:${cat?cat.color:'var(--text3)'};font-weight:700;font-size:13px">${cat?hours+'h · '+cat.label:'— sin dato'}</span></div>
+  // sleepHoursCategory() da "var(--red)" etc. (no un hex), así que el fondo
+  // tenue se arma con el mismo patrón --X → --X-dim que usa el resto de la
+  // app, no pegándole un sufijo de alpha a un var() (eso no es CSS válido).
+  const catDim = cat ? cat.color.replace(')', '-dim)') : 'var(--bg3)';
+  html += `<div style="background:${catDim};border-radius:var(--rsm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+    <span style="font-size:12.5px;font-weight:600;color:var(--text2)">Horas de sueño</span>
+    <span style="font-size:14px;font-weight:800;color:${cat?cat.color:'var(--text3)'}">${cat?hours+'h · '+cat.label:'— sin dato'}</span>
   </div>
   </div>`;
   }
