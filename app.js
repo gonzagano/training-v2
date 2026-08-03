@@ -2379,7 +2379,7 @@ function renderRMCalcSection(standalone) {
     </div>
     ${rmCalcInputsHtml(lift, s)}
     <div style="display:flex;align-items:baseline;gap:6px;background:var(--accent-dim);border-radius:var(--rsm);padding:10px 12px;margin:12px 0">
-      <span style="font-size:20px;font-weight:800;color:var(--accent)">${rm!=null?Math.round(rm*10)/10:'—'}</span>
+      <span style="font-size:20px;font-weight:800;color:var(--accent-text)">${rm!=null?Math.round(rm*10)/10:'—'}</span>
       <span style="font-size:12px;color:var(--text2);font-weight:600">kg · 1RM estimado</span>
     </div>
     ${rmCalcTableHtml(rm)}`;
@@ -2968,9 +2968,37 @@ function openLib(blockId,catIdx) {
   renderLibList();
   S._newExTags = new Set();
   renderTagChipPicker('lib-new-tags-picker','_newExTags');
+  // El formulario de "crear ejercicio nuevo" arranca oculto cada vez que se
+  // abre la biblioteca — lo pedido era no verlo de entrada (el caso común es
+  // agregar uno YA existente de la lista de arriba), pero poder desplegarlo
+  // con el botón cuando hace falta, y volver a ocultarlo después.
+  hideLibNewExerciseForm();
   document.getElementById('lib-overlay').classList.add('open');
 }
 window.openLib=openLib;
+
+function toggleLibNewExerciseForm() {
+  const wrap = document.getElementById('lib-new-wrap');
+  if(!wrap) return;
+  if(wrap.style.display==='none') showLibNewExerciseForm(); else hideLibNewExerciseForm();
+}
+window.toggleLibNewExerciseForm = toggleLibNewExerciseForm;
+
+function showLibNewExerciseForm() {
+  const wrap = document.getElementById('lib-new-wrap');
+  const btn = document.getElementById('lib-new-toggle-btn');
+  if(wrap) wrap.style.display='flex';
+  if(btn) btn.textContent='− Ocultar formulario';
+}
+window.showLibNewExerciseForm = showLibNewExerciseForm;
+
+function hideLibNewExerciseForm() {
+  const wrap = document.getElementById('lib-new-wrap');
+  const btn = document.getElementById('lib-new-toggle-btn');
+  if(wrap) wrap.style.display='none';
+  if(btn) btn.textContent='+ Crear ejercicio nuevo';
+}
+window.hideLibNewExerciseForm = hideLibNewExerciseForm;
 
 function closeLib() { document.getElementById('lib-overlay').classList.remove('open'); }
 window.closeLib=closeLib;
@@ -3568,7 +3596,7 @@ function renderWellness() {
     <button class="abtn" onclick="shiftWellnessDate(-1)" ${canGoBack?'':'disabled style="opacity:.3;cursor:not-allowed"'}>‹</button>
     <div style="text-align:center">
       <div style="font-size:14px;font-weight:700;text-transform:capitalize">${dateLabel}</div>
-      ${!isToday?`<div style="font-size:11px;color:var(--accent);cursor:pointer" onclick="goToTodayWellness()">Volver a hoy →</div>`:''}
+      ${!isToday?`<div style="font-size:11px;color:var(--accent-text);cursor:pointer" onclick="goToTodayWellness()">Volver a hoy →</div>`:''}
     </div>
     <button class="abtn" onclick="shiftWellnessDate(1)" ${canGoForward?'':'disabled style="opacity:.3;cursor:not-allowed"'}>›</button>
   </div>
@@ -3760,7 +3788,7 @@ function renderZoneDetail() {
         <div style="display:flex;gap:4px;flex-wrap:wrap">${opts}</div>
       </div>`;
     }).join('')}
-    ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px">Puntaje: ${sc}/100</div>`:''; })()}
+    ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:12px;font-weight:700;color:var(--accent-text);margin-bottom:10px">Puntaje: ${sc}/100</div>`:''; })()}
     <textarea class="pain-note-inp" placeholder="Observaciones..." onchange="setPainNote('${zid}',this.value)">${inj.note||''}</textarea>
     ${renderInjuryStudies(zid, inj)}
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -3786,7 +3814,7 @@ function renderInjuryList() {
           <div class="injury-info">
             <div class="injury-zone">${zone?.label||id}${typeLbl?` · ${typeLbl}`:''} · <span style="color:${col};font-weight:700">${sev.label}</span></div>
             <div class="injury-pain">Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,30):''}</div>
-            ${isRealInjury(inj)&&inj.rtpPhase?`<div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:2px">🩹 En recuperación · ${rtpPhaseInfo(inj.rtpPhase)?.label||''}</div>`:''}
+            ${isRealInjury(inj)&&inj.rtpPhase?`<div style="font-size:11px;color:var(--accent-text);font-weight:600;margin-top:2px">🩹 En recuperación · ${rtpPhaseInfo(inj.rtpPhase)?.label||''}</div>`:''}
           </div>
           ${trend?`<div class="injury-trend" style="color:${trend.color};font-weight:800;font-size:15px">${trend.arrow}</div>`:''}
         </div>`;
@@ -4556,13 +4584,13 @@ function renderStats() {
     <div style="padding:8px 16px 14px">
       ${topEx.map(([id,f],i)=>`
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div style="width:22px;height:22px;border-radius:50%;background:var(--accent-dim);color:var(--accent);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--accent-dim);color:var(--accent-text);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
           <div style="flex:1;font-size:13px;font-weight:500">${allExById[id]||'—'}</div>
           <div style="display:flex;align-items:center;gap:6px;min-width:80px">
             <div style="flex:1;height:4px;border-radius:2px;background:var(--bg3)">
               <div style="height:100%;border-radius:2px;background:var(--accent);width:${Math.round(f/maxF*100)}%"></div>
             </div>
-            <span style="font-size:12px;font-weight:600;color:var(--accent);min-width:24px;text-align:right">${f}x</span>
+            <span style="font-size:12px;font-weight:600;color:var(--accent-text);min-width:24px;text-align:right">${f}x</span>
           </div>
         </div>`).join('')}
     </div>
@@ -5738,7 +5766,7 @@ function renderTeamRoutineAssignWizard() {
     sessionNames.forEach(sName=>{
       const blocks = routine.sessions[sName]||[];
       if(!blocks.length) return;
-      html += `<div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;margin:10px 0 4px">${sName}</div>`;
+      html += `<div style="font-size:11px;font-weight:700;color:var(--accent-text);text-transform:uppercase;margin:10px 0 4px">${sName}</div>`;
       blocks.forEach(b=>{
         const sel = st.blockPositions[b.id] || [];
         html += `<div style="padding:8px 0;border-top:1px solid var(--border)">
@@ -5882,7 +5910,7 @@ function renderTeamRutina(team) {
             <div style="font-size:12px;font-weight:600;color:var(--purple);margin-bottom:6px">${b.label} — ${b.title}</div>
             ${exList.map(ex=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
               <span style="font-size:13px;font-weight:500">${ex.name}</span>
-              <span style="color:var(--accent);font-size:12px;font-weight:600;background:var(--accent-dim);padding:3px 8px;border-radius:20px;white-space:nowrap">${formatExSummary(ex)||'—'}</span>
+              <span style="color:var(--accent-text);font-size:12px;font-weight:600;background:var(--accent-dim);padding:3px 8px;border-radius:20px;white-space:nowrap">${formatExSummary(ex)||'—'}</span>
             </div>`).join('')}
           </div>`;
         }).join('');
@@ -6871,7 +6899,7 @@ function renderTeamLeaderboard(members) {
         </div>
         <div style="display:flex;align-items:center;gap:6px">
           ${jumpLevelTagHtml(testId,r.best)}
-          <div style="font-size:14px;font-weight:700;color:var(--accent)">${r.best}${testDef.unit}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--accent-text)">${r.best}${testDef.unit}</div>
         </div>
       </div>`).join('') : `<div style="padding:4px 16px 14px;font-size:13px;color:var(--text3)">Sin registros de ${testDef.label} todavía.</div>`;
   }
@@ -7374,7 +7402,7 @@ function renderTeamDayBlock(b,teamId,dayIdx){
         <div class="field-box"><span class="field-lbl">Reps</span><input class="field-inp" type="text" placeholder="6–8" value="${ex.reps||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'reps',this.value)"></div>
         <div class="field-box"><span class="field-lbl">%RM</span><input class="field-inp" type="text" placeholder="—" value="${ex.pct||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'pct',this.value)"></div>
         <div class="field-box"><span class="field-lbl">De qué RM</span><select class="field-inp" style="width:auto;padding:6px 4px;font-size:11px" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'rmLift',this.value)"><option value="">—</option>${RM_LIFTS.map(rm=>`<option value="${rm.id}" ${ex.rmLift===rm.id?'selected':''}>${rm.label}</option>`).join('')}</select></div>
-        <div class="field-box" style="gap:3px"><span class="field-lbl">Intensidad</span>
+        <div class="field-box" style="gap:3px"><span class="field-lbl">Intensidad ${infoBtn('intensity')}</span>
           <div class="intensity-sel">
             <button class="intensity-type-btn ${(ex.intensityType||'RPE')==='RPE'?'active':''}" onclick="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
             <button class="intensity-type-btn ${ex.intensityType==='RIR'?'active':''}" onclick="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'intensityType','RIR');this.classList.add('active');this.previousElementSibling.classList.remove('active')">RIR</button>
@@ -7679,8 +7707,8 @@ function renderAtletas() {
           <div style="flex:1;min-width:0">
             <div style="font-size:15px;font-weight:700">${a.name || a.email}</div>
             <div style="display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap">
-              ${(a.sport||a.position)?`<div style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-dim);border:1px solid var(--border);border-radius:20px;padding:4px 10px">
-                ${icon?`<span style="display:flex;color:var(--accent)">${icon}</span>`:''}
+              ${(a.sport||a.position)?`<div style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--accent-text);background:var(--accent-dim);border:1px solid var(--border);border-radius:20px;padding:4px 10px">
+                ${icon?`<span style="display:flex;color:var(--accent-text)">${icon}</span>`:''}
                 <span>${a.sport||''}${a.sport&&a.position?' · ':''}${a.position||''}</span>
               </div>`:`<span style="font-size:11px;color:var(--text3)">Sin deporte/posición cargados</span>`}
             </div>
@@ -7788,7 +7816,7 @@ function renderAtletaDetail(a) {
     <button class="abtn" onclick="openWeeklyReport('${a.uid}')" title="Reporte semanal">📄 Reporte</button>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-    ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent)">${myTeam.name}</span>`:''}
+    ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text)">${myTeam.name}</span>`:''}
     ${a.position?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${a.position}</span>`:''}
     ${sportLabel&&!myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${sportLabel}</span>`:''}
   </div>
@@ -8160,7 +8188,7 @@ function renderAtletaRutina(a) {
     <div class="admin-item">
       <div>
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Semana real de esta planificación</div>
-        <div style="font-size:20px;font-weight:800;color:var(--accent);font-family:'Barlow Condensed',sans-serif">Semana ${realWeek}</div>
+        <div style="font-size:20px;font-weight:800;color:var(--accent-text);font-family:'Barlow Condensed',sans-serif">Semana ${realWeek}</div>
         ${!isViewingReal?`<div style="font-size:11px;color:var(--amber);margin-top:2px">Estás mirando la Semana ${previewWeek} — esto no cambia la planificación real del atleta.</div>`:''}
       </div>
       <div style="display:flex;gap:6px;align-items:center">
@@ -8193,7 +8221,7 @@ function renderAtletaRutina(a) {
       const isToday = sName===todaySession && isViewingReal;
       return `<div style="border-top:1px solid var(--border)${isToday?';background:var(--accent-dim)':''}">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer" onclick="toggleAtletaRoutineDay('${sName}')">
-          <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px">
+          <div style="font-size:11px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px">
             ${sName}${isToday?'<span style="font-size:9px;font-weight:800;background:var(--accent);color:#fff;padding:2px 6px;border-radius:10px;text-transform:none;letter-spacing:0">HOY</span>':''}
             ${dayDone?'<span style="color:var(--green);font-size:13px">✓</span>':''}
           </div>
@@ -8233,7 +8261,7 @@ function renderAtletaRutina(a) {
                   }
                   return `
                   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span>${b.id==='personal-block'?`<span style="float:right;font-size:10px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent-text);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span>${b.id==='personal-block'?`<span style="float:right;font-size:10px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
@@ -8948,7 +8976,7 @@ function renderWellnessDetail() {
       return `<div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:4px">
         <div style="display:flex;justify-content:space-between;width:100%">
           <span style="font-size:13px;font-weight:600">${display?display.emoji+' '+display.label:l.activity}</span>
-          <span style="font-size:13px;font-weight:700;color:var(--accent)">${l.ua} UA</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent-text)">${l.ua} UA</span>
         </div>
         <div style="font-size:12px;color:var(--text3)">${l.mins} min · RPE ${l.rpe}${l.note?' · '+l.note:''}</div>
       </div>`;
@@ -9999,7 +10027,7 @@ function renderRoutineEditor() {
     <button class="abtn abtn-p" onclick="saveRoutineToFirestore()">Guardar</button>
   </div>
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--accent-dim);border-radius:var(--rsm)">
-    <span style="font-size:12px;font-weight:600;color:var(--accent)">Duración de esta planificación</span>
+    <span style="font-size:12px;font-weight:600;color:var(--accent-text)">Duración de esta planificación</span>
     <input type="number" min="1" max="52" value="${r.durationWeeks||4}" style="width:56px;text-align:center;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px;color:var(--text);font-size:13px" onchange="setRoutineDuration(this.value)">
     <span style="font-size:12px;color:var(--text3)">semanas</span>
   </div>
@@ -10106,8 +10134,8 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
         <table style="border-collapse:collapse;width:100%">
           <thead>
             <tr style="background:var(--accent-dim)">
-              <th style="padding:6px 8px;text-align:left;font-size:10px;color:var(--accent);font-weight:700;position:sticky;left:0;background:var(--accent-dim);min-width:64px;z-index:1"></th>
-              ${weeksArr.map(w=>`<th style="padding:6px 8px;text-align:center;font-size:11px;color:var(--accent);font-weight:700;min-width:76px;white-space:nowrap">Semana ${w}</th>`).join('')}
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:var(--accent-text);font-weight:700;position:sticky;left:0;background:var(--accent-dim);min-width:64px;z-index:1"></th>
+              ${weeksArr.map(w=>`<th style="padding:6px 8px;text-align:center;font-size:11px;color:var(--accent-text);font-weight:700;min-width:76px;white-space:nowrap">Semana ${w}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
@@ -10628,7 +10656,7 @@ function renderEvals() {
 
   if(S.isAdmin) {
     html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
-      + '<div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
+      + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
       + athleteSel
       + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
       + '</div>';
@@ -10671,7 +10699,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
 
   if(S.isAdmin) {
     html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
-      + '<div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
+      + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
       + athleteSel
       + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
       + '</div>';
@@ -11080,7 +11108,7 @@ function renderAthleteTeamCompare(myData) {
       + '<div style="height:100%;background:var(--accent);border-radius:4px;width:'+myPct+'%"></div>'
       + (avg!=null?'<div style="position:absolute;top:-3px;left:'+avgPct+'%;width:2px;height:14px;background:var(--text2)" title="Promedio del equipo"></div>':'')
       + '</div>'
-      + '<div style="text-align:right;font-size:12px;font-weight:700;color:var(--accent)">'+(myBest!=null?myBest+t.unit:'sin datos')+'</div>'
+      + '<div style="text-align:right;font-size:12px;font-weight:700;color:var(--accent-text)">'+(myBest!=null?myBest+t.unit:'sin datos')+'</div>'
       + '</div>';
   });
 
@@ -12242,7 +12270,7 @@ function renderAthleteHome() {
   </div>
   ${routineName?`<div style="background:var(--accent-dim);border:1.5px solid rgba(36,59,107,0.25);border-radius:var(--rsm);padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
-    <span style="color:var(--accent);font-weight:600">Rutina activa:</span>
+    <span style="color:var(--accent-text);font-weight:600">Rutina activa:</span>
     <span style="color:var(--text)">${routineName}</span>
   </div>`:''}
   
@@ -12362,7 +12390,7 @@ function renderLibViewBody() {
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}</div>
           <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-            ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(36,59,107,0.2)">${t}</span>`).join('')}
+            ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);border:1px solid rgba(36,59,107,0.2)">${t}</span>`).join('')}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
