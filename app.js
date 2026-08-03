@@ -548,6 +548,11 @@ function wellnessValColor(val) {
 }
 window.wellnessValColor = wellnessValColor;
 
+// Nombres cortos de cada ítem de wellness, para chips angostos donde el
+// label completo ("Dolor muscular (DOMS)", "Estado de ánimo") no entra.
+const WELLNESS_SHORT_LABEL = { fatiga:'Fatiga', sueño_calidad:'Sueño', estres:'Estrés', dolor_muscular:'Dolor', humor:'Ánimo' };
+window.WELLNESS_SHORT_LABEL = WELLNESS_SHORT_LABEL;
+
 // Score compuesto de wellness: promedio de sub-puntajes normalizados (0–1, 1=mejor)
 // entre los 5 ítems Likert + el ítem de horas de sueño. Se expresa como % (0–100, mayor=mejor).
 function getWellnessScore(w) {
@@ -1426,9 +1431,14 @@ window.computeWeekFromDate = computeWeekFromDate;
 // individual con programa propio le sigue sirviendo el número de semana.
 function isTeamAthlete() { return S.userData?.athleteType === 'team'; }
 window.isTeamAthlete = isTeamAthlete;
-function getWeekHeaderLabel(prefix) {
-  if(S.isAdmin || isTeamAthlete()) return (prefix?'Semana actual · ':'')+getCurrentWeekRangeLabel();
-  return `Semana ${getRoutineWeek()}`;
+function getWeekHeaderLabel() {
+  // "Semana actual" + la fecha, siempre — antes el atleta individual veía
+  // solo "Semana N" pelado, sin fecha, mientras que equipo/admin sí tenían
+  // el rango de fechas (aunque sin la palabra "actual" delante). Unificado
+  // acá para que diga lo mismo en los dos casos.
+  if(S.isAdmin || isTeamAthlete()) return 'Semana actual · '+getCurrentWeekRangeLabel();
+  const range = getProgramWeekRangeLabel(S.currentWeek);
+  return 'Semana actual'+(range?' · '+range:'');
 }
 window.getWeekHeaderLabel = getWeekHeaderLabel;
 
@@ -1468,6 +1478,20 @@ function getCurrentWeekRangeLabel() {
   return `${fmt(monday)} – ${fmt(sunday)}`;
 }
 window.getCurrentWeekRangeLabel = getCurrentWeekRangeLabel;
+
+// Rango de fechas de una semana PUNTUAL del programa de un atleta individual
+// (semana N desde su propia fecha de inicio) — mismo cálculo que
+// computeWeekFromDate() pero al revés, para que "Semana 3" y el rango de
+// fechas que se muestra sean siempre consistentes entre sí.
+function getProgramWeekRangeLabel(weekNum) {
+  if(!S.startDate) return null;
+  const start = new Date(S.startDate+'T00:00:00');
+  const monday = new Date(start); monday.setDate(start.getDate() + (Math.max(1,weekNum)-1)*7);
+  const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+  const fmt = (d) => d.toLocaleDateString('es-AR',{day:'numeric',month:'short'});
+  return `${fmt(monday)} – ${fmt(sunday)}`;
+}
+window.getProgramWeekRangeLabel = getProgramWeekRangeLabel;
 
 function sessionKey(w,s) { return `w${w}-${s}`; }
 function getSD(w,s) {
@@ -2115,7 +2139,10 @@ function renderAll() { renderSubnav(); renderMain(); }
 
 function renderSubnav() {
   const nav=document.getElementById('subnav');
-  const wp=document.getElementById('week-pill'); if(wp) wp.textContent = (S.isAdmin||isTeamAthlete()) ? getCurrentWeekRangeLabel() : `Sem ${S.currentWeek}`;
+  // Esto es lo que se ve arriba de todo en el celular — el atleta individual
+  // veía acá "Sem 1" pelado (sin fecha); ahora usa el mismo texto unificado
+  // "Semana actual · [fechas]" que ya tiene el resto de la app.
+  const wp=document.getElementById('week-pill'); if(wp) wp.textContent = S.isAdmin ? getCurrentWeekRangeLabel() : getWeekHeaderLabel();
   const dwr=document.getElementById('desktop-week-range'); if(dwr) dwr.textContent = getWeekHeaderLabel();
   if(S.currentView!=='session') { nav.innerHTML=''; return; }
   // Sessions: for admin use A/B/C/D; for athlete with routine use routine session names
@@ -7901,16 +7928,21 @@ function renderPerfilTab(a) {
       const col=getWellnessState(pct).color;
       // Antes esta fila era fecha a la izquierda y % a la derecha, con todo
       // el medio vacío — para ver QUÉ compone ese % (fatiga, dolor, sueño...)
-      // había que entrar al detalle del día. Ahora un chip chico por ítem,
-      // con su emoji correspondiente, deja verlo de un vistazo sin entrar.
+      // había que entrar al detalle del día. Corregido: nada de emojis (eso
+      // fue exactamente lo que se pidió sacar) — un chip chico CON EL NOMBRE
+      // del ítem por cada uno, coloreado según el valor, en una segunda
+      // línea propia para que el nombre entre legible.
       const itemChips = WELLNESS_ITEMS.map(item=>{
-        const opt = item.options.find(o=>o.v===w[item.key]);
-        return `<span title="${item.label}: ${opt?opt.label:'—'}" style="font-size:12px;line-height:1;width:19px;height:19px;border-radius:5px;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0">${opt?opt.emoji:'—'}</span>`;
+        const val = w[item.key];
+        const c = wellnessValColor(val);
+        return `<span style="font-size:9.5px;font-weight:700;padding:3px 6px;border-radius:4px;background:${c?c.dim:'var(--bg3)'};color:${c?c.solid:'var(--text3)'};white-space:nowrap;flex-shrink:0">${WELLNESS_SHORT_LABEL[item.key]||item.label}</span>`;
       }).join('');
-      return `<div class="admin-item" style="cursor:pointer" onclick="viewWellnessDay('${uid}','${date}')">
-        <span style="font-size:12px;color:var(--text3);flex-shrink:0">${date}</span>
-        <span style="display:flex;gap:3px;justify-content:center;flex:1">${itemChips}</span>
-        <span style="font-size:14px;font-weight:600;color:${col};flex-shrink:0">${pct}% ›</span>
+      return `<div class="admin-item" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:7px" onclick="viewWellnessDay('${uid}','${date}')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;color:var(--text3)">${date}</span>
+          <span style="font-size:14px;font-weight:600;color:${col}">${pct}% ›</span>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${itemChips}</div>
       </div>`;
     }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div>`}
   </div>
@@ -11783,15 +11815,34 @@ window.getRecentInjuryFeed = getRecentInjuryFeed;
 // del atleta (separado del campo injuries) para que persista entre sesiones
 // del admin.
 async function dismissDashboardInjury(uid, zoneId, lastDate) {
-  const a = S.adminAthletes?.find(x=>x.uid===uid);
-  if(!a) return;
-  if(!a._personal) a._personal = {};
   const key = zoneId+'|'+(lastDate||'');
-  const list = a._personal.dashboardInjuryDismissed||[];
-  if(list.includes(key)) return;
-  a._personal.dashboardInjuryDismissed = [...list, key];
-  renderMain();
-  try { await updateDocSafe(doc(db,'personal',uid), {dashboardInjuryDismissed: a._personal.dashboardInjuryDismissed}); }
+  // BUGS encontrados y corregidos acá: (1) esto tocaba S.adminAthletes, pero
+  // el panel del Dashboard lee de S.dashAthletes — una lista aparte, cargada
+  // por su cuenta en loadDashboard() — así que el toque nunca llegaba al
+  // dato que en realidad se muestra. (2) llamaba a renderMain(), pero
+  // renderDashboard() SIEMPRE arranca mostrando "Cargando atletas…" sin
+  // importar si ya había datos, y además dispara loadDashboard() de nuevo
+  // (otra vuelta completa a Firestore) — el botón "funcionaba" pero la
+  // pantalla volvía a cero y la lesión podía reaparecer si esa recarga
+  // terminaba antes que el guardado. Ahora se actualiza en las dos listas en
+  // las que el atleta puede estar cacheado, y se repinta SOLO el contenido
+  // del dashboard (mismo patrón que ya usa la búsqueda/filtro), no la
+  // pantalla entera.
+  const targets = [
+    (S.dashAthletes||[]).find(x=>x.uid===uid),
+    (S.adminAthletes||[]).find(x=>x.uid===uid),
+  ].filter(Boolean);
+  if(!targets.length) return;
+  let newList = null;
+  targets.forEach(a=>{
+    if(!a._personal) a._personal = {};
+    const list = a._personal.dashboardInjuryDismissed||[];
+    if(!list.includes(key)) a._personal.dashboardInjuryDismissed = [...list, key];
+    newList = a._personal.dashboardInjuryDismissed;
+  });
+  const el = document.getElementById('dashboard-content');
+  if(el) el.innerHTML = renderDashboardContent();
+  try { await updateDocSafe(doc(db,'personal',uid), {dashboardInjuryDismissed: newList}); }
   catch(e) { showToast('No se pudo guardar — se va a mostrar de nuevo si recargás'); }
 }
 window.dismissDashboardInjury = dismissDashboardInjury;
