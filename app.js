@@ -723,7 +723,7 @@ const INFO_LEGENDS = {
      </table>`
   },
   rir: { title:'RIR — Repeticiones en Reserva', html:
-    `<p style="margin-bottom:10px">Cuántas repeticiones más podrías haber hecho en esa serie antes de fallar. Es un concepto propio, no "el RPE al revés".</p>
+    `<p style="margin-bottom:10px">Cuántas repeticiones más podrías haber hecho en esa serie antes de fallar.</p>
      <table style="width:100%;border-collapse:collapse;font-size:12px">
        <tr><td style="padding:4px 8px;font-weight:700">0</td><td style="padding:4px 8px">Fallo — no podrías hacer una repetición más</td></tr>
        <tr><td style="padding:4px 8px;font-weight:700">1</td><td style="padding:4px 8px">Podrías hacer 1 repetición más</td></tr>
@@ -748,8 +748,14 @@ const INFO_LEGENDS = {
 // Vista combinada para el toggle RPE/RIR de la rutina — un solo ícono ahí
 // muestra las dos tablas juntas, ya que en ese lugar puede estar activo
 // cualquiera de los dos.
+// Cada mitad lleva su propio subtítulo (reusando el title de rpe/rir, no uno
+// duplicado a mano) — antes la parte de RIR arrancaba directo en el texto,
+// sin nada que dijera "esto ya es RIR", así que después de la línea
+// divisoria no quedaba claro qué tabla era cuál.
 INFO_LEGENDS.intensity = { title:'RPE y RIR — Intensidad por serie', html:
-  `<div style="margin-bottom:14px">${INFO_LEGENDS.rpe.html}</div><hr style="border:none;border-top:1px solid var(--border);margin-bottom:14px">${INFO_LEGENDS.rir.html}`
+  `<div style="margin-bottom:14px"><div style="font-weight:700;font-size:13px;margin-bottom:8px">${INFO_LEGENDS.rpe.title}</div>${INFO_LEGENDS.rpe.html}</div>`
+  + `<hr style="border:none;border-top:1px solid var(--border);margin-bottom:14px">`
+  + `<div><div style="font-weight:700;font-size:13px;margin-bottom:8px">${INFO_LEGENDS.rir.title}</div>${INFO_LEGENDS.rir.html}</div>`
 };
 window.INFO_LEGENDS = INFO_LEGENDS;
 
@@ -931,7 +937,24 @@ onAuthStateChanged(auth, async (user) => {
     if (d.personalExtras) S.personalExtras = d.personalExtras;
     if (d.notifications) S.notifications = d.notifications;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
-    if (d.startDate) S.startDate = d.startDate;
+    // BUG encontrado y corregido acá — la causa real de "siempre me dice
+    // Semana 1": S.startDate arranca con el default "hoy" (ver la
+    // declaración de S) y solo se pisa con un valor real si personal/{uid}
+    // trae un campo startDate guardado. Cuentas viejas, de antes de que
+    // saveToFirestore() empezara a guardar startDate en cada save, nunca
+    // llegaron a tener ese campo — así que en cada carga de la página
+    // volvía a caer en "hoy", computeWeekFromDate("hoy") siempre da semana
+    // 1, y quedaba pegado ahí para siempre sin importar cuánto hacía que
+    // esa rutina estaba corriendo de verdad. createdAt (la fecha real en la
+    // que se creó la cuenta, guardada una sola vez al registrarse) es un
+    // ancla muchísimo mejor que "hoy" para esos casos — y de paso lo
+    // guardamos ya mismo para no tener que volver a derivarlo cada vez.
+    if (d.startDate) {
+      S.startDate = d.startDate;
+    } else if (S.userData?.createdAt?.toDate) {
+      S.startDate = toLocalDateStr(S.userData.createdAt.toDate());
+      updateDocSafe(pRef, { startDate: S.startDate }).catch(()=>{});
+    }
     // La semana SIEMPRE se recalcula a partir de la fecha de inicio real —
     // así avanza sola con el calendario, entrene o no entrene el atleta.
     // Si tiene una rutina asignada, la semana se cuenta desde el día que se
@@ -2084,6 +2107,9 @@ function renderBottomBar() {
   ] : [
     {id:'dashboard',label:'Inicio',      section:null, svg:'<path d="M3 9l9-7 9 7"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>'},
     {id:'session',  label:'Mi Rutina',   section:null, svg:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'},
+    // Solo para atleta de equipo — el individual no tiene calendario de
+    // equipo que mirar (ver renderMain, case 'calendar').
+    ...(isTeamAthlete() ? [{id:'calendar', label:'Calendario', section:null, svg:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><circle cx="8" cy="15" r="1"/><circle cx="12" cy="15" r="1"/><circle cx="16" cy="15" r="1"/>'}] : []),
     {id:'wellness', label:'Wellness',    section:null, svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
     {id:'evals',    label:'Mis Tests',   section:null, svg:'<path d="M6 3v4l-3 8a3 3 0 0 0 3 4h12a3 3 0 0 0 3-4l-3-8V3"/><line x1="6" y1="3" x2="18" y2="3"/><line x1="8" y1="12" x2="16" y2="12"/>'},
     {id:'stats',    label:'Stats',       section:null, svg:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>'},
@@ -2195,6 +2221,7 @@ function renderMain() {
   switch(S.currentView) {
     case 'dashboard': m.innerHTML=renderDashboard(); setTimeout(loadDashboard,50); break;
     case 'session':  m.innerHTML=renderSession(); break;
+    case 'calendar': m.innerHTML=renderPlayerCalendar(); break;
     case 'progress': m.innerHTML=renderProgress(); break;
     case 'wellness': m.innerHTML=renderWellness(); setTimeout(()=>runCountUps(),30); break;
     case 'stats':    m.innerHTML=renderStats(); break;
@@ -2523,6 +2550,12 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const prescReps   = wp.reps;
   const prescPct    = wp.pct;
   const prescNote   = wp.note;
+  // BUG encontrado y corregido acá: el admin carga un RPE/RIR objetivo por
+  // ejercicio al armar la rutina (ex.rpe + ex.intensityType), pero esta fila
+  // de "lo que prescribió el entrenador" nunca lo mostraba — el jugador solo
+  // veía series/reps/%RM, nunca la intensidad objetivo.
+  const prescRpe = wp.rpe;
+  const prescIntensityType = wp.intensityType || 'RPE';
   // If athlete mode: show prescribed values as read-only, only allow editing load + rpe actual
   const vbtF=ex.vbt?`<div class="field-box"><span class="field-lbl">m/s</span>
     <input class="field-inp vbt" type="number" step="0.01" placeholder="0.00" value="${d.ms||''}"
@@ -2539,13 +2572,17 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
     ? pctParts.map(p=>{ const n=parseDecimal(p); return isNaN(n)?'?':Math.round((n/100)*rmValue); }).join('/')
     : null;
   // Prescription display for athlete (read-only pill row above fields)
-  const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct) ? `
-    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer" onclick="openProgressionModal('${ex.id}','${ex.name.replace(/'/g,"\\'")}')" title="Ver progresión semana a semana">
-      ${prescSeries?`<span style="font-size:11px;background:var(--purple-dim);color:var(--purple);padding:2px 8px;border-radius:20px;border:1px solid rgba(212,100,122,0.3)">${prescSeries} series</span>`:''}
-      ${prescReps?`<span style="font-size:11px;background:var(--blue-dim);color:var(--blue);padding:2px 8px;border-radius:20px;border:1px solid rgba(96,165,250,0.3)">${prescReps} reps</span>`:''}
-      ${prescPct?`<span style="font-size:11px;background:var(--teal-dim);color:var(--teal);padding:2px 8px;border-radius:20px;border:1px solid rgba(45,212,191,0.3)">${prescPct}%RM${suggestedKg?' ≈ '+suggestedKg+'kg':''}</span>`:''}
-      ${(prescPct && ex.rmLift && !rmValue)?`<span style="font-size:11px;color:var(--amber)">Cargá tu RM de ${RM_LIFTS.find(r=>r.id===ex.rmLift)?.label||''} en Ajustes para ver los kilos</span>`:''}
-      <span style="font-size:10px;color:var(--text3)">📈</span>
+  const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct||prescRpe) ? `
+    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;cursor:pointer" onclick="openProgressionModal('${ex.id}','${ex.name.replace(/'/g,"\\'")}')" title="Ver progresión semana a semana">
+        ${prescSeries?`<span style="font-size:11px;background:var(--purple-dim);color:var(--purple);padding:2px 8px;border-radius:20px;border:1px solid rgba(212,100,122,0.3)">${prescSeries} series</span>`:''}
+        ${prescReps?`<span style="font-size:11px;background:var(--blue-dim);color:var(--blue);padding:2px 8px;border-radius:20px;border:1px solid rgba(96,165,250,0.3)">${prescReps} reps</span>`:''}
+        ${prescPct?`<span style="font-size:11px;background:var(--teal-dim);color:var(--teal);padding:2px 8px;border-radius:20px;border:1px solid rgba(45,212,191,0.3)">${prescPct}%RM${suggestedKg?' ≈ '+suggestedKg+'kg':''}</span>`:''}
+        ${prescRpe?`<span style="font-size:11px;background:var(--amber-dim);color:var(--amber);padding:2px 8px;border-radius:20px;border:1px solid rgba(198,124,15,0.3)">${prescIntensityType} objetivo: ${prescRpe}</span>`:''}
+        ${(prescPct && ex.rmLift && !rmValue)?`<span style="font-size:11px;color:var(--amber)">Cargá tu RM de ${RM_LIFTS.find(r=>r.id===ex.rmLift)?.label||''} en Ajustes para ver los kilos</span>`:''}
+        <span style="font-size:10px;color:var(--text3)">📈</span>
+      </div>
+      ${prescRpe?infoBtn('intensity'):''}
     </div>` : '';
   const prescNoteRow = prescNote ? `<div style="font-size:12px;color:var(--text3);font-style:italic;margin:2px 0 6px">${prescNote}</div>` : '';
   // El tipo de intensidad (RPE o RIR) lo define la rutina por ejercicio — acá
@@ -4793,13 +4830,28 @@ function renderTeamCalendar(team) {
     <button class="lib-filter ${mode==='week'?'active':''}" onclick="setCalendarViewMode('week')">Semana</button>
     <button class="lib-filter ${mode==='month'?'active':''}" onclick="setCalendarViewMode('month')">Mes</button>
   </div>`;
-  html += renderCalendarRepeatTool(team);
+  if(S.isAdmin) html += renderCalendarRepeatTool(team);
   if(mode==='day') html += renderCalendarDayView(team);
   else if(mode==='week') html += renderCalendarWeekView(team);
   else html += renderCalendarMonthView(team);
   return html;
 }
 window.renderTeamCalendar=renderTeamCalendar;
+
+// Calendario del propio equipo, vista jugador — mismo grid/chips que ya usa
+// el admin (día de partido con escudo, Local/Visitante, etc.), pero de solo
+// lectura: tocar un día muestra renderCalendarDayReadOnly, nunca el editor.
+function renderPlayerCalendar() {
+  const header = `<div class="page-header">
+    <div class="page-title">Calendario</div>
+    <div class="page-subtitle">${S.myTeam?S.myTeam.name+(S.myTeam.category?' · '+S.myTeam.category:''):'Tu equipo'}</div>
+  </div>`;
+  if(!S.myTeam) {
+    return header + `<div class="empty-state">Todavía no estás vinculado a ningún equipo.</div>`;
+  }
+  return header + renderTeamCalendar(S.myTeam);
+}
+window.renderPlayerCalendar = renderPlayerCalendar;
 
 // ── REPETIR ACTIVIDAD SEMANALMENTE (tipo Google Calendar) ─────────────
 // En vez de cargar entrenamiento día por día a mano, el admin elige el tipo
@@ -4995,7 +5047,7 @@ function renderCalendarMonthView(team) {
       </div>`;
     }).join('')}
   </div>
-  ${selected ? renderCalendarDayEditor(team, selected) : `<div class="empty-state" style="padding:24px">Tocá un día del calendario para ver o agregar actividades.</div>`}`;
+  ${selected ? (S.isAdmin?renderCalendarDayEditor(team, selected):renderCalendarDayReadOnly(team, selected)) : `<div class="empty-state" style="padding:24px">Tocá un día del calendario para ver ${S.isAdmin?'o agregar':''} actividades.</div>`}`;
   return html;
 }
 window.renderCalendarMonthView=renderCalendarMonthView;
@@ -5031,7 +5083,7 @@ function renderCalendarWeekView(team) {
       </div>`;
     }).join('')}
   </div>
-  ${selected ? renderCalendarDayEditor(team, selected) : `<div class="empty-state" style="padding:20px">Tocá un día de la semana para ver o agregar actividades.</div>`}`;
+  ${selected ? (S.isAdmin?renderCalendarDayEditor(team, selected):renderCalendarDayReadOnly(team, selected)) : `<div class="empty-state" style="padding:20px">Tocá un día de la semana para ver ${S.isAdmin?'o agregar':''} actividades.</div>`}`;
   return html;
 }
 window.renderCalendarWeekView=renderCalendarWeekView;
@@ -5044,7 +5096,7 @@ function renderCalendarDayView(team) {
     <div style="font-weight:700;font-size:14px;text-transform:capitalize">${dateLabel}</div>
     <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
   </div>`;
-  html += renderCalendarDayEditor(team, refDate);
+  html += S.isAdmin ? renderCalendarDayEditor(team, refDate) : renderCalendarDayReadOnly(team, refDate);
   return html;
 }
 window.renderCalendarDayView=renderCalendarDayView;
@@ -5067,6 +5119,32 @@ function markCalendarDayDirty(dateStr) {
   S._calDirtyDates.add(dateStr);
 }
 window.markCalendarDayDirty = markCalendarDayDirty;
+
+// Misma info que renderCalendarDayEditor pero sin ningún control de edición
+// (agregar/quitar actividad, escudo, guardar) — lo que ve el jugador al
+// tocar un día de SU calendario de equipo, de solo lectura.
+function renderCalendarDayReadOnly(team, dateStr) {
+  const events = getCalendarEvents(team, dateStr);
+  const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  return `<div class="admin-section">
+    <div class="admin-section-title" style="text-transform:capitalize">${dateLabel}</div>
+    ${events.length?events.map(e=>{
+      const t=CALENDAR_TYPES.find(x=>x.id===e.type);
+      return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${t?t.color:'var(--text3)'};flex-shrink:0"></div>
+          <div style="font-size:13px;font-weight:600;flex:1">${t?t.label:e.type}</div>
+        </div>
+        ${e.type==='partido'?`<div style="display:flex;gap:8px;align-items:center;padding-left:16px">
+          ${e.crestUrl?`<img src="${e.crestUrl}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;border:1px solid var(--border2)">`:''}
+          <span style="font-size:13px;font-weight:600">${e.opponent||'Rival'}</span>
+          <span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;color:#fff;background:${e.homeAway==='visitante'?'var(--blue)':'var(--red)'}">${e.homeAway==='visitante'?'VISITANTE':'LOCAL'}</span>
+        </div>`:''}
+      </div>`;
+    }).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin actividades este día.</div>`}
+  </div>`;
+}
+window.renderCalendarDayReadOnly=renderCalendarDayReadOnly;
 
 function renderCalendarDayEditor(team, dateStr) {
   const events = getCalendarEvents(team, dateStr);
@@ -5807,14 +5885,29 @@ window.renderTeamRoutineAssignWizard = renderTeamRoutineAssignWizard;
 
 function openTeamRoutineAssign(teamId) {
   const team = S.teams.find(t=>t.id===teamId);
+  const routineId = team?.assignedRoutineId||'';
   S._teamRoutineAssign = {
     teamId,
-    routineId: team?.assignedRoutineId||'',
+    routineId,
     blockPositions: team?.routineBlockPositions ? JSON.parse(JSON.stringify(team.routineBlockPositions)) : {},
     selectedWeekdays: [],
-    startDate: todayLocal(),
+    startDate: todayLocal(), // se corrige abajo, una vez que los atletas frescos estén cargados, si corresponde
   };
-  ensureAdminAthletes().then(renderMain);
+  ensureAdminAthletes().then(()=>{
+    // BUG encontrado y corregido acá: si el equipo YA tenía esta misma
+    // rutina asignada, arrancamos con la fecha real de inicio de sus
+    // jugadores (no "hoy") — antes, reabrir esto solo para ajustar
+    // posiciones/bloques (sin querer cambiar nada de fechas) reseteaba a
+    // Semana 1 a TODO el plantel al confirmar, aunque llevaran semanas.
+    const st = S._teamRoutineAssign;
+    if(st && st.routineId===routineId && team) {
+      const memberWithDate = (team.memberUids||[])
+        .map(uid=>S.adminAthletes?.find(a=>a.uid===uid))
+        .find(a=>a && a.assignedRoutine===routineId && a.routineAssignedDate);
+      if(memberWithDate) st.startDate = memberWithDate.routineAssignedDate;
+    }
+    renderMain();
+  });
 }
 window.openTeamRoutineAssign = openTeamRoutineAssign;
 
@@ -8185,21 +8278,21 @@ function renderAtletaRutina(a) {
     S._atletaRoutineCollapsedDays = new Set(sessionNames.filter(n=>n!==todaySession));
   }
   html += `<div class="admin-section">
-    <div class="admin-item">
+    <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
       <div>
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Semana real de esta planificación</div>
         <div style="font-size:20px;font-weight:800;color:var(--accent-text);font-family:'Barlow Condensed',sans-serif">Semana ${realWeek}</div>
         ${!isViewingReal?`<div style="font-size:11px;color:var(--amber);margin-top:2px">Estás mirando la Semana ${previewWeek} — esto no cambia la planificación real del atleta.</div>`:''}
       </div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',-1)" title="Ver la semana anterior (no cambia la fecha real)">‹ Semana</button>
         <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',1)" title="Ver la semana siguiente (no cambia la fecha real)">Semana ›</button>
         ${!isViewingReal?`<button class="abtn abtn-p" onclick="resetRoutineWeekPreview('${a.uid}')" title="Volver a mostrar la semana real del atleta">Volver a la real</button>`:''}
       </div>
     </div>
-    <div class="admin-item" style="border-top:1px solid var(--border)">
+    <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px;border-top:1px solid var(--border)">
       <div style="font-size:11px;color:var(--text3)">¿Está mal la semana real? Corregila acá (esto SÍ cambia lo que ve el atleta)</div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button class="abtn" onclick="adminSetRealRoutineWeek('${a.uid}',${Math.max(1,realWeek-1)})" title="Corregir la semana real, un número menos">− Corregir</button>
         <button class="abtn" onclick="adminSetRealRoutineWeek('${a.uid}',${realWeek+1})" title="Corregir la semana real, un número más">Corregir +</button>
         <button class="abtn abtn-d" onclick="resetAthleteRoutineWeek('${a.uid}')" title="Reasigna la planificación para que arranque hoy en Semana 1">Reiniciar a Sem. 1</button>
@@ -9716,7 +9809,13 @@ function openWeekdayAssignModal(uid, routineId) {
   // es un punto de partida razonable que el admin puede ajustar.
   const prevSelected = (a && a.assignedRoutine===routineId && Array.isArray(a.trainingWeekdays)) ? a.trainingWeekdays : [];
   const today = todayLocal();
-  S._weekdayAssign = { uid, routineId, sessionNames, selected: [...prevSelected], startDate: today };
+  // BUG encontrado y corregido acá: si el atleta YA tenía esta misma rutina
+  // asignada, arrancamos con su fecha real de inicio (no "hoy") — antes,
+  // reabrir esto solo para tocar los días de gimnasio (sin querer cambiar
+  // nada de fechas) reseteaba a Semana 1 a alguien que ya venía entrenando
+  // hace semanas, porque el campo quedaba siempre precargado en hoy.
+  const startDate = (a && a.assignedRoutine===routineId && a.routineAssignedDate) ? a.routineAssignedDate : today;
+  S._weekdayAssign = { uid, routineId, sessionNames, selected: [...prevSelected], startDate };
   document.getElementById('weekday-assign-title').textContent = 'Días de gimnasio · ' + routine.name;
   renderWeekdayAssignBody();
   document.getElementById('weekday-assign-overlay').classList.add('open');
@@ -11632,10 +11731,50 @@ function calcLoadMetrics(sessionLogs) {
   // nunca existieron, e infla el ratio artificialmente (300 UA / 75 UA = 4.00, aunque
   // el atleta recién esté empezando y no haya ningún riesgo real todavía). Exigimos un
   // mínimo de historial antes de reportar un ACWR — si no, es más ruido que señal.
-  const MIN_DAYS_FOR_ACWR = 21;
-  const earliestDate = sessionLogs.reduce((min,l)=> l.date<min?l.date:min, sessionLogs[0].date);
-  const daysOfHistory = Math.floor((now-new Date(earliestDate))/(1000*60*60*24));
-  const hasEnoughHistory = daysOfHistory >= MIN_DAYS_FOR_ACWR;
+  //
+  // BUG encontrado y corregido acá: el requisito original era "¿pasaron 21 días
+  // desde el PRIMER log de la historia?" — una sola sesión aislada de hace un mes
+  // (una prueba, el día que se registró) ya cumplía eso, aunque después haya
+  // semanas vacías y recién esté entrenando de verdad hace 2 semanas. El ACWR
+  // igual salía altísimo y aparecía "riesgo lesional" en un jugador sin
+  // suficiente historial real para que el número signifique algo.
+  //
+  // La primera corrección (semanas-de-calendario consecutivas) resultó
+  // demasiado estricta: un hueco normal de la vida real — una gripe, un
+  // partido libre un fin de semana — podía caer justo en el borde entre dos
+  // "semanas" (que acá son ventanas de 7 días fijas, no lunes-a-domingo) y
+  // cortaba la racha de un atleta con historial real de sobra. Se mide
+  // día por día: se camina hacia atrás desde hoy por las fechas con carga
+  // cargada, y la racha se corta solo si el HUECO entre dos sesiones seguidas
+  // supera el máximo tolerado.
+  //
+  // Ese máximo NO es fijo — un atleta que ya viene entrenando hace semanas o
+  // meses se merece más margen ante un hueco real (una gripe más larga, unos
+  // días de descanso) que uno recién arrancado: para éste, un hueco grande
+  // todavía dice "no hay base confiable"; para alguien con historial de
+  // sobra, el mismo hueco es solo una pausa dentro de una racha real. Se
+  // mira una ventana más amplia (90 días, más allá de las 4 semanas que
+  // importan para el cálculo en sí) para decidir si está "establecido": si
+  // tiene bastantes días distintos con carga ahí, se le da el margen más
+  // generoso.
+  const WIDE_LOOKBACK_DAYS = 90;
+  const ESTABLISHED_MIN_DAYS = 15;
+  const GAP_MAX_NEW = 10;
+  const GAP_MAX_ESTABLISHED = 21;
+  const wideAgo = new Date(now); wideAgo.setDate(wideAgo.getDate()-WIDE_LOOKBACK_DAYS);
+  const wideDistinctDays = new Set(sessionLogs.filter(l=>new Date(l.date)>=wideAgo).map(l=>l.date)).size;
+  const isEstablished = wideDistinctDays >= ESTABLISHED_MIN_DAYS;
+  const GAP_MAX_DAYS = isEstablished ? GAP_MAX_ESTABLISHED : GAP_MAX_NEW;
+
+  const chronicDatesDesc = [...new Set(chronicLogs.map(l=>l.date))].sort().reverse();
+  let cursor = now;
+  for (const dStr of chronicDatesDesc) {
+    const d = new Date(dStr+'T00:00:00');
+    if (Math.floor((cursor - d) / 86400000) > GAP_MAX_DAYS) break;
+    cursor = d;
+  }
+  const daysOfHistory = Math.floor((now - cursor) / 86400000);
+  const hasEnoughHistory = daysOfHistory >= 21;
   const acwr = (chronicUA>0 && hasEnoughHistory) ? (acuteUA/chronicUA) : null;
   
   // Monotony: mean / stddev of daily UA in last 7 days
@@ -11662,8 +11801,16 @@ function getACWRStatus(acwr, daysOfHistory) {
   if(acwr<0.8)   return {label:'Subcarga',color:'var(--purple)'};
   if(acwr<=1.3)  return {label:'Zona óptima ✓',color:'var(--green)'};
   if(acwr<=1.5)  return {label:'Precaución',color:'var(--amber)'};
-  return {label:'Riesgo lesional ⚠',color:'var(--red)'};
+  // El jugador ve una alerta más suave a propósito — "riesgo lesional" es un
+  // término fuerte para mostrarle a un chico sin que un profesional lo
+  // contextualice antes. El admin (S.isAdmin) sigue viendo la etiqueta
+  // técnica tal cual, porque la necesita para identificar rápido a quién
+  // mirar primero.
+  return S.isAdmin
+    ? {label:'Riesgo lesional ⚠',color:'var(--red)'}
+    : {label:'Posibles cargas elevadas ⚠ — consultalo con tu entrenador',color:'var(--red)'};
 }
+window.getACWRStatus = getACWRStatus;
 
 // Gráfico de tendencia en la ficha del atleta: ACWR y wellness día a día,
 // últimos 30 días. El ACWR se recalcula "como si fuera ese día" (solo con los
@@ -12686,7 +12833,7 @@ function navigateSwipe(dir) {
   // Solo cambia de sección si estamos en una pantalla "de primer nivel" de
   // la barra inferior — si hay un detalle abierto (un atleta, un equipo,
   // etc.) el swipe no hace nada, para no navegar por sorpresa.
-  const tabs = S.isAdmin ? ['dashboard','teams','atletas','admin'] : ['dashboard','session','wellness','evals','stats'];
+  const tabs = S.isAdmin ? ['dashboard','teams','atletas','admin'] : ['dashboard','session',...(isTeamAthlete()?['calendar']:[]),'wellness','evals','stats'];
   const idx = tabs.indexOf(S.currentView);
   if(idx<0) return;
   if(S.isAdmin && S.currentView==='admin' && S.adminView && S.adminView!=='main') return;
