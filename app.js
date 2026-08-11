@@ -8580,6 +8580,124 @@ async function markAllNotificationsRead() {
 }
 window.markAllNotificationsRead = markAllNotificationsRead;
 
+// ── NOTIFICACIONES PUSH REALES (Web Push) ──────────────────────
+// A diferencia de S.notifications (que solo se ve DENTRO de la app, en la
+// campanita), esto le llega al celular como cualquier notificación del
+// sistema, aunque G-Metrics esté cerrada. Estándar Web Push (RFC 8291/8292):
+// el navegador genera una "suscripción" (endpoint + claves) que se guarda en
+// su propio documento de Firestore (mismo patrón que photoUrl), y cuando el
+// admin quiere avisarle algo, el propio cliente arma la lista de a quién
+// mandarle y se la pasa a /api/send-push (función serverless de Vercel) —
+// el cifrado y el envío real no se pueden hacer desde el navegador del admin
+// porque los servidores push de Apple/Google no responden con CORS.
+const VAPID_PUBLIC_KEY = 'BD_LHVYb3YbBE8Ih_viOAqYlp_2TXWlJa0dLGfNKsQfZlnxun47Up_nD9RMvUieeUMcrWRXw60u5e3Q_1HCBKy8';
+// Igual que en la guía de la que sale este patrón: no es un secreto
+// criptográfico, solo evita que cualquiera le pegue a /api/send-push desde
+// afuera. Tiene que ser EXACTAMENTE el mismo string que la variable de
+// entorno PUSH_API_SECRET en Vercel.
+const PUSH_API_SECRET = 'ea0345e39a0b8631223fe3d23ebf8af5cb00264b6d9881b5';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g,'+').replace(/_/g,'/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for(let i=0;i<rawData.length;i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+// Safari en iPhone solo soporta Web Push si la PWA está agregada a la
+// pantalla de inicio (modo standalone) — pedir permiso antes de eso no
+// funciona, hay que guiar al usuario a instalarla primero.
+function esIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; }
+window.esIOS = esIOS;
+function esStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+window.esStandalone = esStandalone;
+
+async function activarNotificacionesPush() {
+  if(typeof Notification==='undefined') { showToast('Tu navegador no soporta notificaciones'); return; }
+  if(esIOS() && !esStandalone()) {
+    alert('En iPhone: primero agregá G-Metrics a tu pantalla de inicio (Compartir → Agregar a inicio) y abrila desde ese ícono — recién ahí Safari deja activar notificaciones.');
+    return;
+  }
+  try {
+    const permiso = await Notification.requestPermission();
+    if(permiso==='denied') { showToast('Bloqueaste las notificaciones — activalas desde la configuración del sitio en tu navegador'); return; }
+    if(permiso!=='granted') return;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    const raw = sub.toJSON();
+    const subData = { endpoint: raw.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth };
+    await setDoc(doc(db,'users',S.user.uid), {pushSubscription:subData}, {merge:true});
+    if(S.userData) S.userData.pushSubscription = subData;
+    showToast('✓ Notificaciones activadas');
+    renderMain();
+  } catch(e) {
+    showToast('No se pudieron activar: '+(e?.message||e));
+  }
+}
+window.activarNotificacionesPush = activarNotificacionesPush;
+
+async function desactivarNotificacionesPush() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if(sub) await sub.unsubscribe();
+    await setDoc(doc(db,'users',S.user.uid), {pushSubscription:deleteField()}, {merge:true});
+    if(S.userData) delete S.userData.pushSubscription;
+    showToast('Notificaciones desactivadas');
+    renderMain();
+  } catch(e) {
+    showToast('Error al desactivar');
+  }
+}
+window.desactivarNotificacionesPush = desactivarNotificacionesPush;
+
+// Manda un push real a los uids que tengan pushSubscription guardada (los que
+// no la tengan simplemente no reciben nada acá — igual les queda el aviso
+// adentro de la app vía S.notifications). Se apoya en S.adminAthletes, que ya
+// tiene el documento completo de cada atleta cargado — no hace falta pedirle
+// permiso a Firestore para leer la suscripción de cada uno por separado.
+async function sendPushToUids(uids, {title, body, url} = {}) {
+  const subs = (uids||[])
+    .map(uid => (S.adminAthletes||[]).find(a=>a.uid===uid)?.pushSubscription)
+    .filter(Boolean);
+  if(!subs.length) return {sent:0, total:(uids||[]).length};
+  try {
+    const resp = await fetch('/api/send-push', {
+      method:'POST',
+      headers:{'Content-Type':'application/json', 'X-Push-Secret': PUSH_API_SECRET},
+      body: JSON.stringify({subscriptions:subs, title:title||'G-Metrics', body:body||'', url:url||location.origin})
+    });
+    if(!resp.ok) return {sent:0, total:uids.length, error:true};
+    const data = await resp.json();
+    const results = data.results||[];
+    const sent = results.filter(r=>r.ok).length;
+    // Suscripciones vencidas (404/410 — el usuario desinstaló, bloqueó, o
+    // cambió de navegador): las limpiamos para no reintentar siempre en vano.
+    const dead = results.filter(r=>!r.ok && (r.status===404||r.status===410)).map(r=>r.endpoint);
+    if(dead.length) {
+      (uids||[]).forEach(uid=>{
+        const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
+        if(a?.pushSubscription && dead.includes(a.pushSubscription.endpoint)) {
+          delete a.pushSubscription;
+          setDoc(doc(db,'users',uid), {pushSubscription:deleteField()}, {merge:true}).catch(()=>{});
+        }
+      });
+    }
+    return {sent, total:uids.length};
+  } catch(e) {
+    return {sent:0, total:(uids||[]).length, error:true};
+  }
+}
+window.sendPushToUids = sendPushToUids;
+
 // Corrige de una sola vez la capitalización de TODOS los nombres: atletas
 // registrados, su entrada en el roster de su equipo, y los jugadores
 // pendientes (sin cuenta todavía). Útil para arreglar de golpe los nombres
@@ -8847,6 +8965,19 @@ function renderSettings() {
           : `<input class="abtn" style="text-align:right;flex:1;max-width:200px" value="${u.position||''}" placeholder="Ej: Base, Alero..." onblur="saveMyProfileField('position',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`}
       </div>`;
     })()}
+  </div>
+  <div class="card">
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Notificaciones</div>
+    <div class="settings-item">
+      <div><div class="settings-lbl">Avisos en el celular</div><div class="settings-sub">${(()=>{
+        if(typeof Notification==='undefined') return 'Tu navegador no soporta notificaciones.';
+        if(u.pushSubscription) return 'Activadas — te van a llegar aunque no tengas la app abierta.';
+        if(Notification.permission==='denied') return 'Bloqueadas en el navegador — activalas desde la configuración del sitio.';
+        if(esIOS() && !esStandalone()) return 'En iPhone primero agregá G-Metrics a tu pantalla de inicio (Compartir → Agregar a inicio) y abrila desde ahí.';
+        return 'Recibí recordatorios de wellness/carga aunque no tengas la app abierta.';
+      })()}</div></div>
+      ${typeof Notification!=='undefined' ? `<button class="abtn ${u.pushSubscription?'':'abtn-p'}" onclick="${u.pushSubscription?'desactivarNotificacionesPush()':'activarNotificacionesPush()'}">${u.pushSubscription?'Desactivar':'Activar'}</button>` : ''}
+    </div>
   </div>
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mis marcas (1RM)</div>
@@ -9384,7 +9515,8 @@ async function sendInAppReminder() {
       sentCount++;
     } catch(e) {}
   }
-  showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}`);
+  const pushResult = await sendPushToUids(pendingUids, {title:'G-Metrics · Recordatorio', body:msg});
+  showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}${pushResult.sent?` (${pushResult.sent} con notificación push)`:''}`);
 }
 window.sendInAppReminder = sendInAppReminder;
 
