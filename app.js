@@ -1064,11 +1064,7 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById('pm-name').textContent = S.userData.name || '—';
   document.getElementById('pm-email').textContent = S.userData.email || '—';
   document.getElementById('pm-role').textContent = S.isAdmin ? 'admin' : 'atleta';
-  const initial = (S.userData.name || 'U')[0].toUpperCase();
-  ['avatar-btn','avatar-btn-mobile'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el) el.textContent=initial;
-  });
+  updateTopbarAvatar();
   if (S.isAdmin) {
     document.getElementById('pm-admin').style.display = 'block';
   }
@@ -1441,6 +1437,27 @@ function computeWeekFromDate(startDate) {
   return Math.max(1, Math.floor(diffDays/7)+1);
 }
 window.computeWeekFromDate = computeWeekFromDate;
+
+// S.currentWeek y S.currentSession se calculan una sola vez, al loguear —
+// pero una PWA suele quedar "abierta" en memoria días enteros (se la trae al
+// frente desde el ícono del celular en vez de recargarla de cero), así que
+// esos valores se congelaban en lo que eran el día del último login real y
+// nunca se enteraban de que ya arrancó una semana nueva. Esto recalcula
+// ambos con lo que ya está en memoria (sin ir a buscar nada a Firestore) —
+// se llama de nuevo cada vez que la app vuelve a primer plano.
+function refreshTodaysTrainingContext() {
+  if(!S.userData) return;
+  if(S.userData.assignedRoutine && S.userData.routineAssignedDate) {
+    S.currentWeek = computeWeekFromDate(S.userData.routineAssignedDate);
+  } else if(S.startDate) {
+    S.currentWeek = computeWeekFromDate(S.startDate);
+  }
+  if(!S.isAdmin && S.currentRoutineSessions && S.currentRoutineSessions.length) {
+    const assignedDate = S.assignedRoutine?.fromTeam ? null : S.userData.routineAssignedDate;
+    S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, assignedDate, S.userData.trainingWeekdays);
+  }
+}
+window.refreshTodaysTrainingContext = refreshTodaysTrainingContext;
 
 // Rango lunes-domingo de la semana calendario REAL de hoy — para el admin,
 // que gestiona muchos atletas cada uno en una semana distinta de su propia
@@ -2160,6 +2177,23 @@ function renderBottomBar() {
 window.renderBottomBar=renderBottomBar;
 
 window.addEventListener('resize', ()=>{ renderBottomBar(); });
+
+// Ver refreshTodaysTrainingContext(): sin esto, una PWA que queda "abierta"
+// en segundo plano (celular bloqueado, cambiás de app y volvés) nunca se
+// entera de que cruzó la medianoche o arrancó una semana nueva hasta que se
+// recarga de cero. Solo actuamos si el DÍA realmente cambió — no en cada
+// cambio de pestaña dentro del mismo día — para no pisar algo que el atleta
+// estuviera completando a mitad de camino.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState !== 'visible') return;
+  if(!S.user || !S.userData) return;
+  const today = todayLocal();
+  if(S._lastKnownDay === undefined || S._lastKnownDay === null) { S._lastKnownDay = today; return; }
+  if(today === S._lastKnownDay) return;
+  S._lastKnownDay = today;
+  refreshTodaysTrainingContext();
+  renderAll();
+});
 
 function renderAll() { renderSubnav(); renderMain(); }
 
@@ -4768,13 +4802,36 @@ async function syncTeamEvalAverages(team, members) {
   if(!team || !members.length) return;
   const bestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
   const avgs = {};
+  const maxs = {};
   EVAL_TESTS.forEach(t=>{
     const vals = members.map(a=>bestOf(a,t.id)).filter(v=>v!=null);
-    if(vals.length) avgs[t.id] = +(vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(1);
+    if(vals.length) {
+      avgs[t.id] = +(vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(1);
+      maxs[t.id] = Math.max(...vals);
+    }
   });
   if(!Object.keys(avgs).length) return;
+
+  // Promedio por puesto — mismo criterio de privacidad (agregado, nunca datos
+  // crudos de un compañero puntual). Solo se guarda un puesto si hay al menos
+  // 2 atletas con datos ahí adentro, si no el "promedio" sería directamente
+  // la propia marca del jugador comparada contra sí misma.
+  const byPos = {};
+  members.forEach(a=>{ if(a.position) (byPos[a.position]=byPos[a.position]||[]).push(a); });
+  const avgsByPosition = {};
+  Object.entries(byPos).forEach(([pos,mem])=>{
+    const posAvgs = {};
+    EVAL_TESTS.forEach(t=>{
+      const vals = mem.map(a=>bestOf(a,t.id)).filter(v=>v!=null);
+      if(vals.length>=2) posAvgs[t.id] = +(vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(1);
+    });
+    if(Object.keys(posAvgs).length) avgsByPosition[pos] = posAvgs;
+  });
+
   team.evalAverages = avgs;
-  try { await setDoc(doc(db,'teams',team.id), {evalAverages:avgs}, {merge:true}); } catch(e) { /* no crítico */ }
+  team.evalMax = maxs;
+  team.evalAveragesByPosition = avgsByPosition;
+  try { await setDoc(doc(db,'teams',team.id), {evalAverages:avgs, evalMax:maxs, evalAveragesByPosition:avgsByPosition}, {merge:true}); } catch(e) { /* no crítico */ }
 }
 window.syncTeamEvalAverages = syncTeamEvalAverages;
 
@@ -6045,6 +6102,7 @@ function renderTeamRutina(team) {
       const sevRank = {grave:3, moderada:2, leve:1};
       const worstInjury = injuries.length ? injuries.reduce((worst,i)=>(sevRank[i.severity]||1)>(sevRank[worst.severity]||1)?i:worst, injuries[0]) : null;
       const injColor = worstInjury ? (severityInfo(worstInjury.severity)||severityInfo('leve')).color : null;
+      const matchInfo = getRecentMatchCardInfo(match._personal, today);
 
       // Alertas puntuales de HOY: estrés, sueño y dolor muscular reportados bajos.
       const alerts = [];
@@ -6067,7 +6125,9 @@ function renderTeamRutina(team) {
           <div style="flex-shrink:0">${sparklineSvg(getWellnessSparklineData(match._personal,14), wState.color, 44, 20)}</div>
           <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
         </div>
-        ${(worstInjury || alerts.length) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        ${(worstInjury || alerts.length || matchInfo) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          ${matchInfo?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700">🏆 ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>`:''}
+          ${matchInfo?.hadMolestia?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700">⚠ molestia en el partido</span>`:''}
           ${worstInjury?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${injColor}22;color:${injColor};border:1px solid ${injColor}">🩹 ${worstInjury.zoneLabel} · ${severityInfo(worstInjury.severity)?.label||'Leve'} · dolor ${worstInjury.pain}/10</span>`:''}
           ${alerts.map(al=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${al.emoji} ${al.label}</span>`).join('')}
         </div>`:''}
@@ -6109,6 +6169,23 @@ function avatarHtml(name, color, size, photoUrl) {
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color||'var(--accent)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:${fs}px;font-weight:700;letter-spacing:-.02em">${getInitials(name)}</div>`;
 }
 window.avatarHtml=avatarHtml;
+
+// Actualiza el avatar circular del topbar/sidebar (mi propia foto o iniciales)
+// — separado del render de #main porque el topbar no se vuelve a pintar en
+// cada renderMain(), así que hay que llamarlo a mano después de cualquier
+// cambio a nombre o foto de perfil.
+function updateTopbarAvatar() {
+  if(!S.userData) return;
+  const initial = (S.userData.name || 'U')[0].toUpperCase();
+  const myPhotoUrl = S.userData.photoUrl;
+  ['avatar-btn','avatar-btn-mobile'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    if(myPhotoUrl) el.innerHTML = `<img src="${myPhotoUrl}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block" alt="">`;
+    else { el.innerHTML=''; el.textContent=initial; }
+  });
+}
+window.updateTopbarAvatar=updateTopbarAvatar;
 
 // Foto del atleta si la tiene, o si no, el típico círculo con silueta
 // genérica de hombros para arriba (en vez de iniciales) — para la lista de
@@ -7123,7 +7200,7 @@ function drawTeamRadarChart(members, lockedAthleteId) {
         } } }
       },
       scales:{ r:{ min:0, max:100, ticks:{color:cssVar('--text2','#4B5160'), backdropColor:'transparent', font:{size:9}, stepSize:25},
-        grid:{color:'rgba(18,21,28,0.1)'}, angleLines:{color:'rgba(18,21,28,0.1)'},
+        grid:{color:cssVar('--border2','rgba(18,21,28,0.14)')}, angleLines:{color:cssVar('--border2','rgba(18,21,28,0.14)')},
         pointLabels:{color:cssVar('--text','#1A1D26'), font:{size:11,weight:600}} } }
     }
   });
@@ -8453,24 +8530,33 @@ function updateNotifBadge() {
 window.updateNotifBadge = updateNotifBadge;
 
 function renderNotifications() {
-  const list = [...(S.notifications||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const notifs = S.notifications||[];
+  // Ordenamos ÍNDICES (no una copia de los objetos) — así "Marcar leído"
+  // sigue apuntando a la posición real dentro de S.notifications aunque en
+  // pantalla se muestren en otro orden (más reciente primero). Antes se
+  // ordenaba una copia y se usaba el índice de ESA copia como si fuera el
+  // índice original: con más de una notificación fuera de orden, tocaba
+  // "Marcar leído" en una y en realidad marcaba otra distinta — el número de
+  // la campanita nunca bajaba porque la que se veía en pantalla seguía sin
+  // leer.
+  const order = notifs.map((_,i)=>i).sort((ai,bi)=>(notifs[bi].date||'').localeCompare(notifs[ai].date||''));
   let html = `<div class="page-header">
     <div class="page-title">Notificaciones</div>
-    <div class="page-subtitle">${list.length?list.filter(n=>!n.read).length+' sin leer':'Nada nuevo por acá'}</div>
+    <div class="page-subtitle">${order.length?notifs.filter(n=>!n.read).length+' sin leer':'Nada nuevo por acá'}</div>
   </div>`;
-  if(!list.length) {
+  if(!order.length) {
     html += `<div class="empty-state">No tenés notificaciones todavía.</div>`;
     return html;
   }
   html += `<div class="wellness-card">
-    ${list.map((n,i)=>`
+    ${order.map(i=>{ const n=notifs[i]; return `
       <div class="hooper-item" style="background:${n.read?'transparent':'var(--accent-dim)'}">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
           <div style="font-size:13px;line-height:1.5">${n.message}</div>
           ${!n.read?`<button class="abtn" style="flex-shrink:0;font-size:11px" onclick="markNotificationRead(${i})">Marcar leído</button>`:''}
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">${n.date||''}</div>
-      </div>`).join('')}
+      </div>`; }).join('')}
   </div>`;
   return html;
 }
@@ -8883,6 +8969,7 @@ async function saveMyProfileField(field, value) {
   try {
     await setDoc(doc(db,'users',S.user.uid), {[field]:val}, {merge:true});
     showToast('✓ Guardado');
+    if(field==='name') updateTopbarAvatar();
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
 }
@@ -8910,6 +8997,7 @@ function handleProfilePhotoUpload(input) {
       try {
         await setDoc(doc(db,'users',S.user.uid), {photoUrl:dataUrl}, {merge:true});
         showToast('✓ Foto actualizada');
+        updateTopbarAvatar();
         renderMain();
       } catch(e) { showToast('Error al guardar la foto'); }
     };
@@ -11178,15 +11266,29 @@ function renderAthleteTeamCompare(myData) {
     return html;
   }
 
-  const avgs = myTeam.evalAverages || {};
-  if(!Object.keys(avgs).length) {
+  const teamAvgs = myTeam.evalAverages || {};
+  if(!Object.keys(teamAvgs).length) {
     html += '<div style="font-size:12px;color:var(--text3);margin-bottom:4px">'+myTeam.name+'</div>'
       + '<div class="eval-no-data">Todavía no hay un promedio del equipo calculado. Se actualiza solo la próxima vez que tu entrenador abra las estadísticas del equipo.</div></div>';
     return html;
   }
 
-  html += '<div style="font-size:12px;color:var(--text3);margin-bottom:14px">'+myTeam.name+'</div>';
-  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tu mejor marca vs. promedio del equipo</div>';
+  // Si el jugador tiene puesto cargado y ese puesto tiene datos de al menos
+  // 2 compañeros (ver syncTeamEvalAverages), comparamos contra el promedio
+  // de SU puesto en vez del equipo entero — es la comparación que de verdad
+  // le sirve (un arquero no se compara contra un pivot). Si no hay ese dato
+  // todavía, cae de vuelta al promedio general sin romper nada.
+  const myPosition = S.userData?.position || null;
+  const posAvgs = myPosition ? (myTeam.evalAveragesByPosition?.[myPosition] || null) : null;
+  const avgs = posAvgs || teamAvgs;
+  const avgLabel = posAvgs ? ('promedio de '+myPosition) : 'promedio del equipo';
+
+  html += '<div style="font-size:12px;color:var(--text3);margin-bottom:14px">'+myTeam.name+(posAvgs?' · '+myPosition:'')+'</div>';
+
+  html += '<div style="height:250px;position:relative;margin-bottom:8px"><canvas id="player-team-radar-chart"></canvas></div>'
+    + '<div style="font-size:11px;color:var(--text3);margin-bottom:16px">Cada eje es el % respecto al mejor valor del equipo — línea llena: vos. Punteada: '+avgLabel+'.</div>';
+
+  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tu mejor marca vs. '+avgLabel+'</div>';
 
   EVAL_TESTS.filter(t=>t.id!=='cmj_der' && t.id!=='cmj_izq').forEach(t=>{
     const avg = avgs[t.id];
@@ -11202,10 +11304,10 @@ function renderAthleteTeamCompare(myData) {
     html += '<div style="margin-bottom:14px">'
       + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px">'
       + '<span style="font-weight:500">'+t.label+'</span>'
-      + '<span style="color:var(--text3)">'+(avg!=null?'equipo '+avg+t.unit:'sin promedio')+'</span></div>'
+      + '<span style="color:var(--text3)">'+(avg!=null?avgLabel+' '+avg+t.unit:'sin promedio')+'</span></div>'
       + '<div style="position:relative;height:8px;background:var(--bg3);border-radius:4px;overflow:visible;margin-bottom:2px">'
       + '<div style="height:100%;background:var(--accent);border-radius:4px;width:'+myPct+'%"></div>'
-      + (avg!=null?'<div style="position:absolute;top:-3px;left:'+avgPct+'%;width:2px;height:14px;background:var(--text2)" title="Promedio del equipo"></div>':'')
+      + (avg!=null?'<div style="position:absolute;top:-3px;left:'+avgPct+'%;width:2px;height:14px;background:var(--text2)" title="'+avgLabel+'"></div>':'')
       + '</div>'
       + '<div style="text-align:right;font-size:12px;font-weight:700;color:var(--accent-text)">'+(myBest!=null?myBest+t.unit:'sin datos')+'</div>'
       + '</div>';
@@ -11215,6 +11317,56 @@ function renderAthleteTeamCompare(myData) {
   return html;
 }
 window.renderAthleteTeamCompare = renderAthleteTeamCompare;
+
+// Radar del jugador en "Comparar en equipo" — misma idea visual que el radar
+// que ve el admin (drawTeamRadarChart), pero sin necesitar los datos crudos
+// de los compañeros (el atleta no tiene permiso para leerlos uno por uno):
+// se apoya únicamente en los agregados que el admin ya sincroniza en el
+// propio documento del equipo (evalMax, evalAverages/evalAveragesByPosition).
+function drawPlayerTeamRadar(myData, team, myPosition) {
+  if(typeof Chart==='undefined') return;
+  const canvas = document.getElementById('player-team-radar-chart');
+  if(!canvas) return;
+
+  const teamMax = team.evalMax || {};
+  const posAvgs = myPosition ? (team.evalAveragesByPosition?.[myPosition] || null) : null;
+  const avgs = posAvgs || team.evalAverages || {};
+  const avgLabel = posAvgs ? 'Promedio de tu puesto' : 'Promedio del equipo';
+
+  const bestOf = (id) => { const r=myData[id]||[]; return r.length ? Math.max(...r.map(x=>x.height)) : null; };
+  const pct = (raw,id) => { const max=teamMax[id]; return (raw!=null && max) ? Math.min(100, Math.round((raw/max)*100)) : 0; };
+
+  const rawA = RADAR_METRICS.map(m=>bestOf(m.id));
+  const rawB = RADAR_METRICS.map(m=>avgs[m.id]!=null ? avgs[m.id] : null);
+  const valuesA = RADAR_METRICS.map((m,i)=>pct(rawA[i],m.id));
+  const valuesB = RADAR_METRICS.map((m,i)=>pct(rawB[i],m.id));
+
+  const datasets = [
+    { label:'Vos', data:valuesA, backgroundColor:'rgba(36,59,107,0.15)', borderColor:'#243B6B', borderWidth:2, pointBackgroundColor:'#243B6B', pointRadius:3, _raw:rawA },
+    { label:avgLabel, data:valuesB, backgroundColor:'rgba(122,131,148,0.06)', borderColor:cssVar('--text3','#7A8394'), borderWidth:2, borderDash:[5,4], pointBackgroundColor:cssVar('--text3','#7A8394'), pointRadius:3, _raw:rawB },
+  ];
+
+  try{ S.playerRadarChartInstance?.destroy(); }catch(e){}
+  S.playerRadarChartInstance = new Chart(canvas, {
+    type:'radar',
+    data:{ labels: RADAR_METRICS.map(m=>m.label), datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:true, labels:{color:cssVar('--text2','#4B5160'), font:{size:10}, boxWidth:10} },
+        tooltip:{ callbacks:{ label:(ctx)=>{
+          const raw = ctx.dataset._raw?.[ctx.dataIndex];
+          const unit = RADAR_METRICS[ctx.dataIndex].id.startsWith('rm_') ? 'kg' : 'cm';
+          return `${ctx.dataset.label}: ${raw!=null?raw+unit:'sin datos'}`;
+        } } }
+      },
+      scales:{ r:{ min:0, max:100, ticks:{color:cssVar('--text2','#4B5160'), backdropColor:'transparent', font:{size:9}, stepSize:25},
+        grid:{color:cssVar('--border2','rgba(18,21,28,0.14)')}, angleLines:{color:cssVar('--border2','rgba(18,21,28,0.14)')},
+        pointLabels:{color:cssVar('--text','#1A1D26'), font:{size:11,weight:600}} } }
+    }
+  });
+}
+window.drawPlayerTeamRadar = drawPlayerTeamRadar;
 
 async function saveAllEvals() {
   const date = document.getElementById('einp-date-all')?.value || todayLocal();
@@ -11270,15 +11422,21 @@ function drawEvalCharts() {
     try { S.evalChartInstances[key].destroy(); } catch(e){}
     delete S.evalChartInstances[key];
   });
+  if(S.playerRadarChartInstance) { try{ S.playerRadarChartInstance.destroy(); }catch(e){} S.playerRadarChartInstance=null; }
 
   // Mismo criterio que en renderEvals: si estamos scopeados a un equipo/atleta,
   // nunca sustituir por las evaluaciones propias del admin.
   const edata = S.evalScopeUids
     ? getAthleteEvals(S.evalAthleteId || '')
     : getAthleteEvals(S.evalAthleteId || 'self');
-  const gridColor = 'rgba(18,21,28,0.08)';
   const view = S.evalView||'entry';
-  const chartView = (view==='team_compare') ? 'history' : view;
+  if(view==='team_compare') {
+    const myTeam = (S.teams||[]).find(t=>(t.players||[]).some(p=>p===S.userData?.name || p===S.userData?.email));
+    if(myTeam) drawPlayerTeamRadar(edata, myTeam, S.userData?.position||null);
+    return;
+  }
+  const gridColor = 'rgba(18,21,28,0.08)';
+  const chartView = view;
   // Escala dinámica: en vez de un rango fijo igual para todos los atletas
   // (ej. 10-80cm), se calcula en base a los valores REALES registrados —
   // así, si un atleta salta entre 41 y 49cm, el gráfico va de ~35 a ~55cm en
@@ -11684,6 +11842,24 @@ function getMatchLogs(sessionLogs) {
   return (sessionLogs||[]).filter(l=>l.activity==='partido'||l.activity==='partido2');
 }
 window.getMatchLogs = getMatchLogs;
+
+// Para las tarjetas de atleta (Dashboard y roster de Equipos): si jugó un
+// partido reciente, mostrar minutos + RPE en crudo ahí mismo — no la UA
+// (unidad arbitraria), que hay que traducir mentalmente cada vez. "Reciente"
+// son 3 días, no solo hoy, para que un partido del sábado o domingo se siga
+// viendo el lunes al entrar (que es justo cuando el prep lo quiere ver).
+function getRecentMatchCardInfo(personal, todayStr) {
+  const logs = personal?.history?._sessionLogs || [];
+  const matches = getMatchLogs(logs);
+  if(!matches.length) return null;
+  const latest = matches.reduce((max,l)=> l.date>max.date?l:max, matches[0]);
+  const daysAgo = Math.floor((new Date(todayStr+'T00:00:00') - new Date(latest.date+'T00:00:00')) / 86400000);
+  if(daysAgo<0 || daysAgo>3) return null;
+  const injuries = personal?.injuries || {};
+  const hadMolestia = Object.values(injuries).some(inj=>(inj.history||[]).some(h=>h.date===latest.date));
+  return { mins:latest.mins, rpe:latest.rpe, date:latest.date, daysAgo, hadMolestia };
+}
+window.getRecentMatchCardInfo = getRecentMatchCardInfo;
 
 function getMatchMinutesSummary(sessionLogs) {
   const matchLogs = getMatchLogs(sessionLogs);
@@ -12326,6 +12502,7 @@ function renderDashboardAthleteList() {
       const logs = a._personal?.history?._sessionLogs||[];
       const metrics = calcLoadMetrics(logs);
       const todayLog = logs.filter(l=>l.date===today);
+      const matchInfo = getRecentMatchCardInfo(a._personal, today);
       const wToday = a._personal?.wellness?.[today];
       const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
       const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
@@ -12349,6 +12526,10 @@ function renderDashboardAthleteList() {
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name+(team.category?' · '+team.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
+          ${matchInfo?`<div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+            <span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700;white-space:nowrap">🏆 ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>
+            ${matchInfo.hadMolestia?`<span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">⚠ molestia</span>`:''}
+          </div>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
           ${weekStrip}
