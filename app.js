@@ -8922,7 +8922,7 @@ function renderSettings() {
   </div>
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mi perfil</div>
-    <div style="padding:16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border)">
+    <div style="padding:16px;display:flex;align-items:center;gap:14px;${S.isAdmin?'':'border-bottom:1px solid var(--border)'}">
       <div style="position:relative;cursor:pointer;flex-shrink:0" onclick="document.getElementById('profile-photo-inp').click()">
         ${avatarHtml(u.name||S.user?.email, u.color, 64, u.photoUrl)}
         <div style="position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;border:2px solid var(--bg2)">
@@ -8935,6 +8935,7 @@ function renderSettings() {
       </div>
       <input type="file" id="profile-photo-inp" accept="image/*" style="display:none" onchange="handleProfilePhotoUpload(this)">
     </div>
+    ${S.isAdmin ? '' : `
     <div class="settings-item">
       <div class="settings-lbl">Nombre</div>
       <input class="abtn" style="text-align:right;flex:1;max-width:200px" value="${u.name||''}" onblur="saveMyProfileField('name',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
@@ -8964,7 +8965,7 @@ function renderSettings() {
             </select>`
           : `<input class="abtn" style="text-align:right;flex:1;max-width:200px" value="${u.position||''}" placeholder="Ej: Base, Alero..." onblur="saveMyProfileField('position',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`}
       </div>`;
-    })()}
+    })()}`}
   </div>
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Notificaciones</div>
@@ -8979,14 +8980,14 @@ function renderSettings() {
       ${typeof Notification!=='undefined' ? `<button class="abtn ${u.pushSubscription?'':'abtn-p'}" onclick="${u.pushSubscription?'desactivarNotificacionesPush()':'activarNotificacionesPush()'}">${u.pushSubscription?'Desactivar':'Activar'}</button>` : ''}
     </div>
   </div>
-  <div class="card">
+  ${S.isAdmin ? '' : `<div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mis marcas (1RM)</div>
     <div style="padding:4px 14px 12px;font-size:11px;color:var(--text3)">Cargá tu máximo en cada levantamiento — la rutina va a calcular sola los kilos cuando el entrenador te prescriba un %RM.</div>
     ${RM_LIFTS.map(rm=>`<div class="settings-item">
       <div class="settings-lbl">${rm.label}</div>
       <input class="abtn" type="number" style="text-align:right;width:80px" value="${S.oneRM?.[rm.id]||''}" placeholder="kg" onblur="saveOneRM('${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
-  </div>
+  </div>`}
   ${isTeamAthlete() ? '' : `<div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Semana actual</div>
     <div class="settings-item">
