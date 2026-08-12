@@ -491,14 +491,14 @@ const DEFAULT_LIBRARY = [
   {id:'l24',name:'Extensión sobre cabeza',tags:['MMSS','tríceps','bilateral']},
 ];
 
-const ALL_FILTERS = ['MMII','MMSS','zona media','unilateral','bilateral','fuerza','tracción','empuje','hombros','rehabilitación','funcional','iso','cadera','rodilla','lumbar'];
-
-// Las categorías/etiquetas disponibles para filtrar y asignar tienen que
-// incluir SIEMPRE las que ya vienen por defecto, MÁS cualquier categoría
-// nueva que se haya creado en algún ejercicio de la biblioteca — antes
-// era una lista fija y las categorías nuevas nunca aparecían acá.
+// Las categorías/etiquetas disponibles para FILTRAR la lista de la Biblioteca
+// tienen que incluir siempre las 17 principales (LIB_MAIN_CATEGORIES, ver más
+// abajo), más cualquier tag suelto que todavía tenga algún ejercicio viejo
+// sin recategorizar — así, mientras se van recategorizando, esos tags viejos
+// siguen sirviendo para encontrarlos y arreglarlos, y desaparecen solos de
+// esta lista en cuanto ya ningún ejercicio los usa.
 function getAllLibraryTags() {
-  const tags = new Set(ALL_FILTERS);
+  const tags = new Set(LIB_MAIN_CATEGORIES);
   (S.library||[]).forEach(ex => (ex.tags||[]).forEach(t=>{ if(t) tags.add(t); }));
   return [...tags].sort((a,b)=>a.localeCompare(b));
 }
@@ -3012,6 +3012,33 @@ function deleteExercise(exId,blockId,catIdx) {
 }
 window.deleteExercise=deleteExercise;
 
+// ── COPIAR/PEGAR UN BLOQUE PUNTUAL ──────────────────────────────
+// Portapapeles en memoria (dura mientras la pestaña esté abierta) para poder
+// copiar UN bloque de cualquier lado — rutina, día de equipo, sesión propia
+// del admin — y pegarlo en cualquier otro, sin llevarse la planificación
+// entera. Clonar SIEMPRE regenera todos los ids (bloque, categorías,
+// ejercicios): así la copia pegada queda 100% independiente del original —
+// pegarla varias veces, o seguir editando el original después, nunca cruza
+// cables entre copias.
+function copyBlockToClipboard(block) {
+  S._blockClipboard = JSON.parse(JSON.stringify(block));
+  showToast(`✓ "${block.title||block.label}" copiado — pegalo donde quieras`);
+}
+window.copyBlockToClipboard = copyBlockToClipboard;
+
+function clonedBlockFromClipboard() {
+  if(!S._blockClipboard) return null;
+  const b = JSON.parse(JSON.stringify(S._blockClipboard));
+  b.id = genId();
+  b._open = true;
+  (b.categories||[]).forEach(cat=>{
+    cat.id = genId();
+    (cat.exercises||[]).forEach(ex=>{ ex.id = genId(); });
+  });
+  return b;
+}
+window.clonedBlockFromClipboard = clonedBlockFromClipboard;
+
 // ── ADD BLOCK ─────────────────────────────────────────────────
 function addBlock() {
   const colors=['b1','b2','b3','b4','bx'];
@@ -3156,46 +3183,130 @@ function addFromLib(libId) {
 }
 window.addFromLib=addFromLib;
 
-// Selector de categorías compartido — se usa para crear ejercicios tanto
-// desde el picker rápido (sesión/rutina/día de equipo) como desde la
-// Biblioteca completa, así las dos vías tienen exactamente las mismas
-// categorías disponibles para elegir con un click (toggle), en vez de
-// depender de que el usuario tipee bien un texto libre a mano cada vez
-// (fuente típica de categorías duplicadas por errores de tipeo).
+// ── TAXONOMÍA DE CATEGORÍAS DE LA BIBLIOTECA ────────────────────
+// Reemplaza el sistema viejo de tags 100% libres (que se prestaba a
+// categorías duplicadas por errores de tipeo) por una taxonomía cerrada: UNA
+// categoría principal por ejercicio (excluyente, de esta lista fija de 17) +
+// sus sub-categorías obligatorias, que dependen de cuál sea la principal.
+// Todo se sigue guardando en el mismo array plano ex.tags de siempre — no
+// hace falta un campo aparte para "cuál es la principal", se deduce viendo
+// cuál de estas 17 aparece en el array (como es excluyente, hay como mucho una).
+const LIB_MAIN_CATEGORIES = [
+  'Movilidad','Empuje MMSS','Tracción MMSS','Empuje MMII','Tracción MMII','Zona Media',
+  'ISO HOLD','ISO PUSH','ISO CATCH','ISO SWITCH','Pliometría','Saltos','Lanzamientos',
+  'Auxiliar Brazos','Auxiliar MMII','Estabilidad','Rehabilitación',
+];
+window.LIB_MAIN_CATEGORIES = LIB_MAIN_CATEGORIES;
+
+// Por cada principal, uno o dos "grupos" de sub-categorías. Un grupo con
+// multi:false se comporta como radio (a lo sumo una opción marcada a la
+// vez); multi:true se comporta como checkbox (se pueden marcar varias).
+const LIB_SUBCATEGORY_RULES = {
+  'Movilidad':       [{ options:['Hombro','Columna','Cadera','Tobillo','Otro'], multi:false }],
+  'Empuje MMSS':     [{ options:['bilateral','unilateral'], multi:false }],
+  'Tracción MMSS':   [{ options:['bilateral','unilateral'], multi:false }],
+  'Empuje MMII':     [{ options:['bilateral','unilateral'], multi:false }],
+  'Tracción MMII':   [{ options:['bilateral','unilateral'], multi:false }],
+  'Zona Media':      [{ options:['anti-extensión','anti-flexión','anti-rotación','anti-flexión lateral','rotación','flexión','extensión','flexión lateral'], multi:true }],
+  'ISO HOLD':        [{ options:['bilateral','unilateral'], multi:false }, { options:['Hombro','Cadera','Rodilla','Tobillo'], multi:false }],
+  'ISO PUSH':        [{ options:['bilateral','unilateral'], multi:false }, { options:['Hombro','Cadera','Rodilla','Tobillo'], multi:false }],
+  'ISO CATCH':       [{ options:['bilateral','unilateral'], multi:false }, { options:['Empuje MMSS','Tracción MMSS','Miembro inferior'], multi:false }],
+  'ISO SWITCH':      [{ options:['Cadera','Tobillo'], multi:false }],
+  'Pliometría':      [{ options:['bilateral','unilateral'], multi:false }, { options:['MMII','MMSS'], multi:false }],
+  'Saltos':          [{ options:['bilateral','unilateral'], multi:false }, { options:['Vertical','Horizontal'], multi:false }],
+  'Lanzamientos':    [{ options:['bilateral','unilateral'], multi:false }, { options:['Vertical','Horizontal','Rotacional'], multi:false }],
+  'Auxiliar Brazos': [{ options:['Hombros','Bíceps','Tríceps'], multi:false }],
+  'Auxiliar MMII':   [{ options:['Glúteo','Cuádriceps','Isquiosurales','Aductores','Gemelos'], multi:false }],
+  'Estabilidad':     [{ options:['Hombro','Cadera','Rodilla','Tobillo'], multi:false }],
+  'Rehabilitación':  [{ options:['Muñeca','Codo','Hombro','Columna','Cadera','Rodilla','Tobillo','Pie'], multi:false }],
+};
+window.LIB_SUBCATEGORY_RULES = LIB_SUBCATEGORY_RULES;
+
+function getExerciseMainCategory(tags) {
+  const set = new Set(tags||[]);
+  return LIB_MAIN_CATEGORIES.find(c=>set.has(c)) || null;
+}
+window.getExerciseMainCategory = getExerciseMainCategory;
+
+// Qué falta completar para que el ejercicio esté bien categorizado (vacío =
+// todo OK) — se usa para bloquear el guardado y avisar qué falta.
+function getMissingLibRules(tags) {
+  const set = new Set(tags||[]);
+  const main = getExerciseMainCategory(tags);
+  if(!main) return [{label:'una categoría principal'}];
+  const groups = LIB_SUBCATEGORY_RULES[main]||[];
+  return groups.filter(g=>!g.options.some(o=>set.has(o)))
+    .map(g=>({label: main+': '+g.options.join('/')}));
+}
+window.getMissingLibRules = getMissingLibRules;
+
+// Elegir una principal nueva LIMPIA cualquier principal/sub-tag previo (son
+// propios de la principal anterior, no tienen sentido sueltos).
+function selectMainCategory(selected, cat) {
+  const mainSet = new Set(LIB_MAIN_CATEGORIES);
+  const allSubOptions = new Set(Object.values(LIB_SUBCATEGORY_RULES).flatMap(groups=>groups.flatMap(g=>g.options)));
+  const wasSelected = selected.has(cat);
+  [...selected].forEach(t=>{ if(mainSet.has(t)||allSubOptions.has(t)) selected.delete(t); });
+  if(!wasSelected) selected.add(cat);
+}
+window.selectMainCategory = selectMainCategory;
+
+// Tocar una sub-categoría: si el grupo es radio (multi:false), saca
+// cualquier otra opción del mismo grupo antes de marcar la nueva.
+function toggleSubcategory(selected, tag, multi) {
+  const main = getExerciseMainCategory([...selected]);
+  const group = (LIB_SUBCATEGORY_RULES[main]||[]).find(g=>g.options.includes(tag));
+  if(group && !group.multi) group.options.forEach(o=>{ if(o!==tag) selected.delete(o); });
+  if(selected.has(tag)) selected.delete(tag); else selected.add(tag);
+}
+window.toggleSubcategory = toggleSubcategory;
+
+// Selector de dos pasos compartido — se usa para crear/editar ejercicios
+// tanto desde el picker rápido (sesión/rutina/día de equipo) como desde la
+// Biblioteca completa: primero la categoría principal (excluyente), y recién
+// al elegirla se despliegan sus sub-categorías obligatorias.
 function renderTagChipPicker(containerId, setKey) {
   const el = document.getElementById(containerId);
   if(!el) return;
   if(!S[setKey]) S[setKey] = new Set();
   const selected = S[setKey];
-  const allTags = [...new Set([...getAllLibraryTags(), ...selected])].sort((a,b)=>a.localeCompare(b));
-  el.innerHTML = allTags.map(t=>`<span class="lib-filter ${selected.has(t)?'active':''}" onclick="toggleTagChip('${containerId}','${setKey}','${t.replace(/'/g,"\\'")}')">${t}</span>`).join('')
-    + `<input class="lib-new-inp" id="${containerId}-custom" placeholder="+ categoría nueva" style="width:150px;font-size:12px;padding:6px 10px" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomTagChip('${containerId}','${setKey}');}">`;
+  const main = getExerciseMainCategory([...selected]);
+  let html = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+    + LIB_MAIN_CATEGORIES.map(c=>`<span class="lib-filter ${main===c?'active':''}" onclick="selectMainCategoryChip('${containerId}','${setKey}','${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
+    + '</div>';
+  if(main) {
+    (LIB_SUBCATEGORY_RULES[main]||[]).forEach(g=>{
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+        + g.options.map(t=>`<span class="lib-filter ${selected.has(t)?'active':''}" onclick="toggleSubcategoryChip('${containerId}','${setKey}','${t.replace(/'/g,"\\'")}',${g.multi})">${t}</span>`).join('')
+        + '</div>';
+    });
+  } else {
+    html += '<div style="font-size:11px;color:var(--text3)">Elegí una categoría principal arriba.</div>';
+  }
+  el.innerHTML = html;
 }
 window.renderTagChipPicker = renderTagChipPicker;
 
-function toggleTagChip(containerId, setKey, tag) {
+function selectMainCategoryChip(containerId, setKey, cat) {
   if(!S[setKey]) S[setKey] = new Set();
-  if(S[setKey].has(tag)) S[setKey].delete(tag); else S[setKey].add(tag);
+  selectMainCategory(S[setKey], cat);
   renderTagChipPicker(containerId, setKey);
 }
-window.toggleTagChip = toggleTagChip;
+window.selectMainCategoryChip = selectMainCategoryChip;
 
-function addCustomTagChip(containerId, setKey) {
-  const inp = document.getElementById(containerId+'-custom');
-  const val = (inp?.value||'').trim();
-  if(!val) return;
+function toggleSubcategoryChip(containerId, setKey, tag, multi) {
   if(!S[setKey]) S[setKey] = new Set();
-  S[setKey].add(val);
+  toggleSubcategory(S[setKey], tag, multi);
   renderTagChipPicker(containerId, setKey);
-  const newInp = document.getElementById(containerId+'-custom');
-  if(newInp) newInp.focus();
 }
-window.addCustomTagChip = addCustomTagChip;
+window.toggleSubcategoryChip = toggleSubcategoryChip;
 
 function createAndAddExercise() {
   const name=document.getElementById('lib-new-name').value.trim();
   if(!name) return;
   const tags=[...(S._newExTags||new Set())];
+  const missing = getMissingLibRules(tags);
+  if(missing.length) { showToast('Falta elegir: '+missing.map(m=>m.label).join(' · ')); return; }
   const videoUrl=document.getElementById('lib-new-video').value.trim();
   const newLibEx={id:genId(),name,tags};
   S.library.push(newLibEx);
@@ -7555,7 +7666,10 @@ function renderTeamDayEditor(team,{teamId,dayIdx}){
     <button class="abtn abtn-p" onclick="saveTeamDayBlocks('${teamId}',${dayIdx})">Guardar</button>
   </div>
   ${blocksHtml}
-  <button class="add-block-btn" onclick="addTeamDayBlock('${teamId}',${dayIdx})">+ Agregar bloque</button>`;
+  <div style="display:flex;gap:8px">
+    <button class="add-block-btn" style="flex:1" onclick="addTeamDayBlock('${teamId}',${dayIdx})">+ Agregar bloque</button>
+    ${S._blockClipboard?`<button class="add-block-btn" style="flex:1" onclick="pasteTeamDayBlock('${teamId}',${dayIdx})">📥 Pegar "${S._blockClipboard.title||S._blockClipboard.label}"</button>`:''}
+  </div>`;
 }
 
 function renderTeamDayBlock(b,teamId,dayIdx){
@@ -7585,12 +7699,26 @@ function renderTeamDayBlock(b,teamId,dayIdx){
     if(ci<b.categories.length-1)inner+=`<hr class="cat-divider">`;
   });
   inner+=`<button class="add-btn" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px" onclick="addTDCategory('${b.id}','${teamId}',${dayIdx})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar subcategoría</button>`;
-  return`<div class="card block ${cc} ${open?'open':''}" id="tdblock-${b.id}"><div class="block-header" onclick="toggleTDBlock('${b.id}','${teamId}',${dayIdx})"><span class="block-badge">${b.label}</span><div class="block-title-wrap"><span class="block-title" ondblclick="editTDBlockTitle(event,'${b.id}','${teamId}',${dayIdx})">${b.title}</span><input class="block-title-inp" id="tdbinp-${b.id}" onblur="saveTDBlockTitle('${b.id}','${teamId}',${dayIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"></div><span class="block-time">${b.time||''}</span><span class="block-del" onclick="deleteTDBlock(event,'${b.id}','${teamId}',${dayIdx})">×</span><span class="block-chevron">›</span></div><div class="block-body">${inner}</div></div>`;
+  return`<div class="card block ${cc} ${open?'open':''}" id="tdblock-${b.id}"><div class="block-header" onclick="toggleTDBlock('${b.id}','${teamId}',${dayIdx})"><span class="block-badge">${b.label}</span><div class="block-title-wrap"><span class="block-title" ondblclick="editTDBlockTitle(event,'${b.id}','${teamId}',${dayIdx})">${b.title}</span><input class="block-title-inp" id="tdbinp-${b.id}" onblur="saveTDBlockTitle('${b.id}','${teamId}',${dayIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"></div><span class="block-time">${b.time||''}</span><span class="ex-icon-btn" onclick="event.stopPropagation();copyBlockToClipboard(getTDBlock('${b.id}','${teamId}',${dayIdx}))" title="Copiar bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span class="block-del" onclick="deleteTDBlock(event,'${b.id}','${teamId}',${dayIdx})">×</span><span class="block-chevron">›</span></div><div class="block-body">${inner}</div></div>`;
 }
 
 function getTDBlock(blockId,teamId,dayIdx){const day=getTeamDay(teamId,dayIdx);if(!day)return null;return(day.blocks||[]).find(b=>b.id===blockId)||null;}
+window.getTDBlock=getTDBlock;
 function addTeamDayBlock(teamId,dayIdx){const day=getTeamDay(teamId,dayIdx);if(!day)return;if(!day.blocks)day.blocks=[];const colors=['b1','b2','b3','b4','bx'],n=day.blocks.length;day.blocks.push({id:genId(),label:`Bloque ${n+1}`,title:'Nuevo bloque',time:'',colorKey:colors[n%colors.length],note:'',_open:true,categories:[{id:genId(),label:'Categoría',exercises:[]}]});renderMain();}
 window.addTeamDayBlock=addTeamDayBlock;
+function pasteTeamDayBlock(teamId,dayIdx){
+  const b=clonedBlockFromClipboard();
+  if(!b){showToast('No copiaste ningún bloque todavía');return;}
+  const day=getTeamDay(teamId,dayIdx);if(!day)return;
+  if(!day.blocks)day.blocks=[];
+  const colors=['b1','b2','b3','b4','bx'];
+  b.colorKey=colors[day.blocks.length%colors.length];
+  b.label=`Bloque ${day.blocks.length+1}`;
+  day.blocks.push(b);
+  renderMain();
+  showToast('✓ Bloque pegado');
+}
+window.pasteTeamDayBlock=pasteTeamDayBlock;
 function toggleTDBlock(blockId,teamId,dayIdx){const el=document.getElementById('tdblock-'+blockId);if(!el)return;el.classList.toggle('open');const b=getTDBlock(blockId,teamId,dayIdx);if(b)b._open=el.classList.contains('open');}
 window.toggleTDBlock=toggleTDBlock;
 function editTDBlockTitle(e,blockId,teamId,dayIdx){e.stopPropagation();const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;const span=e.target,inp=document.getElementById('tdbinp-'+blockId);span.style.display='none';inp.value=b.title;inp.style.display='block';inp.focus();inp.select();}
@@ -9569,6 +9697,10 @@ function renderAdminMain() {
       <button class="abtn abtn-p" onclick="switchView('library')">Gestionar →</button>
     </div>
     <div class="admin-item">
+      <div><div class="admin-item-lbl">Limpiar categorías viejas de la Biblioteca</div><div class="admin-item-sub">Saca de todos los ejercicios cualquier categoría que no sea de la lista nueva (17 principales + sus sub-categorías)</div></div>
+      <button class="abtn" onclick="cleanUnrecognizedLibraryTags()">Limpiar</button>
+    </div>
+    <div class="admin-item">
       <div><div class="admin-item-lbl">Corregir mayúsculas de nombres</div><div class="admin-item-sub">Pasa "GANORA gonzalo" → "Ganora Gonzalo" para todos los atletas de una</div></div>
       <button class="abtn" onclick="fixAllNameCapitalization()">Corregir</button>
     </div>
@@ -10358,7 +10490,10 @@ function renderRoutineEditor() {
   </div>
   ${curSession?`
     ${blocksHtml}
-    <button class="add-block-btn" onclick="addRoutineBlock('${curSession}')">+ Agregar bloque</button>
+    <div style="display:flex;gap:8px">
+      <button class="add-block-btn" style="flex:1" onclick="addRoutineBlock('${curSession}')">+ Agregar bloque</button>
+      ${S._blockClipboard?`<button class="add-block-btn" style="flex:1" onclick="pasteRoutineBlock('${curSession}')">📥 Pegar "${S._blockClipboard.title||S._blockClipboard.label}"</button>`:''}
+    </div>
   `:`<div class="empty-state">Seleccioná o creá una sesión para empezar.</div>`}
   `;
 }
@@ -10400,6 +10535,7 @@ function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
       <span class="block-time">${b.time||''}</span>
       <span class="ex-icon-btn" style="${bIdx===0?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',-1)" title="Mover arriba"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></span>
       <span class="ex-icon-btn" style="${bIdx===totalBlocks-1?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',1)" title="Mover abajo"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+      <span class="ex-icon-btn" onclick="event.stopPropagation();copyBlockToClipboard(getRBlock('${b.id}','${sessionName}'))" title="Copiar bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
       <span class="block-del" onclick="deleteRBlock(event,'${b.id}','${sessionName}')">×</span>
       <span class="block-chevron">›</span>
     </div>
@@ -10491,6 +10627,7 @@ function getRBlock(blockId, sessionName) {
   const r=S.editingRoutine; if(!r) return null;
   return (r.sessions[sessionName]||[]).find(b=>b.id===blockId)||null;
 }
+window.getRBlock=getRBlock;
 
 function routineSelectSession(s) { S._routineEditSession=s; renderMain(); }
 window.routineSelectSession=routineSelectSession;
@@ -10527,6 +10664,21 @@ function addRoutineBlock(sessionName) {
   renderMain();
 }
 window.addRoutineBlock=addRoutineBlock;
+
+function pasteRoutineBlock(sessionName) {
+  const b=clonedBlockFromClipboard();
+  if(!b){showToast('No copiaste ningún bloque todavía');return;}
+  const r=S.editingRoutine; if(!r) return;
+  if(!r.sessions[sessionName]) r.sessions[sessionName]=[];
+  const colors=['b1','b2','b3','b4','bx'];
+  const n=r.sessions[sessionName].length;
+  b.colorKey=colors[n%colors.length];
+  b.label=`Bloque ${n+1}`;
+  r.sessions[sessionName].push(b);
+  renderMain();
+  showToast('✓ Bloque pegado');
+}
+window.pasteRoutineBlock=pasteRoutineBlock;
 
 function toggleRBlock(blockId,sessionName) {
   const el=document.getElementById('rblock-'+blockId);
@@ -11846,6 +11998,32 @@ function deleteLibraryTag(tag) {
 }
 window.deleteLibraryTag = deleteLibraryTag;
 
+// Barrido de una sola vez: saca de TODOS los ejercicios cualquier tag que no
+// sea parte de la taxonomía nueva (ni una de las 17 principales, ni una
+// sub-categoría válida) — para limpiar de golpe lo que quedó de cuando la
+// Biblioteca usaba tags 100% libres. Los ejercicios quedan igual de todos
+// modos sin categoría principal después de esto si el tag viejo que tenían
+// no era ninguna de las nuevas — hay que volver a categorizarlos a mano
+// (el picker de "Editar" ya bloquea guardar hasta que estén completos).
+async function cleanUnrecognizedLibraryTags() {
+  const allowed = new Set([
+    ...LIB_MAIN_CATEGORIES,
+    ...Object.values(LIB_SUBCATEGORY_RULES).flatMap(groups=>groups.flatMap(g=>g.options)),
+  ]);
+  const affected = (S.library||[]).filter(ex=>(ex.tags||[]).some(t=>!allowed.has(t)));
+  if(!affected.length) { showToast('No hay categorías viejas para limpiar'); return; }
+  if(!confirm(`Esto va a sacar categorías viejas (que no son de la lista nueva) de ${affected.length} ejercicio${affected.length!==1?'s':''}. Van a quedar sin categorizar hasta que los edites de nuevo. No se puede deshacer. ¿Confirmás?`)) return;
+  affected.forEach(ex=>{ ex.tags = (ex.tags||[]).filter(t=>allowed.has(t)); });
+  if(S._libViewFilters) [...S._libViewFilters].forEach(t=>{ if(!allowed.has(t)) S._libViewFilters.delete(t); });
+  if(S.activeFilters) [...S.activeFilters].forEach(t=>{ if(!allowed.has(t)) S.activeFilters.delete(t); });
+  showToast('Limpiando…');
+  const ok = await saveNow();
+  if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
+  showToast(`✓ Se limpiaron ${affected.length} ejercicio${affected.length!==1?'s':''}`);
+  renderMain();
+}
+window.cleanUnrecognizedLibraryTags = cleanUnrecognizedLibraryTags;
+
 function switchCompareTest(testId) {
   S.evalCompareTest = testId;
   renderMain();
@@ -12815,11 +12993,17 @@ function renderLibViewBody() {
   if(!S._libViewFilters) S._libViewFilters = new Set();
   const filters = S._libViewFilters;
   const allTags = [...new Set(S.library.flatMap(e=>e.tags||[]))].sort();
+  // Cuántos ejercicios todavía no tienen categoría principal + sub-categorías
+  // completas bajo la taxonomía nueva — para poder recategorizar la
+  // biblioteca entera de forma sistemática en vez de ir descubriéndolo uno
+  // por uno al abrir cada ejercicio.
+  const pendingCount = S.library.filter(e=>getMissingLibRules(e.tags).length).length;
 
   let items = S.library;
   if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
     (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
   if(filters.size) items = items.filter(e=>[...filters].some(f=>e.tags?.includes(f)));
+  if(S._libViewPendingOnly) items = items.filter(e=>getMissingLibRules(e.tags).length);
   // Los que cumplen TODAS las categorías elegidas van primero, después los
   // que cumplen menos — y alfabético como desempate (y como único criterio
   // si no hay filtros activos).
@@ -12834,7 +13018,8 @@ function renderLibViewBody() {
 
   return `<!-- Tag filters — multi-select: un click selecciona, otro click desselecciona -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-    <button class="lib-filter ${!filters.size?'active':''}" onclick="S._libViewFilters=new Set();updateLibViewResults()">Todos</button>
+    <button class="lib-filter ${!filters.size&&!S._libViewPendingOnly?'active':''}" onclick="S._libViewFilters=new Set();S._libViewPendingOnly=false;updateLibViewResults()">Todos</button>
+    ${pendingCount?`<button class="lib-filter ${S._libViewPendingOnly?'active':''}" style="color:var(--amber);border-color:var(--amber)" onclick="S._libViewPendingOnly=!S._libViewPendingOnly;updateLibViewResults()">⚠ Sin categorizar (${pendingCount})</button>`:''}
     ${allTags.map(t=>`<span style="position:relative;display:inline-flex">
       <button class="lib-filter ${filters.has(t)?'active':''}" onclick="setLibFilter('${t}')" style="padding-right:20px">${t}</button>
       <span onclick="event.stopPropagation();deleteLibraryTag('${t}')" title="Eliminar categoría" style="position:absolute;top:2px;right:4px;width:14px;height:14px;border-radius:50%;background:var(--red);color:#fff;font-size:10px;line-height:14px;text-align:center;cursor:pointer;font-weight:700">×</span>
@@ -12845,11 +13030,12 @@ function renderLibViewBody() {
   ${items.length?`<div class="wellness-card">
     ${items.map((ex,i)=>{
       const hasV=!!S.videos[ex.id];
+      const missing = getMissingLibRules(ex.tags);
       return `
-      <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .15s" 
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .15s"
            onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}</div>
+          <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}${missing.length?' <span style="font-size:10px;color:var(--amber);font-weight:700">⚠ sin categorizar</span>':''}</div>
           <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
             ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);border:1px solid rgba(36,59,107,0.2)">${t}</span>`).join('')}
           </div>
@@ -12899,6 +13085,8 @@ function saveLibExerciseModal() {
   const name = document.getElementById('exform-name-inp').value.trim();
   if(!name) { showToast('Ingresá un nombre'); return; }
   const tags = [...(S._exFormTags||new Set())];
+  const missing = getMissingLibRules(tags);
+  if(missing.length) { showToast('Falta elegir: '+missing.map(m=>m.label).join(' · ')); return; }
   const videoUrl = document.getElementById('exform-video-inp').value.trim();
   const exId = S._exFormEditId || genId();
   if(S._exFormEditId) {
