@@ -2831,21 +2831,36 @@ const LOAD_ACTIVITIES = [
 // tiene nada que ver. Esto cruza el deporte cargado en su ficha (individual
 // o heredado del equipo) para mostrar "Entrenamiento de tenis 🎾", etc. El
 // key interno sigue siendo 'pelota' siempre — solo cambia lo que se muestra.
+// Claves SIN tilde — la comparación normaliza tildes de los dos lados (ver
+// normSport), así "Básquet", "basquet" y "BASQUET" matchean la misma entrada
+// sin tener que duplicar cada key acentuada y sin acentuar a mano.
 const SPORT_ACTIVITY_ICONS = {
   handball:{name:'handball',emoji:'🤾'}, balonmano:{name:'handball',emoji:'🤾'},
-  basquet:{name:'básquet',emoji:'🏀'}, básquet:{name:'básquet',emoji:'🏀'}, basketball:{name:'básquet',emoji:'🏀'},
-  futbol:{name:'fútbol',emoji:'⚽'}, fútbol:{name:'fútbol',emoji:'⚽'},
-  tenis:{name:'tenis',emoji:'🎾'}, padel:{name:'pádel',emoji:'🎾'}, pádel:{name:'pádel',emoji:'🎾'},
-  voley:{name:'vóley',emoji:'🏐'}, vóley:{name:'vóley',emoji:'🏐'},
+  basquet:{name:'básquet',emoji:'🏀'}, basketball:{name:'básquet',emoji:'🏀'}, basket:{name:'básquet',emoji:'🏀'},
+  futbol:{name:'fútbol',emoji:'⚽'}, futsal:{name:'fútbol',emoji:'⚽'}, football:{name:'fútbol',emoji:'⚽'}, soccer:{name:'fútbol',emoji:'⚽'},
+  tenis:{name:'tenis',emoji:'🎾'}, padel:{name:'pádel',emoji:'🎾'},
+  voley:{name:'vóley',emoji:'🏐'}, volleyball:{name:'vóley',emoji:'🏐'},
   rugby:{name:'rugby',emoji:'🏉'}, hockey:{name:'hockey',emoji:'🏑'},
+  natacion:{name:'natación',emoji:'🏊'}, swimming:{name:'natación',emoji:'🏊'},
+  atletismo:{name:'atletismo',emoji:'🏃'}, running:{name:'running',emoji:'🏃'},
+  ciclismo:{name:'ciclismo',emoji:'🚴'}, boxeo:{name:'boxeo',emoji:'🥊'},
+  golf:{name:'golf',emoji:'⛳'}, gimnasia:{name:'gimnasia',emoji:'🤸'},
 };
+function normSport(s) { return (s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
 function getLoadActivityDisplay(act, sport) {
   if(act.key!=='pelota') return {label:act.label, emoji:act.emoji};
-  const s=(sport||'').toLowerCase().trim();
-  for(const key in SPORT_ACTIVITY_ICONS) {
-    if(s.includes(key)) { const info=SPORT_ACTIVITY_ICONS[key]; return {label:'Entrenamiento de '+info.name, emoji:info.emoji}; }
+  const s=normSport(sport);
+  if(s) {
+    for(const key in SPORT_ACTIVITY_ICONS) {
+      if(s.includes(key)) { const info=SPORT_ACTIVITY_ICONS[key]; return {label:'Entrenamiento de '+info.name, emoji:info.emoji}; }
+    }
+    // Deporte cargado pero no está en el mapa de arriba — igual mostramos
+    // "Entrenamiento de [lo que haya puesto]", nunca "Pelota" a secas, con un
+    // ícono genérico de entrenamiento (no una pelota de ningún deporte
+    // puntual, para no sugerir uno que no es).
+    return {label:'Entrenamiento de '+sport.trim(), emoji:'🏋️'};
   }
-  return sport ? {label:'Entrenamiento de '+sport, emoji:'🥅'} : {label:act.label, emoji:act.emoji};
+  return {label:act.label, emoji:act.emoji};
 }
 window.getLoadActivityDisplay = getLoadActivityDisplay;
 
@@ -3271,7 +3286,8 @@ function renderTagChipPicker(containerId, setKey) {
   if(!S[setKey]) S[setKey] = new Set();
   const selected = S[setKey];
   const main = getExerciseMainCategory([...selected]);
-  let html = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+  let html = '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Categoría principal</div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
     + LIB_MAIN_CATEGORIES.map(c=>`<span class="lib-filter ${main===c?'active':''}" onclick="selectMainCategoryChip('${containerId}','${setKey}','${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
     + '</div>';
   if(main) {
@@ -3282,6 +3298,13 @@ function renderTagChipPicker(containerId, setKey) {
     });
   } else {
     html += '<div style="font-size:11px;color:var(--text3)">Elegí una categoría principal arriba.</div>';
+  }
+  // Aviso EN VIVO de qué falta — se recalcula en cada toggle, no solo al
+  // intentar guardar, así se ve de entrada qué queda pendiente en vez de
+  // enterarse recién con el toast de error al tocar "Guardar".
+  const missing = getMissingLibRules([...selected]);
+  if(missing.length) {
+    html += `<div style="font-size:12px;color:var(--red);margin-top:6px">⚠ Falta elegir: ${missing.map(m=>m.label).join(' · ')}</div>`;
   }
   el.innerHTML = html;
 }
