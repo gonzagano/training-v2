@@ -735,14 +735,17 @@ const INFO_LEGENDS = {
   },
   ice: { title:'Índice Elástico', html:
     `<p>Compara tu salto CMJ (con contramovimiento) contra tu SJ (Squat Jump o salto sin impulso). Un valor alto puede significar que aprovechás bien el CEA (ciclo estiramiento-acortamiento) de tus músculos y tendones. Valores bajos o negativos pueden ser una señal de que hay que mejorar el CEA — los trabajos pliométricos son una buena alternativa para esto.</p>`
+    + `<p style="margin-top:10px;font-size:11px;color:var(--text3)">Cálculo: (CMJ − SJ) / SJ</p>`
   },
   coord: { title:'Coordinación de Brazos', html:
     `<p>Compara tu salto Abalakov (con brazos) contra tu CMJ. Muestra cuánto te ayuda — o no — el braceo al saltar. Un valor bajo puede indicar una técnica de braceo a pulir, no necesariamente un déficit físico.</p>`
+    + `<p style="margin-top:10px;font-size:11px;color:var(--text3)">Cálculo: (Abalakov − CMJ) / CMJ</p>`
   },
   asym: { title:'Asimetría Unilateral', html:
     `<p style="margin-bottom:10px">Marca la diferencia entre tu pierna derecha e izquierda en el CMJ unilateral.</p>`
     + infoLegendRow('var(--green)','hasta 10% de asimetría','normal')
     + infoLegendRow('var(--red)','más de 10% de asimetría','la literatura la asocia con mayor riesgo de lesión — candidato a trabajo unilateral compensatorio')
+    + `<p style="margin-top:10px;font-size:11px;color:var(--text3)">Cálculo: |Der − Izq| / máx(Der, Izq)</p>`
   },
 };
 // Vista combinada para el toggle RPE/RIR de la rutina — un solo ícono ahí
@@ -3208,7 +3211,7 @@ window.addFromLib=addFromLib;
 // cuál de estas 17 aparece en el array (como es excluyente, hay como mucho una).
 const LIB_MAIN_CATEGORIES = [
   'Movilidad','Empuje MMSS','Tracción MMSS','Empuje MMII','Tracción MMII','Zona Media',
-  'ISO HOLD','ISO PUSH','ISO CATCH','ISO SWITCH','Pliometría','Saltos','Lanzamientos',
+  'ISO HOLD','ISO PUSH','ISO CATCH','ISO SWITCH','Pliometría','Saltos','Lanzamientos','DLO',
   'Auxiliar Brazos','Auxiliar MMII','Estabilidad','Rehabilitación',
 ];
 window.LIB_MAIN_CATEGORIES = LIB_MAIN_CATEGORIES;
@@ -3225,11 +3228,22 @@ const LIB_SUBCATEGORY_RULES = {
   'Zona Media':      [{ options:['anti-extensión','anti-flexión','anti-rotación','anti-flexión lateral','rotación','flexión','extensión','flexión lateral'], multi:true }],
   'ISO HOLD':        [{ options:['bilateral','unilateral'], multi:false }, { options:['Hombro','Cadera','Rodilla','Tobillo'], multi:false }],
   'ISO PUSH':        [{ options:['bilateral','unilateral'], multi:false }, { options:['Hombro','Cadera','Rodilla','Tobillo'], multi:false }],
-  'ISO CATCH':       [{ options:['bilateral','unilateral'], multi:false }, { options:['Empuje MMSS','Tracción MMSS','Miembro inferior'], multi:false }],
+  // Las opciones de este grupo B NO pueden ser literalmente "Empuje MMSS" /
+  // "Tracción MMSS" — esos strings SON también nombres de categoría
+  // principal (ver LIB_MAIN_CATEGORIES), y getExerciseMainCategory() deduce
+  // cuál es la principal buscando cuál de las 17 aparece en el array de
+  // tags. Si una sub-categoría de ISO CATCH reutiliza ese mismo texto, el
+  // ejercicio queda con DOS strings que son "categoría principal" a la vez
+  // (ISO CATCH + Empuje MMSS, por ejemplo) y como find() devuelve la primera
+  // que encuentra en el ORDEN de LIB_MAIN_CATEGORIES (no la que el usuario
+  // tocó), terminaba pisando la principal real por la sub-categoría elegida.
+  // Nombres distintos acá adentro evitan la colisión de raíz.
+  'ISO CATCH':       [{ options:['bilateral','unilateral'], multi:false }, { options:['Miembro superior — empuje','Miembro superior — tracción','Miembro inferior'], multi:false }],
   'ISO SWITCH':      [{ options:['Cadera','Tobillo'], multi:false }],
   'Pliometría':      [{ options:['bilateral','unilateral'], multi:false }, { options:['MMII','MMSS'], multi:false }],
   'Saltos':          [{ options:['bilateral','unilateral'], multi:false }, { options:['Vertical','Horizontal'], multi:false }],
   'Lanzamientos':    [{ options:['bilateral','unilateral'], multi:false }, { options:['Vertical','Horizontal','Rotacional'], multi:false }],
+  'DLO':             [{ options:['bilateral','unilateral'], multi:false }],
   'Auxiliar Brazos': [{ options:['Hombros','Bíceps','Tríceps'], multi:false }],
   'Auxiliar MMII':   [{ options:['Glúteo','Cuádriceps','Isquiosurales','Aductores','Gemelos'], multi:false }],
   'Estabilidad':     [{ options:['Hombro','Cadera','Rodilla','Tobillo'], multi:false }],
@@ -3808,7 +3822,7 @@ function renderWellness() {
   </div>`;
 
   html += renderIllnessSection();
-  html += renderInjuryFollowup();
+  html += renderInjuryFollowup(wKey);
 
   if(isDesktop) {
     // Desktop: Hooper left, body map right
@@ -4586,27 +4600,40 @@ window.saveInjury=saveInjury;
 // días". Ahora: si falta puntuar hoy, la tarjeta se ve con borde/fondo de
 // alerta y un título que lo dice directo — y además submitWellness() no te
 // deja terminar el wellness de HOY sin pasar por acá primero (ver más abajo).
-function renderInjuryFollowup() {
+// wKey = la fecha que se está viendo (S.wellnessViewDate, o hoy si no se
+// está repasando ningún día atrás) — BUG encontrado y corregido acá: esto
+// antes usaba SIEMPRE todayLocal() sin importar qué día estuviera mirando
+// el atleta. Si volvía a completar el wellness de un día salteado (miércoles,
+// por ejemplo) y puntuaba ahí su dolor, en realidad quedaba guardado como si
+// fuera el dolor de HOY — y encima, si después repasaba otro día y puntuaba
+// de nuevo, pisaba esa misma entrada de "hoy" en vez de crear un registro
+// nuevo para cada día. Ahora cada puntaje queda atado al día que se está
+// mirando de verdad.
+function renderInjuryFollowup(wKey) {
+  wKey = wKey || todayLocal();
+  const isToday = wKey===todayLocal();
   const active=Object.entries(S.injuries).filter(([,v])=>v.pain>0);
   if(!active.length) return '';
-  const today=todayLocal();
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
-  const isDoneToday = (inj) => { const hist=inj.history||[]; return hist.length>0 && hist[hist.length-1].date===today; };
-  const anyPending = active.some(([,inj])=>!isDoneToday(inj));
+  const isDoneForDate = (inj) => (inj.history||[]).some(h=>h.date===wKey);
+  const anyPending = active.some(([,inj])=>!isDoneForDate(inj));
+  const dayWord = isToday ? 'hoy' : 'ese día';
   return `<div class="wellness-card" id="injury-followup-section" style="margin-bottom:16px${anyPending?';border:1.5px solid var(--amber);background:var(--amber-dim)':''}">
-    <div class="wellness-title">${anyPending?'⚠️ Te falta puntuar tu dolor de hoy':'Seguimiento de molestias'}</div>
-    <div class="wellness-sub">${anyPending?'Es obligatorio TODOS los días mientras tengas una molestia activa — aunque sea para marcar que ya no te duele':'Contanos cómo estás hoy de cada una'}</div>
+    <div class="wellness-title">${anyPending?'⚠️ Te falta puntuar tu dolor de '+dayWord:'Seguimiento de molestias'}</div>
+    <div class="wellness-sub">${anyPending?'Es obligatorio TODOS los días mientras tengas una molestia activa — aunque sea para marcar que ya no te duele':'Contanos cómo estuviste ese día'}</div>
     ${active.map(([zid,inj])=>{
       const zone=allZones.find(z=>z.id===zid);
-      const doneToday = isDoneToday(inj);
+      const entryForDate = (inj.history||[]).find(h=>h.date===wKey);
+      const doneForDate = !!entryForDate;
+      const shownPain = entryForDate ? entryForDate.pain : (isToday ? inj.pain : null);
       const scaleBtns=Array.from({length:11},(_,i)=>{
-        const cls=inj.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn';
-        return `<button class="${cls}" onclick="updateInjuryFollowup('${zid}',${i})">${i}</button>`;
+        const cls=shownPain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn';
+        return `<button class="${cls}" onclick="updateInjuryFollowup('${zid}',${i},'${wKey}')">${i}</button>`;
       }).join('');
       return `<div style="padding:12px 16px;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <div style="font-size:13px;font-weight:600">${zone?.label||zid}${inj.type?` · ${INJURY_TYPES[inj.type]}`:''}</div>
-          ${doneToday?'<span style="font-size:11px;color:var(--text3)">✓ Registrado hoy — tocá otro número para corregir</span>':'<span style="font-size:11px;color:var(--amber);font-weight:700">Falta hoy</span>'}
+          ${doneForDate?`<span style="font-size:11px;color:var(--text3)">✓ Registrado${isToday?' hoy':''} — tocá otro número para corregir</span>`:'<span style="font-size:11px;color:var(--amber);font-weight:700">Falta '+dayWord+'</span>'}
         </div>
         <div class="pain-scale" style="display:flex;gap:4px;flex-wrap:wrap">${scaleBtns}</div>
       </div>`;
@@ -4616,28 +4643,47 @@ function renderInjuryFollowup() {
 window.renderInjuryFollowup=renderInjuryFollowup;
 
 // true si hay alguna molestia/lesión activa a la que le falte el puntaje de
-// HOY — lo usa submitWellness() para no dejar terminar el wellness de hoy
-// sin pasar antes por el seguimiento de dolor.
+// HOY puntualmente — lo usa submitWellness() para no dejar terminar el
+// wellness de HOY sin pasar antes por el seguimiento de dolor. A propósito
+// sigue mirando solo "hoy": completar un día VIEJO salteado no debería
+// bloquearse por esto, ese candado es solo para no salir hoy sin puntuar.
 function hasPendingInjuryFollowup() {
   const today=todayLocal();
   return Object.values(S.injuries||{}).some(inj=>{
     if(!(inj.pain>0)) return false;
     const hist=inj.history||[];
-    return !(hist.length>0 && hist[hist.length-1].date===today);
+    return !hist.some(h=>h.date===today);
   });
 }
 window.hasPendingInjuryFollowup = hasPendingInjuryFollowup;
 
-async function updateInjuryFollowup(zid,val) {
+async function updateInjuryFollowup(zid,val,wKey) {
+  wKey = wKey || todayLocal();
   await reconcileInjuryZoneOnce(zid);
   const inj=S.injuries[zid]; if(!inj) return;
-  const today=todayLocal();
-  inj.pain=val;
   if(!inj.history) inj.history=[];
-  const last=inj.history[inj.history.length-1];
-  if(last && last.date===today) { last.pain=val; last.note=inj.note||''; last.type=inj.type||''; }
-  else inj.history.push({date:today,pain:val,note:inj.note||'',type:inj.type||''});
-  if(val===0) { archiveInjury(zid); delete S.injuries[zid]; }
+  const existingIdx = inj.history.findIndex(h=>h.date===wKey);
+  const entry = {date:wKey, pain:val, note:inj.note||'', type:inj.type||''};
+  if(existingIdx>=0) inj.history[existingIdx]=entry; else inj.history.push(entry);
+  // Ordenamos siempre por fecha — permitir puntuar días salteados fuera de
+  // orden (miércoles después de haber cargado el viernes, por ejemplo)
+  // significa que el último elemento del array ya no es necesariamente el
+  // más reciente cronológicamente.
+  inj.history.sort((a,b)=>a.date.localeCompare(b.date));
+  // El "dolor actual" (inj.pain, lo que se ve como activo en el resto de la
+  // app) es el de la fecha MÁS RECIENTE del historial — no necesariamente
+  // el que se acaba de tocar, para no confundir "completar un día viejo
+  // salteado en 0" con "ya no me duele más" si hoy sigue doliendo.
+  inj.pain = inj.history[inj.history.length-1].pain;
+  // Resolver (archivar) es una decisión de "hoy", a propósito — nunca un
+  // efecto secundario de backfillear un día viejo salteado en 0. Si no, el
+  // orden en que se van completando los días salteados podía archivar la
+  // molestia de golpe aunque hoy siga doliendo, con el bug encontrado y
+  // corregido acá: un 0 en un día viejo, cargado ANTES que el de hoy,
+  // volvía ese 0 "el más reciente hasta ese momento" y la archivaba —
+  // dejando el día de hoy sin poder guardarse nunca (la molestia ya no
+  // existía más para escribirle nada).
+  if(wKey===todayLocal() && val===0) { archiveInjury(zid); delete S.injuries[zid]; }
   markInjuryDirty(zid);
   showToast('Guardando…');
   const ok = await saveNow();
@@ -11321,9 +11367,9 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
 
   // RIGHT: metric cards + chart
   html += '<div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
-  html += metricCardHtml('ÍNDICE ELÁSTICO', metricIconSvg('ice'), ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'), 'ice');
-  html += metricCardHtml('COORD. DE BRAZOS', metricIconSvg('coord'), coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'), 'coord');
-  html += metricCardHtml('ASIMETRÍA UNILAT.', metricIconSvg('asym'), asym!==null?asym+'%':'-- %', asym?(parseFloat(asym)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'), 'asym');
+  html += metricCardHtml('ÍNDICE ELÁSTICO', metricIconSvg('ice'), ice!==null?ice+'%':'-- %', ice?'var(--accent-text)':'var(--text3)', (lCMJ&&lSJ?'':'Sin datos'), 'ice');
+  html += metricCardHtml('COORD. DE BRAZOS', metricIconSvg('coord'), coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', (lCMJ&&lAbal?'':'Sin datos'), 'coord');
+  html += metricCardHtml('ASIMETRÍA UNILAT.', metricIconSvg('asym'), asym!==null?asym+'%':'-- %', asym?(parseFloat(asym)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'':'Sin datos'), 'asym');
   html += metricCardHtml('MEJOR CMJ', metricIconSvg('bestcmj'), bestCMJ?bestCMJ.height+' cm':'--', 'var(--text)', bestCMJ?'Récord personal · '+bestCMJ.date+' '+jumpLevelTagHtml('cmj',bestCMJ.height):'Sin datos');
   html += '</div>';
 
@@ -11340,7 +11386,7 @@ function metricCardHtml(label, icon, value, color, sub, infoKey) {
   // suelto entre el texto y el ícono en pantallas angostas.
   return '<div class="metric-card"><div class="metric-card-label"><span class="metric-card-label-txt">'+label+(infoKey?' '+infoBtn(infoKey):'')+'</span><span class="metric-card-icon">'+icon+'</span></div>'
     + '<div class="metric-card-value" style="font-size:28px;color:'+color+'">'+value+'</div>'
-    + '<div class="metric-card-sub">'+sub+'</div></div>';
+    + (sub?'<div class="metric-card-sub">'+sub+'</div>':'')+'</div>';
 }
 
 function renderEvalHistory(edata, isDesktop, testList) {
@@ -11365,9 +11411,9 @@ function renderEvalHistory(edata, isDesktop, testList) {
     const cmjRecsH = edata['cmj']||[];
     const bestCMJH = cmjRecsH.length ? cmjRecsH.reduce((best,r)=>r.height>best.height?r:best, cmjRecsH[0]) : null;
     html += `<div style="grid-column:${isDesktop?'1/-1':'auto'};display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px">`
-      + metricCardHtml('ÍNDICE ELÁSTICO', metricIconSvg('ice'), ice!==null?ice+'%':'-- %', ice?'var(--accent)':'var(--text3)', '(CMJ−SJ)/SJ · '+(lCMJ&&lSJ?'CMJ '+lCMJ.height+' · SJ '+lSJ.height:'Sin datos'), 'ice')
-      + metricCardHtml('COORD. DE BRAZOS', metricIconSvg('coord'), coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', '(Abal−CMJ)/CMJ · '+(lCMJ&&lAbal?'Abal '+lAbal.height+' · CMJ '+lCMJ.height:'Sin datos'), 'coord')
-      + metricCardHtml('ASIMETRÍA UNILAT.', metricIconSvg('asym'), asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'Der '+lDer.height+' · Izq '+lIzq.height:'Sin datos'), 'asym')
+      + metricCardHtml('ÍNDICE ELÁSTICO', metricIconSvg('ice'), ice!==null?ice+'%':'-- %', ice?'var(--accent-text)':'var(--text3)', (lCMJ&&lSJ?'':'Sin datos'), 'ice')
+      + metricCardHtml('COORD. DE BRAZOS', metricIconSvg('coord'), coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', (lCMJ&&lAbal?'':'Sin datos'), 'coord')
+      + metricCardHtml('ASIMETRÍA UNILAT.', metricIconSvg('asym'), asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'':'Sin datos'), 'asym')
       + metricCardHtml('MEJOR CMJ', metricIconSvg('bestcmj'), bestCMJH?bestCMJH.height+' cm':'--', 'var(--text)', bestCMJH?'Récord personal · '+bestCMJH.date+' '+jumpLevelTagHtml('cmj',bestCMJH.height):'Sin datos')
       + '</div>';
   }
@@ -11396,7 +11442,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">';
     html += '<div><div style="font-size:14px;font-weight:600">'+t.label+'</div>';
     if(last) {
-      const lcolor = isAsym ? (last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)') : 'var(--accent)';
+      const lcolor = isAsym ? (last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)') : 'var(--accent-text)';
       html += '<div style="font-size:13px;font-weight:700;color:'+lcolor+';margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
         + '<span>'+last.height+t.unit+(isAsym?' · Der:'+last.der+' / Izq:'+last.izq:'')+'</span>'
         + jumpLevelTagHtml(t.id,last.height) + '</div>';
@@ -11413,6 +11459,15 @@ function renderEvalHistory(edata, isDesktop, testList) {
       html += '<div style="margin:12px 0 10px;position:relative"><canvas id="chart-hist-'+t.id+'"></canvas></div>';
     }
     if(recs.length) {
+      // Lista de intentos: oculta por default — con varios tests juntos en
+      // pantalla (y sobre todo en celular) mostrar los últimos 5 registros de
+      // CADA uno de una quedaba "choclo". El gráfico solo ya cuenta la
+      // historia; la lista queda como un desplegable para cuando de verdad
+      // hace falta el detalle número a número.
+      const recordsShown = S.evalRecordsShown instanceof Set && S.evalRecordsShown.has(t.id);
+      html += '<button class="eval-toggle-btn" onclick="toggleEvalRecords(\''+t.id+'\')" id="eval-records-btn-'+t.id+'" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;margin-bottom:8px">'
+        + (recordsShown?'▲ Ocultar intentos':'▼ Ver intentos ('+recs.length+')') + '</button>';
+      html += '<div id="eval-records-list-'+t.id+'" style="display:'+(recordsShown?'block':'none')+'">';
       const maxHeight = (!isAsym && recsFwd.length) ? Math.max(...recsFwd.map(r=>r.height)) : null;
       recs.slice(0,5).forEach((r,i)=>{
         const isPR = maxHeight!==null && r.height===maxHeight;
@@ -11427,6 +11482,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
         if(!isAsym && S.isAdmin) html += '<span class="eval-record-del" onclick="deleteEvalRecord(\''+t.id+'\','+(recsFwd.length-1-i)+')">×</span>';
         html += '</div>';
       });
+      html += '</div>';
     } else {
       html += '<div class="eval-no-data">Sin registros aún</div>';
     }
@@ -12073,16 +12129,26 @@ window.buildEvalCompareRows = buildEvalCompareRows;
 // el tercio superior, azul el medio, rojo el que está más lejos (a reforzar).
 // Es relativo al grupo que se está mirando, no una escala fija.
 function tercileColors(values) {
+  // Colores fijos (no vía var(--...)) — en modo oscuro, el verde/azul/rojo
+  // de modo claro quedan con muy poco contraste sobre el fondo oscuro (el
+  // azul en particular, ~4:1, por debajo del mínimo legible). Acá sí hace
+  // falta una versión más clara específica para modo oscuro — nunca se
+  // resuelve solo con una CSS var porque el color en sí (no solo el tema)
+  // cambia de tono.
+  const dark = getTheme()==='dark';
+  const GREEN = dark ? '#4ade80' : '#22c55e';
+  const BLUE  = dark ? '#60a5fa' : '#3b7dd8';
+  const RED   = dark ? '#f87171' : '#ef4444';
   const n = values.length;
-  if(n<3) return values.map(()=>'#3b7dd8');
+  if(n<3) return values.map(()=>BLUE);
   const order = values.map((v,i)=>i).sort((a,b)=>values[a]-values[b]);
   const rankOf = new Array(n);
   order.forEach((origIdx,pos)=>{ rankOf[origIdx] = pos/(n-1); });
   return values.map((v,i)=>{
     const rank = rankOf[i];
-    if(rank>=2/3) return '#22c55e';
-    if(rank>=1/3) return '#3b7dd8';
-    return '#ef4444';
+    if(rank>=2/3) return GREEN;
+    if(rank>=1/3) return BLUE;
+    return RED;
   });
 }
 window.tercileColors = tercileColors;
@@ -12127,6 +12193,21 @@ function toggleEvalChart(testId) {
   setTimeout(drawEvalCharts, 80);
 }
 window.toggleEvalChart = toggleEvalChart;
+
+function toggleEvalRecords(testId) {
+  if(!(S.evalRecordsShown instanceof Set)) S.evalRecordsShown = new Set();
+  if(S.evalRecordsShown.has(testId)) S.evalRecordsShown.delete(testId);
+  else S.evalRecordsShown.add(testId);
+  const shown = S.evalRecordsShown.has(testId);
+  const list = document.getElementById('eval-records-list-'+testId);
+  const btn = document.getElementById('eval-records-btn-'+testId);
+  if(list) list.style.display = shown ? 'block' : 'none';
+  if(btn) {
+    const n = list ? list.querySelectorAll('.eval-record').length : 0;
+    btn.textContent = shown ? '▲ Ocultar intentos' : '▼ Ver intentos ('+n+')';
+  }
+}
+window.toggleEvalRecords = toggleEvalRecords;
 
 function toggleEvalSecondary() {
   S.evalShowSecondary = !S.evalShowSecondary;
