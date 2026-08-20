@@ -966,7 +966,11 @@ onAuthStateChanged(auth, async (user) => {
     // El valor guardado (d.currentWeek) queda solo como respaldo si por algún
     // motivo no hay ninguna fecha disponible.
     if (S.userData?.assignedRoutine && S.userData?.routineAssignedDate) {
-      S.currentWeek = computeWeekFromDate(S.userData.routineAssignedDate);
+      // trainingStartDate = ancla fija de siempre, nunca se pisa al
+      // reasignar una rutina nueva (ver getCurrentPhaseStartWeek). Si no
+      // existe todavía (cuenta vieja, o primerísima rutina) cae en
+      // routineAssignedDate — mismo comportamiento de siempre.
+      S.currentWeek = computeWeekFromDate(S.userData.trainingStartDate || S.userData.routineAssignedDate);
     } else if (S.startDate) {
       S.currentWeek = computeWeekFromDate(S.startDate);
     }
@@ -1441,6 +1445,64 @@ function computeWeekFromDate(startDate) {
 }
 window.computeWeekFromDate = computeWeekFromDate;
 
+// Igual que computeWeekFromDate, pero contra una fecha puntual en vez de
+// "hoy" — hace falta para saber, al asignar una rutina nueva, en qué semana
+// real (absoluta, desde que el atleta arrancó a entrenar la primera vez)
+// cae el día que el admin eligió en el calendario.
+function computeWeekOfDate(anchorDate, targetDate) {
+  if(!anchorDate || !targetDate) return 1;
+  const start = new Date(anchorDate+'T00:00:00');
+  const target = new Date(targetDate+'T00:00:00');
+  const diffDays = Math.floor((target-start)/86400000);
+  return Math.max(1, Math.floor(diffDays/7)+1);
+}
+window.computeWeekOfDate = computeWeekOfDate;
+
+// ── PLANIFICACIONES ENCADENADAS (continuación de una rutina a otra) ────
+// Un atleta puede tener varias rutinas a lo largo del tiempo (Rutina A 4
+// semanas, después Rutina B desde la semana 5, etc.) — routineAssignmentHistory
+// guarda ese historial: una entrada por rutina asignada, con la semana
+// ABSOLUTA (real, desde que el atleta arrancó a entrenar la primera vez —
+// ver trainingStartDate) en la que arranca la semana 1 de ESA rutina
+// puntual. Así "Semana 7" que ve el atleta nunca se resetea ni se pisa,
+// pase lo que pase con las rutinas que se le vayan asignando, y el
+// historial de lo ya hecho (guardado por semana absoluta) nunca colisiona
+// entre una rutina y la siguiente.
+// La entrada de la rutina ACTUAL no lleva "routineSnapshot" (se lee en vivo
+// de S.routines/S.assignedRoutine, para que si el admin la sigue editando
+// mientras está activa, el atleta vea los cambios). Recién cuando se la
+// reemplaza por una rutina nueva, se le congela una copia de cómo había
+// quedado — así, mirar hacia atrás una rutina vieja siempre muestra
+// exactamente lo que se le prescribió en su momento, aunque el admin
+// después haya editado o borrado esa rutina del todo.
+function getCurrentPhaseStartWeek(userData) {
+  const hist = userData?.routineAssignmentHistory;
+  return (hist && hist.length) ? (hist[hist.length-1].startWeek||1) : 1;
+}
+window.getCurrentPhaseStartWeek = getCurrentPhaseStartWeek;
+
+// Convierte una semana ABSOLUTA (la que se muestra siempre, "Semana 7") en
+// la semana RELATIVA a la rutina actual (fila de su propia progresión,
+// "semana 3 de esta rutina") — es lo único que hay que tocar en cada lugar
+// que antes le pasaba la semana absoluta directo a getExPrescriptionForWeek.
+function toRoutineRelativeWeek(absoluteWeek, userData) {
+  return Math.max(1, absoluteWeek - getCurrentPhaseStartWeek(userData) + 1);
+}
+window.toRoutineRelativeWeek = toRoutineRelativeWeek;
+
+// Encuentra a qué tramo (rutina asignada) pertenece una semana absoluta
+// puntual — para cuando hay que mostrar/editar una semana vieja que quedó
+// del lado de una rutina anterior a la actual.
+function getPhaseForAbsoluteWeek(userData, absoluteWeek) {
+  const hist = userData?.routineAssignmentHistory;
+  if(!hist || !hist.length) return null;
+  for(let i=hist.length-1; i>=0; i--) {
+    if((hist[i].startWeek||1) <= absoluteWeek) return hist[i];
+  }
+  return hist[0];
+}
+window.getPhaseForAbsoluteWeek = getPhaseForAbsoluteWeek;
+
 // S.currentWeek y S.currentSession se calculan una sola vez, al loguear —
 // pero una PWA suele quedar "abierta" en memoria días enteros (se la trae al
 // frente desde el ícono del celular en vez de recargarla de cero), así que
@@ -1451,7 +1513,11 @@ window.computeWeekFromDate = computeWeekFromDate;
 function refreshTodaysTrainingContext() {
   if(!S.userData) return;
   if(S.userData.assignedRoutine && S.userData.routineAssignedDate) {
-    S.currentWeek = computeWeekFromDate(S.userData.routineAssignedDate);
+    // trainingStartDate es el ancla FIJA de siempre (nunca se pisa al
+    // reasignar una rutina nueva) — si todavía no existe (cuentas de antes
+    // de esto, o la primerísima rutina que se le asigna) cae en
+    // routineAssignedDate, que es exactamente el comportamiento de antes.
+    S.currentWeek = computeWeekFromDate(S.userData.trainingStartDate || S.userData.routineAssignedDate);
   } else if(S.startDate) {
     S.currentWeek = computeWeekFromDate(S.startDate);
   }
@@ -2581,8 +2647,11 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const canEdit=S.isAdmin && !forceReadOnly;
   const isAthleteMode=!S.isAdmin && !!S.assignedRoutine;
   // Routine prescription values — resueltas según la semana actual, con
-  // progresión/regresión si la rutina la tiene cargada.
-  const wp = getExPrescriptionForWeek(ex, getRoutineWeek());
+  // progresión/regresión si la rutina la tiene cargada. getRoutineWeek() es
+  // la semana ABSOLUTA (la que se ve como "Semana N", nunca se resetea);
+  // acá hace falta la RELATIVA a la rutina actual (su propia fila de
+  // progresión), por si esta rutina es continuación de una anterior.
+  const wp = getExPrescriptionForWeek(ex, toRoutineRelativeWeek(getRoutineWeek(), S.userData));
   const prescSeries = wp.series;
   const prescReps   = wp.reps;
   const prescPct    = wp.pct;
@@ -3582,8 +3651,9 @@ window.saveAthleteDoneField = saveAthleteDoneField;
 // semana, cada fila una métrica (series/reps/%RM/intensidad/completó) —
 // así se puede leer de un vistazo cómo progresa el plan y qué pasó
 // realmente, sin tener que scrollear una lista vertical semana por semana.
-function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx) {
-  const weeks = Array.from({length:lastWeek}, (_,i)=>i+1);
+function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx, firstWeek) {
+  firstWeek = firstWeek||1;
+  const weeks = Array.from({length:Math.max(0,lastWeek-firstWeek+1)}, (_,i)=>firstWeek+i);
   const rowsOf = weeks.map(w => getWeekData(w));
   const anyPct = rowsOf.some(r=>r.wp.pct);
   const anyNote = rowsOf.some(r=>r.wp.note);
@@ -3621,12 +3691,17 @@ function openProgressionModal(exId, exName) {
   const ex = findExInAssignedRoutine(exId);
   const routine = S.assignedRoutine;
   const durationWeeks = routine?.durationWeeks || 1;
-  const lastWeek = Math.max(durationWeeks, S.currentWeek);
+  // La tabla nunca mira semanas de ANTES de que esta rutina arrancara — si
+  // es continuación de otra, esas semanas viejas pertenecen a ejercicios de
+  // OTRA rutina (capaz ni siquiera existe este ejercicio ahí), mostrarlas acá
+  // no tendría sentido.
+  const firstWeek = getCurrentPhaseStartWeek(S.userData);
+  const lastWeek = Math.max(firstWeek+durationWeeks-1, S.currentWeek);
   document.getElementById('progression-modal-title').textContent = 'Progresión · ' + exName;
   const body = ex ? buildWeeklyProgressionTable(lastWeek, S.currentWeek, (w) => ({
-    wp: getExPrescriptionForWeek(ex, w),
+    wp: getExPrescriptionForWeek(ex, toRoutineRelativeWeek(w, S.userData)),
     d: (S.history[sessionKey(w,S.currentSession)]||{}).exercises?.[exId] || {}
-  })) : '';
+  }), null, firstWeek) : '';
   document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
   document.getElementById('progression-overlay').classList.add('open');
 }
@@ -3648,13 +3723,14 @@ function openAdminProgressionModal(uid, exId, exName, sName) {
     }
   }
   const durationWeeks = routine?.durationWeeks || 1;
-  const athleteWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate) : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
-  const lastWeek = Math.max(durationWeeks, athleteWeek);
+  const athleteWeek = a.routineAssignedDate ? computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate) : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
+  const firstWeek = getCurrentPhaseStartWeek(a);
+  const lastWeek = Math.max(firstWeek+durationWeeks-1, athleteWeek);
   document.getElementById('progression-modal-title').textContent = 'Progresión · ' + exName;
   const body = ex ? buildWeeklyProgressionTable(lastWeek, athleteWeek, (w) => ({
-    wp: getExPrescriptionForWeek(ex, w),
+    wp: getExPrescriptionForWeek(ex, toRoutineRelativeWeek(w, a)),
     d: a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[exId] || {}
-  }), {uid:a.uid, sName, exId}) : '';
+  }), {uid:a.uid, sName, exId}, firstWeek) : '';
   document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
   document.getElementById('progression-overlay').classList.add('open');
 }
@@ -8502,6 +8578,72 @@ function setAtletaSubview(v) {
 }
 window.setAtletaSubview = setAtletaSubview;
 
+// Resumen de rutinas ANTERIORES a la que está corriendo ahora — colapsado
+// por default, un tramo por rutina que se le fue asignando antes. Usa el
+// snapshot CONGELADO de cada rutina vieja (routineSnapshot), no la rutina en
+// vivo — puede haber sido editada o borrada después de que ese tramo
+// terminó — así siempre muestra exactamente lo que se prescribió en su
+// momento, no lo que la rutina sea hoy.
+function renderPastRoutinePhases(a) {
+  const hist = a.routineAssignmentHistory || [];
+  if(hist.length < 2) return ''; // nada antes de la actual todavía
+  const past = hist.slice(0, -1);
+  return `<div class="admin-section">
+    <div class="admin-section-title">Planificaciones anteriores (${past.length})</div>
+    ${past.map((phase,idx)=>{
+      const realEndWeek = hist[idx+1] ? hist[idx+1].startWeek-1 : phase.startWeek+(phase.durationWeeks||1)-1;
+      const key = 'phase-'+idx;
+      const collapsed = !(S._atletaPastPhasesOpen && S._atletaPastPhasesOpen.has(key));
+      const snap = phase.routineSnapshot;
+      return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer" onclick="togglePastRoutinePhase('${key}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div>
+            <div class="admin-item-lbl">${(phase.routineName||'Rutina').replace(/</g,'&lt;')}${phase.continuesFromRoutineId?' <span style="font-size:10px;color:var(--text3);font-weight:400">· continuación</span>':''}</div>
+            <div class="admin-item-sub">Semana ${phase.startWeek}${realEndWeek>phase.startWeek?'–'+realEndWeek:''} · desde ${phase.startDate}</div>
+          </div>
+          <span style="color:var(--text3);font-size:16px;flex-shrink:0;transition:transform .15s;transform:rotate(${collapsed?'-90':'0'}deg)">›</span>
+        </div>
+        ${collapsed ? '' : (snap ? renderPhaseSnapshotDetail(a, phase, snap, realEndWeek) : '<div style="font-size:12px;color:var(--text3)">Sin detalle guardado para esta planificación (asignada antes de que existiera este historial).</div>')}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+window.renderPastRoutinePhases = renderPastRoutinePhases;
+
+function togglePastRoutinePhase(key) {
+  if(!S._atletaPastPhasesOpen) S._atletaPastPhasesOpen = new Set();
+  if(S._atletaPastPhasesOpen.has(key)) S._atletaPastPhasesOpen.delete(key); else S._atletaPastPhasesOpen.add(key);
+  renderMain();
+}
+window.togglePastRoutinePhase = togglePastRoutinePhase;
+
+// Detalle read-only de una rutina vieja ya terminada — reusa la misma tabla
+// semana-a-semana de siempre (buildWeeklyProgressionTable), pero acotada al
+// rango de semanas absolutas que le correspondió a ESTE tramo puntual, y
+// leyendo los ejercicios del snapshot congelado (no de S.routines, que
+// puede no tener más esa rutina si se borró).
+function renderPhaseSnapshotDetail(a, phase, snap, endWeek) {
+  const sessionNames = getOrderedSessionNames(snap);
+  if(!sessionNames.length) return '<div style="font-size:12px;color:var(--text3)">Sin sesiones.</div>';
+  return sessionNames.map(sName=>{
+    const blocks = snap.sessions?.[sName]||[];
+    const exRows = [];
+    blocks.forEach(b=>(b.categories||[]).forEach(cat=>(cat.exercises||[]).forEach(ex=>exRows.push(ex))));
+    if(!exRows.length) return '';
+    return `<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px" onclick="event.stopPropagation()">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${sName}</div>
+      ${exRows.map(ex=>`<div style="background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--rsm);padding:10px;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">${ex.name}</div>
+        ${buildWeeklyProgressionTable(endWeek, endWeek, (w)=>({
+          wp: getExPrescriptionForWeek(ex, w-phase.startWeek+1),
+          d: a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[ex.id] || {}
+        }), null, phase.startWeek)}
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+window.renderPhaseSnapshotDetail = renderPhaseSnapshotDetail;
+
 // Vista de solo-lectura de la rutina asignada, + el mismo control de
 // asignación que ya existe en Panel Admin → Alumnos (misma id de <select>,
 // así assignRoutineToAthlete funciona sin cambios).
@@ -8528,11 +8670,12 @@ function renderAtletaRutina(a) {
     html += `<div class="empty-state">Este atleta no tiene una rutina asignada todavía.</div>`;
     return html;
   }
-  // La semana REAL se cuenta desde que se ASIGNÓ esta rutina (fecha real en
-  // Firestore), no desde que el atleta se registró — si por algún motivo esa
-  // fecha no está (rutinas asignadas antes de este cambio), caemos en la
-  // fecha de inicio general.
-  const realWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate)
+  // La semana REAL es absoluta — se cuenta desde trainingStartDate (el
+  // ancla fija de siempre, nunca se pisa al reasignar una rutina nueva). Si
+  // no existe todavía (cuenta vieja, o primerísima rutina) cae en
+  // routineAssignedDate, y si tampoco está eso, en la fecha de inicio
+  // general.
+  const realWeek = a.routineAssignedDate ? computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate)
     : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
   // La navegación ‹/› solo cambia esta variable LOCAL para poder hojear otras
   // semanas de la planificación — antes movía routineAssignedDate en
@@ -8573,6 +8716,7 @@ function renderAtletaRutina(a) {
       </div>
     </div>
   </div>
+  ${renderPastRoutinePhases(a)}
   <div class="admin-section">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
       <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
@@ -8606,7 +8750,7 @@ function renderAtletaRutina(a) {
               ${(b.categories||[]).map(cat=>`
                 ${cat.label?`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label">${cat.label}</span></div></div>`:''}
                 ${(cat.exercises||[]).map(ex=>{
-                  const wp = getExPrescriptionForWeek(ex, previewWeek);
+                  const wp = getExPrescriptionForWeek(ex, toRoutineRelativeWeek(previewWeek, a));
                   // Solo la semana EXACTA que se está mostrando — nada de
                   // buscar hacia atrás. Antes, al hojear una semana "fantasma"
                   // (que el atleta nunca hizo), se mostraba la carga/RPE de una
@@ -8615,15 +8759,19 @@ function renderAtletaRutina(a) {
                   const doneData = a._personal?.history?.[sessionKey(previewWeek, sName)]?.exercises?.[ex.id] || {};
                   const hasCompletion = !!(doneData.load || doneData.rpe);
                   const durationWeeksEx = routine?.durationWeeks || 1;
-                  const lastWeekEx = Math.max(durationWeeksEx, previewWeek);
+                  // La tabla nunca mira semanas de ANTES de que esta rutina
+                  // arrancara — si es continuación de otra, esas semanas
+                  // pertenecen a ejercicios de OTRA rutina.
+                  const firstWeekEx = getCurrentPhaseStartWeek(a);
+                  const lastWeekEx = Math.max(firstWeekEx+durationWeeksEx-1, previewWeek);
                   if (S._atletaRoutineCicloView === 'macro') {
                     return `
                     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
                       <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}</div>
                       ${buildWeeklyProgressionTable(lastWeekEx, previewWeek, (w) => ({
-                        wp: getExPrescriptionForWeek(ex, w),
+                        wp: getExPrescriptionForWeek(ex, toRoutineRelativeWeek(w, a)),
                         d: a._personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id] || {}
-                      }), {uid:a.uid, sName, exId:ex.id})}
+                      }), {uid:a.uid, sName, exId:ex.id}, firstWeekEx)}
                     </div>`;
                   }
                   return `
@@ -10183,18 +10331,47 @@ window.renderWeeklyReport = renderWeeklyReport;
 // Escribe la asignación en Firestore y refleja el cambio en el estado local
 // (viewingAthlete + lista de adminAthletes), sea que venga de "quitar
 // rutina" directo o de confirmar el modal de días de gimnasio.
-async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDate) {
+//
+// A partir de acá, además de "cuál rutina" guarda el HISTORIAL de
+// planificaciones (routineAssignmentHistory): un tramo por rutina asignada,
+// cada uno con la semana ABSOLUTA (real, desde trainingStartDate — el ancla
+// fija de siempre) en la que arranca. Al reemplazar una rutina por otra, el
+// tramo saliente queda CONGELADO con una copia de cómo era en ese momento
+// (routineSnapshot) — así mirarlo después nunca depende de que esa rutina
+// siga existiendo o sin editar en S.routines.
+async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDate, isContinuation) {
   const today = todayLocal();
+  const a = S.adminAthletes.find(x=>x.uid===uid) || (S.viewingAthlete?.uid===uid ? S.viewingAthlete.userData : null);
   const update = { assignedRoutine: routineId||null };
-  // La semana de la planificación se cuenta desde el día que se la
-  // asignás, no desde que el atleta se registró — por eso guardamos esta
-  // fecha cada vez que asignás (o reasignás) una rutina. Por defecto es hoy,
-  // pero el admin puede elegir otra (ej: arrancar retroactivo desde el lunes).
-  if(routineId) update.routineAssignedDate = startDate||today;
+  const hist = Array.isArray(a?.routineAssignmentHistory) ? [...a.routineAssignmentHistory] : [];
+
+  if(routineId) {
+    const effectiveStart = startDate||today;
+    update.routineAssignedDate = effectiveStart;
+    // trainingStartDate nunca se pisa una vez que existe — es lo único que
+    // define "semana real" sin ambigüedad con el tiempo. Si es la
+    // primerísima rutina que se le asigna a este atleta, arranca siendo la
+    // misma fecha que esta asignación.
+    update.trainingStartDate = a?.trainingStartDate || effectiveStart;
+    const startWeek = computeWeekOfDate(update.trainingStartDate, effectiveStart);
+
+    // Congelar el tramo saliente (si había uno) con un snapshot de la
+    // rutina como estaba hasta ahora — antes de agregar el tramo nuevo.
+    if(hist.length && !hist[hist.length-1].routineSnapshot) {
+      const outgoingRoutine = S.routines.find(r=>r.id===hist[hist.length-1].routineId);
+      if(outgoingRoutine) hist[hist.length-1] = {...hist[hist.length-1], routineSnapshot: JSON.parse(JSON.stringify(outgoingRoutine))};
+    }
+    const newRoutine = S.routines.find(r=>r.id===routineId);
+    hist.push({
+      routineId, routineName: newRoutine?.name||'Rutina', startDate: effectiveStart, startWeek,
+      durationWeeks: newRoutine?.durationWeeks||1, trainingWeekdays: trainingWeekdays||[],
+      continuesFromRoutineId: isContinuation ? (a?.assignedRoutine||null) : null,
+    });
+    update.routineAssignmentHistory = hist;
+  }
   update.trainingWeekdays = routineId ? (trainingWeekdays||[]) : [];
   await setDoc(doc(db,'users',uid), update, {merge:true});
   if(S.viewingAthlete?.userData) Object.assign(S.viewingAthlete.userData, update);
-  const a = S.adminAthletes.find(x=>x.uid===uid);
   if(a) Object.assign(a, update);
 }
 
@@ -10237,12 +10414,83 @@ function openWeekdayAssignModal(uid, routineId) {
   // nada de fechas) reseteaba a Semana 1 a alguien que ya venía entrenando
   // hace semanas, porque el campo quedaba siempre precargado en hoy.
   const startDate = (a && a.assignedRoutine===routineId && a.routineAssignedDate) ? a.routineAssignedDate : today;
-  S._weekdayAssign = { uid, routineId, sessionNames, selected: [...prevSelected], startDate };
+  // El lunes de la semana que contiene startDate — así el calendario siempre
+  // arranca centrado en la fecha real que ya tenía, en vez de en "hoy".
+  const startD = new Date(startDate+'T00:00:00');
+  const mondayOfStart = new Date(startD); mondayOfStart.setDate(startD.getDate()-((startD.getDay()+6)%7));
+  const calendarMonday = new Date(mondayOfStart); calendarMonday.setDate(calendarMonday.getDate()-14);
+  S._weekdayAssign = {
+    uid, routineId, sessionNames, selected: [...prevSelected], startDate,
+    hasExistingRoutine: !!(a && a.assignedRoutine && a.assignedRoutine!==routineId),
+    isContinuation: !!(a && a.assignedRoutine && a.assignedRoutine!==routineId),
+    trainingStartDate: a?.trainingStartDate || null,
+    calendarMonday: toLocalDateStr(calendarMonday),
+  };
   document.getElementById('weekday-assign-title').textContent = 'Días de gimnasio · ' + routine.name;
   renderWeekdayAssignBody();
   document.getElementById('weekday-assign-overlay').classList.add('open');
 }
 window.openWeekdayAssignModal = openWeekdayAssignModal;
+
+// Grilla de calendario (4 semanas, lunes a domingo) para elegir el día en
+// que arranca esta planificación — tocar un día lo elige directo, en vez de
+// tener que escribir una fecha a mano y hacer la cuenta de qué semana real
+// le correspondería. Si el atleta ya tiene un ancla fija (trainingStartDate,
+// de una rutina anterior), cada día muestra a qué semana real cae — así se
+// ve de un vistazo, sin ambigüedad, aunque en el medio haya habido semanas
+// repetidas o saltadas.
+function renderStartDateCalendar(st) {
+  const monday = new Date(st.calendarMonday+'T00:00:00');
+  const todayStr = todayLocal();
+  const dayLetters = ['L','M','X','J','V','S','D'];
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <button class="abtn" style="padding:4px 10px;font-size:11px" onclick="shiftWeekdayAssignCalendar(-1)">‹ Antes</button>
+    <span style="font-size:11px;color:var(--text3)">4 semanas</span>
+    <button class="abtn" style="padding:4px 10px;font-size:11px" onclick="shiftWeekdayAssignCalendar(1)">Después ›</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
+    ${dayLetters.map(l=>`<div style="text-align:center;font-size:10px;color:var(--text3);font-weight:700">${l}</div>`).join('')}
+  </div>`;
+  for(let w=0; w<4; w++) {
+    html += `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">`;
+    for(let d=0; d<7; d++) {
+      const cur = new Date(monday); cur.setDate(monday.getDate()+w*7+d);
+      const curStr = toLocalDateStr(cur);
+      const isSel = curStr===st.startDate;
+      const isToday = curStr===todayStr;
+      const wk = st.trainingStartDate ? computeWeekOfDate(st.trainingStartDate, curStr) : null;
+      html += `<div onclick="pickWeekdayAssignStartDate('${curStr}')" style="cursor:pointer;text-align:center;padding:5px 2px;border-radius:var(--rxs);background:${isSel?'var(--accent)':(isToday?'var(--accent-dim)':'transparent')};border:1px solid ${isSel?'var(--accent)':'var(--border)'}">
+        <div style="font-size:12px;font-weight:${isSel?'700':'500'};color:${isSel?'#fff':'var(--text)'}">${cur.getDate()}</div>
+        ${wk!=null?`<div style="font-size:8.5px;color:${isSel?'rgba(255,255,255,0.85)':'var(--text3)'};margin-top:1px">S${wk}</div>`:''}
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  return html;
+}
+window.renderStartDateCalendar = renderStartDateCalendar;
+
+function shiftWeekdayAssignCalendar(weeksDelta) {
+  const st = S._weekdayAssign; if(!st) return;
+  const d = new Date(st.calendarMonday+'T00:00:00'); d.setDate(d.getDate()+weeksDelta*7);
+  st.calendarMonday = toLocalDateStr(d);
+  renderWeekdayAssignBody();
+}
+window.shiftWeekdayAssignCalendar = shiftWeekdayAssignCalendar;
+
+function pickWeekdayAssignStartDate(dateStr) {
+  const st = S._weekdayAssign; if(!st) return;
+  st.startDate = dateStr;
+  renderWeekdayAssignBody();
+}
+window.pickWeekdayAssignStartDate = pickWeekdayAssignStartDate;
+
+function toggleWeekdayAssignContinuation() {
+  const st = S._weekdayAssign; if(!st) return;
+  st.isContinuation = !st.isContinuation;
+  renderWeekdayAssignBody();
+}
+window.toggleWeekdayAssignContinuation = toggleWeekdayAssignContinuation;
 
 function renderWeekdayAssignBody() {
   const st = S._weekdayAssign;
@@ -10250,14 +10498,23 @@ function renderWeekdayAssignBody() {
   const need = st.sessionNames.length;
   const got = st.selected.length;
   const sortedSel = [...st.selected].sort((a,b)=>a-b);
+  const computedWeek = st.trainingStartDate ? computeWeekOfDate(st.trainingStartDate, st.startDate) : 1;
+  const dateLabel = new Date(st.startDate+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   const html = `
     <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
       Esta rutina tiene <strong>${need}</strong> día${need===1?'':'s'} (${st.sessionNames.join(' · ')}).
       Elegí ${need} día${need===1?'':'s'} reales de la semana en que el atleta va al gimnasio.
     </div>
+    ${st.hasExistingRoutine ? `<div class="settings-item" style="padding:0 0 12px">
+      <div class="settings-lbl" style="font-size:12px">¿Es continuación de la rutina actual?</div>
+      <div class="theme-switch ${st.isContinuation?'on':''}" onclick="toggleWeekdayAssignContinuation()"><div class="theme-switch-knob"></div></div>
+    </div>` : ''}
     <div style="margin-bottom:14px">
-      <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600;display:block;margin-bottom:4px">¿Desde qué día arranca la Semana 1?</label>
-      <input type="date" class="abtn" style="width:100%" value="${st.startDate}" onchange="setWeekdayAssignStartDate(this.value)">
+      <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600;display:block;margin-bottom:6px">¿Cuándo arranca esta planificación?</label>
+      ${renderStartDateCalendar(st)}
+      <div style="font-size:12px;color:var(--accent-text);font-weight:700;text-align:center;margin-top:8px;text-transform:capitalize">
+        ${dateLabel}${st.trainingStartDate?' · Semana '+computedWeek:''}
+      </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px">
       ${WEEKDAY_LABELS.map((label,dow)=>{
@@ -10291,13 +10548,6 @@ function toggleWeekdayAssignDay(dow) {
 }
 window.toggleWeekdayAssignDay = toggleWeekdayAssignDay;
 
-function setWeekdayAssignStartDate(val) {
-  const st = S._weekdayAssign;
-  if(!st || !val) return;
-  st.startDate = val;
-}
-window.setWeekdayAssignStartDate = setWeekdayAssignStartDate;
-
 function closeWeekdayAssignModal() {
   document.getElementById('weekday-assign-overlay').classList.remove('open');
   S._weekdayAssign = null;
@@ -10311,7 +10561,7 @@ async function confirmWeekdayAssign() {
   const st = S._weekdayAssign;
   if(!st || st.selected.length !== st.sessionNames.length) return;
   try {
-    await writeRoutineAssignment(st.uid, st.routineId, [...st.selected], st.startDate);
+    await writeRoutineAssignment(st.uid, st.routineId, [...st.selected], st.startDate, st.isContinuation);
     showToast('✓ Rutina y días asignados');
     closeWeekdayAssignModal();
     renderMain();
@@ -10342,20 +10592,28 @@ function resetRoutineWeekPreview(uid) {
 window.resetRoutineWeekPreview = resetRoutineWeekPreview;
 
 // Corrección EXPLÍCITA y deliberada de la semana real — a diferencia de
-// adjustAthleteRoutineWeek (que ahora es solo vista), esto sí reescribe
-// routineAssignedDate a propósito, para cuando la semana real quedó mal
-// (por ejemplo, por un click viejo de antes de que existiera la vista segura).
+// adjustAthleteRoutineWeek (que ahora es solo vista), esto sí reescribe la
+// fecha ancla a propósito, para cuando la semana real quedó mal (por
+// ejemplo, por un click viejo de antes de que existiera la vista segura).
+// Corrige trainingStartDate (el ancla real que define "Semana N") — y si
+// hay historial de planificaciones encadenadas, recalcula el startWeek de
+// cada tramo relativo a la fecha ancla nueva, para que la fila de
+// progresión que le toca a cada semana no quede desalineada.
 async function adminSetRealRoutineWeek(uid, week) {
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   if(!a) return;
   const w = Math.max(1, week);
   const base = new Date(); base.setHours(0,0,0,0);
   base.setDate(base.getDate() - (w-1)*7);
-  const newDate = toLocalDateStr(base);
+  const newAnchor = toLocalDateStr(base);
   try {
-    await setDoc(doc(db,'users',uid), {routineAssignedDate:newDate}, {merge:true});
-    a.routineAssignedDate = newDate;
-    if(S.viewingAthlete?.uid===uid) S.viewingAthlete.userData.routineAssignedDate = newDate;
+    const update = { trainingStartDate: newAnchor };
+    if(Array.isArray(a.routineAssignmentHistory) && a.routineAssignmentHistory.length) {
+      update.routineAssignmentHistory = a.routineAssignmentHistory.map(ph=>({...ph, startWeek: computeWeekOfDate(newAnchor, ph.startDate)}));
+    }
+    await setDoc(doc(db,'users',uid), update, {merge:true});
+    Object.assign(a, update);
+    if(S.viewingAthlete?.uid===uid) Object.assign(S.viewingAthlete.userData, update);
     if(S._routineWeekPreview) delete S._routineWeekPreview[uid];
     showToast('✓ Semana real corregida a Semana '+w);
     renderMain();
@@ -10368,9 +10626,22 @@ async function resetAthleteRoutineWeek(uid) {
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   const today = todayLocal();
   try {
-    await setDoc(doc(db,'users',uid), {routineAssignedDate:today}, {merge:true});
-    if(a) a.routineAssignedDate = today;
-    if(S.viewingAthlete?.uid===uid) S.viewingAthlete.userData.routineAssignedDate = today;
+    // Reinicia el ancla Y el historial — la rutina actual pasa a ser "el
+    // único tramo", arrancando de nuevo en Semana 1 desde hoy. Los tramos
+    // viejos (con su snapshot) no se borran del documento salvo que este
+    // reset los pise — es una acción deliberada de "arrancar de cero" que
+    // el admin confirma a propósito, coherente con lo que ya decía el botón.
+    const update = { routineAssignedDate: today, trainingStartDate: today };
+    if(a?.assignedRoutine) {
+      const routine = S.routines.find(r=>r.id===a.assignedRoutine);
+      update.routineAssignmentHistory = [{
+        routineId: a.assignedRoutine, routineName: routine?.name||'Rutina', startDate: today, startWeek: 1,
+        durationWeeks: routine?.durationWeeks||1, trainingWeekdays: a.trainingWeekdays||[], continuesFromRoutineId: null,
+      }];
+    }
+    await setDoc(doc(db,'users',uid), update, {merge:true});
+    if(a) Object.assign(a, update);
+    if(S.viewingAthlete?.uid===uid) Object.assign(S.viewingAthlete.userData, update);
     if(S._routineWeekPreview) delete S._routineWeekPreview[uid];
     showToast('✓ Reiniciado a Semana 1');
     renderMain();
@@ -10425,6 +10696,7 @@ function renderAdminRoutines() {
         <div style="font-size:12px;color:var(--text3)">
           ${sortSessionNames(Object.keys(r.sessions||{})).join(' · ')||'Sin sesiones'}
         </div>
+        ${r.continuesFromRoutineId ? `<div style="font-size:11px;color:var(--accent-text);margin-top:4px">↳ Continuación de "${S.routines.find(x=>x.id===r.continuesFromRoutineId)?.name||'(rutina eliminada)'}"</div>` : ''}
         <div style="font-size:11px;color:var(--text3);margin-top:4px">
           Asignada a: ${S.adminAthletes.filter(a=>a.assignedRoutine===r.id).map(a=>a.name||a.email).join(', ')||'nadie'}
         </div>
@@ -10516,6 +10788,16 @@ function setRoutineDuration(val) {
 }
 window.setRoutineDuration = setRoutineDuration;
 
+// Vínculo organizativo entre PLANTILLAS de rutina (no depende de qué atleta
+// esté usando cuál) — para encontrarlas relacionadas después en la lista de
+// "Rutinas", sin importar a quién se le haya asignado cada una.
+function setRoutineContinuesFrom(routineId) {
+  if(!S.editingRoutine) return;
+  S.editingRoutine.continuesFromRoutineId = routineId||null;
+  renderMain();
+}
+window.setRoutineContinuesFrom = setRoutineContinuesFrom;
+
 function renderRoutineEditor() {
   const r = S.editingRoutine;
   if(!r) return `<div class="empty-state">Error: no hay rutina en edición.</div>`;
@@ -10547,10 +10829,17 @@ function renderRoutineEditor() {
     <div class="team-detail-title" style="flex:1">${r.name}</div>
     <button class="abtn abtn-p" onclick="saveRoutineToFirestore()">Guardar</button>
   </div>
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--accent-dim);border-radius:var(--rsm)">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 14px;background:var(--accent-dim);border-radius:var(--rsm)">
     <span style="font-size:12px;font-weight:600;color:var(--accent-text)">Duración de esta planificación</span>
     <input type="number" min="1" max="52" value="${r.durationWeeks||4}" style="width:56px;text-align:center;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px;color:var(--text);font-size:13px" onchange="setRoutineDuration(this.value)">
     <span style="font-size:12px;color:var(--text3)">semanas</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--bg3);border-radius:var(--rsm);flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:600;color:var(--text2)">¿Es continuación de otra rutina?</span>
+    <select style="flex:1;min-width:160px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 8px;color:var(--text);font-size:13px" onchange="setRoutineContinuesFrom(this.value)">
+      <option value="">— No, es independiente —</option>
+      ${S.routines.filter(x=>x.id!==r.id).map(x=>`<option value="${x.id}" ${r.continuesFromRoutineId===x.id?'selected':''}>${x.name}</option>`).join('')}
+    </select>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
     ${sessionTabs}
@@ -13096,7 +13385,6 @@ function renderLibViewBody() {
   const search = S._libViewSearch||'';
   if(!S._libViewFilters) S._libViewFilters = new Set();
   const filters = S._libViewFilters;
-  const allTags = [...new Set(S.library.flatMap(e=>e.tags||[]))].sort();
   // Cuántos ejercicios todavía no tienen categoría principal + sub-categorías
   // completas bajo la taxonomía nueva — para poder recategorizar la
   // biblioteca entera de forma sistemática en vez de ir descubriéndolo uno
@@ -13120,15 +13408,27 @@ function renderLibViewBody() {
     return a.name.localeCompare(b.name);
   });
 
+  // Mismo criterio de dos pasos que el selector de categorías al crear/editar
+  // un ejercicio: primero solo las 17 principales — recién al elegir una (o
+  // varias), se despliegan sus sub-categorías como filtros extra. Antes acá
+  // se listaban TODOS los tags sueltos que hubiera en la biblioteca (viejos
+  // y nuevos, principales y sub-categorías, todos mezclados y en un
+  // choclo alfabético) — ahora es la misma taxonomía cerrada de siempre.
+  const selectedMains = LIB_MAIN_CATEGORIES.filter(c=>filters.has(c));
+  const subOptionsToShow = [];
+  selectedMains.forEach(main=>{
+    (LIB_SUBCATEGORY_RULES[main]||[]).forEach(g=>g.options.forEach(o=>{ if(!subOptionsToShow.includes(o)) subOptionsToShow.push(o); }));
+  });
+
   return `<!-- Tag filters — multi-select: un click selecciona, otro click desselecciona -->
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${subOptionsToShow.length?'8px':'16px'}">
     <button class="lib-filter ${!filters.size&&!S._libViewPendingOnly?'active':''}" onclick="S._libViewFilters=new Set();S._libViewPendingOnly=false;updateLibViewResults()">Todos</button>
     ${pendingCount?`<button class="lib-filter ${S._libViewPendingOnly?'active':''}" style="color:var(--amber);border-color:var(--amber)" onclick="S._libViewPendingOnly=!S._libViewPendingOnly;updateLibViewResults()">⚠ Sin categorizar (${pendingCount})</button>`:''}
-    ${allTags.map(t=>`<span style="position:relative;display:inline-flex">
-      <button class="lib-filter ${filters.has(t)?'active':''}" onclick="setLibFilter('${t}')" style="padding-right:20px">${t}</button>
-      <span onclick="event.stopPropagation();deleteLibraryTag('${t}')" title="Eliminar categoría" style="position:absolute;top:2px;right:4px;width:14px;height:14px;border-radius:50%;background:var(--red);color:#fff;font-size:10px;line-height:14px;text-align:center;cursor:pointer;font-weight:700">×</span>
-    </span>`).join('')}
+    ${LIB_MAIN_CATEGORIES.map(t=>`<button class="lib-filter ${filters.has(t)?'active':''}" onclick="setLibFilter('${t}')">${t}</button>`).join('')}
   </div>
+  ${subOptionsToShow.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding-top:8px;border-top:1px dashed var(--border)">
+    ${subOptionsToShow.map(t=>`<button class="lib-filter ${filters.has(t)?'active':''}" style="opacity:.9" onclick="setLibFilter('${t}')">${t}</button>`).join('')}
+  </div>`:''}
 
   <!-- Exercise list -->
   ${items.length?`<div class="wellness-card">
