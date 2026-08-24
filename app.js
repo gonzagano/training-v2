@@ -8451,12 +8451,14 @@ function renderPerfilTab(a) {
         const c = wellnessValColor(val);
         return `<span style="font-size:9.5px;font-weight:700;padding:3px 6px;border-radius:4px;background:${c?c.dim:'var(--bg3)'};color:${c?c.solid:'var(--text3)'};white-space:nowrap;flex-shrink:0">${WELLNESS_SHORT_LABEL[item.key]||item.label}</span>`;
       }).join('');
+      const daySummary = renderDaySummaryChips(personal, date, a.sport);
       return `<div class="admin-item" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:7px" onclick="viewWellnessDay('${uid}','${date}')">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span style="font-size:12px;color:var(--text3)">${date}</span>
           <span style="font-size:14px;font-weight:600;color:${col}">${pct}% ›</span>
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">${itemChips}</div>
+        ${daySummary}
       </div>`;
     }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div>`}
   </div>
@@ -8687,6 +8689,74 @@ function renderPhaseSnapshotDetail(a, phase, snap, endWeek) {
 }
 window.renderPhaseSnapshotDetail = renderPhaseSnapshotDetail;
 
+// ── HERRAMIENTA DE REPARACIÓN: agregar a mano un tramo anterior ────────
+// BUG encontrado (le pasó a Juan Curzio): si un atleta tenía una rutina
+// asignada por el sistema VIEJO (sin routineAssignmentHistory) y se le
+// asignaba una nueva como "continuación", el tramo saliente se perdía sin
+// dejar rastro — ver el fix en writeRoutineAssignment. Eso ya no le va a
+// pasar a nadie MÁS, pero a quien ya le pasó (Juan y quien más haya estado
+// en esa misma situación) hay que reconstruirle el tramo perdido a mano una
+// vez. Los datos en sí (semanas, pesos cargados) nunca se borraron —
+// siguen en personal/{uid}.history — esto solo reconstruye el "índice" que
+// dice dónde encontrarlos.
+function renderAddPastPhaseForm(a) {
+  const open = S._addPastPhaseFormUid===a.uid;
+  return `<div class="admin-section">
+    ${open ? `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="font-size:12px;color:var(--text3)">¿Le desapareció una rutina anterior de la pantalla? Reconstruí acá el tramo que falta — los datos que ya había cargado (semanas, pesos) siguen intactos, esto solo hace que vuelvan a aparecer.</div>
+      <select id="add-past-phase-routine-${a.uid}" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px">
+        <option value="">— Elegí qué rutina tenía antes —</option>
+        ${S.routines.map(r=>`<option value="${r.id}">${r.name}</option>`).join('')}
+      </select>
+      <input type="date" id="add-past-phase-date-${a.uid}" class="abtn" style="width:100%" title="¿Desde qué día arrancó esa rutina?">
+      <div style="display:flex;gap:6px">
+        <button class="abtn abtn-p" style="flex:1" onclick="addPastRoutinePhase('${a.uid}')">Agregar tramo</button>
+        <button class="abtn" onclick="toggleAddPastPhaseForm(null)">Cancelar</button>
+      </div>
+    </div>` : `<button class="abtn" style="width:100%" onclick="toggleAddPastPhaseForm('${a.uid}')">+ Agregar planificación anterior (reparar historial)</button>`}
+  </div>`;
+}
+window.renderAddPastPhaseForm = renderAddPastPhaseForm;
+
+function toggleAddPastPhaseForm(uid) {
+  S._addPastPhaseFormUid = uid;
+  renderMain();
+}
+window.toggleAddPastPhaseForm = toggleAddPastPhaseForm;
+
+async function addPastRoutinePhase(uid) {
+  const routineId = document.getElementById('add-past-phase-routine-'+uid)?.value;
+  const startDate = document.getElementById('add-past-phase-date-'+uid)?.value;
+  if(!routineId || !startDate) { showToast('Elegí la rutina y la fecha'); return; }
+  const a = S.adminAthletes.find(x=>x.uid===uid); if(!a) return;
+  const routine = S.routines.find(r=>r.id===routineId);
+  if(!routine) return;
+  let hist = Array.isArray(a.routineAssignmentHistory) ? [...a.routineAssignmentHistory] : [];
+  // Si esta fecha es más vieja que el ancla actual, el ancla se corre para
+  // atrás — y hay que recalcular el startWeek de TODOS los tramos relativo
+  // a la nueva, para que no queden desalineados con su propia progresión.
+  const newAnchor = (!a.trainingStartDate || startDate < a.trainingStartDate) ? startDate : a.trainingStartDate;
+  hist.push({
+    routineId, routineName: routine.name, startDate, startWeek: 1,
+    durationWeeks: routine.durationWeeks||1, trainingWeekdays: [],
+    continuesFromRoutineId: null,
+    routineSnapshot: JSON.parse(JSON.stringify(routine)),
+  });
+  hist.sort((x,y)=>x.startDate.localeCompare(y.startDate));
+  hist = hist.map(ph=>({...ph, startWeek: computeWeekOfDate(newAnchor, ph.startDate)}));
+  const update = { routineAssignmentHistory: hist, trainingStartDate: newAnchor };
+  showToast('Guardando…');
+  try {
+    await setDoc(doc(db,'users',uid), update, {merge:true});
+    Object.assign(a, update);
+    if(S.viewingAthlete?.uid===uid) Object.assign(S.viewingAthlete.userData, update);
+    S._addPastPhaseFormUid = null;
+    showToast('✓ Planificación anterior agregada');
+    renderMain();
+  } catch(e) { showToast('Error al guardar: '+e.message); }
+}
+window.addPastRoutinePhase = addPastRoutinePhase;
+
 // Vista de solo-lectura de la rutina asignada, + el mismo control de
 // asignación que ya existe en Panel Admin → Alumnos (misma id de <select>,
 // así assignRoutineToAthlete funciona sin cambios).
@@ -8760,6 +8830,7 @@ function renderAtletaRutina(a) {
     </div>
   </div>
   ${renderPastRoutinePhases(a)}
+  ${renderAddPastPhaseForm(a)}
   <div class="admin-section">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
       <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
@@ -10401,12 +10472,40 @@ async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDat
   if(routineId) {
     const effectiveStart = startDate||today;
     update.routineAssignedDate = effectiveStart;
+
+    // BUG encontrado y corregido acá — el que le borró a Juan Curzio la
+    // rutina anterior de la pantalla: si el atleta YA tenía una rutina
+    // asignada (por el sistema viejo, de antes de que existiera este
+    // historial) pero routineAssignmentHistory todavía estaba vacío, no se
+    // sintetizaba ningún tramo saliente — se perdía sin dejar rastro. Los
+    // datos en sí (semanas, pesos cargados) seguían intactos en Firestore —
+    // lo que desaparecía era el único lugar de la app que sabía cómo
+    // encontrarlos de nuevo.
+    //
+    // SEGUNDO bug encontrado ACÁ MISMO al verificar el fix de arriba: si se
+    // fija trainingStartDate ANTES de sintetizar el tramo viejo, queda
+    // anclado a "hoy" (la fecha de la rutina NUEVA) en vez de a cuándo
+    // arrancó de verdad la rutina VIEJA — el tramo sintetizado terminaba
+    // marcado como "Semana 1" sin importar cuántas semanas llevara en
+    // realidad. Por eso el ancla se resuelve ACÁ, considerando la fecha del
+    // tramo a sintetizar (si hace falta) ANTES de fijarla.
+    const needsSynthesis = !hist.length && a?.assignedRoutine && a.assignedRoutine!==routineId;
+    const outgoingStartDate = needsSynthesis ? (a.trainingStartDate || a.routineAssignedDate || effectiveStart) : null;
     // trainingStartDate nunca se pisa una vez que existe — es lo único que
-    // define "semana real" sin ambigüedad con el tiempo. Si es la
-    // primerísima rutina que se le asigna a este atleta, arranca siendo la
-    // misma fecha que esta asignación.
-    update.trainingStartDate = a?.trainingStartDate || effectiveStart;
+    // define "semana real" sin ambigüedad con el tiempo.
+    update.trainingStartDate = a?.trainingStartDate || outgoingStartDate || effectiveStart;
     const startWeek = computeWeekOfDate(update.trainingStartDate, effectiveStart);
+
+    if(needsSynthesis) {
+      const outgoingRoutine = S.routines.find(r=>r.id===a.assignedRoutine);
+      hist.push({
+        routineId: a.assignedRoutine, routineName: outgoingRoutine?.name||'Rutina anterior',
+        startDate: outgoingStartDate, startWeek: computeWeekOfDate(update.trainingStartDate, outgoingStartDate),
+        durationWeeks: outgoingRoutine?.durationWeeks||1, trainingWeekdays: a.trainingWeekdays||[],
+        continuesFromRoutineId: null,
+        routineSnapshot: outgoingRoutine ? JSON.parse(JSON.stringify(outgoingRoutine)) : null,
+      });
+    }
 
     // Congelar el tramo saliente (si había uno) con un snapshot de la
     // rutina como estaba hasta ahora — antes de agregar el tramo nuevo.
@@ -10738,9 +10837,12 @@ function renderAdminRoutines() {
   } else {
     html+=S.routines.map(r=>`
       <div class="card" style="padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="font-size:14px;font-weight:600">${r.name}</div>
-          <div style="display:flex;gap:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
+          <div style="min-width:0">
+            <span id="routine-name-span-${r.id}" ondblclick="editRoutineListName(event,'${r.id}')" title="Doble click para renombrar" style="font-size:14px;font-weight:600;cursor:text">${r.name}</span>
+            <input id="routine-name-inp-${r.id}" style="display:none;font-size:14px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:4px 8px;color:var(--text);outline:none;font-family:inherit;width:100%" onblur="saveRoutineListName('${r.id}',this)" onkeydown="if(event.key==='Enter')this.blur()">
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
             <button class="abtn abtn-p" onclick="editRoutine('${r.id}')">Editar</button>
             <button class="abtn" onclick="duplicateRoutine('${r.id}')" title="Duplicar — para partir de esta y cambiar solo lo que necesitás">⧉ Duplicar</button>
             <button class="abtn abtn-d" onclick="deleteRoutine('${r.id}')">×</button>
@@ -10758,6 +10860,39 @@ function renderAdminRoutines() {
   return html;
 }
 window.renderAdminRoutines = renderAdminRoutines;
+
+function editRoutineListName(e, id) {
+  const inp = document.getElementById('routine-name-inp-'+id);
+  const r = S.routines.find(x=>x.id===id);
+  if(!inp || !r) return;
+  e.target.style.display='none';
+  inp.value = r.name;
+  inp.style.display='inline-block';
+  inp.focus(); inp.select();
+}
+window.editRoutineListName = editRoutineListName;
+
+async function saveRoutineListName(id, inp) {
+  const r = S.routines.find(x=>x.id===id);
+  const span = document.getElementById('routine-name-span-'+id);
+  if(!r) return;
+  const newName = inp.value.trim();
+  inp.style.display='none';
+  if(span) span.style.display='';
+  if(!newName || newName===r.name) return;
+  const oldName = r.name;
+  r.name = newName;
+  if(span) span.textContent = newName;
+  try {
+    await updateDocSafe(doc(db,'routines',id), {name:newName});
+    showToast('✓ Nombre actualizado');
+  } catch(e) {
+    r.name = oldName;
+    if(span) span.textContent = oldName;
+    showToast('Error al guardar el nombre');
+  }
+}
+window.saveRoutineListName = saveRoutineListName;
 
 async function createRoutine() {
   const name = prompt('Nombre de la rutina (ej: Fuerza Base Baloncesto):');
@@ -10851,6 +10986,30 @@ function setRoutineContinuesFrom(routineId) {
 }
 window.setRoutineContinuesFrom = setRoutineContinuesFrom;
 
+// Renombrar la rutina desde adentro del editor — edición LOCAL nomás, igual
+// que el título de un bloque: recién queda guardado de verdad al tocar
+// "Guardar" (que manda S.editingRoutine entero, nombre incluido).
+function editRoutineEditorName(e) {
+  if(!S.editingRoutine) return;
+  const inp = document.getElementById('routine-editor-name-inp');
+  if(!inp) return;
+  e.target.style.display='none';
+  inp.value = S.editingRoutine.name;
+  inp.style.display='inline-block';
+  inp.focus(); inp.select();
+}
+window.editRoutineEditorName = editRoutineEditorName;
+
+function saveRoutineEditorName(inp) {
+  if(!S.editingRoutine) return;
+  const span = document.getElementById('routine-editor-name-span');
+  const newName = inp.value.trim();
+  if(newName) S.editingRoutine.name = newName;
+  inp.style.display='none';
+  if(span) { span.textContent = S.editingRoutine.name; span.style.display=''; }
+}
+window.saveRoutineEditorName = saveRoutineEditorName;
+
 function renderRoutineEditor() {
   const r = S.editingRoutine;
   if(!r) return `<div class="empty-state">Error: no hay rutina en edición.</div>`;
@@ -10879,7 +11038,10 @@ function renderRoutineEditor() {
   return `
   <div class="team-detail-header">
     <button class="back-btn" data-back="routine-editor">‹</button>
-    <div class="team-detail-title" style="flex:1">${r.name}</div>
+    <div class="team-detail-title" style="flex:1;min-width:0">
+      <span id="routine-editor-name-span" ondblclick="editRoutineEditorName(event)" title="Doble click para renombrar" style="cursor:text">${r.name}</span>
+      <input id="routine-editor-name-inp" style="display:none;font-size:inherit;font-weight:inherit;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:4px 8px;color:var(--text);outline:none;font-family:inherit;width:100%" onblur="saveRoutineEditorName(this)" onkeydown="if(event.key==='Enter')this.blur()">
+    </div>
     <button class="abtn abtn-p" onclick="saveRoutineToFirestore()">Guardar</button>
   </div>
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 14px;background:var(--accent-dim);border-radius:var(--rsm)">
@@ -12617,6 +12779,41 @@ function getRecentMatchCardInfo(personal, todayStr) {
   return { mins:latest.mins, rpe:latest.rpe, date:latest.date, daysAgo, hadMolestia };
 }
 window.getRecentMatchCardInfo = getRecentMatchCardInfo;
+
+// Para la lista compacta "Wellness — últimos 7 días" de la ficha del
+// atleta: de un vistazo, sin entrar al detalle del día, qué carga
+// registró ese día puntual (partido con minutos+RPE, o gimnasio/pelota con
+// RPE nomás — los minutos de entrenamiento no importan tanto como los de
+// partido) y si esa fecha tiene alguna molestia puntuada (nueva o de
+// seguimiento de una ya activa).
+function renderDaySummaryChips(personal, date, sport) {
+  const logs = (personal?.history?._sessionLogs || []).filter(l=>l.date===date);
+  const cargaChips = logs.map(l=>{
+    const act = LOAD_ACTIVITIES.find(a=>a.key===l.activity);
+    const display = act ? getLoadActivityDisplay(act, sport) : {label:l.session||l.activity, emoji:'💪'};
+    const isMatch = l.activity==='partido' || l.activity==='partido2';
+    const text = isMatch ? `${display.emoji} ${l.mins}' · RPE ${l.rpe}` : `${display.emoji} ${display.label} · RPE ${l.rpe}`;
+    const bg = isMatch ? 'var(--accent-dim)' : 'var(--bg3)';
+    const color = isMatch ? 'var(--accent-text)' : 'var(--text2)';
+    return `<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:20px;background:${bg};color:${color};white-space:nowrap">${text}</span>`;
+  });
+
+  const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  const injuryChips = [];
+  Object.entries(personal?.injuries||{}).forEach(([zid,inj])=>{
+    const hist = sortEvalRecsByDate([...(inj.history||[])]);
+    const entry = hist.find(h=>h.date===date);
+    if(!entry) return;
+    const isFirstEver = hist[0]?.date===date;
+    const zone = allZones.find(z=>z.id===zid);
+    const sev = entry.pain>=7 ? 'var(--red)' : entry.pain>=4 ? 'var(--amber)' : 'var(--green)';
+    injuryChips.push(`<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:20px;background:${sev}22;color:${sev};border:1px solid ${sev};white-space:nowrap">${isFirstEver?'🆕 ':'🩹 '}${zone?.label||zid} ${entry.pain}/10</span>`);
+  });
+
+  if(!cargaChips.length && !injuryChips.length) return '';
+  return `<div style="display:flex;gap:4px;flex-wrap:wrap">${cargaChips.join('')}${injuryChips.join('')}</div>`;
+}
+window.renderDaySummaryChips = renderDaySummaryChips;
 
 function getMatchMinutesSummary(sessionLogs) {
   const matchLogs = getMatchLogs(sessionLogs);
