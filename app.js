@@ -5471,9 +5471,12 @@ function renderCalendarDayEditor(team, dateStr) {
     ${events.length?events.map((e,i)=>{
       const t=CALENDAR_TYPES.find(x=>x.id===e.type);
       return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div style="width:8px;height:8px;border-radius:50%;background:${t?t.color:'var(--text3)'};flex-shrink:0"></div>
           <div style="font-size:13px;font-weight:600;flex:1">${t?t.label:e.type}</div>
+          ${S._calMovingEventKey===dateStr+'-'+i
+            ? `<input type="date" class="abtn" style="padding:6px 8px" value="${dateStr}" onchange="moveCalendarEvent('${team.id}','${dateStr}',${i},this.value)" onclick="event.stopPropagation()">`
+            : `<button class="abtn" onclick="toggleMoveCalendarEvent('${dateStr}',${i})" title="Mover a otro día">📅 Mover</button>`}
           <button class="abtn abtn-d" onclick="removeCalendarEvent('${team.id}','${dateStr}',${i})">Quitar</button>
         </div>
         ${e.type==='partido'?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-left:16px">
@@ -5520,6 +5523,46 @@ function removeCalendarEvent(teamId, dateStr, idx) {
   renderMain();
 }
 window.removeCalendarEvent=removeCalendarEvent;
+
+function toggleMoveCalendarEvent(dateStr, idx) {
+  const key = dateStr+'-'+idx;
+  S._calMovingEventKey = (S._calMovingEventKey===key) ? null : key;
+  renderMain();
+}
+window.toggleMoveCalendarEvent = toggleMoveCalendarEvent;
+
+// Mueve un evento puntual de un día a otro (partido que se reprogramó,
+// entrenamiento que se cambió de fecha, etc.) sin tener que borrarlo y
+// cargarlo de cero — conserva rival/escudo/lo que tenga cargado. A
+// diferencia del resto de la edición del calendario (que guarda recién al
+// tocar "Guardar cambios de este día"), esto guarda las DOS fechas de una
+// al toque: si solo quedara "sucia" la fecha destino, y el admin no la abre
+// a mano después para tocar Guardar ahí también, el evento aparecía movido
+// en pantalla pero nunca quedaba guardado de verdad en esa fecha nueva.
+async function moveCalendarEvent(teamId, fromDate, idx, toDate) {
+  if(!toDate || toDate===fromDate) { S._calMovingEventKey=null; renderMain(); return; }
+  const team = S.teams.find(t=>t.id===teamId); if(!team) return;
+  const fromEvents = getCalendarEvents(team, fromDate);
+  const moved = fromEvents[idx];
+  if(!moved) return;
+  const newFromEvents = fromEvents.filter((_,i)=>i!==idx);
+  const newToEvents = [...getCalendarEvents(team, toDate), moved];
+  team.calendar[fromDate] = newFromEvents;
+  team.calendar[toDate] = newToEvents;
+  S._calMovingEventKey = null;
+  showToast('Moviendo…');
+  try {
+    await Promise.all([
+      updateDocSafe(doc(db,'teams',teamId), {[`calendar.${fromDate}`]: newFromEvents.length ? newFromEvents : deleteField()}),
+      updateDocSafe(doc(db,'teams',teamId), {[`calendar.${toDate}`]: newToEvents}),
+    ]);
+    S._calDirtyDates?.delete(fromDate);
+    S._calDirtyDates?.delete(toDate);
+    showToast('✓ Movido a '+toDate);
+    renderMain();
+  } catch(e) { showToast('No se pudo mover: '+e.message); }
+}
+window.moveCalendarEvent = moveCalendarEvent;
 
 function setCalendarEventField(teamId, dateStr, idx, field, value) {
   const team = S.teams.find(t=>t.id===teamId); if(!team) return;
@@ -9013,14 +9056,17 @@ async function sendPushToUids(uids, {title, body, url} = {}) {
   const subs = (uids||[])
     .map(uid => (S.adminAthletes||[]).find(a=>a.uid===uid)?.pushSubscription)
     .filter(Boolean);
-  if(!subs.length) return {sent:0, total:(uids||[]).length};
+  // attempted = a cuántos se les intentó mandar de verdad (tenían
+  // suscripción guardada) — sin esto, "0 con push" no se podía distinguir
+  // entre "nadie activó notificaciones todavía" y "se intentó y falló".
+  if(!subs.length) return {sent:0, total:(uids||[]).length, attempted:0};
   try {
     const resp = await fetch('/api/send-push', {
       method:'POST',
       headers:{'Content-Type':'application/json', 'X-Push-Secret': PUSH_API_SECRET},
       body: JSON.stringify({subscriptions:subs, title:title||'G-Metrics', body:body||'', url:url||location.origin})
     });
-    if(!resp.ok) return {sent:0, total:uids.length, error:true};
+    if(!resp.ok) return {sent:0, total:uids.length, attempted:subs.length, error:true, errorDetail:'HTTP '+resp.status+' de /api/send-push — ¿está desplegada la función serverless y configuradas las variables de entorno en Vercel?'};
     const data = await resp.json();
     const results = data.results||[];
     const sent = results.filter(r=>r.ok).length;
@@ -9036,9 +9082,12 @@ async function sendPushToUids(uids, {title, body, url} = {}) {
         }
       });
     }
-    return {sent, total:uids.length};
+    return {sent, total:uids.length, attempted:subs.length};
   } catch(e) {
-    return {sent:0, total:(uids||[]).length, error:true};
+    // Típicamente esto es que /api/send-push ni existe todavía en el
+    // deploy (404 de la propia app, no de la función) — fetch tira acá en
+    // vez de darte un response.
+    return {sent:0, total:(uids||[]).length, attempted:subs.length, error:true, errorDetail:e.message};
   }
 }
 window.sendPushToUids = sendPushToUids;
@@ -9814,7 +9863,7 @@ function renderReminderScreen() {
     <div class="team-detail-title">Recordatorios de hoy</div>
   </div>
   <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
-    El recordatorio se manda DENTRO de la app — les va a aparecer en su campanita de notificaciones la próxima vez que entren.
+    El recordatorio siempre les queda en la campanita de notificaciones adentro de la app. A los que ya activaron notificaciones push (Ajustes → Notificaciones), además les llega como aviso real al celular — a los que no, no.
   </div>
   <div class="admin-section">
     <div class="admin-section-title" style="color:var(--amber)">⚠ Faltan ${pending.length} de ${athletes.length}</div>
@@ -9831,7 +9880,7 @@ function renderReminderScreen() {
     <div style="padding:14px 16px">
       <textarea id="reminder-msg-txt" style="width:100%;min-height:90px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:10px;color:var(--text);font-size:13px;outline:none;font-family:inherit;resize:vertical">${msg}</textarea>
       <div style="font-size:11px;color:var(--text3);margin:8px 0">Se les manda a estos ${pending.length}:\n${names}</div>
-      <button class="wellness-submit" onclick="sendInAppReminder()">Enviar recordatorio en la app (${pending.length})</button>
+      <button class="wellness-submit" onclick="sendInAppReminder()">Enviar recordatorio (${pending.length})</button>
     </div>
   </div>`:''}
   <div class="admin-section" style="margin-top:12px">
@@ -9862,7 +9911,11 @@ async function sendInAppReminder() {
     } catch(e) {}
   }
   const pushResult = await sendPushToUids(pendingUids, {title:'G-Metrics · Recordatorio', body:msg});
-  showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}${pushResult.sent?` (${pushResult.sent} con notificación push)`:''}`);
+  let pushMsg = '';
+  if(pushResult.error) pushMsg = ' — ⚠ falló el envío push: '+(pushResult.errorDetail||'error desconocido');
+  else if(pushResult.sent>0) pushMsg = ` (${pushResult.sent} con notificación push real)`;
+  else if(pushResult.attempted===0) pushMsg = ' — nadie de estos activó notificaciones push todavía (solo les queda el aviso adentro de la app)';
+  showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}${pushMsg}`);
 }
 window.sendInAppReminder = sendInAppReminder;
 
