@@ -3191,11 +3191,31 @@ window.closeLib=closeLib;
 function closeLibIfOutside(e) { if(e.target===document.getElementById('lib-overlay')) closeLib(); }
 window.closeLibIfOutside=closeLibIfOutside;
 
+// Mismo criterio de dos pasos que el resto de la Biblioteca (ver
+// renderLibViewBody): primero solo las 17 categorías principales, y recién
+// al elegir una (o varias) se despliegan sus sub-categorías como filtros
+// extra. Antes acá se listaba TODOS los tags sueltos en uso (getAllLibraryTags),
+// mezclando principales y sub-categorías en un choclo — este modal (el que se
+// abre desde "añadir ejercicio" al armar una rutina) se había quedado con ese
+// patrón viejo mientras el resto de la app ya se había actualizado.
 function renderLibFilters() {
   const f=document.getElementById('lib-filters');
-  f.innerHTML=[{id:null,label:'Todos'},...getAllLibraryTags().map(t=>({id:t,label:t}))].map(ft=>
-    `<span class="lib-filter ${ft.id===null?(S.activeFilters.size===0?'active':''):(S.activeFilters.has(ft.id)?'active':'')}" onclick="setFilter('${ft.id}')">${ft.label}</span>`
-  ).join('');
+  const filters = S.activeFilters;
+  const selectedMains = LIB_MAIN_CATEGORIES.filter(c=>filters.has(c));
+  const subOptionsToShow = [];
+  selectedMains.forEach(main=>{
+    (LIB_SUBCATEGORY_RULES[main]||[]).forEach(g=>g.options.forEach(o=>{ if(!subOptionsToShow.includes(o)) subOptionsToShow.push(o); }));
+  });
+  let html = '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    + `<span class="lib-filter ${filters.size===0?'active':''}" onclick="setFilter('null')">Todos</span>`
+    + LIB_MAIN_CATEGORIES.map(c=>`<span class="lib-filter ${filters.has(c)?'active':''}" onclick="setFilter('${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
+    + '</div>';
+  if(subOptionsToShow.length) {
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">'
+      + subOptionsToShow.map(t=>`<span class="lib-filter ${filters.has(t)?'active':''}" style="opacity:.9" onclick="setFilter('${t.replace(/'/g,"\\'")}')">${t}</span>`).join('')
+      + '</div>';
+  }
+  f.innerHTML = html;
 }
 
 function setFilter(f) {
