@@ -5,18 +5,33 @@
 // Push (RFC 8291/8292) usando la librería `web-push` y las claves VAPID.
 const webpush = require('web-push');
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT,
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
-
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
   if (req.headers['x-push-secret'] !== process.env.PUSH_API_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+  // Chequeo explícito ANTES de llamar a setVapidDetails: si alguna de estas
+  // 3 variables de entorno no está seteada en Vercel, la librería tira un
+  // error genérico ("web-push subject/keys not set") que llegaba como un
+  // 500 pelado, sin decir CUÁL faltaba. Esto pasó a ser el sospechoso
+  // principal de por qué "las notificaciones siguen sin funcionar" — es la
+  // única parte de todo el circuito que no se puede verificar desde el
+  // código ni desde este entorno de test, solo mirando el dashboard de
+  // Vercel (Project → Settings → Environment Variables).
+  const missingEnv = ['VAPID_SUBJECT','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY'].filter(k=>!process.env[k]);
+  if (missingEnv.length) {
+    return res.status(500).json({ error: 'Faltan variables de entorno en Vercel: ' + missingEnv.join(', ') });
+  }
+  try {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT,
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+  } catch (e) {
+    return res.status(500).json({ error: 'Claves VAPID inválidas: ' + (e.message||e) });
   }
 
   const { subscriptions, title, body, url } = req.body || {};
@@ -36,7 +51,12 @@ module.exports = async (req, res) => {
     } catch (e) {
       // 404/410 = la suscripción venció (usuario desinstaló/bloqueó) — el
       // cliente (sendPushToUids en app.js) la borra de Firestore al ver esto.
-      return { ok: false, status: e.statusCode, endpoint: sub.endpoint };
+      // reason: antes se descartaba e.body/e.message — sin esto, un fallo por
+      // OTRO motivo (típicamente claves VAPID mal configuradas en Vercel, ej.
+      // "VapidPkHashMismatch" si la pública de acá no es la pareja real de la
+      // privada) quedaba invisible: el cliente solo veía "no llegó a nadie",
+      // sin ninguna pista de POR QUÉ.
+      return { ok: false, status: e.statusCode, endpoint: sub.endpoint, reason: e.body || e.message || 'error desconocido' };
     }
   }));
 
