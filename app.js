@@ -3300,7 +3300,10 @@ window.toggleLibFilterDropdown = toggleLibFilterDropdown;
 
 function setFilter(f) {
   if(f==='null') { S.activeFilters=new Set(); }
-  else if(S.activeFilters.has(f)) { S.activeFilters.delete(f); }
+  else if(S.activeFilters.has(f)) {
+    S.activeFilters.delete(f);
+    clearOrphanedSubFilters(S.activeFilters, f);
+  }
   else { S.activeFilters.add(f); }
   renderLibFilters(); renderLibList();
 }
@@ -3311,7 +3314,7 @@ function renderLibList() {
   const list=document.getElementById('lib-list');
   let items=S.library.filter(ex=>{
     const matchQ=!q||ex.name.toLowerCase().includes(q);
-    const matchF=S.activeFilters.size===0||[...S.activeFilters].some(f=>ex.tags?.includes(f));
+    const matchF=exerciseMatchesFilters(ex, S.activeFilters);
     return matchQ&&matchF;
   });
   // Los que cumplen TODAS las categorías elegidas van primero, después los
@@ -3381,7 +3384,7 @@ window.addFromLib=addFromLib;
 // cuál de estas 17 aparece en el array (como es excluyente, hay como mucho una).
 const LIB_MAIN_CATEGORIES = [
   'Movilidad','Empuje MMSS','Tracción MMSS','Empuje MMII','Tracción MMII','Zona Media',
-  'ISO HOLD','ISO PUSH','ISO CATCH','ISO SWITCH','Pliometría','Saltos','Lanzamientos','DLO',
+  'ISO HOLD','ISO PUSH','ISO CATCH','ISO SWITCH','Pliometría Extensiva','Pliometría Intensiva','Lanzamientos','DLO',
   'Auxiliar Brazos','Auxiliar MMII','Estabilidad','Rehabilitación',
 ];
 window.LIB_MAIN_CATEGORIES = LIB_MAIN_CATEGORIES;
@@ -3410,10 +3413,11 @@ const LIB_SUBCATEGORY_RULES = {
   // Nombres distintos acá adentro evitan la colisión de raíz.
   'ISO CATCH':       [{ options:['bilateral','unilateral'], multi:false }, { options:['Miembro superior — empuje','Miembro superior — tracción','Miembro inferior'], multi:false }],
   'ISO SWITCH':      [{ options:['Cadera','Tobillo'], multi:false }],
-  'Pliometría':      [{ options:['bilateral','unilateral'], multi:false }, { options:['MMII','MMSS'], multi:false }],
-  'Saltos':          [{ options:['bilateral','unilateral'], multi:false }, { options:['Vertical','Horizontal'], multi:false }],
+  'Pliometría Extensiva': [{ options:['bilateral','unilateral'], multi:false }, { options:['MMII','MMSS'], multi:false }],
+  'Pliometría Intensiva': [{ options:['bilateral','unilateral'], multi:false }, { options:['Vertical','Horizontal'], multi:false }],
   'Lanzamientos':    [{ options:['bilateral','unilateral'], multi:false }, { options:['Vertical','Horizontal','Rotacional'], multi:false }],
-  'DLO':             [{ options:['bilateral','unilateral'], multi:false }],
+  // 'DLO' NO tiene entrada acá a propósito — cargadas/arranques/jerks no se
+  // sub-clasifican, con marcar la principal alcanza para poder guardar.
   'Auxiliar Brazos': [{ options:['Hombros','Bíceps','Tríceps'], multi:false }],
   'Auxiliar MMII':   [{ options:['Glúteo','Cuádriceps','Isquiosurales','Aductores','Gemelos'], multi:false }],
   'Estabilidad':     [{ options:['Hombro','Cadera','Rodilla','Tobillo'], multi:false }],
@@ -10157,8 +10161,12 @@ function renderAdminMain() {
       <button class="abtn abtn-p" onclick="switchView('library')">Gestionar →</button>
     </div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Limpiar categorías viejas de la Biblioteca</div><div class="admin-item-sub">Saca de todos los ejercicios cualquier categoría que no sea de la lista nueva (17 principales + sus sub-categorías)</div></div>
+      <div><div class="admin-item-lbl">Limpiar categorías viejas de la Biblioteca</div><div class="admin-item-sub">Saca de todos los ejercicios cualquier categoría que no sea de la lista nueva (18 principales + sus sub-categorías)</div></div>
       <button class="abtn" onclick="cleanUnrecognizedLibraryTags()">Limpiar</button>
+    </div>
+    <div class="admin-item">
+      <div><div class="admin-item-lbl">Renombrar Pliometría/Saltos</div><div class="admin-item-sub">"Pliometría"→"Pliometría Extensiva", "Saltos"→"Pliometría Intensiva" — mismas sub-categorías, no se pierde nada</div></div>
+      <button class="abtn" onclick="migrateLibCategoryRenames()">Migrar</button>
     </div>
     <div class="admin-item">
       <div><div class="admin-item-lbl">Corregir mayúsculas de nombres</div><div class="admin-item-sub">Pasa "GANORA gonzalo" → "Ganora Gonzalo" para todos los atletas de una</div></div>
@@ -12679,11 +12687,44 @@ window.deleteEvalRecord = deleteEvalRecord;
 
 function setLibFilter(tag) {
   if(!S._libViewFilters) S._libViewFilters = new Set();
-  if(S._libViewFilters.has(tag)) S._libViewFilters.delete(tag);
+  if(S._libViewFilters.has(tag)) {
+    S._libViewFilters.delete(tag);
+    clearOrphanedSubFilters(S._libViewFilters, tag);
+  }
   else S._libViewFilters.add(tag);
   updateLibViewResults();
 }
 window.setLibFilter = setLibFilter;
+
+// Al desmarcar una categoría PRINCIPAL del filtro, sacamos también
+// cualquier sub-categoría suya que hubiera quedado marcada — si no, esa
+// sub-categoría queda "huérfana" (sin principal ancla en el filtro) y
+// exerciseMatchesFilters ya no sabría a cuál de las 17 principales
+// pertenece esa opción.
+function clearOrphanedSubFilters(filterSet, deselectedTag) {
+  if(!LIB_MAIN_CATEGORIES.includes(deselectedTag)) return;
+  (LIB_SUBCATEGORY_RULES[deselectedTag]||[]).forEach(g=>g.options.forEach(o=>filterSet.delete(o)));
+}
+
+// Un ejercicio matchea el filtro si, para AL MENOS UNA categoría principal
+// marcada, su categoría principal real coincide Y (si hay sub-categorías de
+// ESA principal también marcadas) tiene alguna de esas sub-categorías —
+// nunca alcanza con compartir el nombre de una sub-categoría de OTRA
+// principal (ej. "Movilidad → Hombro" no debe traer ejercicios de
+// "Estabilidad → Hombro"). El filtrado siempre queda anclado primero a la
+// principal elegida, nunca a un match plano de cualquier tag suelto.
+function exerciseMatchesFilters(ex, activeFilters) {
+  if(!activeFilters.size) return true;
+  const selectedMains = LIB_MAIN_CATEGORIES.filter(c=>activeFilters.has(c));
+  if(!selectedMains.length) return true; // no debería pasar (ver clearOrphanedSubFilters), pero por las dudas no bloqueamos todo
+  const exMain = getExerciseMainCategory(ex.tags);
+  return selectedMains.some(main=>{
+    if(exMain!==main) return false;
+    const subOptions = (LIB_SUBCATEGORY_RULES[main]||[]).flatMap(g=>g.options);
+    const activeSubs = subOptions.filter(o=>activeFilters.has(o));
+    return !activeSubs.length || activeSubs.some(o=>ex.tags?.includes(o));
+  });
+}
 
 // Elimina una categoría de TODOS los ejercicios que la tengan — no hay
 // una lista separada de categorías "disponibles", son simplemente las que
@@ -12725,6 +12766,25 @@ async function cleanUnrecognizedLibraryTags() {
   renderMain();
 }
 window.cleanUnrecognizedLibraryTags = cleanUnrecognizedLibraryTags;
+
+// Migración puntual: "Pliometría"/"Saltos" (nombres viejos) pasan a
+// "Pliometría Extensiva"/"Pliometría Intensiva" — mismo significado, mismas
+// sub-categorías, solo cambia el nombre de la principal. Ejercicios ya
+// cargados con los tags viejos quedarían "sin categorizar" si no se
+// renombran acá.
+const LIB_CATEGORY_RENAMES = { 'Pliometría':'Pliometría Extensiva', 'Saltos':'Pliometría Intensiva' };
+async function migrateLibCategoryRenames() {
+  const affected = (S.library||[]).filter(ex=>(ex.tags||[]).some(t=>LIB_CATEGORY_RENAMES[t]));
+  if(!affected.length) { showToast('No hay ejercicios con los nombres viejos'); return; }
+  if(!confirm(`Esto va a renombrar la categoría de ${affected.length} ejercicio${affected.length!==1?'s':''} ("Pliometría"→"Pliometría Extensiva", "Saltos"→"Pliometría Intensiva"). No se pierden datos ni sub-categorías. ¿Confirmás?`)) return;
+  affected.forEach(ex=>{ ex.tags = (ex.tags||[]).map(t=>LIB_CATEGORY_RENAMES[t]||t); });
+  showToast('Migrando…');
+  const ok = await saveNow();
+  if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
+  showToast(`✓ Se renombraron ${affected.length} ejercicio${affected.length!==1?'s':''}`);
+  renderMain();
+}
+window.migrateLibCategoryRenames = migrateLibCategoryRenames;
 
 function switchCompareTest(testId) {
   S.evalCompareTest = testId;
@@ -13763,7 +13823,7 @@ function renderLibViewBody() {
   let items = S.library;
   if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
     (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
-  if(filters.size) items = items.filter(e=>[...filters].some(f=>e.tags?.includes(f)));
+  items = items.filter(e=>exerciseMatchesFilters(e, filters));
   if(S._libViewPendingOnly) items = items.filter(e=>getMissingLibRules(e.tags).length);
   // Los que cumplen TODAS las categorías elegidas van primero, después los
   // que cumplen menos — y alfabético como desempate (y como único criterio
