@@ -106,7 +106,13 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function getAccentColor() { return localStorage.getItem('gm-accent') || 'navy'; }
+// La app tiene UN solo color de acento (navy) — antes había un selector de 6
+// en Ajustes, pero el usuario pidió sacarlo: solo quiere poder elegir entre
+// claro/oscuro, no de color. ACCENT_COLORS se deja como está (con sus 6
+// entradas) por si en algún momento se quiere CAMBIAR cuál es el único
+// color — ya tendría la variante lista para modo oscuro (textDark) — pero
+// nada en la UI deja elegirlo más.
+function getAccentColor() { return 'navy'; }
 window.getAccentColor = getAccentColor;
 function applyAccentColor(id) {
   const def = ACCENT_COLORS.find(a=>a.id===id) || ACCENT_COLORS[0];
@@ -1108,6 +1114,7 @@ function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveToFirestore, 1500);
 }
+window.scheduleSave = scheduleSave; // encontrado sin exportar — un onchange inline (fecha de inicio de rutina) la llamaba a secas y tiraba error en silencio
 
 // ── BUG DE BASE, CONFIRMADO CONTRA FIRESTORE REAL ──────────────────────
 // setDoc(ref, {'wellness.2026-07-30': valor}, {merge:true}) NO mete "valor"
@@ -2195,6 +2202,98 @@ function navTo(viewOrFn) {
 }
 window.navTo=navTo;
 
+// ── NAVEGACIÓN CON HISTORIAL DEL NAVEGADOR (botón atrás, deslizar) ──────
+// Hasta ahora esta app nunca tocaba el historial del navegador — cambiar
+// de pantalla era solo mutar S.currentView/S.teamView/etc. y volver a
+// renderizar. Consecuencia: el botón "atrás" del navegador/celular no
+// hacía nada útil, y deslizar para atrás en el celular tampoco (esa
+// gesture depende de que haya historial real para volver). Los botones
+// "‹" propios de la app (ver GLOBAL BACK BUTTON HANDLER, más abajo)
+// tampoco alcanzaban del todo: van a un destino FIJO por pantalla, no
+// deshacen un paso a la vez — entrar a un equipo → wellness → un atleta y
+// tocar atrás mandaba directo a la lista de equipos, saltándose el paso
+// del medio.
+//
+// Estrategia: cada vez que renderMain() corre, se compara una "foto" chica
+// de en qué pantalla estamos contra la última — si cambió, se empuja una
+// entrada nueva al historial (sin tocar la URL, solo el estado). Al tocar
+// atrás/adelante o deslizar, el navegador dispara 'popstate' con la foto
+// correspondiente, y la restauramos sin volver a empujar nada. Como esto
+// vive DENTRO de renderMain() —que ya se llama después de cualquier
+// cambio de pantalla, en las +60 funciones que navegan por la app— no
+// hace falta salir a tocar cada una de ellas por separado.
+//
+// A propósito NO se captura cada detalle nimio de cada pantalla (scroll,
+// qué par de atletas están comparados, etc.) — solo las dimensiones
+// "grandes" de navegación (qué vista, qué equipo, qué pestaña, qué
+// atleta, qué rutina se está editando). Alcanza para que atrás deshaga
+// un paso de verdad, sin intentar hacer un router completo.
+function getNavSnapshot() {
+  return {
+    currentView: S.currentView||null,
+    adminView: S.adminView||null,
+    teamViewId: S.teamView?.id||null,
+    teamSubview: S.teamSubview||null,
+    teamReportSubview: S.teamReportSubview||null,
+    teamDayEditIdx: S.teamDayEdit ? S.teamDayEdit.dayIdx : null,
+    viewingAthleteUid: S.viewingAthlete?.uid||null,
+    atletaSubview: S.atletaSubview||null,
+    editingRoutineId: S.editingRoutine?.id||null,
+    routineEditorPrev: S._routineEditorPrev||null,
+  };
+}
+
+function navSnapshotsEqual(a,b) {
+  if(!a || !b) return a===b;
+  return Object.keys(a).every(k=>a[k]===b[k]);
+}
+
+let _navApplyingPopstate = false; // true mientras restauramos por un popstate — no hay que volver a empujar
+function maybePushNavState() {
+  if(_navApplyingPopstate) return;
+  const snap = getNavSnapshot();
+  if(S._lastNavSnapshot===undefined) {
+    // Primera vez que corre en esta carga de página — no es una navegación
+    // real todavía, es el punto de partida. replaceState (no pushState)
+    // para no dejar una entrada de historial vacía de más.
+    S._lastNavSnapshot = snap;
+    try { history.replaceState({gmNav:snap}, '', location.href); } catch(e) {}
+    return;
+  }
+  if(navSnapshotsEqual(snap, S._lastNavSnapshot)) return;
+  S._lastNavSnapshot = snap;
+  try { history.pushState({gmNav:snap}, '', location.href); } catch(e) {}
+}
+
+function applyNavSnapshot(snap) {
+  _navApplyingPopstate = true;
+  S.currentView = snap.currentView;
+  S.adminView = snap.adminView;
+  S.teamView = snap.teamViewId ? (S.teams||[]).find(t=>t.id===snap.teamViewId)||null : null;
+  S.teamSubview = snap.teamSubview;
+  S.teamReportSubview = snap.teamReportSubview;
+  S.teamDayEdit = (S.teamView && snap.teamDayEditIdx!=null) ? {teamId:S.teamView.id, dayIdx:snap.teamDayEditIdx} : null;
+  if(snap.viewingAthleteUid) {
+    const a = (S.adminAthletes||[]).find(x=>x.uid===snap.viewingAthleteUid);
+    S.viewingAthlete = a ? {uid:a.uid, userData:a, personal:a._personal||{}} : null;
+  } else {
+    S.viewingAthlete = null;
+  }
+  S.atletaSubview = snap.atletaSubview;
+  S.editingRoutine = snap.editingRoutineId ? (S.routines||[]).find(r=>r.id===snap.editingRoutineId)||S.editingRoutine||null : null;
+  S._routineEditorPrev = snap.routineEditorPrev;
+  S._lastNavSnapshot = snap;
+  renderBottomBar();
+  renderMain();
+  _navApplyingPopstate = false;
+}
+
+window.addEventListener('popstate', e => {
+  if(e.state && e.state.gmNav) applyNavSnapshot(e.state.gmNav);
+  // Sin estado nuestro = llegamos al fondo de lo que empujamos nosotros
+  // (la entrada de antes de que cargara la app) — ahí el navegador ya
+  // hace lo que corresponde (salir de la pestaña/PWA), no hay que hacer nada.
+});
 
 function renderBottomBar() {
   // Mientras el atleta no completó su perfil, no mostramos ninguna navegación
@@ -2367,7 +2466,13 @@ function renderMain() {
   // re-draw charts if needed
   if(S.currentView==='evals') setTimeout(drawEvalCharts,50);
   updateRestTimerFabVisibility();
+  maybePushNavState();
 }
+// Encontrado en esta sesión: había 5 onclick/onchange en el HTML generado
+// que llamaban a renderMain() a secas (2 de ellos botones "‹" de volver) —
+// como el módulo nunca la exportaba a window, esos clicks tiraban
+// "renderMain is not defined" en silencio y no pasaba nada visible.
+window.renderMain = renderMain;
 
 
 // ── EXERCISE SUMMARY FORMAT ────────────────────
@@ -9260,7 +9365,16 @@ async function sendPushToUids(uids, {title, body, url} = {}) {
       headers:{'Content-Type':'application/json', 'X-Push-Secret': PUSH_API_SECRET},
       body: JSON.stringify({subscriptions:subs, title:title||'G-Metrics', body:body||'', url:url||location.origin})
     });
-    if(!resp.ok) return {sent:0, total:uids.length, attempted:subs.length, error:true, errorDetail:'HTTP '+resp.status+' de /api/send-push — ¿está desplegada la función serverless y configuradas las variables de entorno en Vercel?'};
+    if(!resp.ok) {
+      // Antes esto descartaba el cuerpo de la respuesta y siempre mostraba
+      // el mismo mensaje genérico — ahora, si el servidor mandó un JSON con
+      // {error:'...'} (como cuando faltan las variables de entorno VAPID en
+      // Vercel), se lo mostramos tal cual en vez de adivinar.
+      let serverError = null;
+      try { serverError = (await resp.json())?.error || null; } catch(e) {}
+      return {sent:0, total:uids.length, attempted:subs.length, error:true,
+        errorDetail: serverError || ('HTTP '+resp.status+' de /api/send-push — ¿está desplegada la función serverless y configuradas las variables de entorno en Vercel?')};
+    }
     const data = await resp.json();
     const results = data.results||[];
     const sent = results.filter(r=>r.ok).length;
@@ -9276,7 +9390,12 @@ async function sendPushToUids(uids, {title, body, url} = {}) {
         }
       });
     }
-    return {sent, total:uids.length, attempted:subs.length};
+    // Si hubo fallos que NO son "suscripción vencida" (típicamente claves
+    // VAPID mal configuradas — mismatch entre la pública de acá y la
+    // privada de Vercel), guardamos un ejemplo de la razón real que dio el
+    // servidor de push, para poder mostrarla en vez de un "no llegó" mudo.
+    const otherFail = results.find(r=>!r.ok && r.status!==404 && r.status!==410);
+    return {sent, total:uids.length, attempted:subs.length, failReason: otherFail?.reason||null};
   } catch(e) {
     // Típicamente esto es que /api/send-push ni existe todavía en el
     // deploy (404 de la propia app, no de la función) — fetch tira acá en
@@ -9477,7 +9596,6 @@ window.applyNameOrderReview = applyNameOrderReview;
 function renderSettings() {
   const u = S.userData || {};
   const darkOn = getTheme()==='dark';
-  const curAccent = getAccentColor();
   const curFont = getFontFamily();
   const curScale = getFontScale();
   return `
@@ -9486,12 +9604,6 @@ function renderSettings() {
     <div class="settings-item">
       <div><div class="settings-lbl">Modo oscuro</div><div class="settings-sub">Ideal para entrenar de noche o con poca luz</div></div>
       <div class="theme-switch ${darkOn?'on':''}" onclick="toggleTheme()"><div class="theme-switch-knob"></div></div>
-    </div>
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
-      <div class="settings-lbl" style="margin-bottom:8px">Color de acento</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${ACCENT_COLORS.map(a=>`<div onclick="setAccentColor('${a.id}')" title="${a.label}" style="width:30px;height:30px;border-radius:50%;background:${a.c};cursor:pointer;border:2px solid ${curAccent===a.id?'var(--text)':'transparent'};box-shadow:0 0 0 1px var(--border2);transition:border-color .15s"></div>`).join('')}
-      </div>
     </div>
     <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
       <div class="settings-lbl" style="margin-bottom:8px">Tipografía</div>
@@ -10105,10 +10217,25 @@ async function sendInAppReminder() {
     } catch(e) {}
   }
   const pushResult = await sendPushToUids(pendingUids, {title:'G-Metrics · Recordatorio', body:msg});
+  // OJO ACÁ — bug real encontrado y corregido esta sesión: antes, si HABÍA
+  // gente con notificaciones activadas (attempted>0) pero el envío fallaba
+  // igual por otro motivo (típicamente claves VAPID mal configuradas en
+  // Vercel — no un error de red, así que pushResult.error quedaba en
+  // falso), NINGUNA de las condiciones de abajo aplicaba y el toast decía
+  // "✓ Enviado" sin avisar que en realidad no había llegado nada. Ahora
+  // cada combinación posible de resultado tiene su propio mensaje.
   let pushMsg = '';
-  if(pushResult.error) pushMsg = ' — ⚠ falló el envío push: '+(pushResult.errorDetail||'error desconocido');
-  else if(pushResult.sent>0) pushMsg = ` (${pushResult.sent} con notificación push real)`;
-  else if(pushResult.attempted===0) pushMsg = ' — nadie de estos activó notificaciones push todavía (solo les queda el aviso adentro de la app)';
+  if(pushResult.error) {
+    pushMsg = ' — ⚠ falló el envío push: '+(pushResult.errorDetail||'error desconocido');
+  } else if(pushResult.attempted===0) {
+    pushMsg = ' — nadie de estos activó notificaciones push todavía (solo les queda el aviso adentro de la app)';
+  } else if(pushResult.sent===0) {
+    pushMsg = ` — ⚠ se intentó mandar push a ${pushResult.attempted}, pero no le llegó a nadie${pushResult.failReason?' ('+pushResult.failReason+')':' (revisá las claves VAPID/variables de entorno en Vercel)'}`;
+  } else if(pushResult.sent<pushResult.attempted) {
+    pushMsg = ` (${pushResult.sent} de ${pushResult.attempted} con notificación push real — al resto no les llegó${pushResult.failReason?': '+pushResult.failReason:''})`;
+  } else {
+    pushMsg = ` (${pushResult.sent} con notificación push real)`;
+  }
   showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}${pushMsg}`);
 }
 window.sendInAppReminder = sendInAppReminder;
