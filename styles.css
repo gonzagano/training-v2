@@ -50,15 +50,23 @@
   --bg:#161826; --bg2:#1c1f30; --bg3:#242840; --bg4:#2c3149;
   --border:rgba(233,233,237,0.08); --border2:rgba(233,233,237,0.15);
   --text:#e9e9ed; --text2:#b7b9c6; --text3:#8d90a3;
-  --accent:#9184d9; --accent-dim:rgba(145,132,217,0.18); --accent-dim2:rgba(145,132,217,0.09);
-  --accent-hover:#a79bea;
-  /* BUG encontrado y corregido acá: texto en --accent sobre fondo
-     --accent-dim quedaba en ~3.9:1 de contraste en oscuro (por debajo del
-     mínimo WCAG AA de 4.5:1 para texto chico) — se leía "gris violeta sobre
-     gris violeta". --accent-text es una versión más clara, solo para texto,
-     que no toca los botones sólidos (esos siguen usando --accent de fondo +
-     texto blanco, que no tenía este problema). ~5.1:1 de contraste medido. */
-  --accent-text:#b0a3f0;
+  /* --accent/--accent-hover/--accent-dim/--accent-dim2 de acá casi nunca se
+     ven: applyAccentColor() en app.js los pisa con un estilo inline en
+     <html> en cuanto carga la página (son el mismo valor en claro y oscuro,
+     a propósito — siguen el color elegido en Ajustes, no el tema). Quedan
+     como resguardo nomás; el valor de abajo (navy, el default real) es
+     el que de verdad se ve si por lo que sea ese JS no llegó a correr. */
+  --accent:#243B6B; --accent-dim:rgba(36,59,107,0.18); --accent-dim2:rgba(36,59,107,0.09);
+  --accent-hover:#2F4A85;
+  /* --accent-text SÍ depende del tema (ver applyAccentColor) — acá va el
+     resguardo para el default (navy). BUG encontrado y corregido en esta
+     sesión: antes esto era un violeta fijo (#b0a3f0) sin relación con el
+     color elegido en Ajustes — cualquiera que NO tuviera "Violeta"
+     seleccionado veía texto de acento de un color random. Ahora
+     applyAccentColor() calcula esto por cada uno de los 6 colores
+     (ACCENT_COLORS[].textDark en app.js), verificado ≥5:1 de contraste
+     WCAG AA los 6. Este valor de acá es solo el resguardo pre-JS. */
+  --accent-text:#8FA8EA;
   --warm:#ff9e5c; --warm-dim:rgba(255,158,92,0.16);
   --green:#3ddc84; --green-dim:rgba(61,220,132,0.16);
   --amber:#f0a838; --amber-dim:rgba(240,168,56,0.16);
@@ -447,7 +455,7 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 .lib-filter{font-size:11px;padding:4px 11px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
 .lib-filter.active{background:var(--accent);color:#fff;border-color:var(--accent-text)}
 .lib-list{overflow-y:auto;flex:1;padding:8px 0}
-.lib-item{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;cursor:pointer;transition:background .15s;font-size:14px}
+.lib-item{display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;transition:background .15s;font-size:14px}
 .lib-item:hover{background:var(--bg3)}
 .lib-item-name{font-weight:500;color:var(--text)}
 .lib-item-tags{font-size:11px;color:var(--text3);margin-top:2px}

@@ -16,8 +16,13 @@ function toLocalDateStr(d) {
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 function todayLocal() { return toLocalDateStr(new Date()); }
+// Índice del día de la semana empezando en lunes=0 (getDay() nativo de JS
+// arranca en domingo=0) — se usaba repetido como "(d.getDay()+6)%7" suelto
+// en varios lugares (calendario, rutinas); un único lugar para esta cuenta.
+function mondayIndex(date) { return (date.getDay()+6)%7; }
 window.toLocalDateStr = toLocalDateStr;
 window.todayLocal = todayLocal;
+window.mondayIndex = mondayIndex;
 
 // "Día efectivo" para cargar wellness/carga: antes de la madrugada (antes de
 // las 5am) sigue mostrando AYER por defecto — quien entrena de noche y carga
@@ -44,6 +49,10 @@ function toggleTheme() {
   const next = getTheme()==='dark' ? 'light' : 'dark';
   localStorage.setItem('gm-theme', next);
   document.documentElement.setAttribute('data-theme', next);
+  // --accent-text depende de qué tema es ADEMÁS de qué color se eligió —
+  // sin esto, cambiar de tema en vivo dejaba el color de texto del acento
+  // pisado con el valor del tema anterior hasta el próximo refresh.
+  applyAccentColor(getAccentColor());
   renderMain();
 }
 window.getTheme = getTheme;
@@ -54,13 +63,20 @@ window.toggleTheme = toggleTheme;
 // se aplica pisando variables CSS — no toca los colores semánticos
 // (verde/amarillo/rojo de ACWR, wellness, gravedad de lesión), que siguen
 // significando siempre lo mismo sin importar el acento elegido.
+// textDark: variante clara de cada color, SOLO para texto (badges, chips,
+// links) en modo oscuro — en claro, el color de texto es el mismo `c`
+// (ya funciona: navy oscuro sobre fondo claro tiene contraste de sobra).
+// Hacía falta porque --accent-text quedaba fijo a un violeta en el CSS,
+// sin importar qué acento eligiera el usuario acá — las 6 variantes de
+// abajo están verificadas por cálculo, todas ≥5:1 de contraste WCAG AA
+// contra los fondos oscuros reales (bg2 y accent-dim sobre bg3).
 const ACCENT_COLORS = [
-  {id:'navy',   label:'Navy',          c:'#243B6B', hover:'#2F4A85'},
-  {id:'teal',   label:'Teal',          c:'#0E7C6B', hover:'#159686'},
-  {id:'purple', label:'Violeta',       c:'#5B3E96', hover:'#6F4FB2'},
-  {id:'wine',   label:'Vino',          c:'#A83250', hover:'#C23F61'},
-  {id:'forest', label:'Verde bosque',  c:'#256D4B', hover:'#2E8560'},
-  {id:'orange', label:'Naranja',       c:'#C1601F', hover:'#D97328'},
+  {id:'navy',   label:'Navy',          c:'#243B6B', hover:'#2F4A85', textDark:'#8FA8EA'},
+  {id:'teal',   label:'Teal',          c:'#0E7C6B', hover:'#159686', textDark:'#5FD9C4'},
+  {id:'purple', label:'Violeta',       c:'#5B3E96', hover:'#6F4FB2', textDark:'#B7A0EA'},
+  {id:'wine',   label:'Vino',          c:'#A83250', hover:'#C23F61', textDark:'#F0899F'},
+  {id:'forest', label:'Verde bosque',  c:'#256D4B', hover:'#2E8560', textDark:'#7EDBAA'},
+  {id:'orange', label:'Naranja',       c:'#C1601F', hover:'#D97328', textDark:'#FFB27A'},
 ];
 window.ACCENT_COLORS = ACCENT_COLORS;
 
@@ -99,6 +115,11 @@ function applyAccentColor(id) {
   root.setProperty('--accent-hover', def.hover);
   root.setProperty('--accent-dim', hexToRgba(def.c, 0.08));
   root.setProperty('--accent-dim2', hexToRgba(def.c, 0.05));
+  // --accent-text SÍ depende del tema (a diferencia de los de arriba, que
+  // son iguales en claro/oscuro): en claro el propio `c` ya tiene contraste
+  // de sobra sobre fondos claros; en oscuro hace falta la variante clara
+  // `textDark` — si no, quedaba un color oscuro de texto sobre fondo oscuro.
+  root.setProperty('--accent-text', getTheme()==='dark' ? def.textDark : def.c);
 }
 function setAccentColor(id) {
   localStorage.setItem('gm-accent', id);
@@ -1372,7 +1393,7 @@ function getTodaysRoutineSession(sessionNames, assignedDate, trainingWeekdays) {
   // Prioridad 1: días de gimnasio elegidos a mano por el admin al asignar.
   if (trainingWeekdays && trainingWeekdays.length) {
     const map = getWeekdayScheduleMap(sessionNames, trainingWeekdays);
-    const todayDow = (new Date().getDay()+6)%7; // lunes=0
+    const todayDow = mondayIndex(new Date()); // lunes=0
     if (map[todayDow] !== undefined) return map[todayDow];
     // Hoy no es día de gimnasio: mostramos igual cuál es el próximo que viene.
     const sorted = [...trainingWeekdays].sort((a,b)=>a-b);
@@ -1382,7 +1403,7 @@ function getTodaysRoutineSession(sessionNames, assignedDate, trainingWeekdays) {
   }
   const allWeekdays = sessionNames.every(n => WEEKDAY_ORDER[n.trim().toLowerCase()] !== undefined);
   if(allWeekdays) {
-    const todayDow = (new Date().getDay()+6)%7; // lunes=0
+    const todayDow = mondayIndex(new Date()); // lunes=0
     let best = null, bestDiff = 8;
     sessionNames.forEach(n=>{
       const dow = WEEKDAY_ORDER[n.trim().toLowerCase()];
@@ -1434,21 +1455,10 @@ function sortEvalRecsByDate(arr) {
   return arr;
 }
 window.sortEvalRecsByDate=sortEvalRecsByDate;
-// Calcula la semana de entrenamiento a partir de la fecha real de inicio —
-// avanza sola con el calendario, sin importar si el atleta entrenó o no.
-function computeWeekFromDate(startDate) {
-  if(!startDate) return 1;
-  const start = new Date(startDate+'T00:00:00');
-  const today = new Date(); today.setHours(0,0,0,0);
-  const diffDays = Math.floor((today-start)/86400000);
-  return Math.max(1, Math.floor(diffDays/7)+1);
-}
-window.computeWeekFromDate = computeWeekFromDate;
-
-// Igual que computeWeekFromDate, pero contra una fecha puntual en vez de
-// "hoy" — hace falta para saber, al asignar una rutina nueva, en qué semana
-// real (absoluta, desde que el atleta arrancó a entrenar la primera vez)
-// cae el día que el admin eligió en el calendario.
+// Calcula en qué semana de entrenamiento cae targetDate, contando desde
+// anchorDate — hace falta para saber, al asignar una rutina nueva, en qué
+// semana real (absoluta, desde que el atleta arrancó a entrenar la primera
+// vez) cae el día que el admin eligió en el calendario.
 function computeWeekOfDate(anchorDate, targetDate) {
   if(!anchorDate || !targetDate) return 1;
   const start = new Date(anchorDate+'T00:00:00');
@@ -1457,6 +1467,17 @@ function computeWeekOfDate(anchorDate, targetDate) {
   return Math.max(1, Math.floor(diffDays/7)+1);
 }
 window.computeWeekOfDate = computeWeekOfDate;
+
+// Calcula la semana de entrenamiento a partir de la fecha real de inicio,
+// contra HOY — avanza sola con el calendario, sin importar si el atleta
+// entrenó o no. Caso particular de computeWeekOfDate (antes tenía la misma
+// cuenta de días/semana copiada aparte, con riesgo de que las dos se
+// desincronizaran si se tocaba una y no la otra).
+function computeWeekFromDate(startDate) {
+  if(!startDate) return 1;
+  return computeWeekOfDate(startDate, todayLocal());
+}
+window.computeWeekFromDate = computeWeekFromDate;
 
 // ── PLANIFICACIONES ENCADENADAS (continuación de una rutina a otra) ────
 // Un atleta puede tener varias rutinas a lo largo del tiempo (Rutina A 4
@@ -1580,7 +1601,7 @@ window.resetRoutineWeekView = resetRoutineWeekView;
 
 function getCurrentWeekRangeLabel() {
   const now = new Date();
-  const dow = (now.getDay()+6)%7; // lunes=0
+  const dow = mondayIndex(now); // lunes=0
   const monday = new Date(now); monday.setDate(now.getDate()-dow);
   const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
   const fmt = (d) => d.toLocaleDateString('es-AR',{day:'numeric',month:'short'});
@@ -3148,6 +3169,7 @@ window.addBlock=addBlock;
 function openLib(blockId,catIdx) {
   S.libTarget={blockId,catIdx};
   S.activeFilters=new Set();
+  S._libFilterOpen=false;
   document.getElementById('lib-search').value='';
   renderLibFilters();
   renderLibList();
@@ -3191,32 +3213,90 @@ window.closeLib=closeLib;
 function closeLibIfOutside(e) { if(e.target===document.getElementById('lib-overlay')) closeLib(); }
 window.closeLibIfOutside=closeLibIfOutside;
 
-// Mismo criterio de dos pasos que el resto de la Biblioteca (ver
-// renderLibViewBody): primero solo las 17 categorías principales, y recién
-// al elegir una (o varias) se despliegan sus sub-categorías como filtros
-// extra. Antes acá se listaba TODOS los tags sueltos en uso (getAllLibraryTags),
-// mezclando principales y sub-categorías en un choclo — este modal (el que se
-// abre desde "añadir ejercicio" al armar una rutina) se había quedado con ese
-// patrón viejo mientras el resto de la app ya se había actualizado.
-function renderLibFilters() {
-  const f=document.getElementById('lib-filters');
-  const filters = S.activeFilters;
-  const selectedMains = LIB_MAIN_CATEGORIES.filter(c=>filters.has(c));
+// Fila(s) de chips de dos pasos para FILTRAR por la taxonomía de categorías
+// (LIB_MAIN_CATEGORIES + LIB_SUBCATEGORY_RULES) en modo multi-select: primero
+// solo las 17 principales, y al activar una (o varias) se despliegan sus
+// sub-categorías debajo como filtros extra. Único lugar para este patrón —
+// lo usan tanto la Biblioteca completa (renderLibViewBody) como el picker de
+// "añadir ejercicio" al armar una rutina (renderLibFilters, más abajo). Antes
+// eran dos copias del mismo código que fueron divergiendo con el tiempo —
+// fue justo lo que causó que a DLO se le olvidara actualizar una de las dos.
+// onClickFn: nombre de la función global a invocar por cada chip tocado
+// (recibe el tag como único argumento) — cada llamador tiene la suya porque
+// cada una guarda su selección en un Set de estado distinto.
+function renderCategoryFilterChips(selected, onClickFn) {
+  const selectedMains = LIB_MAIN_CATEGORIES.filter(c=>selected.has(c));
   const subOptionsToShow = [];
   selectedMains.forEach(main=>{
     (LIB_SUBCATEGORY_RULES[main]||[]).forEach(g=>g.options.forEach(o=>{ if(!subOptionsToShow.includes(o)) subOptionsToShow.push(o); }));
   });
-  let html = '<div style="display:flex;gap:6px;flex-wrap:wrap">'
-    + `<span class="lib-filter ${filters.size===0?'active':''}" onclick="setFilter('null')">Todos</span>`
-    + LIB_MAIN_CATEGORIES.map(c=>`<span class="lib-filter ${filters.has(c)?'active':''}" onclick="setFilter('${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
-    + '</div>';
-  if(subOptionsToShow.length) {
-    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">'
-      + subOptionsToShow.map(t=>`<span class="lib-filter ${filters.has(t)?'active':''}" style="opacity:.9" onclick="setFilter('${t.replace(/'/g,"\\'")}')">${t}</span>`).join('')
-      + '</div>';
+  const mainRow = LIB_MAIN_CATEGORIES.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('');
+  const subRow = subOptionsToShow.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" style="opacity:.9" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('');
+  return { mainRow, subRow, hasSubRow: subOptionsToShow.length>0 };
+}
+window.renderCategoryFilterChips = renderCategoryFilterChips;
+
+// Miniatura placeholder para una fila de ejercicio de la Biblioteca — hasta
+// que haya foto/video real por ejercicio, un ícono + insignia de "tiene
+// video" (si corresponde) para que la lista no sea pura letra. Un solo
+// lugar para esto: lo usan tanto el picker de "añadir ejercicio"
+// (renderLibList) como la Biblioteca completa (renderLibViewBody).
+// videoUrl: el link real cargado para ese ejercicio (o '' / undefined si no
+// tiene). Si es de YouTube, usamos la miniatura real del video — no hace
+// falta que nadie suba una foto a mano, sale sola de un link que ya estaba
+// cargado. Si no es de YouTube (u otro tipo de link no reconocido, o no
+// tiene video), cae al ícono genérico de siempre. El ícono queda SIEMPRE
+// dibujado debajo de la miniatura real — si la imagen no carga (link roto,
+// video borrado), el onerror la saca y el ícono de abajo queda visible
+// solo, sin dejar un hueco roto.
+function libThumbnailHtml(videoUrl) {
+  const hasVideo = !!videoUrl;
+  const thumbUrl = hasVideo ? getYouTubeThumbUrl(videoUrl) : '';
+  return `<div style="width:44px;height:44px;border-radius:10px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;overflow:hidden">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4" y1="12" x2="20" y2="12"/><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/>
+      <rect x="6" y="7" width="2.5" height="10" rx="1"/><rect x="15.5" y="7" width="2.5" height="10" rx="1"/>
+    </svg>
+    ${thumbUrl?`<img src="${thumbUrl}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove()">`:''}
+    ${hasVideo?`<div style="position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center">
+      <svg width="7" height="7" viewBox="0 0 24 24" fill="#fff"><polygon points="6 4 20 12 6 20"/></svg>
+    </div>`:''}
+  </div>`;
+}
+
+// Filtro compacto: en vez de las 17 chips de categoría principal siempre
+// abiertas, un desplegable que muestra "Todas las categorías" (o lo elegido)
+// y solo se abre al tocarlo — las sub-categorías, una vez elegida una
+// principal, quedan visibles de una (no hace falta reabrir el desplegable
+// para verlas). No se cierra solo al elegir una principal porque este
+// filtro es multi-select (podés sumar más de una categoría a la vez).
+function renderLibFilters() {
+  const f=document.getElementById('lib-filters');
+  const filters = S.activeFilters;
+  const chips = renderCategoryFilterChips(filters, 'setFilter');
+  const open = !!S._libFilterOpen;
+  const label = filters.size ? [...filters].join(' · ') : 'Todas las categorías';
+  let html = `<div onclick="toggleLibFilterDropdown()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 12px;cursor:pointer">
+    <span style="font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      ${filters.size?`<span onclick="event.stopPropagation();setFilter('null')" style="font-size:11px;color:var(--text3);font-weight:600">Limpiar</span>`:''}
+      <span style="color:var(--text3);font-size:10px;transition:transform .15s;display:inline-block;transform:rotate(${open?'180':'0'}deg)">▾</span>
+    </div>
+  </div>`;
+  if(open) {
+    html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${chips.mainRow}</div>`;
+  }
+  if(chips.hasSubRow) {
+    html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">${chips.subRow}</div>`;
   }
   f.innerHTML = html;
 }
+
+function toggleLibFilterDropdown() {
+  S._libFilterOpen = !S._libFilterOpen;
+  renderLibFilters();
+}
+window.toggleLibFilterDropdown = toggleLibFilterDropdown;
 
 function setFilter(f) {
   if(f==='null') { S.activeFilters=new Set(); }
@@ -3248,7 +3328,8 @@ function renderLibList() {
   if(!items.length) { list.innerHTML=`<div class="empty-state">No se encontraron ejercicios</div>`; return; }
   list.innerHTML=items.map(ex=>`
     <div class="lib-item" onclick="addFromLib('${ex.id}')">
-      <div>
+      ${libThumbnailHtml(S.videos[ex.id])}
+      <div style="flex:1;min-width:0">
         <div class="lib-item-name">${ex.name}</div>
         ${(ex.tags||[]).length?`<div class="lib-item-tags">${(ex.tags||[]).slice(0,2).join(' · ')}</div>`:''}
       </div>
@@ -3468,7 +3549,12 @@ window.createAndAddExercise=createAndAddExercise;
 
 // ── VIDEO ─────────────────────────────────────────────────────
 // Convierte cualquier link de YouTube (watch, youtu.be, shorts, embed) a una URL embebible
-function getYouTubeEmbedUrl(url) {
+// Extrae el ID de video de una URL de YouTube en cualquiera de sus formatos
+// (youtu.be, ?v=, /embed/, /shorts/) — '' si no es un link de YouTube
+// reconocible. Un solo lugar para este parseo: lo usan tanto el embed del
+// modal de video (getYouTubeEmbedUrl) como la miniatura automática de la
+// Biblioteca (getYouTubeThumbUrl).
+function getYouTubeVideoId(url) {
   if(!url) return '';
   try {
     const u = new URL(url);
@@ -3477,11 +3563,24 @@ function getYouTubeEmbedUrl(url) {
     else if(u.searchParams.get('v')) id = u.searchParams.get('v');
     else if(u.pathname.includes('/embed/')) id = u.pathname.split('/embed/')[1];
     else if(u.pathname.includes('/shorts/')) id = u.pathname.split('/shorts/')[1];
-    id = (id||'').split('&')[0].split('?')[0].split('/')[0];
-    return id ? `https://www.youtube.com/embed/${id}` : '';
+    return (id||'').split('&')[0].split('?')[0].split('/')[0];
   } catch(e) { return ''; }
 }
+window.getYouTubeVideoId = getYouTubeVideoId;
+
+function getYouTubeEmbedUrl(url) {
+  const id = getYouTubeVideoId(url);
+  return id ? `https://www.youtube.com/embed/${id}` : '';
+}
 window.getYouTubeEmbedUrl=getYouTubeEmbedUrl;
+
+// mqdefault = 320×180, buen equilibrio tamaño/calidad para una miniatura
+// chica (44×44 acá) — no hace falta pedir la de máxima resolución.
+function getYouTubeThumbUrl(url) {
+  const id = getYouTubeVideoId(url);
+  return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : '';
+}
+window.getYouTubeThumbUrl = getYouTubeThumbUrl;
 
 function openVideoModal(exId,exName,editable) {
   S.videoTarget=exId;
@@ -5283,7 +5382,7 @@ async function applyCalendarRepeat(teamId) {
   const d = new Date(start+'T00:00:00');
   const endD = new Date(end+'T00:00:00');
   while(d<=endD) {
-    const dow = (d.getDay()+6)%7;
+    const dow = mondayIndex(d);
     if(dows.has(dow)) {
       const dateStr = toLocalDateStr(d);
       let events = getCalendarEvents(team, dateStr);
@@ -5351,7 +5450,7 @@ function renderCalendarMonthView(team) {
   const y=refDate.getFullYear(), m=refDate.getMonth();
   const firstDay = new Date(y,m,1);
   const daysInMonth = new Date(y,m+1,0).getDate();
-  const startWeekday = (firstDay.getDay()+6)%7;
+  const startWeekday = mondayIndex(firstDay);
   const monthLabel = firstDay.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
   const today = todayLocal();
   const selected = S.calendarSelectedDate||null;
@@ -5387,7 +5486,7 @@ window.renderCalendarMonthView=renderCalendarMonthView;
 
 function renderCalendarWeekView(team) {
   const refDate = new Date((S.calendarRefDate||todayLocal())+'T00:00:00');
-  const dow = (refDate.getDay()+6)%7;
+  const dow = mondayIndex(refDate);
   const monday = new Date(refDate); monday.setDate(monday.getDate()-dow);
   const days = Array.from({length:7},(_,i)=>{ const d=new Date(monday); d.setDate(d.getDate()+i); return d; });
   const today = todayLocal();
@@ -6250,7 +6349,7 @@ function renderTeamRoutineAssignWizard() {
         <input type="date" class="abtn" style="width:100%" value="${st.startDate}" onchange="setTeamRoutineAssignStartDate(this.value)">
       </div>`;
     const ready = st.selectedWeekdays.length===need;
-    const memberCount = (S.teams.find(t=>t.id===st.teamId)?.memberUids||[]).length;
+    const memberCount = (getAthleteTeam(st)?.memberUids||[]).length;
     html += `<button class="abtn abtn-p" style="width:100%;${ready?'':'opacity:.4;pointer-events:none'}" onclick="confirmTeamRoutineAssign()">Asignar a todo el equipo (${memberCount} jugador${memberCount!==1?'es':''})</button>`;
   }
   html += `<button class="abtn" style="width:100%;margin-top:8px" onclick="closeTeamRoutineAssign()">Cancelar</button>
@@ -6325,7 +6424,7 @@ window.setTeamRoutineAssignStartDate = setTeamRoutineAssignStartDate;
 
 async function confirmTeamRoutineAssign() {
   const st = S._teamRoutineAssign; if(!st || !st.routineId) return;
-  const team = S.teams.find(t=>t.id===st.teamId); if(!team) return;
+  const team = getAthleteTeam(st); if(!team) return;
   const routine = S.routines.find(r=>r.id===st.routineId); if(!routine) return;
   const sessionNames = getOrderedSessionNames(routine);
   if(st.selectedWeekdays.length !== sessionNames.length) { showToast(`Elegí ${sessionNames.length} día${sessionNames.length!==1?'s':''} de entrenamiento`); return; }
@@ -6761,7 +6860,7 @@ async function setAthleteName(uid, newName) {
     // Si pertenece a un equipo, actualizamos también su entrada en el roster
     // de texto, para que no quede un nombre viejo dando vueltas.
     if(a?.teamId) {
-      const team = S.teams.find(t=>t.id===a.teamId);
+      const team = getAthleteTeam(a);
       if(team && team.players) {
         const idx = team.players.findIndex(p=>oldName && namesLikelyMatch(p,oldName));
         if(idx>=0) {
@@ -6860,7 +6959,7 @@ async function resetAthleteAccount(uid) {
   showToast('Reseteando…');
   try {
     if(a?.teamId) {
-      const team = S.teams.find(t=>t.id===a.teamId);
+      const team = getAthleteTeam(a);
       if(team) {
         const memberUids = (team.memberUids||[]).filter(id=>id!==uid);
         const players = (team.players||[]).filter(p=>!namesLikelyMatch(p,a.name));
@@ -8301,7 +8400,7 @@ window.openAtleta = openAtleta;
 
 function renderAtletaDetail(a) {
   const sub = S.atletaSubview || 'perfil';
-  const myTeam = S.teams.find(t=>t.id===a.teamId);
+  const myTeam = getAthleteTeam(a);
   const sportLabel = capitalizeName(a.sport||'');
   // Flechas para recorrer el plantel/lista sin volver atrás — solo aparecen
   // si sabemos de qué lista se entró (ver computeAthleteSiblingUids).
@@ -8387,7 +8486,7 @@ function renderPerfilTab(a) {
   const wEntries = Object.entries(wellness).sort((x,y)=>y[0].localeCompare(x[0])).slice(0,7);
   const activeInj = Object.entries(injuries).filter(([,v])=>v.pain>0);
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
-  const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
+  const myTeam = getAthleteTeam(a);
 
   const today=todayLocal();
   const todayW = wellness[today];
@@ -9201,7 +9300,7 @@ async function fixAllNameCapitalization() {
         await setDoc(doc(db,'users',a.uid), {name:newName}, {merge:true});
         // Actualizamos también su entrada en el roster del equipo, si tiene.
         if(a.teamId) {
-          const team = S.teams.find(t=>t.id===a.teamId);
+          const team = getAthleteTeam(a);
           if(team && team.players) {
             const idx = team.players.findIndex(p=>namesLikelyMatch(p,oldName));
             if(idx>=0 && team.players[idx]!==newName) {
@@ -9222,7 +9321,7 @@ async function fixAllNameCapitalization() {
     if(newName && newName!==p.name) {
       try {
         await setDoc(doc(db,'pendingAthletes',p.id), {name:newName}, {merge:true});
-        const team = S.teams.find(t=>t.id===p.teamId);
+        const team = getAthleteTeam(p);
         if(team && team.players) {
           const idx = team.players.findIndex(pl=>namesLikelyMatch(pl,p.name));
           if(idx>=0) { team.players[idx]=newName; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
@@ -9341,7 +9440,7 @@ async function applyNameOrderReview() {
         const a = S.adminAthletes.find(x=>x.uid===c.id);
         if(a) {
           if(a.teamId) {
-            const team = S.teams.find(t=>t.id===a.teamId);
+            const team = getAthleteTeam(a);
             if(team && team.players) {
               const idx = team.players.findIndex(p=>namesLikelyMatch(p,c.current));
               if(idx>=0) { team.players[idx]=c.proposed; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
@@ -9353,7 +9452,7 @@ async function applyNameOrderReview() {
         await setDoc(doc(db,'pendingAthletes',c.id), {name:c.proposed}, {merge:true});
         const p = S.pendingAthletes.find(x=>x.id===c.id);
         if(p) {
-          const team = S.teams.find(t=>t.id===p.teamId);
+          const team = getAthleteTeam(p);
           if(team && team.players) {
             const idx = team.players.findIndex(pl=>namesLikelyMatch(pl,c.current));
             if(idx>=0) { team.players[idx]=c.proposed; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
@@ -9439,7 +9538,7 @@ function renderSettings() {
     </div>
     ${(()=>{
       if(u.athleteType!=='team') return '';
-      const myTeam = u.teamId ? S.teams.find(t=>t.id===u.teamId) : null;
+      const myTeam = getAthleteTeam(u);
       const posOpts = getPositionOptionsForSport(myTeam?.sport||u.sport);
       return `<div class="settings-item">
         <div class="settings-lbl">Posición</div>
@@ -10144,7 +10243,7 @@ function renderAthletesListBody() {
   return `<div class="wellness-card" style="padding:0">
     ${list.map(a=>{
       const assigned = S.routines.find(r=>r.id===a.assignedRoutine);
-      const myTeam = a.teamId ? S.teams.find(t=>t.id===a.teamId) : null;
+      const myTeam = getAthleteTeam(a);
       const statusLbl = assigned ? '✓ Personalizada' : myTeam ? '↳ Del equipo' : 'Sin rutina';
       const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
       return `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
@@ -10589,7 +10688,7 @@ function openWeekdayAssignModal(uid, routineId) {
   // El lunes de la semana que contiene startDate — así el calendario siempre
   // arranca centrado en la fecha real que ya tenía, en vez de en "hoy".
   const startD = new Date(startDate+'T00:00:00');
-  const mondayOfStart = new Date(startD); mondayOfStart.setDate(startD.getDate()-((startD.getDay()+6)%7));
+  const mondayOfStart = new Date(startD); mondayOfStart.setDate(startD.getDate()-mondayIndex(startD));
   const calendarMonday = new Date(mondayOfStart); calendarMonday.setDate(calendarMonday.getDate()-14);
   S._weekdayAssign = {
     uid, routineId, sessionNames, selected: [...prevSelected], startDate,
@@ -13678,26 +13777,30 @@ function renderLibViewBody() {
     return a.name.localeCompare(b.name);
   });
 
-  // Mismo criterio de dos pasos que el selector de categorías al crear/editar
-  // un ejercicio: primero solo las 17 principales — recién al elegir una (o
-  // varias), se despliegan sus sub-categorías como filtros extra. Antes acá
-  // se listaban TODOS los tags sueltos que hubiera en la biblioteca (viejos
-  // y nuevos, principales y sub-categorías, todos mezclados y en un
-  // choclo alfabético) — ahora es la misma taxonomía cerrada de siempre.
-  const selectedMains = LIB_MAIN_CATEGORIES.filter(c=>filters.has(c));
-  const subOptionsToShow = [];
-  selectedMains.forEach(main=>{
-    (LIB_SUBCATEGORY_RULES[main]||[]).forEach(g=>g.options.forEach(o=>{ if(!subOptionsToShow.includes(o)) subOptionsToShow.push(o); }));
-  });
+  // Mismo criterio de dos pasos que el resto de la Biblioteca — ver
+  // renderCategoryFilterChips, más arriba, para la implementación compartida.
+  const chips = renderCategoryFilterChips(filters, 'setLibFilter');
+  const filterOpen = !!S._libViewFilterOpen;
+  const filterLabel = filters.size ? [...filters].join(' · ') : 'Todas las categorías';
 
-  return `<!-- Tag filters — multi-select: un click selecciona, otro click desselecciona -->
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${subOptionsToShow.length?'8px':'16px'}">
+  return `<!-- Filtro compacto: desplegable en vez de las 17 chips siempre abiertas -->
+  <div onclick="toggleLibViewFilterDropdown()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 14px;cursor:pointer;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:10px;min-width:0">
+      <span style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filterLabel}</span>
+      ${S._libViewPendingOnly?`<span style="font-size:10px;font-weight:700;color:var(--amber);white-space:nowrap">⚠ Sin categorizar</span>`:''}
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      ${(filters.size||S._libViewPendingOnly)?`<span onclick="event.stopPropagation();S._libViewFilters=new Set();S._libViewPendingOnly=false;updateLibViewResults()" style="font-size:11px;color:var(--text3);font-weight:600">Limpiar</span>`:''}
+      <span style="color:var(--text3);font-size:10px;transition:transform .15s;display:inline-block;transform:rotate(${filterOpen?'180':'0'}deg)">▾</span>
+    </div>
+  </div>
+  ${filterOpen?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${chips.hasSubRow?'8px':'16px'}">
     <button class="lib-filter ${!filters.size&&!S._libViewPendingOnly?'active':''}" onclick="S._libViewFilters=new Set();S._libViewPendingOnly=false;updateLibViewResults()">Todos</button>
     ${pendingCount?`<button class="lib-filter ${S._libViewPendingOnly?'active':''}" style="color:var(--amber);border-color:var(--amber)" onclick="S._libViewPendingOnly=!S._libViewPendingOnly;updateLibViewResults()">⚠ Sin categorizar (${pendingCount})</button>`:''}
-    ${LIB_MAIN_CATEGORIES.map(t=>`<button class="lib-filter ${filters.has(t)?'active':''}" onclick="setLibFilter('${t}')">${t}</button>`).join('')}
-  </div>
-  ${subOptionsToShow.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding-top:8px;border-top:1px dashed var(--border)">
-    ${subOptionsToShow.map(t=>`<button class="lib-filter ${filters.has(t)?'active':''}" style="opacity:.9" onclick="setLibFilter('${t}')">${t}</button>`).join('')}
+    ${chips.mainRow}
+  </div>`:''}
+  ${chips.hasSubRow?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding-top:8px;border-top:1px dashed var(--border)">
+    ${chips.subRow}
   </div>`:''}
 
   <!-- Exercise list -->
@@ -13708,10 +13811,11 @@ function renderLibViewBody() {
       return `
       <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .15s"
            onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+        ${libThumbnailHtml(S.videos[ex.id])}
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}${missing.length?' <span style="font-size:10px;color:var(--amber);font-weight:700">⚠ sin categorizar</span>':''}</div>
           <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-            ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);border:1px solid rgba(36,59,107,0.2)">${t}</span>`).join('')}
+            ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);border:1px solid var(--border2)">${t}</span>`).join('')}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
@@ -13725,6 +13829,12 @@ function renderLibViewBody() {
   </div>`:`<div class="empty-state">Sin ejercicios que coincidan.<br><span style="font-size:12px">Probá con otra búsqueda o creá uno nuevo.</span></div>`}`;
 }
 window.renderLibViewBody=renderLibViewBody;
+
+function toggleLibViewFilterDropdown() {
+  S._libViewFilterOpen = !S._libViewFilterOpen;
+  updateLibViewResults();
+}
+window.toggleLibViewFilterDropdown = toggleLibViewFilterDropdown;
 
 function updateLibViewResults() {
   const el=document.getElementById('lib-view-body');
