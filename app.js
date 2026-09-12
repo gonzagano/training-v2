@@ -2635,7 +2635,7 @@ function renderRMCalcSection(standalone) {
     </div>
     ${rmCalcInputsHtml(lift, s)}
     <div style="display:flex;align-items:baseline;gap:6px;background:var(--accent-dim);border-radius:var(--rsm);padding:10px 12px;margin:12px 0">
-      <span style="font-size:20px;font-weight:800;color:var(--accent-text)">${rm!=null?Math.round(rm*10)/10:'—'}</span>
+      <span style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--accent-text)">${rm!=null?Math.round(rm*10)/10:'—'}</span>
       <span style="font-size:12px;color:var(--text2);font-weight:600">kg · 1RM estimado</span>
     </div>
     ${rmCalcTableHtml(rm)}`;
@@ -5095,22 +5095,22 @@ function renderStats() {
   html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Semanas</div>
-      <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${S.currentWeek}</div>
+      <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${S.currentWeek}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">ciclo actual</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Sesiones</div>
-      <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${totalS}</div>
+      <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${totalS}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">completadas</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Racha semanal</div>
-      <div style="font-size:30px;font-weight:800;line-height:1;color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}<span style="font-size:16px;font-weight:400;color:var(--text3)">/7</span></div>
+      <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;line-height:1;color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}<span style="font-size:16px;font-weight:400;color:var(--text3)">/7</span></div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">días activos</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Ejerc./sesión</div>
-      <div style="font-size:30px;font-weight:800;color:var(--text);line-height:1">${totalS>0?Math.round(totalC/totalS):0}</div>
+      <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${totalS>0?Math.round(totalC/totalS):0}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">promedio</div>
     </div>
   </div>`;
@@ -5956,7 +5956,7 @@ function renderTeamReportResumen(team, members) {
   return `<div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:760px;margin:0 auto;font-family:'Inter',-apple-system,sans-serif">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #243B6B;padding-bottom:14px;margin-bottom:18px">
       <div>
-        <div style="font-size:20px;font-weight:800;color:#243B6B">${team.name}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#243B6B">${team.name}</div>
         <div style="font-size:12px;color:#555;margin-top:2px">${team.sport||''}${team.category?' · '+team.category:''} · ${members.length} atletas</div>
       </div>
       <div style="text-align:right">
@@ -5968,17 +5968,17 @@ function renderTeamReportResumen(team, members) {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
       <div style="background:${wellnessRag.bg};border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:9px;color:${wellnessRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Wellness</div>
-        <div style="font-size:20px;font-weight:800;color:${wellnessRag.c}">${avgW!=null?avgW+'%':'—'}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wellnessRag.c}">${avgW!=null?avgW+'%':'—'}</div>
         <div style="font-size:10px;color:${wellnessRag.c};font-weight:600">${wellnessRag.label}${wellnessTrend?' '+wellnessTrend.arrow:''}</div>
       </div>
       <div style="background:${acwrRag.bg};border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:9px;color:${acwrRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Carga (ACWR)</div>
-        <div style="font-size:20px;font-weight:800;color:${acwrRag.c}">${avgAcwr!=null?avgAcwr.toFixed(2):'—'}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRag.c}">${avgAcwr!=null?avgAcwr.toFixed(2):'—'}</div>
         <div style="font-size:10px;color:${acwrRag.c};font-weight:600">${acwrRag.label}</div>
       </div>
       <div style="background:${injRag.bg};border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:9px;color:${injRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Lesiones</div>
-        <div style="font-size:20px;font-weight:800;color:${injRag.c}">${injSum.total}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${injRag.c}">${injSum.total}</div>
         <div style="font-size:10px;color:${injRag.c};font-weight:600">${injRag.label} · ${injuryRate}% plantel</div>
       </div>
     </div>
@@ -6001,11 +6001,11 @@ function renderTeamReportResumen(team, members) {
 
     <div style="font-size:13px;font-weight:700;margin-bottom:8px">Lesiones activas por gravedad</div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
-      <div style="flex:1;background:#fdecea;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#b91c1c">${injSum.grave}</div><div style="font-size:9px;color:#b91c1c;text-transform:uppercase">Graves</div></div>
-      <div style="flex:1;background:#fdf3e3;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#a16207">${injSum.moderada}</div><div style="font-size:9px;color:#a16207;text-transform:uppercase">Moderadas</div></div>
-      <div style="flex:1;background:#e7f5ec;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#16803c">${injSum.leve}</div><div style="font-size:9px;color:#16803c;text-transform:uppercase">Leves</div></div>
-      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#16803c">${altas}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Altas (${periodDays}d)</div></div>
-      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:#b91c1c">${bajas}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Bajas nuevas</div></div>
+      <div style="flex:1;background:#fdecea;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#b91c1c">${injSum.grave}</div><div style="font-size:9px;color:#b91c1c;text-transform:uppercase">Graves</div></div>
+      <div style="flex:1;background:#fdf3e3;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#a16207">${injSum.moderada}</div><div style="font-size:9px;color:#a16207;text-transform:uppercase">Moderadas</div></div>
+      <div style="flex:1;background:#e7f5ec;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#16803c">${injSum.leve}</div><div style="font-size:9px;color:#16803c;text-transform:uppercase">Leves</div></div>
+      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#16803c">${altas}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Altas (${periodDays}d)</div></div>
+      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#b91c1c">${bajas}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Bajas nuevas</div></div>
     </div>
     ${injSum.details.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
       <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:left">Zona</th><th style="padding:6px 10px;text-align:center">Dolor</th><th style="padding:6px 10px;text-align:center">Gravedad</th></tr></thead>
@@ -6085,19 +6085,19 @@ function renderStaffMeetingReport(team, members) {
   return `<div class="admin-section">
     <div class="admin-section-title">Resumen ejecutivo del plantel — ${today}</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${members.length}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Plantel</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${realInjuriesActive>0?'var(--red)':'var(--text)'}">${realInjuriesActive}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${molestiasActive}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${members.length}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Plantel</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${realInjuriesActive>0?'var(--red)':'var(--text)'}">${realInjuriesActive}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${molestiasActive}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media</div></div>
     </div>
   </div>
 
   <div class="admin-section">
     <div class="admin-section-title">Cumplimiento del wellness diario</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-bottom:10px">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${cargaronHoy===members.length?'var(--green)':'var(--text)'}">${cargaronHoy}/${members.length}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Cargaron hoy</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${diasPromedio}/7</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Promedio días (últ. 7)</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${nuncaCargaron>0?'var(--amber)':'var(--text)'}">${nuncaCargaron}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Nunca cargaron</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${cargaronHoy===members.length?'var(--green)':'var(--text)'}">${cargaronHoy}/${members.length}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Cargaron hoy</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${diasPromedio}/7</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Promedio días (últ. 7)</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${nuncaCargaron>0?'var(--amber)':'var(--text)'}">${nuncaCargaron}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Nunca cargaron</div></div>
     </div>
     ${noCargaronHoy.length?`<div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">Todavía no cargaron hoy: ${noCargaronHoy.map(a=>a.name||a.email).join(', ')}</div>`:''}
   </div>
@@ -6196,10 +6196,10 @@ function renderMedicalReport(team, members) {
   return `<div class="admin-section">
     <div class="admin-section-title">Resumen epidemiológico del plantel</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${st.prevalencia>0?'var(--red)':'var(--text)'}">${st.prevalencia}%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Prevalencia actual</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${st.lesionesPorJugador}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesiones/jugador</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${st.activeToday}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Activas hoy</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${st.incidencia??'—'}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Incidencia /1000hs</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${st.prevalencia>0?'var(--red)':'var(--text)'}">${st.prevalencia}%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Prevalencia actual</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.lesionesPorJugador}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesiones/jugador</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.activeToday}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Activas hoy</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.incidencia??'—'}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Incidencia /1000hs</div></div>
     </div>
     <div style="padding:8px 16px 12px;font-size:11px;color:var(--text3)">La incidencia por horas de exposición se calcula con los minutos de entrenamiento/partido que cada atleta ya carga en "Carga de hoy".</div>
   </div>
@@ -6347,10 +6347,10 @@ function renderMatchReadinessReport(team, members) {
   html += `</div>`;
 
   html += `<div class="admin-section"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media (7d)</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800">${dolorMedia??'—'}${dolorMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Dolor medio (7d)</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${acwrRiesgo>0?'var(--red)':'var(--text)'}">${acwrRiesgo}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR en riesgo</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${lesionadasEnDuda>0?'var(--amber)':'var(--text)'}">${lesionadasEnDuda}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas/en duda</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media (7d)</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${dolorMedia??'—'}${dolorMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Dolor medio (7d)</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRiesgo>0?'var(--red)':'var(--text)'}">${acwrRiesgo}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR en riesgo</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${lesionadasEnDuda>0?'var(--amber)':'var(--text)'}">${lesionadasEnDuda}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas/en duda</div></div>
   </div></div>`;
 
   if(noWellness7d>0) html += `<div style="background:var(--amber-dim);color:var(--amber);border-radius:var(--rsm);padding:10px 14px;margin-bottom:14px;font-size:12px">⚠ ${noWellness7d} atleta${noWellness7d===1?'':'s'} sin wellness cargado en los últimos 7 días — su estado real podría no estar reflejado.</div>`;
@@ -6646,7 +6646,7 @@ function renderTeamRutina(team) {
             <div style="font-size:11px;color:var(--text3)">${match.position||'Sin posición cargada'}</div>
           </div>
           <div style="text-align:center;flex-shrink:0;cursor:pointer" onclick="adminOpenAthlete('${match.uid}')">
-            <div style="font-size:16px;font-weight:800;color:${wState.color}">${allFilled?pct+'%':'—'}</div>
+            <div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wState.color}">${allFilled?pct+'%':'—'}</div>
             <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Wellness</div>
           </div>
           <div style="flex-shrink:0">${sparklineSvg(getWellnessSparklineData(match._personal,14), wState.color, 44, 20)}</div>
@@ -7214,16 +7214,16 @@ function renderTeamMetricsCard(title,members,showLoad) {
     <div class="admin-section-title">${title} · ${members.length} atleta${members.length!==1?'s':''}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${wState.color}" ${avgW!==null?`data-countup="${avgW}" data-suffix="%"`:''}>${avgW!==null?avgW+'%':'—'}</div>
+        <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wState.color}" ${avgW!==null?`data-countup="${avgW}" data-suffix="%"`:''}>${avgW!==null?avgW+'%':'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness sem. ${infoBtn('wellness')}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${acwrSt.color}" ${avgAcwr!==null?`data-countup="${avgAcwr}" data-decimals="2"`:''}>${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
+        <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}" ${avgAcwr!==null?`data-countup="${avgAcwr}" data-decimals="2"`:''}>${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
         <div style="font-size:9px;color:${acwrSt.color}">${acwrSt.label}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${monSt.color}" ${avgMono!==null?`data-countup="${avgMono}" data-decimals="1"`:''}>${avgMono!==null?avgMono.toFixed(1):'—'}</div>
+        <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}" ${avgMono!==null?`data-countup="${avgMono}" data-decimals="1"`:''}>${avgMono!==null?avgMono.toFixed(1):'—'}</div>
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
         <div style="font-size:9px;color:${monSt.color}">${monSt.label}</div>
       </div>
@@ -8610,16 +8610,16 @@ function renderPerfilTab(a) {
   <!-- Resumen rápido -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
     <div style="background:var(--bg2);padding:14px;text-align:center${todayFilled?';cursor:pointer':''}" ${todayFilled?`onclick="viewWellnessDay('${uid}','${today}')"`:''}>
-      <div style="font-size:20px;font-weight:800;color:${wState.color}" ${todayFilled?`data-countup="${todayPct}" data-suffix="%"`:''}>${todayFilled?todayPct+'%':'—'}</div>
+      <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wState.color}" ${todayFilled?`data-countup="${todayPct}" data-suffix="%"`:''}>${todayFilled?todayPct+'%':'—'}</div>
       <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy ${infoBtn('wellness')}</div>
       <div style="display:flex;justify-content:center;margin-top:6px">${sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 48, 16)}</div>
     </div>
     <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${acwrSt.color}" ${m?.acwr!=null?`data-countup="${m.acwr}" data-decimals="2"`:''}>${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+      <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}" ${m?.acwr!=null?`data-countup="${m.acwr}" data-decimals="2"`:''}>${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
       <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
     </div>
     <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${activeInjCount?'var(--red)':'var(--green)'}" data-countup="${activeInjCount||0}">${activeInjCount||'0'}</div>
+      <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${activeInjCount?'var(--red)':'var(--green)'}" data-countup="${activeInjCount||0}">${activeInjCount||'0'}</div>
       <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias activas</div>
     </div>
   </div>
@@ -8639,22 +8639,22 @@ function renderPerfilTab(a) {
       <div class="admin-section-title">Control de carga interna</div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border)">
         <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+          <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
           <div style="font-size:11px;color:${acwrSt.color}">${acwrSt.label}</div>
         </div>
         <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
+          <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
           <div style="font-size:11px;color:${monSt.color}">${monSt.label}</div>
         </div>
         <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800">${m.acuteUA}</div>
+          <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m.acuteUA}</div>
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana ${infoBtn('ua')}</div>
           <div style="font-size:11px;color:var(--text3)">${m.sessions} sesiones</div>
         </div>
         <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800">${Math.round(m.strain)}</div>
+          <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round(m.strain)}</div>
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain ${infoBtn('strain')}</div>
           <div style="font-size:11px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'}">${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
         </div>
@@ -9039,7 +9039,7 @@ function renderAtletaRutina(a) {
     <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
       <div>
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Semana real de esta planificación</div>
-        <div style="font-size:20px;font-weight:800;color:var(--accent-text);font-family:'Barlow Condensed',sans-serif">Semana ${realWeek}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--accent-text)">Semana ${realWeek}</div>
         ${!isViewingReal?`<div style="font-size:11px;color:var(--amber);margin-top:2px">Estás mirando la Semana ${previewWeek} — esto no cambia la planificación real del atleta.</div>`:''}
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -10359,35 +10359,66 @@ function renderAdminAthletes() {
     html+=`<div class="empty-state">No hay atletas registrados aún.</div>`;
     return html;
   }
-  html += `<div style="margin-bottom:14px">
+  const routineFilter = S._athletesRoutineFilter||'todos';
+  html += `<div style="margin-bottom:10px">
     <input id="athletes-search-inp" value="${S._athletesSearch||''}" placeholder="Buscar atleta..."
       style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
       oninput="setAthletesSearch(this.value)">
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+    ${[
+      {id:'todos', label:'Todos'},
+      {id:'personalizada', label:'✓ Personalizada'},
+      {id:'equipo', label:'↳ Del equipo'},
+      {id:'sin', label:'Sin rutina'},
+    ].map(f=>`<button class="lib-filter ${routineFilter===f.id?'active':''}" onclick="setAthletesRoutineFilter('${f.id}')">${f.label}</button>`).join('')}
   </div>
   <div id="athletes-list-body">${renderAthletesListBody()}</div>`;
   return html;
 }
 window.renderAdminAthletes=renderAdminAthletes;
 
+function setAthletesRoutineFilter(id) {
+  S._athletesRoutineFilter = id;
+  const body = document.getElementById('athletes-list-body');
+  if(body) body.innerHTML = renderAthletesListBody();
+  // el propio botón tocado tiene que reflejar el cambio de "active" también,
+  // y está afuera de athletes-list-body — recién ahí re-renderizamos todo.
+  renderMain();
+}
+window.setAthletesRoutineFilter = setAthletesRoutineFilter;
+
 // Separado del shell para poder refrescar solo esto al buscar, sin perder el foco del input.
+// El filtro por estado de rutina (getRoutineStatus) sirve para encontrar de
+// un vistazo, entre TODOS los atletas de TODOS los equipos (más los
+// individuales), a quiénes se les asignó una rutina propia distinta a la de
+// su equipo — antes había que entrar equipo por equipo a fijarse a mano.
+function getAthleteRoutineStatus(a) {
+  const assigned = S.routines.find(r=>r.id===a.assignedRoutine);
+  const myTeam = getAthleteTeam(a);
+  if(assigned) return {id:'personalizada', label:'✓ Personalizada', color:'var(--green)'};
+  if(myTeam) return {id:'equipo', label:'↳ Del equipo', color:'var(--accent)'};
+  return {id:'sin', label:'Sin rutina', color:'var(--amber)'};
+}
+
 function renderAthletesListBody() {
   const search=(S._athletesSearch||'').toLowerCase();
+  const routineFilter = S._athletesRoutineFilter||'todos';
   let list=S.adminAthletes;
   if(search) list=list.filter(a=>(a.name||a.email||'').toLowerCase().includes(search));
+  if(routineFilter!=='todos') list=list.filter(a=>getAthleteRoutineStatus(a).id===routineFilter);
   if(!list.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan.</div>`;
   return `<div class="wellness-card" style="padding:0">
     ${list.map(a=>{
-      const assigned = S.routines.find(r=>r.id===a.assignedRoutine);
       const myTeam = getAthleteTeam(a);
-      const statusLbl = assigned ? '✓ Personalizada' : myTeam ? '↳ Del equipo' : 'Sin rutina';
-      const statusColor = assigned ? 'var(--green)' : myTeam ? 'var(--accent)' : 'var(--amber)';
+      const status = getAthleteRoutineStatus(a);
       return `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
-        <span style="font-size:11px;color:${statusColor};flex-shrink:0;white-space:nowrap">${statusLbl}</span>
+        <span style="font-size:11px;color:${status.color};flex-shrink:0;white-space:nowrap">${status.label}</span>
         <span style="color:var(--text3);font-size:18px;flex-shrink:0">›</span>
       </div>`;
     }).join('')}
@@ -10659,7 +10690,7 @@ function renderWeeklyReport() {
   <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:720px;margin:0 auto;font-family:inherit">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px">
       <div>
-        <div style="font-size:20px;font-weight:800">${a.name||a.email}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${a.name||a.email}</div>
         <div style="font-size:12px;color:#555;margin-top:2px">${myTeam?myTeam.name+' · ':''}${a.position||''}</div>
       </div>
       <div style="text-align:right">
@@ -10670,17 +10701,17 @@ function renderWeeklyReport() {
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#ddd;border:1px solid #ddd;margin-bottom:20px">
       <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:20px;font-weight:800">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
         <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">ACWR</div>
         <div style="font-size:10px;color:#555">${acwrSt.label}</div>
       </div>
       <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:20px;font-weight:800">${m?.monotony!=null?m.monotony.toFixed(1):'—'}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.monotony!=null?m.monotony.toFixed(1):'—'}</div>
         <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">Monotonía</div>
         <div style="font-size:10px;color:#555">${monSt.label}</div>
       </div>
       <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:20px;font-weight:800">${m?.acuteUA??'—'}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acuteUA??'—'}</div>
         <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
       </div>
     </div>
@@ -11080,6 +11111,61 @@ function adminGoRoutines() {
 }
 window.adminGoRoutines=adminGoRoutines;
 
+// Agrupa las rutinas en "cadenas" según continuesFromRoutineId — antes la
+// lista era plana, en el orden en que se habían creado, así que una rutina
+// y su continuación podían aparecer en cualquier lado, sin relación visible
+// más que un textito chico. Acá se arma el árbol (una rutina puede tener
+// más de una continuación, aunque lo normal sea una cadena lineal) y de
+// paso se calcula un rango de semanas ACUMULADO sumando durationWeeks de
+// cada tramo — no es la semana real de ningún atleta en particular (eso
+// vive en routineAssignmentHistory, por atleta), es solo para poder ver de
+// un vistazo cuánto dura el programa completo y dónde arranca cada tramo.
+function buildRoutineChains() {
+  const byId = new Map(S.routines.map(r=>[r.id, r]));
+  const childrenOf = new Map();
+  S.routines.forEach(r=>{
+    const parentId = r.continuesFromRoutineId;
+    if(parentId && byId.has(parentId)) {
+      if(!childrenOf.has(parentId)) childrenOf.set(parentId, []);
+      childrenOf.get(parentId).push(r);
+    }
+  });
+  const roots = S.routines.filter(r=>!r.continuesFromRoutineId || !byId.has(r.continuesFromRoutineId));
+  return { childrenOf, roots };
+}
+
+function renderRoutineCard(r, weekLabel, depth) {
+  return `<div class="card" style="padding:14px;${depth>0?'margin-left:22px;border-left:2px solid var(--accent-dim)':''}">
+    ${depth>0?`<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">↳ Continuación</div>`:''}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
+      <div style="min-width:0">
+        <span id="routine-name-span-${r.id}" ondblclick="editRoutineListName(event,'${r.id}')" title="Doble click para renombrar" style="font-size:14px;font-weight:600;cursor:text">${r.name}</span>
+        <input id="routine-name-inp-${r.id}" style="display:none;font-size:14px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:4px 8px;color:var(--text);outline:none;font-family:inherit;width:100%" onblur="saveRoutineListName('${r.id}',this)" onkeydown="if(event.key==='Enter')this.blur()">
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="abtn abtn-p" onclick="editRoutine('${r.id}')">Editar</button>
+        <button class="abtn" onclick="duplicateRoutine('${r.id}')" title="Duplicar — para partir de esta y cambiar solo lo que necesitás">⧉ Duplicar</button>
+        <button class="abtn abtn-d" onclick="deleteRoutine('${r.id}')">×</button>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text3)">
+      ${sortSessionNames(Object.keys(r.sessions||{})).join(' · ')||'Sin sesiones'} · <span style="color:var(--accent-text);font-weight:600">${weekLabel}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:4px">
+      Asignada a: ${S.adminAthletes.filter(a=>a.assignedRoutine===r.id).map(a=>a.name||a.email).join(', ')||'nadie'}
+    </div>
+  </div>`;
+}
+
+function renderRoutineChainNode(r, startWeek, childrenOf, depth, visited) {
+  if(visited.has(r.id)) return ''; // corta cualquier ciclo (A continúa B que continúa A) — no debería poder armarse desde la UI, pero por las dudas
+  visited.add(r.id);
+  const endWeek = startWeek + (r.durationWeeks||1) - 1;
+  const weekLabel = `Semana ${startWeek}${endWeek>startWeek?'–'+endWeek:''}`;
+  const kids = childrenOf.get(r.id)||[];
+  return renderRoutineCard(r, weekLabel, depth) + kids.map(k=>renderRoutineChainNode(k, endWeek+1, childrenOf, depth+1, visited)).join('');
+}
+
 function renderAdminRoutines() {
   let html=`<div class="team-detail-header">
     <button class="back-btn" data-back="admin-main">‹</button>
@@ -11089,27 +11175,12 @@ function renderAdminRoutines() {
   if(!S.routines.length) {
     html+=`<div class="empty-state">No hay rutinas creadas.<br><span style="font-size:12px">Creá una rutina para asignarla a tus alumnos.</span></div>`;
   } else {
-    html+=S.routines.map(r=>`
-      <div class="card" style="padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
-          <div style="min-width:0">
-            <span id="routine-name-span-${r.id}" ondblclick="editRoutineListName(event,'${r.id}')" title="Doble click para renombrar" style="font-size:14px;font-weight:600;cursor:text">${r.name}</span>
-            <input id="routine-name-inp-${r.id}" style="display:none;font-size:14px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:4px 8px;color:var(--text);outline:none;font-family:inherit;width:100%" onblur="saveRoutineListName('${r.id}',this)" onkeydown="if(event.key==='Enter')this.blur()">
-          </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button class="abtn abtn-p" onclick="editRoutine('${r.id}')">Editar</button>
-            <button class="abtn" onclick="duplicateRoutine('${r.id}')" title="Duplicar — para partir de esta y cambiar solo lo que necesitás">⧉ Duplicar</button>
-            <button class="abtn abtn-d" onclick="deleteRoutine('${r.id}')">×</button>
-          </div>
-        </div>
-        <div style="font-size:12px;color:var(--text3)">
-          ${sortSessionNames(Object.keys(r.sessions||{})).join(' · ')||'Sin sesiones'}
-        </div>
-        ${r.continuesFromRoutineId ? `<div style="font-size:11px;color:var(--accent-text);margin-top:4px">↳ Continuación de "${S.routines.find(x=>x.id===r.continuesFromRoutineId)?.name||'(rutina eliminada)'}"</div>` : ''}
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">
-          Asignada a: ${S.adminAthletes.filter(a=>a.assignedRoutine===r.id).map(a=>a.name||a.email).join(', ')||'nadie'}
-        </div>
-      </div>`).join('');
+    const { childrenOf, roots } = buildRoutineChains();
+    html += roots.map(root=>{
+      const chainHtml = renderRoutineChainNode(root, 1, childrenOf, 0, new Set());
+      const isChain = (childrenOf.get(root.id)||[]).length>0;
+      return isChain ? `<div style="border:1px dashed var(--border2);border-radius:var(--r);padding:10px;margin-bottom:12px">${chainHtml}</div>` : chainHtml;
+    }).join('');
   }
   return html;
 }
@@ -13880,17 +13951,17 @@ function renderAthleteHome() {
     <div class="wellness-sub">Últimas 4 semanas</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:14px 0">
       <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
-        <div style="font-size:24px;font-weight:800;color:${acwrSt.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
+        <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">ACWR ${infoBtn('acwr')}</div>
         <div style="font-size:11px;color:${acwrSt.color};margin-top:2px">${acwrSt.label}</div>
       </div>
       <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
-        <div style="font-size:24px;font-weight:800">${Math.round((metrics.monotony||0)*10)/10}</div>
+        <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round((metrics.monotony||0)*10)/10}</div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">Monotonía ${infoBtn('monotony')}</div>
         <div style="font-size:11px;color:${getMonotonyStatus(metrics.monotony).color};margin-top:2px">${getMonotonyStatus(metrics.monotony).label}</div>
       </div>
       <div style="text-align:center;padding:10px">
-        <div style="font-size:24px;font-weight:800">${metrics.acuteUA}</div>
+        <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${metrics.acuteUA}</div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">UA semana ${infoBtn('ua')}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${metrics.sessions} sesiones</div>
       </div>
