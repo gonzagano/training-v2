@@ -8499,6 +8499,7 @@ function openAtleta(uid) {
   S._atletaRoutineCollapsedDays = null;
   S._atletaRoutineCollapsedBlocks = null;
   S._routineWeekPreview = null;
+  S._perfilWellnessDay = null;
   ensureGroupPersonalData(getEffectiveGroupUids(a)).then(()=>{
     S.viewingAthlete = { uid, userData: a, personal: a._personal||{} };
     renderMain();
@@ -8606,22 +8607,27 @@ function renderPerfilTab(a) {
   const acwrSt = getACWRStatus(m?.acwr??null, m?.daysOfHistory);
   const activeInjCount = activeInj.length;
 
+  // Un solo estado dominante arriba (mismas reglas que el semáforo del
+  // Dashboard — ver getAthleteRosterStatus) en vez de 3 tarjetas del mismo
+  // peso compitiendo por la atención. ACWR/monotonía/UA/strain quedan como
+  // detalle de apoyo, más chicos, debajo — el dato no se pierde, solo deja
+  // de competir visualmente con lo que de verdad importa mirar primero.
+  const rosterStatus = getAthleteRosterStatus(a, m, acwrSt, todayPct, todayFilled);
+  const statusDetail = `ACWR ${m?.acwr!=null?m.acwr.toFixed(2):'—'} · Wellness ${todayFilled?todayPct+'%':'sin datos hoy'} · ${activeInjCount?activeInjCount+' molestia'+(activeInjCount!==1?'s':'')+' activa'+(activeInjCount!==1?'s':''):'sin molestias activas'}`;
+
   let html = `
-  <!-- Resumen rápido -->
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
-    <div style="background:var(--bg2);padding:14px;text-align:center${todayFilled?';cursor:pointer':''}" ${todayFilled?`onclick="viewWellnessDay('${uid}','${today}')"`:''}>
-      <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wState.color}" ${todayFilled?`data-countup="${todayPct}" data-suffix="%"`:''}>${todayFilled?todayPct+'%':'—'}</div>
-      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness hoy ${infoBtn('wellness')}</div>
-      <div style="display:flex;justify-content:center;margin-top:6px">${sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 48, 16)}</div>
+  <!-- Estado general -->
+  <div style="background:${rosterStatus.bg};border:1px solid ${rosterStatus.color};border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:16px">
+    <div style="width:40px;height:40px;border-radius:50%;border:2.5px solid ${rosterStatus.color};display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--bg2)">
+      ${rosterStatus.tier===2
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${rosterStatus.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${rosterStatus.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="8" x2="12" y2="13"/><circle cx="12" cy="16.5" r="1"/></svg>`}
     </div>
-    <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}" ${m?.acwr!=null?`data-countup="${m.acwr}" data-decimals="2"`:''}>${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:15px;font-weight:700;color:${rosterStatus.color}">${rosterStatus.text}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">${statusDetail}</div>
     </div>
-    <div style="background:var(--bg2);padding:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${activeInjCount?'var(--red)':'var(--green)'}" data-countup="${activeInjCount||0}">${activeInjCount||'0'}</div>
-      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias activas</div>
-    </div>
+    ${todayFilled?`<div style="flex-shrink:0;cursor:pointer" onclick="viewWellnessDay('${uid}','${today}')">${sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 48, 16)}</div>`:''}
   </div>
 
   <div class="admin-section">
@@ -8631,65 +8637,85 @@ function renderPerfilTab(a) {
     </div>
   </div>
 
-  <!-- Control de carga interna + wellness reciente, arriba del formulario editable -->
+  <!-- Control de carga interna — detalle de apoyo, debajo del estado general -->
   ${(()=>{
     if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin datos. El atleta debe cargar su carga de gimnasio/pelota/partido en Wellness.</div></div>';
     const monSt=getMonotonyStatus(m.monotony);
     return `<div class="admin-section">
       <div class="admin-section-title">Control de carga interna</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border)">
-        <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
-          <div style="font-size:11px;color:${acwrSt.color}">${acwrSt.label}</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
+        <div style="background:var(--bg2);padding:12px 8px;text-align:center">
+          <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
         </div>
-        <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
-          <div style="font-size:11px;color:${monSt.color}">${monSt.label}</div>
+        <div style="background:var(--bg2);padding:12px 8px;text-align:center">
+          <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
+          <div style="font-size:10px;color:${monSt.color};margin-top:1px">${monSt.label}</div>
         </div>
-        <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m.acuteUA}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana ${infoBtn('ua')}</div>
-          <div style="font-size:11px;color:var(--text3)">${m.sessions} sesiones</div>
+        <div style="background:var(--bg2);padding:12px 8px;text-align:center">
+          <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m.acuteUA}</div>
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana ${infoBtn('ua')}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:1px">${m.sessions} sesiones</div>
         </div>
-        <div style="background:var(--bg2);padding:14px 16px">
-          <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round(m.strain)}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain ${infoBtn('strain')}</div>
-          <div style="font-size:11px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'}">${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
+        <div style="background:var(--bg2);padding:12px 8px;text-align:center">
+          <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round(m.strain)}</div>
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain ${infoBtn('strain')}</div>
+          <div style="font-size:10px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'};margin-top:1px">${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
         </div>
       </div>
     </div>`;
   })()}
 
-  <div class="admin-section">
-    <div class="admin-section-title">Wellness — últimos 7 días</div>
-    ${wEntries.length?wEntries.map(([date,w])=>{
-      const {pct,allFilled}=getWellnessScore(w);
-      if(!allFilled) return '';
-      const col=getWellnessState(pct).color;
-      // Antes esta fila era fecha a la izquierda y % a la derecha, con todo
-      // el medio vacío — para ver QUÉ compone ese % (fatiga, dolor, sueño...)
-      // había que entrar al detalle del día. Corregido: nada de emojis (eso
-      // fue exactamente lo que se pidió sacar) — un chip chico CON EL NOMBRE
-      // del ítem por cada uno, coloreado según el valor, en una segunda
-      // línea propia para que el nombre entre legible.
+  <!-- Franja de 7 celdas en vez de 7 filas con chips siempre abiertos —
+       tocás un día para ver su detalle, el resto queda solo con el color +
+       el %, igual criterio "un signo por vez, detalle a pedido" que el
+       semáforo de arriba. -->
+  ${(()=>{
+    if(!wEntries.length) return `<div class="admin-section"><div class="admin-section-title">Wellness — últimos 7 días</div><div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div></div>`;
+    const weekDates = getWeeklyComplianceDates(0);
+    const lastFilled = [...weekDates].reverse().find(d=>getWellnessScore(wellness[d]).allFilled);
+    const selDate = S._perfilWellnessDay || lastFilled || weekDates[weekDates.length-1];
+    const dimByColor = {'var(--green)':'var(--green-dim)','var(--amber)':'var(--amber-dim)','var(--red)':'var(--red-dim)'};
+    const cells = weekDates.map(date=>{
+      const {pct,allFilled} = getWellnessScore(wellness[date]);
+      const col = allFilled ? getWellnessState(pct).color : 'var(--text3)';
+      const bg = allFilled ? (dimByColor[col]||'var(--bg3)') : 'var(--bg3)';
+      const dow = new Date(date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'short'}).replace(/\.$/,'');
+      const isSel = selDate===date;
+      return `<div onclick="setPerfilWellnessDay('${date}')" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer">
+        <span style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">${dow}</span>
+        <div style="width:100%;aspect-ratio:1;border-radius:9px;background:${bg};display:flex;align-items:center;justify-content:center;border:${isSel?'2px':'1px'} solid ${isSel?col:'var(--border)'}">
+          <span style="font-size:11px;font-weight:700;color:${col}">${allFilled?pct+'%':'—'}</span>
+        </div>
+      </div>`;
+    }).join('');
+    const w = wellness[selDate];
+    const {allFilled:selFilled} = getWellnessScore(w);
+    let detail;
+    if(!selFilled) {
+      detail = `<div style="font-size:12px;color:var(--text3);padding-top:10px;border-top:1px dashed var(--border)">Sin wellness cargado el ${selDate}.</div>`;
+    } else {
       const itemChips = WELLNESS_ITEMS.map(item=>{
         const val = w[item.key];
         const c = wellnessValColor(val);
         return `<span style="font-size:9.5px;font-weight:700;padding:3px 6px;border-radius:4px;background:${c?c.dim:'var(--bg3)'};color:${c?c.solid:'var(--text3)'};white-space:nowrap;flex-shrink:0">${WELLNESS_SHORT_LABEL[item.key]||item.label}</span>`;
       }).join('');
-      const daySummary = renderDaySummaryChips(personal, date, a.sport);
-      return `<div class="admin-item" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:7px" onclick="viewWellnessDay('${uid}','${date}')">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:12px;color:var(--text3)">${date}</span>
-          <span style="font-size:14px;font-weight:600;color:${col}">${pct}% ›</span>
-        </div>
+      const daySummary = renderDaySummaryChips(personal, selDate, a.sport);
+      detail = `<div style="padding-top:10px;border-top:1px dashed var(--border);cursor:pointer" onclick="viewWellnessDay('${uid}','${selDate}')">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:7px">${selDate} ›</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">${itemChips}</div>
         ${daySummary}
       </div>`;
-    }).join(''):`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div>`}
-  </div>
+    }
+    return `<div class="admin-section">
+      <div class="admin-section-title">Wellness — últimos 7 días</div>
+      <div style="padding:2px 16px 14px">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:12px">${cells}</div>
+        ${detail}
+      </div>
+    </div>`;
+  })()}
 
   <div class="admin-section">
     <div class="admin-section-title">Perfil</div>
@@ -9903,6 +9929,15 @@ function viewWellnessDay(uid, date) {
 }
 window.viewWellnessDay=viewWellnessDay;
 
+// Elegir qué día de la franja de 7 celdas del Perfil se muestra expandido
+// debajo — no abre el detalle completo (eso sigue siendo viewWellnessDay,
+// un click más adentro), solo cambia cuál de los 7 se ve desplegado ahí mismo.
+function setPerfilWellnessDay(date) {
+  S._perfilWellnessDay = date;
+  renderMain();
+}
+window.setPerfilWellnessDay = setPerfilWellnessDay;
+
 function shiftWellnessDetailDate(delta) {
   const d = new Date(S.wellnessDetailDate+'T00:00:00');
   d.setDate(d.getDate()+delta);
@@ -10577,6 +10612,7 @@ async function adminOpenAthlete(uid) {
   S._atletaRoutineCollapsedDays = null;
   S._atletaRoutineCollapsedBlocks = null;
   S._routineWeekPreview = null;
+  S._perfilWellnessDay = null;
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
   try {
     await ensureAdminAthletes();
@@ -13815,6 +13851,27 @@ window.renderDashboardContent=renderDashboardContent;
 // Fila compacta por atleta (color, nombre, equipo/posición, chips de wellness/ACWR/hoy).
 // Separada de renderDashboardContent para poder refrescarla sola al buscar/filtrar,
 // sin re-renderizar el input de búsqueda (y así no perderle el foco al escribir).
+// Un solo semáforo por atleta (rojo/ámbar/verde), calculado con las MISMAS
+// reglas que ya usa el panel "Atención requerida" del Dashboard (lesión real
+// activa, o ACWR>1.5 → rojo) más un escalón ámbar propio de esta lista
+// (ACWR en zona de precaución, subcarga, o wellness de hoy bajo) — para no
+// inventar un tercer criterio de "quién necesita atención" que no coincida
+// con el que ya se usa arriba en la misma pantalla.
+function getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled) {
+  const injuries = a._personal?.injuries || {};
+  const hasRealInjury = Object.values(injuries).some(inj=>inj.pain>0 && isRealInjury(inj));
+  const acwr = metrics?.acwr;
+  if (hasRealInjury || (acwr!=null && acwr>1.5)) {
+    return {tier:0, color:'var(--red)', bg:'var(--red-dim)', text:'Requiere atención'};
+  }
+  const acwrWarn = acwr!=null && (acwr>1.3 || acwr<0.8);
+  const wellnessWarn = wAllFilled && wPct<75;
+  if (acwrWarn || wellnessWarn) {
+    return {tier:1, color:'var(--amber)', bg:'var(--amber-dim)', text:'A seguir de cerca'};
+  }
+  return {tier:2, color:'var(--green)', bg:'var(--green-dim)', text:'Todo en orden'};
+}
+
 function renderDashboardAthleteList() {
   const athletes = S.dashAthletes||[];
   const search = (S.dashSearch||'').toLowerCase();
@@ -13828,15 +13885,24 @@ function renderDashboardAthleteList() {
 
   if(!filtered.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan con la búsqueda.</div>`;
 
+  // Precalculamos todo lo que hace falta para ordenar ANTES de armar el HTML
+  // — los que necesitan atención van primero, no hay que escanear toda la
+  // lista buscándolos.
+  const withStatus = filtered.map(a=>{
+    const logs = a._personal?.history?._sessionLogs||[];
+    const metrics = calcLoadMetrics(logs);
+    const wToday = a._personal?.wellness?.[today];
+    const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
+    const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
+    const status = getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled);
+    return {a, logs, metrics, wPct, wAllFilled, acwrStatus, status};
+  });
+  withStatus.sort((x,y)=> x.status.tier-y.status.tier || (x.a.name||'').localeCompare(y.a.name||''));
+
   return `<div class="wellness-card" style="padding:0">
-    ${filtered.map(a=>{
-      const logs = a._personal?.history?._sessionLogs||[];
-      const metrics = calcLoadMetrics(logs);
+    ${withStatus.map(({a,logs,metrics,wPct,wAllFilled,acwrStatus,status})=>{
       const todayLog = logs.filter(l=>l.date===today);
       const matchInfo = getRecentMatchCardInfo(a._personal, today);
-      const wToday = a._personal?.wellness?.[today];
-      const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
-      const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
       const team = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
       // Últimos 7 días (mismo criterio y colores que "Cumplimiento semanal"
       // en Equipos), no solo hoy — un punto de wellness y uno de carga por
@@ -13852,7 +13918,9 @@ function renderDashboardAthleteList() {
           </span>`;
         }).join('')}
       </span>`;
-      return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+      return `<div style="display:flex;align-items:stretch;gap:0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+        <div style="width:4px;background:${status.color};flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;flex:1;min-width:0">
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
@@ -13862,14 +13930,17 @@ function renderDashboardAthleteList() {
             ${matchInfo.hadMolestia?`<span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">⚠ molestia</span>`:''}
           </div>`:''}
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
-          ${weekStrip}
-          ${wAllFilled?sparklineSvg(getWellnessSparklineData(a._personal,7), getWellnessState(wPct).color, 36, 16):''}
-          ${wAllFilled?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${getWellnessState(wPct).color};font-weight:600;white-space:nowrap">${wPct}%</span>`:''}
-          ${metrics?.acwr!=null?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:${acwrStatus.color};font-weight:600;white-space:nowrap">ACWR ${metrics.acwr.toFixed(2)}</span>`:''}
-          ${todayLog.length?`<span style="font-size:11px;padding:3px 8px;border-radius:20px;background:var(--bg3);color:var(--green);white-space:nowrap">✓ hoy</span>`:''}
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+          <span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:${status.bg};color:${status.color};white-space:nowrap">${status.text}</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+            ${weekStrip}
+            ${wAllFilled?`<span style="font-size:10px;color:${getWellnessState(wPct).color};font-weight:600;white-space:nowrap">${wPct}%</span>`:''}
+            ${metrics?.acwr!=null?`<span style="font-size:10px;color:${acwrStatus.color};font-weight:600;white-space:nowrap">ACWR ${metrics.acwr.toFixed(2)}</span>`:''}
+            ${todayLog.length?`<span style="font-size:10px;color:var(--text3);white-space:nowrap">✓ hoy</span>`:''}
+          </div>
         </div>
         <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
+        </div>
       </div>`;
     }).join('')}
   </div>`;
