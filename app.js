@@ -6774,6 +6774,23 @@ function metricIconSvg(key) {
 }
 window.metricIconSvg = metricIconSvg;
 
+// Set de íconos del pase "Terminación visual" (mockup craft-pass) — trofeo
+// de partido, triángulo de alerta y check — reemplazan 🏆/⚠/✓ sueltos en
+// Dashboard y Perfil de atleta. `size` en px (default 13, para ir inline
+// con texto de badges chicos); `color` acepta cualquier valor CSS/var().
+function craftIconSvg(key, color, size) {
+  const s = size||13;
+  const col = color||'currentColor';
+  const c = `width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:-2px"`;
+  const paths = {
+    match: '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 5H4a1 1 0 0 0-1 1c0 2.5 1.5 4 4 4M17 5h3a1 1 0 0 1 1 1c0 2.5-1.5 4-4 4"/>',
+    alert: `<path d="M12 3 2 20h20L12 3Z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r=".5" fill="${col}"/>`,
+    check: '<polyline points="20 6 9 17 4 12"/>',
+  };
+  return `<svg ${c}>${paths[key]||''}</svg>`;
+}
+window.craftIconSvg = craftIconSvg;
+
 // Mini-gráfico de tendencia sin ejes ni leyenda — para mostrar "hacia dónde viene
 // yendo" un número al lado del valor puntual, sin ocupar el espacio de un gráfico
 // completo. values: array ordenado de más viejo a más nuevo, con null = sin dato.
@@ -8617,7 +8634,7 @@ function renderPerfilTab(a) {
 
   let html = `
   <!-- Estado general -->
-  <div style="background:${rosterStatus.bg};border:1px solid ${rosterStatus.color};border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:16px">
+  <div style="background:${rosterStatus.bg};border:1px solid ${rosterStatus.color};border-radius:14px;padding:var(--sp-4) var(--sp-4);display:flex;align-items:center;gap:var(--sp-4);margin-bottom:var(--sp-4);box-shadow:var(--sh-float)">
     <div style="width:40px;height:40px;border-radius:50%;border:2.5px solid ${rosterStatus.color};display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--bg2)">
       ${rosterStatus.tier===2
         ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${rosterStatus.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
@@ -8632,36 +8649,36 @@ function renderPerfilTab(a) {
 
   <div class="admin-section">
     <div class="admin-section-title">Tendencia — últimos 30 días</div>
-    <div style="padding:14px 16px;height:220px;position:relative">
+    <div style="padding:var(--sp-4) var(--sp-4);height:220px;position:relative">
       <canvas id="athlete-trend-chart"></canvas>
     </div>
   </div>
 
   <!-- Control de carga interna — detalle de apoyo, debajo del estado general -->
   ${(()=>{
-    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin datos. El atleta debe cargar su carga de gimnasio/pelota/partido en Wellness.</div></div>';
+    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:var(--sp-3) var(--sp-4);font-size:13px;color:var(--text3)">Sin datos. El atleta debe cargar su carga de gimnasio/pelota/partido en Wellness.</div></div>';
     const monSt=getMonotonyStatus(m.monotony);
     return `<div class="admin-section">
       <div class="admin-section-title">Control de carga interna</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-        <div style="background:var(--bg2);padding:12px 8px;text-align:center">
+        <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
           <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
           <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
         </div>
-        <div style="background:var(--bg2);padding:12px 8px;text-align:center">
+        <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
           <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
           <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
           <div style="font-size:10px;color:${monSt.color};margin-top:1px">${monSt.label}</div>
         </div>
-        <div style="background:var(--bg2);padding:12px 8px;text-align:center">
+        <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
           <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m.acuteUA}</div>
           <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana ${infoBtn('ua')}</div>
           <div style="font-size:10px;color:var(--text3);margin-top:1px">${m.sessions} sesiones</div>
         </div>
-        <div style="background:var(--bg2);padding:12px 8px;text-align:center">
+        <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
           <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round(m.strain)}</div>
           <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain ${infoBtn('strain')}</div>
-          <div style="font-size:10px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'};margin-top:1px">${m.strain>6000?'Alto ⚠':m.strain>2000?'Moderado':'Bajo'}</div>
+          <div style="font-size:10px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'};margin-top:1px">${m.strain>6000?'Alto '+craftIconSvg('alert','var(--red)',11):m.strain>2000?'Moderado':'Bajo'}</div>
         </div>
       </div>
     </div>`;
@@ -8672,7 +8689,7 @@ function renderPerfilTab(a) {
        el %, igual criterio "un signo por vez, detalle a pedido" que el
        semáforo de arriba. -->
   ${(()=>{
-    if(!wEntries.length) return `<div class="admin-section"><div class="admin-section-title">Wellness — últimos 7 días</div><div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin registros de wellness.</div></div>`;
+    if(!wEntries.length) return `<div class="admin-section"><div class="admin-section-title">Wellness — últimos 7 días</div><div style="padding:var(--sp-3) var(--sp-4);font-size:13px;color:var(--text3)">Sin registros de wellness.</div></div>`;
     const weekDates = getWeeklyComplianceDates(0);
     const lastFilled = [...weekDates].reverse().find(d=>getWellnessScore(wellness[d]).allFilled);
     const selDate = S._perfilWellnessDay || lastFilled || weekDates[weekDates.length-1];
@@ -8710,8 +8727,8 @@ function renderPerfilTab(a) {
     }
     return `<div class="admin-section">
       <div class="admin-section-title">Wellness — últimos 7 días</div>
-      <div style="padding:2px 16px 14px">
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:12px">${cells}</div>
+      <div style="padding:2px var(--sp-4) var(--sp-4)">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:var(--sp-3)">${cells}</div>
         ${detail}
       </div>
     </div>`;
@@ -9095,6 +9112,14 @@ function renderAtletaRutina(a) {
     </div>
     ${sessionNames.map(sName => {
       const blocks = getVisibleRoutineBlocks(routine, sName, a.teamId, a.position, a._personal?.personalExtras);
+      // Si el día tiene bloques cargados en la rutina pero ninguno le queda
+      // visible a ESTE atleta, es porque el filtro de puestos del equipo
+      // (routineBlockPositions) los excluyó a todos por su puesto — eso no
+      // es lo mismo que "nadie cargó ejercicios este día", y antes se veían
+      // igual (mismo mensaje "Sin ejercicios cargados"), lo cual hacía
+      // parecer que el día estaba vacío o mal asignado cuando en realidad
+      // es un filtro de puesto funcionando como se configuró.
+      const hiddenByPosition = !blocks.length && ((routine.sessions||{})[sName]||[]).length>0;
       const dayCollapsed = S._atletaRoutineCollapsedDays?.has(sName);
       const dayDone = !!(a._personal?.history?.[sessionKey(previewWeek, sName)]?.done);
       const isToday = sName===todaySession && isViewingReal;
@@ -9177,7 +9202,7 @@ function renderAtletaRutina(a) {
               `).join('')}
             </div>
           </div>`;
-        }).join('') : `<div style="padding:0 16px 12px;font-size:12px;color:var(--text3)">Sin ejercicios cargados</div>`)}
+        }).join('') : `<div style="padding:0 16px 12px;font-size:12px;color:var(--text3)">${hiddenByPosition ? `Este día tiene bloques cargados, pero ninguno está habilitado para el puesto de ${a.name||a.email||'este atleta'} (${a.position||'sin puesto asignado'}). Revisá el filtro de puestos en la asignación de rutina del equipo.` : 'Sin ejercicios cargados'}</div>`)}
         ${dayCollapsed ? '' : `<div style="padding:0 16px 12px"><button class="abtn" style="font-size:11px" onclick="openPersonalExtraLib('${a.uid}','${sName.replace(/'/g,"\\'")}')" title="Se lo agrega SOLO a ${a.name||a.email}, no afecta a sus compañeros">+ Ejercicio personal para ${(a.name||a.email||'').split(' ')[0]}</button></div>`}
       </div>`;
     }).join('')}
@@ -13726,7 +13751,7 @@ function renderDashboardContent() {
   const allAlerts = [...acwrAlerts, ...injuryAlerts];
   const alertAthletes = acwrAlerts.map(x=>x.athlete); // keep for backward compat in metric card
 
-  let html = `<div class="metric-grid" style="margin-bottom:20px">
+  let html = `<div class="metric-grid" style="margin-bottom:var(--sp-5)">
     <div class="metric-card" style="border-left:3px solid var(--accent);cursor:pointer" onclick="scrollToDashAthleteList()">
       <div class="metric-card-label">ATLETAS <span class="metric-card-icon">${metricIconSvg('atletas')}</span></div>
       <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
@@ -13743,7 +13768,7 @@ function renderDashboardContent() {
       <div class="metric-card-sub">registros enviados · tocá para recordar</div>
     </div>
     ${allAlerts.length?`<div class="metric-card" style="border-left:3px solid var(--red);border-color:rgba(195,58,44,0.3)">
-      <div class="metric-card-label" style="color:var(--red)">ALERTAS ⚠</div>
+      <div class="metric-card-label" style="color:var(--red)">ALERTAS ${craftIconSvg('alert','var(--red)',12)}</div>
       <div class="metric-card-value" style="color:var(--red)" data-countup="${allAlerts.length}">${allAlerts.length}</div>
       <div class="metric-card-sub">requieren atención</div>
     </div>`:''}
@@ -13753,8 +13778,8 @@ function renderDashboardContent() {
   // visible para clasificarlas de una (ver getUnclassifiedInjuries).
   const unclassified = getUnclassifiedInjuries(athletes);
   if(unclassified.length) {
-    html += `<div style="background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openInjuryClassifyScreen()">
-      <span style="color:var(--amber);font-size:16px">⚠</span>
+    html += `<div style="background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--r);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4);display:flex;align-items:center;gap:var(--sp-3);cursor:pointer" onclick="openInjuryClassifyScreen()">
+      ${craftIconSvg('alert','var(--amber)',18)}
       <div style="flex:1">
         <div style="font-size:13px;font-weight:600;color:var(--amber)">${unclassified.length} dolor${unclassified.length===1?'':'es'} marcado${unclassified.length===1?'':'s'} antes de esta actualización, sin clasificar</div>
         <div style="font-size:11px;color:var(--text3)">Tocá para decidir de una cuáles son lesión y cuáles molestia</div>
@@ -13782,47 +13807,47 @@ function renderDashboardContent() {
     html += renderDashInjuryCategoryFilters();
 
     const alertsPanel = `<div style="background:var(--bg2);border:1px solid rgba(195,58,44,0.25);border-radius:var(--r);overflow:hidden;height:100%">
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
-        <span style="color:var(--red);font-size:16px">⚠</span>
+      <div style="padding:var(--sp-4) var(--sp-4);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:var(--sp-2)">
+        ${craftIconSvg('alert','var(--red)',16)}
         <span style="font-size:14px;font-weight:600;flex:1">Atención requerida (${alertsSorted.length})</span>
       </div>
       ${alertsSorted.length?alertsSorted.map(({athlete,type,detail,severity,zoneLabel,pain})=>`
-        <div style="padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)">
             <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${athlete.name||athlete.email}</div>
             <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
           </div>
           ${type==='injury'
             ? injuryBadgesHtml({severity,zoneLabel,pain,athlete})
-            : `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);white-space:nowrap">${detail}</span>${teamBadgeHtml(athlete)}</div>`}
-        </div>`).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin alertas${catFilter?' en '+catFilter:''}.</div>`}
+            : `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:var(--sp-1)"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);white-space:nowrap">${detail}</span>${teamBadgeHtml(athlete)}</div>`}
+        </div>`).join(''):`<div style="padding:var(--sp-3) var(--sp-4);font-size:12px;color:var(--text3)">Sin alertas${catFilter?' en '+catFilter:''}.</div>`}
     </div>`;
 
     const recentPanel = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden;height:100%">
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Lesiones recientes (${recentFeed.length})</div>
+      <div style="padding:var(--sp-4) var(--sp-4);border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Lesiones recientes (${recentFeed.length})</div>
       ${recentFeed.length?recentFeed.map(r=>{
         const daysAgo = r.date ? Math.round((new Date(todayLocal()+'T00:00:00') - new Date(r.date+'T00:00:00'))/86400000) : null;
         const whenLabel = daysAgo==null ? 'sin fecha' : daysAgo<=0 ? 'hoy' : daysAgo===1 ? 'ayer' : `hace ${daysAgo} días`;
         const whenColor = daysAgo==null ? 'var(--text3)' : daysAgo<=1 ? 'var(--accent)' : daysAgo<=3 ? 'var(--text2)' : 'var(--text3)';
         return `
-        <div style="padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)">
             <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.athlete.name||r.athlete.email}</div>
-            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <div style="display:flex;align-items:center;gap:var(--sp-2);flex-shrink:0">
               <button onclick="event.stopPropagation();dismissDashboardInjury('${r.athlete.uid}','${r.zoneId}','${r.date}')" title="Sacar de este panel — sigue viva en la ficha del atleta" style="appearance:none;border:none;background:var(--bg3);color:var(--text3);width:20px;height:20px;border-radius:50%;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">×</button>
               <span style="color:var(--text3);font-size:16px">›</span>
             </div>
           </div>
           ${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain, athlete:r.athlete})}
-          ${r.note?`<div style="font-size:12px;color:var(--text2);margin-top:5px;line-height:1.4">"${r.note}"</div>`:''}
-          <div style="font-size:11.5px;font-weight:700;color:${whenColor};margin-top:5px">Última actualización: ${whenLabel}${r.date?` (${r.date})`:''}</div>
+          ${r.note?`<div style="font-size:12px;color:var(--text2);margin-top:var(--sp-1);line-height:1.4">"${r.note}"</div>`:''}
+          <div style="font-size:11.5px;font-weight:700;color:${whenColor};margin-top:var(--sp-1)">Última actualización: ${whenLabel}${r.date?` (${r.date})`:''}</div>
         </div>`;
-      }).join(''):`<div style="padding:12px 16px;font-size:12px;color:var(--text3)">Sin lesiones activas${catFilter?' en '+catFilter:''}.</div>`}
+      }).join(''):`<div style="padding:var(--sp-3) var(--sp-4);font-size:12px;color:var(--text3)">Sin lesiones activas${catFilter?' en '+catFilter:''}.</div>`}
     </div>`;
 
     html += isDesktop
-      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;align-items:start">${alertsPanel}${recentPanel}</div>`
-      : `<div style="margin-bottom:16px">${alertsPanel}</div><div style="margin-bottom:20px">${recentPanel}</div>`;
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4);margin-bottom:var(--sp-5);align-items:start">${alertsPanel}${recentPanel}</div>`
+      : `<div style="margin-bottom:var(--sp-4)">${alertsPanel}</div><div style="margin-bottom:var(--sp-5)">${recentPanel}</div>`;
   }
 
   if(!athletes.length) {
@@ -13832,9 +13857,9 @@ function renderDashboardContent() {
 
   // Búsqueda + filtro por equipo — para que esto siga siendo usable con 30-50 atletas,
   // no solo con 2. Filas compactas en vez de una tarjeta enorme por atleta.
-  html += `<div style="margin-bottom:10px">
+  html += `<div style="margin-bottom:var(--sp-3)">
     <input id="dash-search-inp" value="${S.dashSearch||''}" placeholder="Buscar atleta..."
-      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
+      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:var(--sp-2) var(--sp-3);color:var(--text);font-size:14px;outline:none;font-family:inherit"
       oninput="setDashSearch(this.value)">
   </div>
   <div id="dash-team-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${renderDashTeamFilters(athletes)}</div>
@@ -13920,14 +13945,14 @@ function renderDashboardAthleteList() {
       </span>`;
       return `<div style="display:flex;align-items:stretch;gap:0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         <div style="width:4px;background:${status.color};flex-shrink:0"></div>
-        <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);flex:1;min-width:0">
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name+(team.category?' · '+team.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
           ${matchInfo?`<div style="display:flex;align-items:center;gap:5px;margin-top:3px">
-            <span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700;white-space:nowrap">🏆 ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>
-            ${matchInfo.hadMolestia?`<span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">⚠ molestia</span>`:''}
+            <span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700;white-space:nowrap">${craftIconSvg('match','var(--accent-text)',11)} ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>
+            ${matchInfo.hadMolestia?`<span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">${craftIconSvg('alert','var(--red)',11)} molestia</span>`:''}
           </div>`:''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
