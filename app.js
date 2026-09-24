@@ -812,6 +812,50 @@ window.closeInfoModal = closeInfoModal;
 function closeInfoModalIfOutside(e) { if(e.target===document.getElementById('info-modal-overlay')) closeInfoModal(); }
 window.closeInfoModalIfOutside = closeInfoModalIfOutside;
 
+// Reemplazo propio de confirm()/alert() del navegador — mismo look que el
+// resto de los modales de la app (video-modal), en vez del diálogo nativo
+// del sistema operativo, que rompe la sensación de estar en G-Metrics justo
+// en el momento de más peso (borrar algo, confirmar una acción masiva).
+// Uso: showConfirmModal({message, danger, onConfirm}) reemplaza el patrón
+// `if(!confirm('...')) return; resto();` por
+// `showConfirmModal({message:'...', onConfirm: () => { resto(); }})`.
+// Sin onConfirm se comporta como alert() (un solo botón "Entendido").
+let _confirmModalCallback = null;
+function showConfirmModal({title, message, confirmLabel, danger, onConfirm} = {}) {
+  document.getElementById('confirm-modal-title').textContent = title || (onConfirm ? 'Confirmar' : 'Atención');
+  document.getElementById('confirm-modal-body').textContent = message || '';
+  const cancelBtn = document.getElementById('confirm-modal-cancel-btn');
+  const confirmBtn = document.getElementById('confirm-modal-confirm-btn');
+  if(onConfirm) {
+    cancelBtn.style.display = '';
+    confirmBtn.textContent = confirmLabel || 'Confirmar';
+    confirmBtn.className = 'abtn ' + (danger ? 'abtn-d' : 'abtn-p');
+  } else {
+    cancelBtn.style.display = 'none';
+    confirmBtn.textContent = confirmLabel || 'Entendido';
+    confirmBtn.className = 'abtn abtn-p';
+  }
+  _confirmModalCallback = onConfirm || null;
+  document.getElementById('confirm-modal-overlay').classList.add('open');
+}
+window.showConfirmModal = showConfirmModal;
+
+function confirmModalConfirm() {
+  const cb = _confirmModalCallback;
+  closeConfirmModal();
+  if(cb) cb();
+}
+window.confirmModalConfirm = confirmModalConfirm;
+
+function closeConfirmModal() {
+  document.getElementById('confirm-modal-overlay').classList.remove('open');
+  _confirmModalCallback = null;
+}
+window.closeConfirmModal = closeConfirmModal;
+
+function closeConfirmModalIfOutside(e) { if(e.target===document.getElementById('confirm-modal-overlay')) closeConfirmModal(); }
+window.closeConfirmModalIfOutside = closeConfirmModalIfOutside;
+
 // ── STATE ─────────────────────────────────────────────────────
 let S = {
   user: null, isAdmin: false, userData: null,
@@ -1959,47 +2003,48 @@ const ESTUDIANTES_FIXTURES_INFANTILES = [
 ];
 
 async function importEstudiantesFixtures() {
-  if(!confirm('Esto agrega los partidos que quedan del Torneo Metropolitano Clausura al calendario de Liga de Honor, Cadetes, Juveniles y Juniors de Handball-EDLP. ¿Confirmás?')) return;
-  showToast('Importando fixture…');
-  try {
-    const targets = [
-      {category:'Liga de Honor', fixtures:ESTUDIANTES_FIXTURES_LHC},
-      {category:'Cadetes', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
-      {category:'Juveniles', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
-      {category:'Juniors', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
-    ];
-    let addedTotal = 0;
-    const emptyTeams = [];
-    for(const {category, fixtures} of targets) {
-      const teamId = await findOrCreateTeam('Handball-EDLP', category, 'Handball');
-      let team = S.teams.find(t=>t.id===teamId);
-      if(!team) {
-        const snap = await getDoc(doc(db,'teams',teamId));
-        team = {id:teamId, ...snap.data()};
-        S.teams.push(team);
+  showConfirmModal({message:'Esto agrega los partidos que quedan del Torneo Metropolitano Clausura al calendario de Liga de Honor, Cadetes, Juveniles y Juniors de Handball-EDLP.', confirmLabel:'Importar', onConfirm: async () => {
+    showToast('Importando fixture…');
+    try {
+      const targets = [
+        {category:'Liga de Honor', fixtures:ESTUDIANTES_FIXTURES_LHC},
+        {category:'Cadetes', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
+        {category:'Juveniles', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
+        {category:'Juniors', fixtures:ESTUDIANTES_FIXTURES_INFANTILES},
+      ];
+      let addedTotal = 0;
+      const emptyTeams = [];
+      for(const {category, fixtures} of targets) {
+        const teamId = await findOrCreateTeam('Handball-EDLP', category, 'Handball');
+        let team = S.teams.find(t=>t.id===teamId);
+        if(!team) {
+          const snap = await getDoc(doc(db,'teams',teamId));
+          team = {id:teamId, ...snap.data()};
+          S.teams.push(team);
+        }
+        // Chequeo de seguridad: si el equipo que encontró/creó para esta
+        // categoría no tiene NINGÚN jugador, es casi seguro que no es el
+        // equipo real (el que ya tiene el plantel armado) — probablemente se
+        // creó uno nuevo por no encontrar el existente. Avisamos ANTES de que
+        // el admin se entere recién al refrescar y no ver nada.
+        if(!(team.players?.length) && !(team.memberUids?.length)) emptyTeams.push(category);
+        if(!team.calendar) team.calendar={};
+        for(const fx of fixtures) {
+          const existing = getCalendarEvents(team, fx.date);
+          if(existing.some(e=>e.type==='partido' && e.opponent===fx.opponent)) continue;
+          const updated = [...existing, {type:'partido', opponent:fx.opponent, homeAway:fx.homeAway}];
+          team.calendar[fx.date] = updated;
+          await updateDocSafe(doc(db,'teams',teamId), {[`calendar.${fx.date}`]: updated});
+          addedTotal++;
+        }
       }
-      // Chequeo de seguridad: si el equipo que encontró/creó para esta
-      // categoría no tiene NINGÚN jugador, es casi seguro que no es el
-      // equipo real (el que ya tiene el plantel armado) — probablemente se
-      // creó uno nuevo por no encontrar el existente. Avisamos ANTES de que
-      // el admin se entere recién al refrescar y no ver nada.
-      if(!(team.players?.length) && !(team.memberUids?.length)) emptyTeams.push(category);
-      if(!team.calendar) team.calendar={};
-      for(const fx of fixtures) {
-        const existing = getCalendarEvents(team, fx.date);
-        if(existing.some(e=>e.type==='partido' && e.opponent===fx.opponent)) continue;
-        const updated = [...existing, {type:'partido', opponent:fx.opponent, homeAway:fx.homeAway}];
-        team.calendar[fx.date] = updated;
-        await updateDocSafe(doc(db,'teams',teamId), {[`calendar.${fx.date}`]: updated});
-        addedTotal++;
+      showToast(`✓ Fixture importado — ${addedTotal} partidos agregados`);
+      if(emptyTeams.length) {
+        showConfirmModal({title:'Ojo', message:`El equipo de ${emptyTeams.join(', ')} al que se le acaban de agregar los partidos NO TIENE JUGADORES cargados. Probablemente no sea el equipo real (puede haberse creado uno nuevo por no encontrar el existente) — revisá en "Equipos" que los partidos aparezcan en el plantel correcto antes de confiar en esto.`});
       }
-    }
-    showToast(`✓ Fixture importado — ${addedTotal} partidos agregados`);
-    if(emptyTeams.length) {
-      alert(`OJO: el equipo de ${emptyTeams.join(', ')} al que se le acaban de agregar los partidos NO TIENE JUGADORES cargados. Probablemente no sea el equipo real (puede haberse creado uno nuevo por no encontrar el existente) — revisá en "Equipos" que los partidos aparezcan en el plantel correcto antes de confiar en esto.`);
-    }
-    renderMain();
-  } catch(e) { console.error(e); showToast('Error al importar: '+e.message); }
+      renderMain();
+    } catch(e) { console.error(e); showToast('Error al importar: '+e.message); }
+  }});
 }
 window.importEstudiantesFixtures = importEstudiantesFixtures;
 
@@ -2011,26 +2056,27 @@ window.importEstudiantesFixtures = importEstudiantesFixtures;
 // registrarse (ver comentario en finishOnboarding) ya corregida, pero no
 // deshace el daño en cuentas que se registraron ANTES del arreglo.
 async function repairTeamMemberLinks() {
-  if(!confirm('Esto revisa todos los atletas registrados y vuelve a vincular al equipo a los que quedaron afuera por un bug ya corregido (no aparecían en Evaluaciones del equipo aunque estén registrados). ¿Confirmás?')) return;
-  showToast('Revisando vínculos…');
-  try {
-    await ensureAdminAthletes();
-    const tSnap = await getDocs(collection(db,'teams'));
-    const teams = tSnap.docs.map(d=>({id:d.id, ...d.data()}));
-    let fixed = 0;
-    for(const a of S.adminAthletes) {
-      if(!a.teamId) continue;
-      const team = teams.find(t=>t.id===a.teamId);
-      if(!team) continue;
-      if((team.memberUids||[]).includes(a.uid)) continue;
-      await updateDoc(doc(db,'teams',a.teamId), {memberUids:arrayUnion(a.uid)});
-      fixed++;
-    }
-    const freshSnap = await getDocs(collection(db,'teams'));
-    S.teams = freshSnap.docs.map(d=>({id:d.id, ...d.data()}));
-    showToast(`✓ ${fixed} atleta${fixed!==1?'s':''} reparado${fixed!==1?'s':''}`);
-    renderMain();
-  } catch(e) { console.error(e); showToast('Error al reparar: '+e.message); }
+  showConfirmModal({message:'Esto revisa todos los atletas registrados y vuelve a vincular al equipo a los que quedaron afuera por un bug ya corregido (no aparecían en Evaluaciones del equipo aunque estén registrados).', confirmLabel:'Revisar', onConfirm: async () => {
+    showToast('Revisando vínculos…');
+    try {
+      await ensureAdminAthletes();
+      const tSnap = await getDocs(collection(db,'teams'));
+      const teams = tSnap.docs.map(d=>({id:d.id, ...d.data()}));
+      let fixed = 0;
+      for(const a of S.adminAthletes) {
+        if(!a.teamId) continue;
+        const team = teams.find(t=>t.id===a.teamId);
+        if(!team) continue;
+        if((team.memberUids||[]).includes(a.uid)) continue;
+        await updateDoc(doc(db,'teams',a.teamId), {memberUids:arrayUnion(a.uid)});
+        fixed++;
+      }
+      const freshSnap = await getDocs(collection(db,'teams'));
+      S.teams = freshSnap.docs.map(d=>({id:d.id, ...d.data()}));
+      showToast(`✓ ${fixed} atleta${fixed!==1?'s':''} reparado${fixed!==1?'s':''}`);
+      renderMain();
+    } catch(e) { console.error(e); showToast('Error al reparar: '+e.message); }
+  }});
 }
 window.repairTeamMemberLinks = repairTeamMemberLinks;
 
@@ -2041,43 +2087,44 @@ window.repairTeamMemberLinks = repairTeamMemberLinks;
 // a mano) — si ese tipo de evento ya existe esa fecha, se salta.
 const WEEKLY_TRAINING_END_DATE = '2026-11-30';
 async function fillWeeklyTrainingCalendar() {
-  if(!confirm('Esto agrega entrenamiento de Físico y Pelota todos los lunes, martes y jueves desde hoy hasta el 30/11, en Liga de Honor, Cadetes, Juveniles y Juniors de Handball-EDLP. No duplica ni pisa lo que ya esté cargado. ¿Confirmás?')) return;
-  showToast('Completando calendario…');
-  try {
-    const categories = ['Liga de Honor','Cadetes','Juveniles','Juniors'];
-    const today = new Date(); today.setHours(0,0,0,0);
-    const endDate = new Date(WEEKLY_TRAINING_END_DATE+'T00:00:00');
-    let addedTotal = 0;
-    for(const category of categories) {
-      const teamId = await findOrCreateTeam('Handball-EDLP', category, 'Handball');
-      let team = S.teams.find(t=>t.id===teamId);
-      if(!team) {
-        const snap = await getDoc(doc(db,'teams',teamId));
-        team = {id:teamId, ...snap.data()};
-        S.teams.push(team);
-      }
-      if(!team.calendar) team.calendar={};
-      const d = new Date(today);
-      while(d<=endDate) {
-        const dow = d.getDay(); // 1=lunes, 2=martes, 4=jueves
-        if(dow===1||dow===2||dow===4) {
-          const dateStr = toLocalDateStr(d);
-          const existing = getCalendarEvents(team, dateStr);
-          const existingTypes = existing.map(e=>e.type);
-          const toAdd = ['fisico','pelota'].filter(t=>!existingTypes.includes(t)).map(type=>({type}));
-          if(toAdd.length) {
-            const updated = [...existing, ...toAdd];
-            team.calendar[dateStr] = updated;
-            await updateDocSafe(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: updated});
-            addedTotal += toAdd.length;
-          }
+  showConfirmModal({message:'Esto agrega entrenamiento de Físico y Pelota todos los lunes, martes y jueves desde hoy hasta el 30/11, en Liga de Honor, Cadetes, Juveniles y Juniors de Handball-EDLP. No duplica ni pisa lo que ya esté cargado.', confirmLabel:'Completar', onConfirm: async () => {
+    showToast('Completando calendario…');
+    try {
+      const categories = ['Liga de Honor','Cadetes','Juveniles','Juniors'];
+      const today = new Date(); today.setHours(0,0,0,0);
+      const endDate = new Date(WEEKLY_TRAINING_END_DATE+'T00:00:00');
+      let addedTotal = 0;
+      for(const category of categories) {
+        const teamId = await findOrCreateTeam('Handball-EDLP', category, 'Handball');
+        let team = S.teams.find(t=>t.id===teamId);
+        if(!team) {
+          const snap = await getDoc(doc(db,'teams',teamId));
+          team = {id:teamId, ...snap.data()};
+          S.teams.push(team);
         }
-        d.setDate(d.getDate()+1);
+        if(!team.calendar) team.calendar={};
+        const d = new Date(today);
+        while(d<=endDate) {
+          const dow = d.getDay(); // 1=lunes, 2=martes, 4=jueves
+          if(dow===1||dow===2||dow===4) {
+            const dateStr = toLocalDateStr(d);
+            const existing = getCalendarEvents(team, dateStr);
+            const existingTypes = existing.map(e=>e.type);
+            const toAdd = ['fisico','pelota'].filter(t=>!existingTypes.includes(t)).map(type=>({type}));
+            if(toAdd.length) {
+              const updated = [...existing, ...toAdd];
+              team.calendar[dateStr] = updated;
+              await updateDocSafe(doc(db,'teams',teamId), {[`calendar.${dateStr}`]: updated});
+              addedTotal += toAdd.length;
+            }
+          }
+          d.setDate(d.getDate()+1);
+        }
       }
-    }
-    showToast(`✓ Calendario completado — ${addedTotal} entrenamientos agregados`);
-    renderMain();
-  } catch(e) { console.error(e); showToast('Error al completar calendario: '+e.message); }
+      showToast(`✓ Calendario completado — ${addedTotal} entrenamientos agregados`);
+      renderMain();
+    } catch(e) { console.error(e); showToast('Error al completar calendario: '+e.message); }
+  }});
 }
 window.fillWeeklyTrainingCalendar = fillWeeklyTrainingCalendar;
 
@@ -3167,9 +3214,10 @@ window.saveBlockTitle=saveBlockTitle;
 
 function deleteBlock(e,blockId) {
   e.stopPropagation();
-  if(!confirm('¿Eliminar este bloque?')) return;
-  S.blocks=S.blocks.filter(b=>b.id!==blockId);
-  scheduleSave(); renderMain();
+  showConfirmModal({message:'¿Eliminar este bloque?', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    S.blocks=S.blocks.filter(b=>b.id!==blockId);
+    scheduleSave(); renderMain();
+  }});
 }
 window.deleteBlock=deleteBlock;
 
@@ -3189,9 +3237,10 @@ function saveCatLabel(blockId,catIdx,inp) {
 window.saveCatLabel=saveCatLabel;
 
 function deleteCat(blockId,catIdx) {
-  if(!confirm('¿Eliminar esta subcategoría y sus ejercicios?')) return;
-  const b=S.blocks.find(x=>x.id===blockId); if(!b) return;
-  b.categories.splice(catIdx,1); scheduleSave(); renderMain();
+  showConfirmModal({message:'¿Eliminar esta subcategoría y sus ejercicios?', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    const b=S.blocks.find(x=>x.id===blockId); if(!b) return;
+    b.categories.splice(catIdx,1); scheduleSave(); renderMain();
+  }});
 }
 window.deleteCat=deleteCat;
 
@@ -5483,36 +5532,37 @@ async function applyCalendarRepeat(teamId) {
   if(end<start) { showToast('La fecha final tiene que ser después de la inicial'); return; }
   const typeLabels = types.map(t=>CALENDAR_TYPES.find(x=>x.id===t)?.label||t).join(', ');
   const dowLabels = [...dows].sort((a,b)=>a-b).map(d=>['lunes','martes','miércoles','jueves','viernes','sábado','domingo'][d]).join(', ');
-  if(!confirm(`¿Agregar ${typeLabels} todos los ${dowLabels} desde ${start} hasta ${end}? No duplica lo que ya esté cargado ese día.`)) return;
-  showToast('Aplicando…');
-  if(!team.calendar) team.calendar={};
-  const fsUpdate = {};
-  let addedTotal = 0;
-  const d = new Date(start+'T00:00:00');
-  const endD = new Date(end+'T00:00:00');
-  while(d<=endD) {
-    const dow = mondayIndex(d);
-    if(dows.has(dow)) {
-      const dateStr = toLocalDateStr(d);
-      let events = getCalendarEvents(team, dateStr);
-      let changed = false;
-      types.forEach(typeId=>{
-        if(!events.some(e=>e.type===typeId)) {
-          const newEvent = typeId==='partido' ? {type:'partido', opponent:'', homeAway:'local'} : {type:typeId};
-          events=[...events,newEvent]; changed=true; addedTotal++;
-        }
-      });
-      if(changed) { team.calendar[dateStr]=events; fsUpdate[`calendar.${dateStr}`]=events; }
+  showConfirmModal({message:`¿Agregar ${typeLabels} todos los ${dowLabels} desde ${start} hasta ${end}? No duplica lo que ya esté cargado ese día.`, confirmLabel:'Agregar', onConfirm: async () => {
+    showToast('Aplicando…');
+    if(!team.calendar) team.calendar={};
+    const fsUpdate = {};
+    let addedTotal = 0;
+    const d = new Date(start+'T00:00:00');
+    const endD = new Date(end+'T00:00:00');
+    while(d<=endD) {
+      const dow = mondayIndex(d);
+      if(dows.has(dow)) {
+        const dateStr = toLocalDateStr(d);
+        let events = getCalendarEvents(team, dateStr);
+        let changed = false;
+        types.forEach(typeId=>{
+          if(!events.some(e=>e.type===typeId)) {
+            const newEvent = typeId==='partido' ? {type:'partido', opponent:'', homeAway:'local'} : {type:typeId};
+            events=[...events,newEvent]; changed=true; addedTotal++;
+          }
+        });
+        if(changed) { team.calendar[dateStr]=events; fsUpdate[`calendar.${dateStr}`]=events; }
+      }
+      d.setDate(d.getDate()+1);
     }
-    d.setDate(d.getDate()+1);
-  }
-  if(!addedTotal) { showToast('No había nada nuevo para agregar en ese rango'); return; }
-  try {
-    await updateDocSafe(doc(db,'teams',teamId), fsUpdate);
-    showToast(`✓ ${addedTotal} actividades agregadas`);
-    S._calRepeatOpen = false;
-    renderMain();
-  } catch(e) { showToast('Error al guardar: '+e.message); }
+    if(!addedTotal) { showToast('No había nada nuevo para agregar en ese rango'); return; }
+    try {
+      await updateDocSafe(doc(db,'teams',teamId), fsUpdate);
+      showToast(`✓ ${addedTotal} actividades agregadas`);
+      S._calRepeatOpen = false;
+      renderMain();
+    } catch(e) { showToast('Error al guardar: '+e.message); }
+  }});
 }
 window.applyCalendarRepeat = applyCalendarRepeat;
 
@@ -6353,7 +6403,7 @@ function renderMatchReadinessReport(team, members) {
     <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${lesionadasEnDuda>0?'var(--amber)':'var(--text)'}">${lesionadasEnDuda}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas/en duda</div></div>
   </div></div>`;
 
-  if(noWellness7d>0) html += `<div style="background:var(--amber-dim);color:var(--amber);border-radius:var(--rsm);padding:10px 14px;margin-bottom:14px;font-size:12px">⚠ ${noWellness7d} atleta${noWellness7d===1?'':'s'} sin wellness cargado en los últimos 7 días — su estado real podría no estar reflejado.</div>`;
+  if(noWellness7d>0) html += `<div style="background:var(--amber-dim);color:var(--amber);border-radius:var(--rsm);padding:10px 14px;margin-bottom:14px;font-size:12px">${craftIconSvg('alert','var(--amber)',12)} ${noWellness7d} atleta${noWellness7d===1?'':'s'} sin wellness cargado en los últimos 7 días — su estado real podría no estar reflejado.</div>`;
 
   html += `<div class="admin-section"><div class="admin-section-title">Disponibilidad del plantel</div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -6538,19 +6588,20 @@ async function confirmTeamRoutineAssign() {
   const sessionNames = getOrderedSessionNames(routine);
   if(st.selectedWeekdays.length !== sessionNames.length) { showToast(`Elegí ${sessionNames.length} día${sessionNames.length!==1?'s':''} de entrenamiento`); return; }
   const memberUids = team.memberUids||[];
-  if(!confirm(`Esto le asigna "${routine.name}" a los ${memberUids.length} jugadores del roster, reemplazando la rutina individual que tuviera cada uno. ¿Confirmás?`)) return;
-  showToast('Asignando…');
-  try {
-    await setDoc(doc(db,'teams',team.id), {assignedRoutineId:st.routineId, routineBlockPositions:st.blockPositions}, {merge:true});
-    team.assignedRoutineId = st.routineId;
-    team.routineBlockPositions = st.blockPositions;
-    for(const uid of memberUids) {
-      await writeRoutineAssignment(uid, st.routineId, [...st.selectedWeekdays], st.startDate);
-    }
-    showToast(`✓ Rutina asignada a ${memberUids.length} jugador${memberUids.length!==1?'es':''}`);
-    S._teamRoutineAssign = null;
-    renderMain();
-  } catch(e) { console.error(e); showToast('Error al asignar: '+e.message); }
+  showConfirmModal({message:`Esto le asigna "${routine.name}" a los ${memberUids.length} jugadores del roster, reemplazando la rutina individual que tuviera cada uno.`, confirmLabel:'Asignar', onConfirm: async () => {
+    showToast('Asignando…');
+    try {
+      await setDoc(doc(db,'teams',team.id), {assignedRoutineId:st.routineId, routineBlockPositions:st.blockPositions}, {merge:true});
+      team.assignedRoutineId = st.routineId;
+      team.routineBlockPositions = st.blockPositions;
+      for(const uid of memberUids) {
+        await writeRoutineAssignment(uid, st.routineId, [...st.selectedWeekdays], st.startDate);
+      }
+      showToast(`✓ Rutina asignada a ${memberUids.length} jugador${memberUids.length!==1?'es':''}`);
+      S._teamRoutineAssign = null;
+      renderMain();
+    } catch(e) { console.error(e); showToast('Error al asignar: '+e.message); }
+  }});
 }
 window.confirmTeamRoutineAssign = confirmTeamRoutineAssign;
 
@@ -6616,7 +6667,7 @@ function renderTeamRutina(team) {
     ${(team.players||[]).map((p,pi)=>{
       const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
       if(!match) {
-        return `<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+        return `<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:var(--sh-card);border-radius:var(--rsm);padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:14px;font-weight:600">${p} <span style="font-size:10px;color:var(--amber);font-weight:500;margin-left:6px">sin cuenta todavía</span></div>
           <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
         </div>`;
@@ -6634,11 +6685,11 @@ function renderTeamRutina(team) {
       // Alertas puntuales de HOY: estrés, sueño y dolor muscular reportados bajos.
       const alerts = [];
       if(w?.estres!==undefined && w.estres<=2) alerts.push({emoji:'😩',label:'Estresado'});
-      if(w?.sueño_calidad!==undefined && w.sueño_calidad<=2) alerts.push({emoji:'😴',label:'Durmió mal'});
+      if(w?.sueño_calidad!==undefined && w.sueño_calidad<=2) alerts.push({icon:craftIconSvg('sleep','currentColor',11),label:'Durmió mal'});
       if(w?.dolor_muscular!==undefined && w.dolor_muscular<=2) alerts.push({emoji:'💪',label:'Dolor muscular'});
       if(w?.sueño_horas!==undefined && w.sueño_horas!=='' && +w.sueño_horas<=5) alerts.push({emoji:'⏰',label:`Poco sueño (${w.sueño_horas}h)`});
 
-      return `<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
+      return `<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:var(--sh-card);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:10px">
           <div style="cursor:pointer;flex-shrink:0" onclick="adminOpenAthlete('${match.uid}')">${avatarHtml(match.name||p, match.color, 36, match.photoUrl)}</div>
           <div style="flex:1;min-width:0;cursor:pointer" onclick="adminOpenAthlete('${match.uid}')">
@@ -6653,10 +6704,10 @@ function renderTeamRutina(team) {
           <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
         </div>
         ${(worstInjury || alerts.length || matchInfo) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-          ${matchInfo?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700">🏆 ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>`:''}
-          ${matchInfo?.hadMolestia?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700">⚠ molestia en el partido</span>`:''}
+          ${matchInfo?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700">${craftIconSvg('match','var(--accent-text)',11)} ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>`:''}
+          ${matchInfo?.hadMolestia?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700">${craftIconSvg('alert','var(--red)',11)} molestia en el partido</span>`:''}
           ${worstInjury?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${injColor}22;color:${injColor};border:1px solid ${injColor}">🩹 ${worstInjury.zoneLabel} · ${severityInfo(worstInjury.severity)?.label||'Leve'} · dolor ${worstInjury.pain}/10</span>`:''}
-          ${alerts.map(al=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${al.emoji} ${al.label}</span>`).join('')}
+          ${alerts.map(al=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${al.icon||al.emoji} ${al.label}</span>`).join('')}
         </div>`:''}
       </div>`;
     }).join('')}
@@ -6666,7 +6717,7 @@ function renderTeamRutina(team) {
       <button class="abtn abtn-p" onclick="addPlayer('${team.id}')">Agregar</button>
     </div></div>
   ${unmatchedLinked.length?`<div class="admin-section" style="margin-top:12px;border-color:var(--amber)">
-    <div class="admin-section-title" style="color:var(--amber)">⚠ ${unmatchedLinked.length} atleta${unmatchedLinked.length===1?'':'s'} con cuenta vinculada pero fuera del roster</div>
+    <div class="admin-section-title" style="color:var(--amber)">${craftIconSvg('alert','var(--amber)',12)} ${unmatchedLinked.length} atleta${unmatchedLinked.length===1?'':'s'} con cuenta vinculada pero fuera del roster</div>
     ${unmatchedLinked.map(a=>`<div class="admin-item">
       <div class="admin-item-lbl" style="cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">${a.name||a.email}</div>
       <button class="abtn abtn-p" onclick="addLinkedPlayerToRoster('${team.id}','${(a.name||a.email).replace(/'/g,"\\'")}')">+ Agregar al roster</button>
@@ -6775,9 +6826,10 @@ function metricIconSvg(key) {
 window.metricIconSvg = metricIconSvg;
 
 // Set de íconos del pase "Terminación visual" (mockup craft-pass) — trofeo
-// de partido, triángulo de alerta y check — reemplazan 🏆/⚠/✓ sueltos en
-// Dashboard y Perfil de atleta. `size` en px (default 13, para ir inline
-// con texto de badges chicos); `color` acepta cualquier valor CSS/var().
+// de partido, triángulo de alerta, check, corazón de sueño y batería de
+// fatiga — reemplazan 🏆/⚠/✓/😴 sueltos en Dashboard, Perfil, Equipos,
+// Atletas y Biblioteca. `size` en px (default 13, para ir inline con texto
+// de badges chicos); `color` acepta cualquier valor CSS/var().
 function craftIconSvg(key, color, size) {
   const s = size||13;
   const col = color||'currentColor';
@@ -6786,6 +6838,8 @@ function craftIconSvg(key, color, size) {
     match: '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 5H4a1 1 0 0 0-1 1c0 2.5 1.5 4 4 4M17 5h3a1 1 0 0 1 1 1c0 2.5-1.5 4-4 4"/>',
     alert: `<path d="M12 3 2 20h20L12 3Z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r=".5" fill="${col}"/>`,
     check: '<polyline points="20 6 9 17 4 12"/>',
+    sleep: '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78Z"/>',
+    fatigue: `<rect x="9" y="1" width="6" height="3" rx="1" fill="${col}" stroke="none"/><rect x="6" y="4" width="12" height="19" rx="2.5"/><path d="M13 7L9 14L12 14L11 20L15 13L12 13Z" fill="${col}" stroke="none"/>`,
   };
   return `<svg ${c}>${paths[key]||''}</svg>`;
 }
@@ -7081,26 +7135,27 @@ window.saveReassignAthleteTeam=saveReassignAthleteTeam;
 async function resetAthleteAccount(uid) {
   const a = S.adminAthletes.find(x=>x.uid===uid);
   const name = a?.name || 'este atleta';
-  if(!confirm(`¿Resetear la cuenta de ${name}? Se borran todos sus datos (tests, wellness, rutina, equipo). La próxima vez que entre va a tener que registrarse de cero con el mismo mail. Esto no se puede deshacer.`)) return;
-  showToast('Reseteando…');
-  try {
-    if(a?.teamId) {
-      const team = getAthleteTeam(a);
-      if(team) {
-        const memberUids = (team.memberUids||[]).filter(id=>id!==uid);
-        const players = (team.players||[]).filter(p=>!namesLikelyMatch(p,a.name));
-        await updateDoc(doc(db,'teams',team.id), {memberUids, players});
-        team.memberUids=memberUids; team.players=players;
+  showConfirmModal({message:`¿Resetear la cuenta de ${name}? Se borran todos sus datos (tests, wellness, rutina, equipo). La próxima vez que entre va a tener que registrarse de cero con el mismo mail. Esto no se puede deshacer.`, danger:true, confirmLabel:'Resetear', onConfirm: async () => {
+    showToast('Reseteando…');
+    try {
+      if(a?.teamId) {
+        const team = getAthleteTeam(a);
+        if(team) {
+          const memberUids = (team.memberUids||[]).filter(id=>id!==uid);
+          const players = (team.players||[]).filter(p=>!namesLikelyMatch(p,a.name));
+          await updateDoc(doc(db,'teams',team.id), {memberUids, players});
+          team.memberUids=memberUids; team.players=players;
+        }
       }
-    }
-    await deleteDoc(doc(db,'users',uid));
-    await deleteDoc(doc(db,'personal',uid));
-    S.adminAthletes = S.adminAthletes.filter(x=>x.uid!==uid);
-    S.viewingAthlete = null;
-    S.adminView = 'athletes';
-    showToast('✓ Cuenta reseteada');
-    renderMain();
-  } catch(e) { showToast('Error al resetear'); }
+      await deleteDoc(doc(db,'users',uid));
+      await deleteDoc(doc(db,'personal',uid));
+      S.adminAthletes = S.adminAthletes.filter(x=>x.uid!==uid);
+      S.viewingAthlete = null;
+      S.adminView = 'athletes';
+      showToast('✓ Cuenta reseteada');
+      renderMain();
+    } catch(e) { showToast('Error al resetear'); }
+  }});
 }
 window.resetAthleteAccount = resetAthleteAccount;
 
@@ -7302,7 +7357,7 @@ function renderAthleteSummaryCard(a) {
       </div>
     </div>
     ${injuries.length ? `<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
-      ${injuries.map(inj => `<div style="font-size:11px;color:var(--red);display:flex;align-items:center;gap:4px">⚠️ ${inj.zoneLabel}${inj.type ? ' · ' + INJURY_TYPES[inj.type] : ''} (${inj.pain}/10)</div>`).join('')}
+      ${injuries.map(inj => `<div style="font-size:11px;color:var(--red);display:flex;align-items:center;gap:4px">${craftIconSvg('alert','var(--red)',11)} ${inj.zoneLabel}${inj.type ? ' · ' + INJURY_TYPES[inj.type] : ''} (${inj.pain}/10)</div>`).join('')}
     </div>` : ''}
     ${lastLog ? `<div style="margin-top:6px;font-size:11px;color:var(--text3)">Última sesión: RPE ${lastLog.rpe} · ${lastLog.date}</div>` : ''}
     ${dayStrip}
@@ -7586,7 +7641,7 @@ function renderTeamLeaderboard(members) {
   // es una vista alternativa que el propio prep puede elegir, no al revés.
   const mode = S.leaderboardMode || 'pr';
   const testDef = LEADERBOARD_TESTS.find(t=>t.id===testId);
-  let html = `<div class="admin-section">${collapsibleHeader(key,'🏆 Ranking del equipo')}`;
+  let html = `<div class="admin-section">${collapsibleHeader(key,craftIconSvg('match','var(--accent-text)',14)+' Ranking del equipo')}`;
   if(!collapsed) {
     const rows = members.map(a=>{
       const recs = a._personal?.evals?.[testId]||[];
@@ -8158,13 +8213,13 @@ function editTDBlockTitle(e,blockId,teamId,dayIdx){e.stopPropagation();const b=g
 window.editTDBlockTitle=editTDBlockTitle;
 function saveTDBlockTitle(blockId,teamId,dayIdx,inp){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;if(inp.value.trim())b.title=inp.value.trim();inp.style.display='none';const span=inp.previousElementSibling;if(span){span.textContent=b.title;span.style.display='';}}
 window.saveTDBlockTitle=saveTDBlockTitle;
-function deleteTDBlock(e,blockId,teamId,dayIdx){e.stopPropagation();if(!confirm('¿Eliminar bloque?'))return;const day=getTeamDay(teamId,dayIdx);if(!day)return;day.blocks=day.blocks.filter(b=>b.id!==blockId);renderMain();}
+function deleteTDBlock(e,blockId,teamId,dayIdx){e.stopPropagation();showConfirmModal({message:'¿Eliminar bloque?',danger:true,confirmLabel:'Eliminar',onConfirm:()=>{const day=getTeamDay(teamId,dayIdx);if(!day)return;day.blocks=day.blocks.filter(b=>b.id!==blockId);renderMain();}});}
 window.deleteTDBlock=deleteTDBlock;
 function editTDCatLabel(el,blockId,teamId,dayIdx,ci){const inp=document.getElementById(`tdcatinp-${blockId}-${ci}`);el.style.display='none';inp.value=el.textContent;inp.style.display='inline-block';inp.focus();inp.select();}
 window.editTDCatLabel=editTDCatLabel;
 function saveTDCatLabel(blockId,teamId,dayIdx,ci,inp){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;if(inp.value.trim())b.categories[ci].label=inp.value.trim();inp.style.display='none';const span=inp.previousElementSibling;if(span){span.textContent=b.categories[ci].label;span.style.display='';}}
 window.saveTDCatLabel=saveTDCatLabel;
-function deleteTDCat(blockId,teamId,dayIdx,ci){if(!confirm('¿Eliminar categoría?'))return;const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;b.categories.splice(ci,1);renderMain();}
+function deleteTDCat(blockId,teamId,dayIdx,ci){showConfirmModal({message:'¿Eliminar categoría?',danger:true,confirmLabel:'Eliminar',onConfirm:()=>{const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;b.categories.splice(ci,1);renderMain();}});}
 window.deleteTDCat=deleteTDCat;
 function addTDCategory(blockId,teamId,dayIdx){const b=getTDBlock(blockId,teamId,dayIdx);if(!b)return;b.categories.push({id:genId(),label:'Nueva categoría',exercises:[]});renderMain();}
 window.addTDCategory=addTDCategory;
@@ -8304,8 +8359,9 @@ window.addTrainingDay=addTrainingDay;
 
 function deleteDay(teamId,di) {
   const t=S.teams.find(x=>x.id===teamId); if(!t) return;
-  if(!confirm('¿Eliminar este día?')) return;
-  t.trainingDays.splice(di,1); saveTeam(teamId); renderMain();
+  showConfirmModal({message:'¿Eliminar este día?', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    t.trainingDays.splice(di,1); saveTeam(teamId); renderMain();
+  }});
 }
 window.deleteDay=deleteDay;
 
@@ -8389,18 +8445,19 @@ function deletePlayer(teamId,pi) {
 window.deletePlayer=deletePlayer;
 
 async function deleteTeam(teamId) {
-  if(!confirm('¿Eliminar este equipo? Esta acción no se puede deshacer.')) return;
-  try {
-    await deleteDoc(doc(db,'teams',teamId));
-    S.teams = S.teams.filter(t=>t.id!==teamId);
-    S.teamView = null;
-    S.currentView = 'teams';
-    renderBottomBar();
-    renderMain();
-    showToast('✓ Equipo eliminado permanentemente');
-  } catch(e) {
-    showToast('Error al eliminar: '+e.message);
-  }
+  showConfirmModal({message:'¿Eliminar este equipo? Esta acción no se puede deshacer.', danger:true, confirmLabel:'Eliminar', onConfirm: async () => {
+    try {
+      await deleteDoc(doc(db,'teams',teamId));
+      S.teams = S.teams.filter(t=>t.id!==teamId);
+      S.teamView = null;
+      S.currentView = 'teams';
+      renderBottomBar();
+      renderMain();
+      showToast('✓ Equipo eliminado permanentemente');
+    } catch(e) {
+      showToast('Error al eliminar: '+e.message);
+    }
+  }});
 }
 window.deleteTeam=deleteTeam;
 
@@ -9355,7 +9412,7 @@ window.esStandalone = esStandalone;
 async function activarNotificacionesPush() {
   if(typeof Notification==='undefined') { showToast('Tu navegador no soporta notificaciones'); return; }
   if(esIOS() && !esStandalone()) {
-    alert('En iPhone: primero agregá G-Metrics a tu pantalla de inicio (Compartir → Agregar a inicio) y abrila desde ese ícono — recién ahí Safari deja activar notificaciones.');
+    showConfirmModal({title:'Activar en iPhone', message:'Primero agregá G-Metrics a tu pantalla de inicio (Compartir → Agregar a inicio) y abrila desde ese ícono — recién ahí Safari deja activar notificaciones.'});
     return;
   }
   try {
@@ -9461,53 +9518,54 @@ window.sendPushToUids = sendPushToUids;
 // pendientes (sin cuenta todavía). Útil para arreglar de golpe los nombres
 // que algunos cargaron en mayúscula o minúscula.
 async function fixAllNameCapitalization() {
-  if(!confirm('¿Corregir mayúsculas de todos los nombres registrados? Esto no se puede deshacer.')) return;
-  showToast('Corrigiendo…');
-  await ensureAdminAthletes();
-  let fixedCount = 0;
+  showConfirmModal({message:'¿Corregir mayúsculas de todos los nombres registrados? Esto no se puede deshacer.', confirmLabel:'Corregir', onConfirm: async () => {
+    showToast('Corrigiendo…');
+    await ensureAdminAthletes();
+    let fixedCount = 0;
 
-  for(const a of S.adminAthletes) {
-    const oldName = a.name;
-    const newName = capitalizeName(oldName);
-    if(newName && newName!==oldName) {
-      try {
-        await setDoc(doc(db,'users',a.uid), {name:newName}, {merge:true});
-        // Actualizamos también su entrada en el roster del equipo, si tiene.
-        if(a.teamId) {
-          const team = getAthleteTeam(a);
-          if(team && team.players) {
-            const idx = team.players.findIndex(p=>namesLikelyMatch(p,oldName));
-            if(idx>=0 && team.players[idx]!==newName) {
-              team.players[idx] = newName;
-              await updateDoc(doc(db,'teams',team.id), {players:team.players});
+    for(const a of S.adminAthletes) {
+      const oldName = a.name;
+      const newName = capitalizeName(oldName);
+      if(newName && newName!==oldName) {
+        try {
+          await setDoc(doc(db,'users',a.uid), {name:newName}, {merge:true});
+          // Actualizamos también su entrada en el roster del equipo, si tiene.
+          if(a.teamId) {
+            const team = getAthleteTeam(a);
+            if(team && team.players) {
+              const idx = team.players.findIndex(p=>namesLikelyMatch(p,oldName));
+              if(idx>=0 && team.players[idx]!==newName) {
+                team.players[idx] = newName;
+                await updateDoc(doc(db,'teams',team.id), {players:team.players});
+              }
             }
           }
-        }
-        a.name = newName;
-        fixedCount++;
-      } catch(e) { /* seguimos con el resto aunque uno falle */ }
+          a.name = newName;
+          fixedCount++;
+        } catch(e) { /* seguimos con el resto aunque uno falle */ }
+      }
     }
-  }
 
-  // Jugadores pendientes (sin cuenta todavía)
-  for(const p of (S.pendingAthletes||[])) {
-    const newName = capitalizeName(p.name);
-    if(newName && newName!==p.name) {
-      try {
-        await setDoc(doc(db,'pendingAthletes',p.id), {name:newName}, {merge:true});
-        const team = getAthleteTeam(p);
-        if(team && team.players) {
-          const idx = team.players.findIndex(pl=>namesLikelyMatch(pl,p.name));
-          if(idx>=0) { team.players[idx]=newName; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
-        }
-        p.name = newName;
-        fixedCount++;
-      } catch(e) {}
+    // Jugadores pendientes (sin cuenta todavía)
+    for(const p of (S.pendingAthletes||[])) {
+      const newName = capitalizeName(p.name);
+      if(newName && newName!==p.name) {
+        try {
+          await setDoc(doc(db,'pendingAthletes',p.id), {name:newName}, {merge:true});
+          const team = getAthleteTeam(p);
+          if(team && team.players) {
+            const idx = team.players.findIndex(pl=>namesLikelyMatch(pl,p.name));
+            if(idx>=0) { team.players[idx]=newName; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
+          }
+          p.name = newName;
+          fixedCount++;
+        } catch(e) {}
+      }
     }
-  }
 
-  showToast(`✓ ${fixedCount} nombre${fixedCount!==1?'s':''} corregido${fixedCount!==1?'s':''}`);
-  renderMain();
+    showToast(`✓ ${fixedCount} nombre${fixedCount!==1?'s':''} corregido${fixedCount!==1?'s':''}`);
+    renderMain();
+  }});
 }
 window.fixAllNameCapitalization = fixAllNameCapitalization;
 
@@ -9602,45 +9660,46 @@ async function applyNameOrderReview() {
   const candidates = getNameOrderCandidates();
   const checked = S._nameOrderChecked || new Set();
   if(!checked.size) { showToast('No marcaste ninguno'); return; }
-  if(!confirm(`¿Aplicar el nuevo orden a ${checked.size} nombre${checked.size!==1?'s':''}? Esto no se puede deshacer.`)) return;
-  showToast('Aplicando…');
-  let fixedCount = 0;
-  for(let i=0;i<candidates.length;i++) {
-    if(!checked.has(i)) continue;
-    const c = candidates[i];
-    try {
-      if(c.kind==='user') {
-        await setDoc(doc(db,'users',c.id), {name:c.proposed}, {merge:true});
-        const a = S.adminAthletes.find(x=>x.uid===c.id);
-        if(a) {
-          if(a.teamId) {
-            const team = getAthleteTeam(a);
+  showConfirmModal({message:`¿Aplicar el nuevo orden a ${checked.size} nombre${checked.size!==1?'s':''}? Esto no se puede deshacer.`, confirmLabel:'Aplicar', onConfirm: async () => {
+    showToast('Aplicando…');
+    let fixedCount = 0;
+    for(let i=0;i<candidates.length;i++) {
+      if(!checked.has(i)) continue;
+      const c = candidates[i];
+      try {
+        if(c.kind==='user') {
+          await setDoc(doc(db,'users',c.id), {name:c.proposed}, {merge:true});
+          const a = S.adminAthletes.find(x=>x.uid===c.id);
+          if(a) {
+            if(a.teamId) {
+              const team = getAthleteTeam(a);
+              if(team && team.players) {
+                const idx = team.players.findIndex(p=>namesLikelyMatch(p,c.current));
+                if(idx>=0) { team.players[idx]=c.proposed; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
+              }
+            }
+            a.name = c.proposed;
+          }
+        } else {
+          await setDoc(doc(db,'pendingAthletes',c.id), {name:c.proposed}, {merge:true});
+          const p = S.pendingAthletes.find(x=>x.id===c.id);
+          if(p) {
+            const team = getAthleteTeam(p);
             if(team && team.players) {
-              const idx = team.players.findIndex(p=>namesLikelyMatch(p,c.current));
+              const idx = team.players.findIndex(pl=>namesLikelyMatch(pl,c.current));
               if(idx>=0) { team.players[idx]=c.proposed; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
             }
+            p.name = c.proposed;
           }
-          a.name = c.proposed;
         }
-      } else {
-        await setDoc(doc(db,'pendingAthletes',c.id), {name:c.proposed}, {merge:true});
-        const p = S.pendingAthletes.find(x=>x.id===c.id);
-        if(p) {
-          const team = getAthleteTeam(p);
-          if(team && team.players) {
-            const idx = team.players.findIndex(pl=>namesLikelyMatch(pl,c.current));
-            if(idx>=0) { team.players[idx]=c.proposed; await updateDoc(doc(db,'teams',team.id), {players:team.players}); }
-          }
-          p.name = c.proposed;
-        }
-      }
-      fixedCount++;
-    } catch(e) { /* seguimos con el resto aunque uno falle */ }
-  }
-  S._nameOrderChecked = null;
-  showToast(`✓ ${fixedCount} nombre${fixedCount!==1?'s':''} actualizado${fixedCount!==1?'s':''}`);
-  S.adminView = 'main';
-  renderMain();
+        fixedCount++;
+      } catch(e) { /* seguimos con el resto aunque uno falle */ }
+    }
+    S._nameOrderChecked = null;
+    showToast(`✓ ${fixedCount} nombre${fixedCount!==1?'s':''} actualizado${fixedCount!==1?'s':''}`);
+    S.adminView = 'main';
+    renderMain();
+  }});
 }
 window.applyNameOrderReview = applyNameOrderReview;
 
@@ -9788,46 +9847,47 @@ function renderSettings() {
 // mail", Firebase no permite que un admin borre la cuenta de otro.
 async function deleteMyAccount() {
   if(S.isAdmin) {
-    alert('Por seguridad, la cuenta de administrador no se puede eliminar desde acá. Si necesitás cambiarla, avisale a quien armó la app.');
+    showConfirmModal({title:'No disponible', message:'Por seguridad, la cuenta de administrador no se puede eliminar desde acá. Si necesitás cambiarla, avisale a quien armó la app.'});
     return;
   }
-  if(!confirm('¿Eliminar tu cuenta definitivamente? Se borran todos tus datos (wellness, tests, rutina) y tu mail queda libre para registrarte de nuevo si hace falta. Esto NO se puede deshacer.')) return;
-  if(!confirm('Confirmá una vez más: esto borra tu cuenta para siempre. ¿Seguro?')) return;
+  showConfirmModal({message:'¿Eliminar tu cuenta definitivamente? Se borran todos tus datos (wellness, tests, rutina) y tu mail queda libre para registrarte de nuevo si hace falta. Esto NO se puede deshacer.', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    showConfirmModal({title:'Confirmá una vez más', message:'Esto borra tu cuenta para siempre. ¿Seguro?', danger:true, confirmLabel:'Sí, eliminar', onConfirm: async () => {
+      const uid = S.user.uid;
+      showToast('Eliminando cuenta…');
 
-  const uid = S.user.uid;
-  showToast('Eliminando cuenta…');
-
-  const wipeFirestoreAndAuth = async () => {
-    try {
-      // Sacarlo del roster de su equipo, si tiene
-      if(S.userData?.teamId) {
-        const tSnap = await getDoc(doc(db,'teams',S.userData.teamId));
-        if(tSnap.exists()) {
-          const team = tSnap.data();
-          const memberUids = (team.memberUids||[]).filter(id=>id!==uid);
-          const players = (team.players||[]).filter(p=>!namesLikelyMatch(p,S.userData.name));
-          await updateDoc(doc(db,'teams',S.userData.teamId), {memberUids, players});
-        }
-      }
-      await deleteDoc(doc(db,'users',uid)).catch(()=>{});
-      await deleteDoc(doc(db,'personal',uid)).catch(()=>{});
-      await deleteUser(auth.currentUser);
-      showToast('✓ Cuenta eliminada');
-    } catch(e) {
-      if(e.code==='auth/requires-recent-login') {
-        const pass = prompt('Por seguridad, Firebase te pide confirmar tu contraseña antes de eliminar la cuenta:');
-        if(!pass) { showToast('Cancelado'); return; }
+      const wipeFirestoreAndAuth = async () => {
         try {
-          const cred = EmailAuthProvider.credential(S.user.email, pass);
-          await reauthenticateWithCredential(auth.currentUser, cred);
-          await wipeFirestoreAndAuth();
-        } catch(e2) { showToast('Contraseña incorrecta o error al reautenticar'); }
-      } else {
-        showToast('Error al eliminar la cuenta');
-      }
-    }
-  };
-  await wipeFirestoreAndAuth();
+          // Sacarlo del roster de su equipo, si tiene
+          if(S.userData?.teamId) {
+            const tSnap = await getDoc(doc(db,'teams',S.userData.teamId));
+            if(tSnap.exists()) {
+              const team = tSnap.data();
+              const memberUids = (team.memberUids||[]).filter(id=>id!==uid);
+              const players = (team.players||[]).filter(p=>!namesLikelyMatch(p,S.userData.name));
+              await updateDoc(doc(db,'teams',S.userData.teamId), {memberUids, players});
+            }
+          }
+          await deleteDoc(doc(db,'users',uid)).catch(()=>{});
+          await deleteDoc(doc(db,'personal',uid)).catch(()=>{});
+          await deleteUser(auth.currentUser);
+          showToast('✓ Cuenta eliminada');
+        } catch(e) {
+          if(e.code==='auth/requires-recent-login') {
+            const pass = prompt('Por seguridad, Firebase te pide confirmar tu contraseña antes de eliminar la cuenta:');
+            if(!pass) { showToast('Cancelado'); return; }
+            try {
+              const cred = EmailAuthProvider.credential(S.user.email, pass);
+              await reauthenticateWithCredential(auth.currentUser, cred);
+              await wipeFirestoreAndAuth();
+            } catch(e2) { showToast('Contraseña incorrecta o error al reautenticar'); }
+          } else {
+            showToast('Error al eliminar la cuenta');
+          }
+        }
+      };
+      await wipeFirestoreAndAuth();
+    }});
+  }});
 }
 window.deleteMyAccount = deleteMyAccount;
 
@@ -10101,34 +10161,34 @@ async function moveWellnessDayData(uid, oldDate, newDate) {
   const hasLogs = freshLogsAll.some(l=>l.date===oldDate);
   if(!hasWellness && !hasLogs) { showToast('No hay datos ese día para mover (revisá si ya se movieron antes)'); return; }
   const collision = !!(freshWellness[newDate] || freshLogsAll.some(l=>l.date===newDate));
-  if(!confirm(`¿Mover el wellness y la carga del ${oldDate} al ${newDate}?`+(collision?' Ojo: ya hay datos cargados ese día — se pueden mezclar.':''))) return;
-
-  const fsUpdate = {};
-  if(hasWellness) {
-    fsUpdate[`wellness.${newDate}`] = freshWellness[oldDate];
-    fsUpdate[`wellness.${oldDate}`] = deleteField();
-  }
-  let freshLogs = null;
-  if(hasLogs) {
-    freshLogs = freshLogsAll.map(l => l.date===oldDate ? {...l, date:newDate} : l);
-    fsUpdate['history._sessionLogs'] = freshLogs;
-    fsUpdate['sessionLogs'] = freshLogs;
-  }
-  try {
-    await updateDocSafe(doc(db,'personal',uid), fsUpdate);
-    if(!personal.wellness) personal.wellness = {};
+  showConfirmModal({message:`¿Mover el wellness y la carga del ${oldDate} al ${newDate}?`+(collision?' Ojo: ya hay datos cargados ese día — se pueden mezclar.':''), confirmLabel:'Mover', onConfirm: async () => {
+    const fsUpdate = {};
     if(hasWellness) {
-      personal.wellness[newDate] = freshWellness[oldDate];
-      delete personal.wellness[oldDate];
+      fsUpdate[`wellness.${newDate}`] = freshWellness[oldDate];
+      fsUpdate[`wellness.${oldDate}`] = deleteField();
     }
-    if(freshLogs) {
-      if(!personal.history) personal.history = {};
-      personal.history._sessionLogs = freshLogs;
+    let freshLogs = null;
+    if(hasLogs) {
+      freshLogs = freshLogsAll.map(l => l.date===oldDate ? {...l, date:newDate} : l);
+      fsUpdate['history._sessionLogs'] = freshLogs;
+      fsUpdate['sessionLogs'] = freshLogs;
     }
-    showToast('✓ Movido al '+newDate);
-    S.wellnessDetailDate = newDate;
-    renderMain();
-  } catch(e) { showToast('Error al mover: '+e.message); }
+    try {
+      await updateDocSafe(doc(db,'personal',uid), fsUpdate);
+      if(!personal.wellness) personal.wellness = {};
+      if(hasWellness) {
+        personal.wellness[newDate] = freshWellness[oldDate];
+        delete personal.wellness[oldDate];
+      }
+      if(freshLogs) {
+        if(!personal.history) personal.history = {};
+        personal.history._sessionLogs = freshLogs;
+      }
+      showToast('✓ Movido al '+newDate);
+      S.wellnessDetailDate = newDate;
+      renderMain();
+    } catch(e) { showToast('Error al mover: '+e.message); }
+  }});
 }
 window.moveWellnessDayData = moveWellnessDayData;
 
@@ -10184,7 +10244,7 @@ function renderTrainedTodayScreen() {
       <div class="admin-item" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:6px" onclick="adminOpenAthleteDash('${a.uid}')">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div class="admin-item-lbl">${a.name||a.email}</div>
-          ${markedToday?`<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">⚠ molestia/lesión</span>`:''}
+          ${markedToday?`<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">${craftIconSvg('alert','var(--red)',10)} molestia/lesión</span>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${logs.map(l=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);white-space:nowrap">${l.session||l.activity} · ${l.mins}min · RPE ${l.rpe}</span>`).join('')}
@@ -10232,7 +10292,7 @@ function renderReminderScreen() {
     El recordatorio siempre les queda en la campanita de notificaciones adentro de la app. A los que ya activaron notificaciones push (Ajustes → Notificaciones), además les llega como aviso real al celular — a los que no, no.
   </div>
   <div class="admin-section">
-    <div class="admin-section-title" style="color:var(--amber)">⚠ Faltan ${pending.length} de ${athletes.length}</div>
+    <div class="admin-section-title" style="color:var(--amber)">${craftIconSvg('alert','var(--amber)',12)} Faltan ${pending.length} de ${athletes.length}</div>
     ${pending.length?pending.map(p=>`<div class="admin-item" style="cursor:pointer" onclick="adminOpenAthleteDash('${p.a.uid}')">
       <div class="admin-item-lbl">${p.a.name||p.a.email}</div>
       <div style="font-size:11px;color:var(--text3);display:flex;gap:8px">
@@ -10389,9 +10449,10 @@ function renderAdminMain() {
 }
 
 function resetBlocks() {
-  if(!confirm('¿Restaurar bloques por defecto?')) return;
-  S.blocks=JSON.parse(JSON.stringify(DEFAULT_BLOCKS));
-  scheduleSave(); renderMain(); showToast('Bloques restaurados');
+  showConfirmModal({message:'¿Restaurar bloques por defecto?', danger:true, confirmLabel:'Restaurar', onConfirm: () => {
+    S.blocks=JSON.parse(JSON.stringify(DEFAULT_BLOCKS));
+    scheduleSave(); renderMain(); showToast('Bloques restaurados');
+  }});
 }
 window.resetBlocks=resetBlocks;
 
@@ -10420,12 +10481,12 @@ function renderAdminAthletes() {
     return html;
   }
   const routineFilter = S._athletesRoutineFilter||'todos';
-  html += `<div style="margin-bottom:10px">
+  html += `<div style="margin-bottom:var(--sp-3)">
     <input id="athletes-search-inp" value="${S._athletesSearch||''}" placeholder="Buscar atleta..."
-      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
+      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:var(--sp-2) var(--sp-3);color:var(--text);font-size:14px;outline:none;font-family:inherit"
       oninput="setAthletesSearch(this.value)">
   </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--sp-4)">
     ${[
       {id:'todos', label:'Todos'},
       {id:'personalizada', label:'✓ Personalizada'},
@@ -10472,7 +10533,7 @@ function renderAthletesListBody() {
     ${list.map(a=>{
       const myTeam = getAthleteTeam(a);
       const status = getAthleteRoutineStatus(a);
-      return `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+      return `<div style="display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
@@ -11120,30 +11181,31 @@ async function adminSetRealRoutineWeek(uid, week) {
 window.adminSetRealRoutineWeek = adminSetRealRoutineWeek;
 
 async function resetAthleteRoutineWeek(uid) {
-  if(!confirm('Esto reinicia la planificación real del atleta a Semana 1 a partir de hoy — lo va a ver así en su propio celular. ¿Confirmás?')) return;
-  const a = S.adminAthletes?.find(x=>x.uid===uid);
-  const today = todayLocal();
-  try {
-    // Reinicia el ancla Y el historial — la rutina actual pasa a ser "el
-    // único tramo", arrancando de nuevo en Semana 1 desde hoy. Los tramos
-    // viejos (con su snapshot) no se borran del documento salvo que este
-    // reset los pise — es una acción deliberada de "arrancar de cero" que
-    // el admin confirma a propósito, coherente con lo que ya decía el botón.
-    const update = { routineAssignedDate: today, trainingStartDate: today };
-    if(a?.assignedRoutine) {
-      const routine = S.routines.find(r=>r.id===a.assignedRoutine);
-      update.routineAssignmentHistory = [{
-        routineId: a.assignedRoutine, routineName: routine?.name||'Rutina', startDate: today, startWeek: 1,
-        durationWeeks: routine?.durationWeeks||1, trainingWeekdays: a.trainingWeekdays||[], continuesFromRoutineId: null,
-      }];
-    }
-    await setDoc(doc(db,'users',uid), update, {merge:true});
-    if(a) Object.assign(a, update);
-    if(S.viewingAthlete?.uid===uid) Object.assign(S.viewingAthlete.userData, update);
-    if(S._routineWeekPreview) delete S._routineWeekPreview[uid];
-    showToast('✓ Reiniciado a Semana 1');
-    renderMain();
-  } catch(e) { showToast('Error al reiniciar'); }
+  showConfirmModal({message:'Esto reinicia la planificación real del atleta a Semana 1 a partir de hoy — lo va a ver así en su propio celular.', danger:true, confirmLabel:'Reiniciar', onConfirm: async () => {
+    const a = S.adminAthletes?.find(x=>x.uid===uid);
+    const today = todayLocal();
+    try {
+      // Reinicia el ancla Y el historial — la rutina actual pasa a ser "el
+      // único tramo", arrancando de nuevo en Semana 1 desde hoy. Los tramos
+      // viejos (con su snapshot) no se borran del documento salvo que este
+      // reset los pise — es una acción deliberada de "arrancar de cero" que
+      // el admin confirma a propósito, coherente con lo que ya decía el botón.
+      const update = { routineAssignedDate: today, trainingStartDate: today };
+      if(a?.assignedRoutine) {
+        const routine = S.routines.find(r=>r.id===a.assignedRoutine);
+        update.routineAssignmentHistory = [{
+          routineId: a.assignedRoutine, routineName: routine?.name||'Rutina', startDate: today, startWeek: 1,
+          durationWeeks: routine?.durationWeeks||1, trainingWeekdays: a.trainingWeekdays||[], continuesFromRoutineId: null,
+        }];
+      }
+      await setDoc(doc(db,'users',uid), update, {merge:true});
+      if(a) Object.assign(a, update);
+      if(S.viewingAthlete?.uid===uid) Object.assign(S.viewingAthlete.userData, update);
+      if(S._routineWeekPreview) delete S._routineWeekPreview[uid];
+      showToast('✓ Reiniciado a Semana 1');
+      renderMain();
+    } catch(e) { showToast('Error al reiniciar'); }
+  }});
 }
 window.resetAthleteRoutineWeek = resetAthleteRoutineWeek;
 
@@ -11344,13 +11406,14 @@ async function duplicateRoutine(id) {
 window.duplicateRoutine = duplicateRoutine;
 
 async function deleteRoutine(id) {
-  if(!confirm('¿Eliminar esta rutina?')) return;
-  try {
-    await deleteDoc(doc(db,'routines',id));
-    S.routines = S.routines.filter(r=>r.id!==id);
-    showToast('Rutina eliminada');
-    renderMain();
-  } catch(e) { showToast('Error'); }
+  showConfirmModal({message:'¿Eliminar esta rutina?', danger:true, confirmLabel:'Eliminar', onConfirm: async () => {
+    try {
+      await deleteDoc(doc(db,'routines',id));
+      S.routines = S.routines.filter(r=>r.id!==id);
+      showToast('Rutina eliminada');
+      renderMain();
+    } catch(e) { showToast('Error'); }
+  }});
 }
 window.deleteRoutine=deleteRoutine;
 
@@ -11602,11 +11665,12 @@ function addRoutineSession() {
 window.addRoutineSession=addRoutineSession;
 
 function deleteRoutineSession(sessionName) {
-  if(!confirm(`¿Eliminar la sesión "${sessionName}"?`)) return;
-  delete S.editingRoutine.sessions[sessionName];
-  const remaining=sortSessionNames(Object.keys(S.editingRoutine.sessions));
-  S._routineEditSession=remaining[0]||null;
-  renderMain();
+  showConfirmModal({message:`¿Eliminar la sesión "${sessionName}"?`, danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    delete S.editingRoutine.sessions[sessionName];
+    const remaining=sortSessionNames(Object.keys(S.editingRoutine.sessions));
+    S._routineEditSession=remaining[0]||null;
+    renderMain();
+  }});
 }
 window.deleteRoutineSession=deleteRoutineSession;
 
@@ -11666,10 +11730,11 @@ window.saveRBlockTitle=saveRBlockTitle;
 
 function deleteRBlock(e,blockId,sessionName) {
   e.stopPropagation();
-  if(!confirm('¿Eliminar este bloque?')) return;
-  const r=S.editingRoutine; if(!r) return;
-  r.sessions[sessionName]=(r.sessions[sessionName]||[]).filter(b=>b.id!==blockId);
-  renderMain();
+  showConfirmModal({message:'¿Eliminar este bloque?', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    const r=S.editingRoutine; if(!r) return;
+    r.sessions[sessionName]=(r.sessions[sessionName]||[]).filter(b=>b.id!==blockId);
+    renderMain();
+  }});
 }
 window.deleteRBlock=deleteRBlock;
 
@@ -11688,9 +11753,10 @@ function saveRCatLabel(blockId,sessionName,catIdx,inp) {
 window.saveRCatLabel=saveRCatLabel;
 
 function deleteRCat(blockId,sessionName,catIdx) {
-  if(!confirm('¿Eliminar esta subcategoría?')) return;
-  const b=getRBlock(blockId,sessionName); if(!b) return;
-  b.categories.splice(catIdx,1); renderMain();
+  showConfirmModal({message:'¿Eliminar esta subcategoría?', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    const b=getRBlock(blockId,sessionName); if(!b) return;
+    b.categories.splice(catIdx,1); renderMain();
+  }});
 }
 window.deleteRCat=deleteRCat;
 
@@ -12928,19 +12994,20 @@ async function deleteEvalRecord(testId, idx) {
   // Blindaje además de sacar el botón de la vista del jugador — nadie que no
   // sea admin puede borrar un test cargado, ni por acá ni por consola.
   if(!S.isAdmin) return;
-  if(!confirm('¿Eliminar este registro?')) return;
-  const uid = S.evalAthleteId||'self';
-  if(uid==='self') {
-    if(S.evals[testId]) { S.evals[testId].splice(idx,1); markEvalDirty(testId); scheduleSave(); }
-  } else {
-    if(S._athleteEvalsCache?.[uid]?.[testId]) {
-      S._athleteEvalsCache[uid][testId].splice(idx,1);
-      try { await saveAthleteEvalsDoc(uid, S._athleteEvalsCache[uid]); } catch(e){}
-      syncEvalsToAthleteObject(uid);
+  showConfirmModal({message:'¿Eliminar este registro?', danger:true, confirmLabel:'Eliminar', onConfirm: async () => {
+    const uid = S.evalAthleteId||'self';
+    if(uid==='self') {
+      if(S.evals[testId]) { S.evals[testId].splice(idx,1); markEvalDirty(testId); scheduleSave(); }
+    } else {
+      if(S._athleteEvalsCache?.[uid]?.[testId]) {
+        S._athleteEvalsCache[uid][testId].splice(idx,1);
+        try { await saveAthleteEvalsDoc(uid, S._athleteEvalsCache[uid]); } catch(e){}
+        syncEvalsToAthleteObject(uid);
+      }
     }
-  }
-  renderMain();
-  setTimeout(drawEvalCharts, 80);
+    renderMain();
+    setTimeout(drawEvalCharts, 80);
+  }});
 }
 window.deleteEvalRecord = deleteEvalRecord;
 
@@ -12990,13 +13057,14 @@ function exerciseMatchesFilters(ex, activeFilters) {
 // usa algún ejercicio, así que borrarla es sacarla de todos lados.
 function deleteLibraryTag(tag) {
   const count = (S.library||[]).filter(e=>(e.tags||[]).includes(tag)).length;
-  if(!confirm(`¿Eliminar la categoría "${tag}"? Se va a sacar de los ${count} ejercicio${count!==1?'s':''} que la tienen. No se puede deshacer.`)) return;
-  (S.library||[]).forEach(ex=>{ if(ex.tags) ex.tags = ex.tags.filter(t=>t!==tag); });
-  if(S._libViewFilters) S._libViewFilters.delete(tag);
-  if(S.activeFilters) S.activeFilters.delete(tag);
-  scheduleSave();
-  showToast('✓ Categoría eliminada');
-  renderMain();
+  showConfirmModal({message:`¿Eliminar la categoría "${tag}"? Se va a sacar de los ${count} ejercicio${count!==1?'s':''} que la tienen. No se puede deshacer.`, danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    (S.library||[]).forEach(ex=>{ if(ex.tags) ex.tags = ex.tags.filter(t=>t!==tag); });
+    if(S._libViewFilters) S._libViewFilters.delete(tag);
+    if(S.activeFilters) S.activeFilters.delete(tag);
+    scheduleSave();
+    showToast('✓ Categoría eliminada');
+    renderMain();
+  }});
 }
 window.deleteLibraryTag = deleteLibraryTag;
 
@@ -13014,15 +13082,16 @@ async function cleanUnrecognizedLibraryTags() {
   ]);
   const affected = (S.library||[]).filter(ex=>(ex.tags||[]).some(t=>!allowed.has(t)));
   if(!affected.length) { showToast('No hay categorías viejas para limpiar'); return; }
-  if(!confirm(`Esto va a sacar categorías viejas (que no son de la lista nueva) de ${affected.length} ejercicio${affected.length!==1?'s':''}. Van a quedar sin categorizar hasta que los edites de nuevo. No se puede deshacer. ¿Confirmás?`)) return;
-  affected.forEach(ex=>{ ex.tags = (ex.tags||[]).filter(t=>allowed.has(t)); });
-  if(S._libViewFilters) [...S._libViewFilters].forEach(t=>{ if(!allowed.has(t)) S._libViewFilters.delete(t); });
-  if(S.activeFilters) [...S.activeFilters].forEach(t=>{ if(!allowed.has(t)) S.activeFilters.delete(t); });
-  showToast('Limpiando…');
-  const ok = await saveNow();
-  if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
-  showToast(`✓ Se limpiaron ${affected.length} ejercicio${affected.length!==1?'s':''}`);
-  renderMain();
+  showConfirmModal({message:`Esto va a sacar categorías viejas (que no son de la lista nueva) de ${affected.length} ejercicio${affected.length!==1?'s':''}. Van a quedar sin categorizar hasta que los edites de nuevo. No se puede deshacer.`, danger:true, confirmLabel:'Limpiar', onConfirm: async () => {
+    affected.forEach(ex=>{ ex.tags = (ex.tags||[]).filter(t=>allowed.has(t)); });
+    if(S._libViewFilters) [...S._libViewFilters].forEach(t=>{ if(!allowed.has(t)) S._libViewFilters.delete(t); });
+    if(S.activeFilters) [...S.activeFilters].forEach(t=>{ if(!allowed.has(t)) S.activeFilters.delete(t); });
+    showToast('Limpiando…');
+    const ok = await saveNow();
+    if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
+    showToast(`✓ Se limpiaron ${affected.length} ejercicio${affected.length!==1?'s':''}`);
+    renderMain();
+  }});
 }
 window.cleanUnrecognizedLibraryTags = cleanUnrecognizedLibraryTags;
 
@@ -13035,13 +13104,14 @@ const LIB_CATEGORY_RENAMES = { 'Pliometría':'Pliometría Extensiva', 'Saltos':'
 async function migrateLibCategoryRenames() {
   const affected = (S.library||[]).filter(ex=>(ex.tags||[]).some(t=>LIB_CATEGORY_RENAMES[t]));
   if(!affected.length) { showToast('No hay ejercicios con los nombres viejos'); return; }
-  if(!confirm(`Esto va a renombrar la categoría de ${affected.length} ejercicio${affected.length!==1?'s':''} ("Pliometría"→"Pliometría Extensiva", "Saltos"→"Pliometría Intensiva"). No se pierden datos ni sub-categorías. ¿Confirmás?`)) return;
-  affected.forEach(ex=>{ ex.tags = (ex.tags||[]).map(t=>LIB_CATEGORY_RENAMES[t]||t); });
-  showToast('Migrando…');
-  const ok = await saveNow();
-  if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
-  showToast(`✓ Se renombraron ${affected.length} ejercicio${affected.length!==1?'s':''}`);
-  renderMain();
+  showConfirmModal({message:`Esto va a renombrar la categoría de ${affected.length} ejercicio${affected.length!==1?'s':''} ("Pliometría"→"Pliometría Extensiva", "Saltos"→"Pliometría Intensiva"). No se pierden datos ni sub-categorías.`, confirmLabel:'Renombrar', onConfirm: async () => {
+    affected.forEach(ex=>{ ex.tags = (ex.tags||[]).map(t=>LIB_CATEGORY_RENAMES[t]||t); });
+    showToast('Migrando…');
+    const ok = await saveNow();
+    if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
+    showToast(`✓ Se renombraron ${affected.length} ejercicio${affected.length!==1?'s':''}`);
+    renderMain();
+  }});
 }
 window.migrateLibCategoryRenames = migrateLibCategoryRenames;
 
@@ -14138,10 +14208,10 @@ function renderLibViewBody() {
   const filterLabel = filters.size ? [...filters].join(' · ') : 'Todas las categorías';
 
   return `<!-- Filtro compacto: desplegable en vez de las 17 chips siempre abiertas -->
-  <div onclick="toggleLibViewFilterDropdown()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 14px;cursor:pointer;margin-bottom:10px">
+  <div onclick="toggleLibViewFilterDropdown()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rsm);padding:var(--sp-3) var(--sp-4);cursor:pointer;margin-bottom:var(--sp-3)">
     <div style="display:flex;align-items:center;gap:10px;min-width:0">
       <span style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filterLabel}</span>
-      ${S._libViewPendingOnly?`<span style="font-size:10px;font-weight:700;color:var(--amber);white-space:nowrap">⚠ Sin categorizar</span>`:''}
+      ${S._libViewPendingOnly?`<span style="font-size:10px;font-weight:700;color:var(--amber);white-space:nowrap">${craftIconSvg('alert','var(--amber)',10)} Sin categorizar</span>`:''}
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
       ${(filters.size||S._libViewPendingOnly)?`<span onclick="event.stopPropagation();S._libViewFilters=new Set();S._libViewPendingOnly=false;updateLibViewResults()" style="font-size:11px;color:var(--text3);font-weight:600">Limpiar</span>`:''}
@@ -14150,7 +14220,7 @@ function renderLibViewBody() {
   </div>
   ${filterOpen?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${chips.hasSubRow?'8px':'16px'}">
     <button class="lib-filter ${!filters.size&&!S._libViewPendingOnly?'active':''}" onclick="S._libViewFilters=new Set();S._libViewPendingOnly=false;updateLibViewResults()">Todos</button>
-    ${pendingCount?`<button class="lib-filter ${S._libViewPendingOnly?'active':''}" style="color:var(--amber);border-color:var(--amber)" onclick="S._libViewPendingOnly=!S._libViewPendingOnly;updateLibViewResults()">⚠ Sin categorizar (${pendingCount})</button>`:''}
+    ${pendingCount?`<button class="lib-filter ${S._libViewPendingOnly?'active':''}" style="color:var(--amber);border-color:var(--amber)" onclick="S._libViewPendingOnly=!S._libViewPendingOnly;updateLibViewResults()">${craftIconSvg('alert','var(--amber)',10)} Sin categorizar (${pendingCount})</button>`:''}
     ${chips.mainRow}
   </div>`:''}
   ${chips.hasSubRow?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding-top:8px;border-top:1px dashed var(--border)">
@@ -14163,11 +14233,11 @@ function renderLibViewBody() {
       const hasV=!!S.videos[ex.id];
       const missing = getMissingLibRules(ex.tags);
       return `
-      <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .15s"
+      <div style="display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);transition:background .15s"
            onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         ${libThumbnailHtml(S.videos[ex.id])}
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}${missing.length?' <span style="font-size:10px;color:var(--amber);font-weight:700">⚠ sin categorizar</span>':''}</div>
+          <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}${missing.length?` <span style="font-size:10px;color:var(--amber);font-weight:700">${craftIconSvg('alert','var(--amber)',10)} sin categorizar</span>`:''}</div>
           <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
             ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);border:1px solid var(--border2)">${t}</span>`).join('')}
           </div>
@@ -14243,12 +14313,13 @@ window.saveLibExerciseModal = saveLibExerciseModal;
 
 function deleteFromExFormModal() {
   if(!S._exFormEditId) return;
-  if(!confirm('¿Eliminar este ejercicio de la biblioteca?')) return;
-  S.library = S.library.filter(e=>e.id!==S._exFormEditId);
-  scheduleSave();
-  closeExFormModal();
-  showToast('Ejercicio eliminado');
-  renderMain();
+  showConfirmModal({message:'¿Eliminar este ejercicio de la biblioteca?', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    S.library = S.library.filter(e=>e.id!==S._exFormEditId);
+    scheduleSave();
+    closeExFormModal();
+    showToast('Ejercicio eliminado');
+    renderMain();
+  }});
 }
 window.deleteFromExFormModal = deleteFromExFormModal;
 
@@ -14259,11 +14330,12 @@ function editLibraryExercise(id) { openLibExerciseModal(id); }
 window.editLibraryExercise=editLibraryExercise;
 
 function deleteLibraryExercise(id) {
-  if(!confirm('¿Eliminar este ejercicio de la biblioteca?')) return;
-  S.library = S.library.filter(e=>e.id!==id);
-  scheduleSave();
-  showToast('Ejercicio eliminado');
-  renderMain();
+  showConfirmModal({message:'¿Eliminar este ejercicio de la biblioteca?', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+    S.library = S.library.filter(e=>e.id!==id);
+    scheduleSave();
+    showToast('Ejercicio eliminado');
+    renderMain();
+  }});
 }
 window.deleteLibraryExercise=deleteLibraryExercise;
 

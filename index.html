@@ -294,6 +294,18 @@
   </div>
 </div>
 
+<!-- Confirmación propia — reemplaza confirm()/alert() nativos del navegador -->
+<div class="video-modal" id="confirm-modal-overlay" onclick="closeConfirmModalIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="confirm-modal-title">Confirmar</div>
+    <div id="confirm-modal-body" style="font-size:13px;line-height:1.55;color:var(--text2);white-space:pre-line"></div>
+    <div class="video-modal-btns">
+      <button class="abtn" id="confirm-modal-cancel-btn" onclick="closeConfirmModal()">Cancelar</button>
+      <button class="abtn abtn-p" id="confirm-modal-confirm-btn" onclick="confirmModalConfirm()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Días de gimnasio (calendario semanal al asignar rutina) -->
 <div class="video-modal" id="weekday-assign-overlay" onclick="closeWeekdayAssignIfOutside(event)">
   <div class="video-modal-box">
