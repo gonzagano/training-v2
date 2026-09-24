@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential }
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -230,10 +230,16 @@ const INJURY_TYPES = { muscular: 'Muscular', articular: 'Articular', ligamentari
 // cirugía de menisco en rehabilitación puede no doler nada y seguir siendo
 // grave). La gravedad la fija conscientemente el entrenador/atleta, no se
 // deriva automáticamente del número de dolor.
+// Colores vía var(--...) a propósito — NO hardcodeados: bug real encontrado
+// en la auditoría de modo oscuro (2026-09-23), estos 3 quedaban con el hex
+// de modo claro fijo (#1F7A4D/#C67C0F/#C33A2C) sin importar el tema, y el
+// truco de sumarle "22"/"1a" al final del hex para el fondo tenue tampoco
+// funciona con var() — por eso cada nivel trae ya su propio `dim` en vez de
+// que cada lugar que lo usa arme el fondo a mano.
 const SEVERITY_LEVELS = [
-  {id:'leve', label:'Leve', color:'#1F7A4D'},
-  {id:'moderada', label:'Moderada', color:'#C67C0F'},
-  {id:'grave', label:'Grave', color:'#C33A2C'},
+  {id:'leve', label:'Leve', color:'var(--green)', dim:'var(--green-dim)'},
+  {id:'moderada', label:'Moderada', color:'var(--amber)', dim:'var(--amber-dim)'},
+  {id:'grave', label:'Grave', color:'var(--red)', dim:'var(--red-dim)'},
 ];
 function severityInfo(id) { return SEVERITY_LEVELS.find(s=>s.id===id) || null; }
 window.severityInfo = severityInfo;
@@ -4164,7 +4170,7 @@ function renderZoneDetail() {
   }).join('');
   const sevBtns=SEVERITY_LEVELS.map(s=>{
     const active=(inj.severity||'')===s.id;
-    return `<button onclick="setInjurySeverity('${zid}','${s.id}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?s.color:'var(--border2)'};background:${active?s.color+'1a':'transparent'};color:${active?s.color:'var(--text3)'};font-weight:${active?'700':'400'};font-size:12px;cursor:pointer">${s.label}</button>`;
+    return `<button onclick="setInjurySeverity('${zid}','${s.id}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?s.color:'var(--border2)'};background:${active?s.dim:'transparent'};color:${active?s.color:'var(--text3)'};font-weight:${active?'700':'400'};font-size:12px;cursor:pointer">${s.label}</button>`;
   }).join('');
   const isInjury = inj.isInjury===true;
   const isExisting = !!S.injuries[zid];
@@ -6199,9 +6205,9 @@ function renderMatchReadinessReport(team, members) {
     const realInjuries = Object.values(injuries).filter(inj=>inj.pain>0 && isRealInjury(inj));
     const rank = {grave:3,moderada:2,leve:1};
     const worst = realInjuries.reduce((w,inj)=>(rank[inj.severity]||1)>(rank[w?.severity]||0)?inj:w, null);
-    let disponibilidad = {label:'Disponible', color:'var(--green)'};
-    if(worst?.severity==='grave') disponibilidad = {label:'No disponible', color:'var(--red)'};
-    else if(worst?.severity==='moderada') disponibilidad = {label:'En duda', color:'var(--amber)'};
+    let disponibilidad = {label:'Disponible', color:'var(--green)', dim:'var(--green-dim)'};
+    if(worst?.severity==='grave') disponibilidad = {label:'No disponible', color:'var(--red)', dim:'var(--red-dim)'};
+    else if(worst?.severity==='moderada') disponibilidad = {label:'En duda', color:'var(--amber)', dim:'var(--amber-dim)'};
 
     const matchSummary = getMatchMinutesSummary(logs);
     return {a, fatigaAvg, dolorAvg, acwr:m?.acwr??null, disponibilidad, diasSinPartido:matchSummary.daysSinceLastMatch};
@@ -6253,7 +6259,7 @@ function renderMatchReadinessReport(team, members) {
       ${[...rows].sort((x,y)=>(x.a.name||x.a.email||'').localeCompare(y.a.name||y.a.email||'')).map(r=>`
         <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthlete('${r.a.uid}')">
           <td style="padding:8px 10px;font-weight:600">${r.a.name||r.a.email}</td>
-          <td style="padding:8px 10px;text-align:center"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${r.disponibilidad.color}22;color:${r.disponibilidad.color}">${r.disponibilidad.label}</span></td>
+          <td style="padding:8px 10px;text-align:center"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${r.disponibilidad.dim};color:${r.disponibilidad.color}">${r.disponibilidad.label}</span></td>
           <td style="padding:8px 10px;text-align:center">${r.fatigaAvg??'—'}</td>
           <td style="padding:8px 10px;text-align:center">${r.dolorAvg??'—'}</td>
           <td style="padding:8px 10px;text-align:center">${r.acwr!=null?r.acwr.toFixed(2):'—'}</td>
@@ -6513,7 +6519,8 @@ function renderTeamRutina(team) {
       const injuries = getActiveInjuriesSummary(match._personal);
       const sevRank = {grave:3, moderada:2, leve:1};
       const worstInjury = injuries.length ? injuries.reduce((worst,i)=>(sevRank[i.severity]||1)>(sevRank[worst.severity]||1)?i:worst, injuries[0]) : null;
-      const injColor = worstInjury ? (severityInfo(worstInjury.severity)||severityInfo('leve')).color : null;
+      const worstSev = worstInjury ? (severityInfo(worstInjury.severity)||severityInfo('leve')) : null;
+      const injColor = worstSev?.color||null, injDim = worstSev?.dim||null;
       const matchInfo = getRecentMatchCardInfo(match._personal, today);
 
       // Alertas puntuales de HOY: estrés, sueño y dolor muscular reportados bajos.
@@ -6540,7 +6547,7 @@ function renderTeamRutina(team) {
         ${(worstInjury || alerts.length || matchInfo) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           ${matchInfo?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700">${craftIconSvg('match','var(--accent-text)',11)} ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>`:''}
           ${matchInfo?.hadMolestia?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700">${craftIconSvg('alert','var(--red)',11)} molestia en el partido</span>`:''}
-          ${worstInjury?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${injColor}22;color:${injColor};border:1px solid ${injColor}">🩹 ${worstInjury.zoneLabel} · ${severityInfo(worstInjury.severity)?.label||'Leve'} · dolor ${worstInjury.pain}/10</span>`:''}
+          ${worstInjury?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${injDim};color:${injColor};border:1px solid ${injColor}">🩹 ${worstInjury.zoneLabel} · ${severityInfo(worstInjury.severity)?.label||'Leve'} · dolor ${worstInjury.pain}/10</span>`:''}
           ${alerts.map(al=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${al.icon||al.emoji} ${al.label}</span>`).join('')}
         </div>`:''}
       </div>`;
@@ -7892,14 +7899,14 @@ function renderTriageTable(members) {
         const wState = getWellnessState(summary.avgWellness);
         const acwrSt = getACWRStatus(summary.acwr, null);
         const monSt = getMonotonyStatus(summary.monotony);
-        const worstColor = worst ? (severityInfo(worst.severity)||severityInfo('leve')).color : null;
+        const worstSev = worst ? (severityInfo(worst.severity)||severityInfo('leve')) : null;
         return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
           <td style="padding:8px 10px;font-weight:600;white-space:nowrap">${a.name||a.email}</td>
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${wState.color}">${summary.avgWellness!=null?summary.avgWellness+'%':'—'}</td>
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${acwrSt.color}">${summary.acwr!=null?summary.acwr.toFixed(2):'—'}</td>
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${monSt.color}">${summary.monotony!=null?summary.monotony.toFixed(1):'—'}</td>
           <td style="padding:8px 10px">
-            ${worst?`<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${worstColor}22;color:${worstColor};margin-right:4px;white-space:nowrap">🩹 ${worst.zoneLabel}</span>`:''}
+            ${worst?`<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${worstSev.dim};color:${worstSev.color};margin-right:4px;white-space:nowrap">🩹 ${worst.zoneLabel}</span>`:''}
             ${lowFlags.map(f=>`<span style="font-size:10px;color:var(--text3);margin-right:6px;white-space:nowrap">${f}</span>`).join('')}
             ${(!worst && !lowFlags.length)?'<span style="color:var(--text3)">—</span>':''}
           </td>
@@ -8708,7 +8715,7 @@ function renderPerfilTab(a) {
         </div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica (la fijás vos, no depende del dolor del día)</div>
         <div style="display:flex;gap:6px">
-          ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.color+'1a':'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
+          ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.dim:'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
         </div>
         ${isRealInjury(inj)?`
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 5px">Fase de retorno al juego</div>
@@ -9472,6 +9479,12 @@ function renderSettings() {
   </div>
   <div class="card">
     <div class="settings-item" style="border-bottom:none">
+      <div><div class="settings-lbl">Cambiar contraseña</div><div class="settings-sub">Te mandamos un mail a ${S.user?.email||'tu casilla'} con un link para elegir una nueva</div></div>
+      <button class="abtn" onclick="sendMyPasswordReset()">Cambiar</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="settings-item" style="border-bottom:none">
       <div><div class="settings-lbl" style="color:var(--red)">Cerrar sesión</div><div class="settings-sub">Volvés a la pantalla de inicio de sesión</div></div>
       <button class="abtn abtn-d" onclick="signOut()">Cerrar sesión</button>
     </div>
@@ -9486,6 +9499,27 @@ function renderSettings() {
     G-Metrics Performance Lab · ${S.userData?.name||''} · ${S.isAdmin?'Admin':'Atleta'}
   </div>`;
 }
+
+// Cambio de contraseña vía mail (el flujo estándar y más seguro de Firebase
+// Auth) — no hay ninguna pantalla adentro de la app que pida la contraseña
+// actual ni la nueva; Firebase se encarga de todo del otro lado del link que
+// manda por mail. Sirve tanto para atletas como para el admin.
+async function sendMyPasswordReset() {
+  const email = S.user?.email;
+  if(!email) { showToast('No se encontró tu mail — volvé a iniciar sesión e intentá de nuevo'); return; }
+  showConfirmModal({message:`Te mandamos un mail a ${email} con un link para elegir una nueva contraseña. Fijate también en spam si no te llega en unos minutos.`, confirmLabel:'Mandar mail', onConfirm: async () => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      showConfirmModal({title:'Listo', message:`Revisá ${email} — el link para cambiar la contraseña puede tardar unos minutos en llegar.`});
+    } catch(e) {
+      const msg = e.code==='auth/too-many-requests' ? 'Pediste varios de estos seguidos — esperá unos minutos y volvé a intentar.'
+        : e.code==='auth/network-request-failed' ? 'No hay conexión a internet — probá de nuevo cuando tengas señal.'
+        : 'No se pudo mandar el mail. Probá de nuevo en un rato.';
+      showConfirmModal({title:'No se pudo enviar', message:msg});
+    }
+  }});
+}
+window.sendMyPasswordReset = sendMyPasswordReset;
 
 // Elimina la cuenta propia por completo: datos de Firestore + la cuenta real
 // de Firebase (esto sí libera el mail para un registro nuevo). Solo la puede
@@ -12881,7 +12915,8 @@ function renderDaySummaryChips(personal, date, sport) {
     const isFirstEver = hist[0]?.date===date;
     const zone = allZones.find(z=>z.id===zid);
     const sev = entry.pain>=7 ? 'var(--red)' : entry.pain>=4 ? 'var(--amber)' : 'var(--green)';
-    injuryChips.push(`<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:20px;background:${sev}22;color:${sev};border:1px solid ${sev};white-space:nowrap">${isFirstEver?'🆕 ':'🩹 '}${zone?.label||zid} ${entry.pain}/10</span>`);
+    const sevDim = entry.pain>=7 ? 'var(--red-dim)' : entry.pain>=4 ? 'var(--amber-dim)' : 'var(--green-dim)';
+    injuryChips.push(`<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:20px;background:${sevDim};color:${sev};border:1px solid ${sev};white-space:nowrap">${isFirstEver?'🆕 ':'🩹 '}${zone?.label||zid} ${entry.pain}/10</span>`);
   });
 
   if(!cargaChips.length && !injuryChips.length) return '';
@@ -13229,9 +13264,12 @@ window.dismissDashboardInjury = dismissDashboardInjury;
 // Color de dolor 0-10 — mismo criterio que ya usan los botones del mapa
 // corporal (pain-btn p-low/p-med/p-high), reusado acá para los badges.
 function getPainColor(pain) {
-  if(pain>=8) return {color:'var(--red)', bg:'rgba(195,58,44,0.14)'};
-  if(pain>=4) return {color:'var(--amber)', bg:'rgba(198,124,15,0.14)'};
-  return {color:'var(--green)', bg:'rgba(31,122,77,0.14)'};
+  // bg vía var(--X-dim) — antes era un rgba fijo del rojo/ámbar/verde de modo
+  // claro, así que en oscuro el texto (ya en var(--red) etc.) cambiaba de
+  // tono pero el fondo se quedaba pegado al rojo/ámbar/verde de modo claro.
+  if(pain>=8) return {color:'var(--red)', bg:'var(--red-dim)'};
+  if(pain>=4) return {color:'var(--amber)', bg:'var(--amber-dim)'};
+  return {color:'var(--green)', bg:'var(--green-dim)'};
 }
 window.getPainColor = getPainColor;
 
@@ -13260,7 +13298,7 @@ function injuryBadgesHtml({severity, zoneLabel, pain, athlete}) {
   const sevInfo = severityInfo(severity) || severityInfo('leve');
   const painC = getPainColor(pain);
   return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
-    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${sevInfo.color}22;color:${sevInfo.color};white-space:nowrap">${sevInfo.label}</span>
+    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${sevInfo.dim};color:${sevInfo.color};white-space:nowrap">${sevInfo.label}</span>
     <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--blue-dim);color:var(--blue);white-space:nowrap">${zoneLabel}</span>
     <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${painC.bg};color:${painC.color};white-space:nowrap">dolor ${pain}/10</span>
     ${teamBadgeHtml(athlete)}
