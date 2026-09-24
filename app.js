@@ -929,6 +929,7 @@ function toggleAuthMode() {
   document.getElementById('auth-sub').textContent = authMode === 'login' ? 'Tu sistema de entrenamiento' : 'Crear cuenta nueva';
   document.getElementById('auth-btn').textContent = authMode === 'login' ? 'Iniciar sesión' : 'Registrarse';
   document.getElementById('auth-name').style.display = authMode === 'register' ? 'block' : 'none';
+  document.getElementById('auth-forgot').style.display = authMode === 'login' ? 'block' : 'none';
   document.getElementById('auth-switch').innerHTML = authMode === 'login'
     ? '¿No tenés cuenta? <span>Registrarse</span>'
     : '¿Ya tenés cuenta? <span>Iniciar sesión</span>';
@@ -965,6 +966,29 @@ async function authAction() {
   }
 }
 window.authAction = authAction;
+
+// "¿Olvidaste tu contraseña?" en la pantalla de login — a diferencia de
+// sendMyPasswordReset() (Ajustes, con sesión iniciada), acá todavía no hay
+// S.user/auth.currentUser: el mail sale del input de login, no de la sesión.
+async function forgotPasswordFromLogin() {
+  const email = document.getElementById('auth-email').value.trim();
+  const errEl = document.getElementById('auth-err');
+  errEl.textContent = '';
+  if(!email) { errEl.textContent = 'Escribí tu email arriba primero'; return; }
+  showConfirmModal({message:`Te mandamos un mail a ${email} con un link para elegir una nueva contraseña. Fijate también en spam si no te llega en unos minutos.`, confirmLabel:'Mandar mail', onConfirm: async () => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      showConfirmModal({title:'Listo', message:`Revisá ${email} — el link puede tardar unos minutos en llegar.`});
+    } catch(e) {
+      const msg = e.code==='auth/invalid-email' ? 'Ese email no parece válido — revisalo y probá de nuevo.'
+        : e.code==='auth/too-many-requests' ? 'Pediste varios de estos seguidos — esperá unos minutos y volvé a intentar.'
+        : e.code==='auth/network-request-failed' ? 'No hay conexión a internet — probá de nuevo cuando tengas señal.'
+        : 'No se pudo mandar el mail. Probá de nuevo en un rato.';
+      showConfirmModal({title:'No se pudo enviar', message:msg});
+    }
+  }});
+}
+window.forgotPasswordFromLogin = forgotPasswordFromLogin;
 
 async function signOut() {
   await fbSignOut(auth);
@@ -1015,6 +1039,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.injuryArchive) S.injuryArchive = d.injuryArchive;
     if (d.illnesses) S.illnesses = d.illnesses;
     if (d.personalExtras) S.personalExtras = d.personalExtras;
+    if (d.routineOverrides) S.routineOverrides = d.routineOverrides;
     if (d.notifications) S.notifications = d.notifications;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     // BUG encontrado y corregido acá — la causa real de "siempre me dice
@@ -1717,6 +1742,42 @@ function getExPrescriptionForWeek(ex, week) {
   };
 }
 window.getExPrescriptionForWeek = getExPrescriptionForWeek;
+
+// ── PERSONALIZACIÓN DE EJERCICIOS POR ATLETA (sin tocar la plantilla) ────
+// Le permite al admin, desde la ficha de UN atleta puntual, reemplazar un
+// ejercicio de la rutina compartida (nombre y/o prescripción) a partir de
+// una semana elegida — sin afectar a sus compañeros ni a la plantilla en
+// "Gestión de rutinas". Se guarda en el doc personal del atleta, nunca en
+// el doc de la rutina. Estructura:
+// personal.routineOverrides[routineId][sessionName][exerciseId] =
+//   {fromWeek, name, series, reps, pct, rpe, intensityType, note}
+// fromWeek es la semana ABSOLUTA del atleta (la misma que "Semana N" en su
+// ficha), no relativa a la rutina — así el admin la piensa igual que el
+// resto de la pantalla.
+function getExerciseOverride(overridesObj, routineId, sName, exId) {
+  return overridesObj?.[routineId]?.[sName]?.[exId] || null;
+}
+window.getExerciseOverride = getExerciseOverride;
+
+// Resuelve qué mostrar para un ejercicio en una semana puntual, teniendo en
+// cuenta si hay una personalización activa para esa semana. absWeek es la
+// semana ABSOLUTA que se está mirando (para compararla con override.fromWeek);
+// relWeek es la que ya usa getExPrescriptionForWeek para la progresión de la
+// plantilla (sin cambios ahí).
+function getExDisplayForWeek(ex, absWeek, relWeek, override) {
+  const base = getExPrescriptionForWeek(ex, relWeek);
+  if(override && absWeek>=override.fromWeek) {
+    return {
+      name: override.name || ex.name,
+      series: override.series||'', reps: override.reps||'', pct: override.pct||'',
+      rpe: override.rpe||'', intensityType: override.intensityType || base.intensityType || 'RPE',
+      note: override.note||'',
+      overridden: true,
+    };
+  }
+  return {...base, name: ex.name, overridden: false};
+}
+window.getExDisplayForWeek = getExDisplayForWeek;
 
 function weekLabel(w) {
   const base=new Date(S.startDate);
@@ -2664,7 +2725,13 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   // la semana ABSOLUTA (la que se ve como "Semana N", nunca se resetea);
   // acá hace falta la RELATIVA a la rutina actual (su propia fila de
   // progresión), por si esta rutina es continuación de una anterior.
-  const wp = getExPrescriptionForWeek(ex, toRoutineRelativeWeek(getRoutineWeek(), S.userData));
+  // Si el entrenador personalizó este ejercicio puntual para este atleta
+  // (ver getExerciseOverride) y ya llegó la semana en que arranca, se
+  // muestra esa versión en vez de la de la plantilla — el atleta entrena
+  // lo que le toca de verdad, no lo que dice la rutina compartida.
+  const exOverride = isAthleteMode ? getExerciseOverride(S.routineOverrides, S.assignedRoutine?.id, S.currentSession, ex.id) : null;
+  const wp = getExDisplayForWeek(ex, getRoutineWeek(), toRoutineRelativeWeek(getRoutineWeek(), S.userData), exOverride);
+  const displayExName = wp.name || ex.name;
   const prescSeries = wp.series;
   const prescReps   = wp.reps;
   const prescPct    = wp.pct;
@@ -2693,7 +2760,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   // Prescription display for athlete (read-only pill row above fields)
   const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct||prescRpe) ? `
     <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;cursor:pointer" onclick="openProgressionModal('${ex.id}','${ex.name.replace(/'/g,"\\'")}')" title="Ver progresión semana a semana">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;cursor:pointer" onclick="openProgressionModal('${ex.id}','${displayExName.replace(/'/g,"\\'")}')" title="Ver progresión semana a semana">
         ${prescSeries?`<span style="font-size:11px;background:var(--purple-dim);color:var(--purple);padding:2px 8px;border-radius:20px;border:1px solid rgba(212,100,122,0.3)">${prescSeries} series</span>`:''}
         ${prescReps?`<span style="font-size:11px;background:var(--blue-dim);color:var(--blue);padding:2px 8px;border-radius:20px;border:1px solid rgba(96,165,250,0.3)">${prescReps} reps</span>`:''}
         ${prescPct?`<span style="font-size:11px;background:var(--teal-dim);color:var(--teal);padding:2px 8px;border-radius:20px;border:1px solid rgba(45,212,191,0.3)">${prescPct}%RM${suggestedKg?' ≈ '+suggestedKg+'kg':''}</span>`:''}
@@ -2715,7 +2782,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
     <div class="ex-check ${d.checked?'checked':''}" onclick="toggleCheck('${ex.id}')"></div>
     <div class="ex-main">
       <div class="ex-name-row">
-        <span class="ex-name" ${canEdit?`ondblclick="editExName(this,'${ex.id}','${blockId}',${catIdx})"`:''}>${ex.name}</span>
+        <span class="ex-name" ${canEdit?`ondblclick="editExName(this,'${ex.id}','${blockId}',${catIdx})"`:''}>${displayExName}${exOverride?' <span style="font-size:9px;font-weight:700;color:var(--accent-text)">· personalizado</span>':''}</span>
         <input class="ex-name-inp" id="exinp-${ex.id}" ${canEdit?`onblur="saveExName('${ex.id}','${blockId}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"`:''}>
         <div class="ex-actions" style="flex-direction:column">
           <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',${canEdit})" title="${canEdit?'Video':'Ver video'}">
@@ -3774,6 +3841,15 @@ function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx
   const rowsOf = weeks.map(w => getWeekData(w));
   const anyPct = rowsOf.some(r=>r.wp.pct);
   const anyNote = rowsOf.some(r=>r.wp.note);
+  // Fila de "Ejercicio" — SOLO aparece si el nombre cambia entre semanas (una
+  // personalización activa desde alguna semana puntual). Si todas las semanas
+  // muestran el mismo ejercicio, no suma esta fila — menos ruido cuando no
+  // hace falta, ya que el nombre ya se ve arriba de la tabla en ese caso.
+  const anyNameChange = rowsOf.some(r=>r.wp.name) && rowsOf.some((r,i)=>i>0 && r.wp.name!==rowsOf[i-1].wp.name);
+  const rowExName = anyNameChange ? `<tr><td>Ejercicio</td>${weeks.map((w,i)=>{
+    const changed = i>0 && rowsOf[i].wp.name!==rowsOf[i-1].wp.name;
+    return `<td class="${w===currentWeek?'cur':''}" style="font-size:11px;text-align:left;padding-left:8px;${changed?'font-weight:700;color:var(--accent-text);border-left:2px solid var(--accent)':''}">${changed?'✎ ':''}${rowsOf[i].wp.name||'—'}</td>`;
+  }).join('')}</tr>` : '';
   const head = weeks.map((w,i)=>`<th class="${w===currentWeek?'cur':''}">S${w}${w===currentWeek?' ·':''}</th>`).join('');
   const rowSeries = weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}">${rowsOf[i].wp.series||'—'}</td>`).join('');
   const rowReps = weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}">${rowsOf[i].wp.reps||'—'}</td>`).join('');
@@ -3795,6 +3871,7 @@ function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx
   const rowNote = anyNote ? `<tr><td>Nota</td>${weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}" style="white-space:normal;max-width:140px;font-size:11.5px;color:var(--text3)">${rowsOf[i].wp.note||''}</td>`).join('')}</tr>` : '';
   const athleteNoteRows = rowsOf.map((r,i)=>r.d.athleteNote?`<div style="font-size:12px;color:var(--amber);margin-top:6px"><b>S${weeks[i]}:</b> 📝 ${r.d.athleteNote}</div>`:'').filter(Boolean).join('');
   return `<div class="prog-table-wrap"><table class="prog-table"><thead><tr><th>Semana</th>${head}</tr></thead><tbody>
+    ${rowExName}
     <tr><td>Series</td>${rowSeries}</tr>
     <tr><td>Reps</td>${rowReps}</tr>
     ${anyPct?`<tr><td>%RM</td>${rowPct}</tr>`:''}
@@ -3815,8 +3892,9 @@ function openProgressionModal(exId, exName) {
   const firstWeek = getCurrentPhaseStartWeek(S.userData);
   const lastWeek = Math.max(firstWeek+durationWeeks-1, S.currentWeek);
   document.getElementById('progression-modal-title').textContent = 'Progresión · ' + exName;
+  const override = (routine && ex) ? getExerciseOverride(S.routineOverrides, routine.id, S.currentSession, exId) : null;
   const body = ex ? buildWeeklyProgressionTable(lastWeek, S.currentWeek, (w) => ({
-    wp: getExPrescriptionForWeek(ex, toRoutineRelativeWeek(w, S.userData)),
+    wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, S.userData), override),
     d: (S.history[sessionKey(w,S.currentSession)]||{}).exercises?.[exId] || {}
   }), null, firstWeek) : '';
   document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
@@ -3844,8 +3922,9 @@ function openAdminProgressionModal(uid, exId, exName, sName) {
   const firstWeek = getCurrentPhaseStartWeek(a);
   const lastWeek = Math.max(firstWeek+durationWeeks-1, athleteWeek);
   document.getElementById('progression-modal-title').textContent = 'Progresión · ' + exName;
+  const override = (routine && ex) ? getExerciseOverride(a._personal?.routineOverrides, routine.id, sName, exId) : null;
   const body = ex ? buildWeeklyProgressionTable(lastWeek, athleteWeek, (w) => ({
-    wp: getExPrescriptionForWeek(ex, toRoutineRelativeWeek(w, a)),
+    wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, a), override),
     d: a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[exId] || {}
   }), {uid:a.uid, sName, exId}, firstWeek) : '';
   document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
@@ -8119,6 +8198,112 @@ async function removePersonalExtraExercise(uid,sessionName,exId){
   } catch(e) { showToast('Error al guardar'); }
 }
 window.removePersonalExtraExercise=removePersonalExtraExercise;
+
+// Personalizar/reemplazar UN ejercicio de la plantilla para UN atleta
+// puntual, a partir de una semana — ver comentario de getExerciseOverride
+// más arriba para la forma exacta de los datos.
+async function saveAthleteExerciseOverride(uid, routineId, sName, exId, data) {
+  const personal = getPersonalOwner(uid);
+  if(!personal) return;
+  if(!personal.routineOverrides) personal.routineOverrides = {};
+  if(!personal.routineOverrides[routineId]) personal.routineOverrides[routineId] = {};
+  if(!personal.routineOverrides[routineId][sName]) personal.routineOverrides[routineId][sName] = {};
+  personal.routineOverrides[routineId][sName][exId] = data;
+  try {
+    await updateDocSafe(doc(db,'personal',uid), {[`routineOverrides.${routineId}.${sName}.${exId}`]: data});
+    if(S.viewingAthlete?.uid===uid) S.routineOverrides = personal.routineOverrides;
+    showToast('✓ Personalización guardada');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.saveAthleteExerciseOverride = saveAthleteExerciseOverride;
+
+async function removeAthleteExerciseOverride(uid, routineId, sName, exId) {
+  const personal = getPersonalOwner(uid);
+  if(!personal?.routineOverrides?.[routineId]?.[sName]?.[exId]) return;
+  delete personal.routineOverrides[routineId][sName][exId];
+  try {
+    await updateDocSafe(doc(db,'personal',uid), {[`routineOverrides.${routineId}.${sName}.${exId}`]: deleteField()});
+    if(S.viewingAthlete?.uid===uid) S.routineOverrides = personal.routineOverrides;
+    showToast('✓ Vuelto a la plantilla original');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.removeAthleteExerciseOverride = removeAthleteExerciseOverride;
+
+// Modal chico para editar la personalización — busca el ejercicio real
+// dentro de la rutina (necesitamos sus valores actuales como punto de
+// partida) y arma el formulario con lo que ya haya guardado, si hay.
+function findExInRoutine(routine, sName, exId) {
+  for(const b of (routine?.sessions?.[sName]||[])) {
+    for(const cat of (b.categories||[])) {
+      const found = (cat.exercises||[]).find(e=>e.id===exId);
+      if(found) return found;
+    }
+  }
+  return null;
+}
+
+function openExerciseOverrideModal(uid, routineId, sName, exId, realWeek) {
+  const routine = S.routines.find(r=>r.id===routineId);
+  const ex = routine ? findExInRoutine(routine, sName, exId) : null;
+  if(!ex) return;
+  const personal = getPersonalOwner(uid);
+  const existing = getExerciseOverride(personal?.routineOverrides, routineId, sName, exId);
+  S._exOverrideCtx = {uid, routineId, sName, exId};
+  document.getElementById('exoverride-title').textContent = 'Personalizar · ' + ex.name;
+  document.getElementById('exoverride-body').innerHTML = renderExOverrideForm(ex, existing, realWeek);
+  document.getElementById('exoverride-overlay').classList.add('open');
+}
+window.openExerciseOverrideModal = openExerciseOverrideModal;
+
+function renderExOverrideForm(ex, existing, realWeek) {
+  const v = existing || {fromWeek:realWeek, name:ex.name, series:ex.series||'', reps:ex.reps||'', rpe:ex.rpe||'', intensityType:ex.intensityType||'RPE', note:''};
+  return `<div style="display:flex;flex-direction:column;gap:10px;padding-top:2px">
+    <div style="font-size:12px;color:var(--text3)">Esto reemplaza el ejercicio SOLO para este atleta — la plantilla de la rutina no se toca, sus compañeros lo siguen viendo igual.</div>
+    <div><label class="eval-lbl">Nombre del ejercicio</label><input id="exov-name" class="auth-inp" style="margin:0" value="${(v.name||'').replace(/"/g,'&quot;')}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label class="eval-lbl">Series</label><input id="exov-series" class="auth-inp" style="margin:0" value="${v.series||''}"></div>
+      <div><label class="eval-lbl">Reps</label><input id="exov-reps" class="auth-inp" style="margin:0" value="${v.reps||''}"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label class="eval-lbl">${v.intensityType||'RPE'}</label><input id="exov-rpe" class="auth-inp" style="margin:0" value="${v.rpe||''}"></div>
+      <div><label class="eval-lbl">A partir de la semana</label><input id="exov-fromweek" type="number" min="1" class="auth-inp" style="margin:0" value="${v.fromWeek||realWeek}"></div>
+    </div>
+    <div><label class="eval-lbl">Nota (opcional)</label><input id="exov-note" class="auth-inp" style="margin:0" value="${(v.note||'').replace(/"/g,'&quot;')}"></div>
+    ${existing?`<button class="abtn abtn-d" style="width:100%" onclick="removeExOverrideFromModal()">Quitar personalización — volver a la plantilla</button>`:''}
+  </div>`;
+}
+
+function saveExOverrideFromModal() {
+  const ctx = S._exOverrideCtx; if(!ctx) return;
+  const name = document.getElementById('exov-name').value.trim();
+  if(!name) { showToast('Ponele un nombre al ejercicio'); return; }
+  const data = {
+    fromWeek: Math.max(1, +document.getElementById('exov-fromweek').value || 1),
+    name,
+    series: document.getElementById('exov-series').value.trim(),
+    reps: document.getElementById('exov-reps').value.trim(),
+    rpe: document.getElementById('exov-rpe').value.trim(),
+    note: document.getElementById('exov-note').value.trim(),
+  };
+  closeExOverride();
+  saveAthleteExerciseOverride(ctx.uid, ctx.routineId, ctx.sName, ctx.exId, data);
+}
+window.saveExOverrideFromModal = saveExOverrideFromModal;
+
+function removeExOverrideFromModal() {
+  const ctx = S._exOverrideCtx; if(!ctx) return;
+  closeExOverride();
+  removeAthleteExerciseOverride(ctx.uid, ctx.routineId, ctx.sName, ctx.exId);
+}
+window.removeExOverrideFromModal = removeExOverrideFromModal;
+
+function closeExOverride() { document.getElementById('exoverride-overlay').classList.remove('open'); }
+window.closeExOverride = closeExOverride;
+function closeExOverrideIfOutside(e) { if(e.target===document.getElementById('exoverride-overlay')) closeExOverride(); }
+window.closeExOverrideIfOutside = closeExOverrideIfOutside;
+
 async function saveTeamDayBlocks(teamId,dayIdx){
   const team=S.teams.find(t=>t.id===teamId);if(!team)return;
   // Guarda SOLO trainingDays (que es lo único que esta pantalla toca), nunca
@@ -9041,7 +9226,9 @@ function renderAtletaRutina(a) {
               ${(b.categories||[]).map(cat=>`
                 ${cat.label?`<div class="cat-header"><div class="cat-label-wrap"><span class="cat-label">${cat.label}</span></div></div>`:''}
                 ${(cat.exercises||[]).map(ex=>{
-                  const wp = getExPrescriptionForWeek(ex, toRoutineRelativeWeek(previewWeek, a));
+                  const isPersonalBlock = b.id==='personal-block';
+                  const override = isPersonalBlock ? null : getExerciseOverride(a._personal?.routineOverrides, routine.id, sName, ex.id);
+                  const wp = getExDisplayForWeek(ex, previewWeek, toRoutineRelativeWeek(previewWeek, a), override);
                   // Solo la semana EXACTA que se está mostrando — nada de
                   // buscar hacia atrás. Antes, al hojear una semana "fantasma"
                   // (que el atleta nunca hizo), se mostraba la carga/RPE de una
@@ -9055,19 +9242,21 @@ function renderAtletaRutina(a) {
                   // pertenecen a ejercicios de OTRA rutina.
                   const firstWeekEx = getCurrentPhaseStartWeek(a);
                   const lastWeekEx = Math.max(firstWeekEx+durationWeeksEx-1, previewWeek);
+                  const exIdEsc = ex.id, sNameEsc = sName.replace(/'/g,"\\'");
+                  const personalizarBtn = isPersonalBlock ? '' : `<span style="font-size:10px;color:${override?'var(--accent-text)':'var(--text3)'};font-weight:600;cursor:pointer" onclick="openExerciseOverrideModal('${a.uid}','${routine.id}','${sNameEsc}','${exIdEsc}',${previewWeek})" title="Personalizar este ejercicio solo para este atleta">${override?'✎ Personalizado':'✎ Personalizar'}</span>`;
                   if (S._atletaRoutineCicloView === 'macro') {
                     return `
                     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                      <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name}</div>
+                      <div style="font-size:14px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${ex.name}</span>${personalizarBtn}</div>
                       ${buildWeeklyProgressionTable(lastWeekEx, previewWeek, (w) => ({
-                        wp: getExPrescriptionForWeek(ex, toRoutineRelativeWeek(w, a)),
+                        wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, a), override),
                         d: a._personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id] || {}
                       }), {uid:a.uid, sName, exId:ex.id}, firstWeekEx)}
                     </div>`;
                   }
                   return `
                   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${ex.name} <span style="font-size:10px;color:var(--accent-text);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span>${b.id==='personal-block'?`<span style="float:right;font-size:10px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${wp.name}${override?` <span style="font-size:9px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);padding:1px 6px;border-radius:8px;text-transform:none;letter-spacing:0">personalizado desde S${override.fromWeek}</span>`:''} <span style="font-size:10px;color:var(--accent-text);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span> ${personalizarBtn}${isPersonalBlock?`<span style="float:right;font-size:10px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>

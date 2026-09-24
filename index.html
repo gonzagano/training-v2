@@ -45,6 +45,7 @@
     <input class="auth-inp" id="auth-email" type="email" placeholder="Email" autocomplete="email">
     <input class="auth-inp" id="auth-pass" type="password" placeholder="Contraseña" autocomplete="current-password">
     <input class="auth-inp" id="auth-name" type="text" placeholder="Nombre completo" style="display:none" autocomplete="name">
+    <div id="auth-forgot" style="text-align:right;margin:-8px 0 12px;font-size:12px;color:var(--text3);cursor:pointer" onclick="forgotPasswordFromLogin()">¿Olvidaste tu contraseña?</div>
     <button class="auth-btn" id="auth-btn" onclick="authAction()">Iniciar sesión</button>
     <div class="auth-err" id="auth-err"></div>
     <div class="auth-switch" id="auth-switch" onclick="toggleAuthMode()">¿No tenés cuenta? <span>Registrarse</span></div>
@@ -302,6 +303,18 @@
     <div class="video-modal-btns">
       <button class="abtn" id="confirm-modal-cancel-btn" onclick="closeConfirmModal()">Cancelar</button>
       <button class="abtn abtn-p" id="confirm-modal-confirm-btn" onclick="confirmModalConfirm()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Personalizar un ejercicio para un atleta puntual, sin tocar la plantilla -->
+<div class="video-modal" id="exoverride-overlay" onclick="closeExOverrideIfOutside(event)">
+  <div class="video-modal-box">
+    <div class="video-modal-title" id="exoverride-title">Personalizar ejercicio</div>
+    <div id="exoverride-body" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="video-modal-btns">
+      <button class="abtn" onclick="closeExOverride()">Cancelar</button>
+      <button class="abtn abtn-p" onclick="saveExOverrideFromModal()">Guardar</button>
     </div>
   </div>
 </div>
