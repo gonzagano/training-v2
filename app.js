@@ -4082,7 +4082,11 @@ async function adminSetExerciseField(uid, wKey, sName, exId, field, value) {
   if(!a._personal) a._personal = {};
   if(!a._personal.history) a._personal.history = {};
   const sk = sessionKey(wKey, sName);
-  const num = value===''? null : parseDecimal(value);
+  // Número puro (incluida la coma: "82,5") → número. Cualquier otra cosa
+  // ("50×2-60", "40+10") → se guarda el texto tal cual lo escribió, sin
+  // recortarlo a lo que parseFloat alcance a leer.
+  const isPlainNum = /^\s*-?\d+([.,]\d+)?\s*$/.test(String(value==null?'':value));
+  const num = value===''? null : (isPlainNum ? parseDecimal(value) : NaN);
   try {
     // Traemos el registro puntual de ESTE ejercicio fresco del servidor
     // antes de tocarlo, en vez de completar sobre la copia en memoria del
@@ -4149,6 +4153,9 @@ window.saveAthleteDoneField = saveAthleteDoneField;
 // así se puede leer de un vistazo cómo progresa el plan y qué pasó
 // realmente, sin tener que scrollear una lista vertical semana por semana.
 // Valor seguro para meter dentro de value="..." de un input.
+// kg tal cual lo escribió el atleta; solo agrega "kg" si no trae unidad propia.
+function fmtLoadTxt(v) { const t=String(v).trim(); return /[a-zA-Z]/.test(t) ? t : t+'kg'; }
+
 function attrVal(v) { return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
 function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx, firstWeek) {
@@ -4175,13 +4182,22 @@ function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx
     const d = rowsOf[i].d, hasData = !!(d.load||d.rpe);
     const cls = hasData?'done-ok':(d.checked?'done-partial':'done-none');
     if (editCtx) {
-      const base = `adminSetExerciseField('${editCtx.uid}',${w},'${editCtx.sName.replace(/'/g,"\\'")}','${editCtx.exId}'`;
-      return `<td class="${w===currentWeek?'cur':''}"><div style="display:flex;gap:3px;justify-content:center;align-items:center">
-        <input type="text" inputmode="decimal" value="${attrVal(d.load)}" placeholder="kg" onchange="${base},'load',this.value)" style="width:52px;font-size:11.5px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 2px;color:var(--text)">
-        <input type="text" inputmode="decimal" value="${attrVal(d.rpe)}" placeholder="${(rowsOf[i].wp.intensityType||'RPE').slice(0,3)}" onchange="${base},'rpe',this.value)" style="width:40px;font-size:11.5px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 2px;color:var(--text)">
+      // Mismo aspecto que "Completó" en la vista microciclo: pastillas con
+      // el dato tal cual lo escribió el atleta (verde si hay dato), y al tocar
+      // se vuelve editable. Los inputs heredan la tipografía de la app.
+      const sEsc = editCtx.sName.replace(/'/g,"\\'");
+      const lbl = rowsOf[i].wp.intensityType||'RPE';
+      const color = hasData ? 'var(--green)' : 'var(--text3)';
+      const pill = (field, txt, val, ph) => `<span class="done-field-wrap">
+          <span class="done-field-txt" style="color:${color}" onclick="editAthleteDoneField(event)">${attrVal(txt)}</span>
+          <input class="done-field-inp wide" type="text" inputmode="decimal" value="${attrVal(val)}" placeholder="${ph}" onblur="saveAthleteDoneField('${editCtx.uid}',${w},'${sEsc}','${editCtx.exId}','${field}',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
+        </span>`;
+      return `<td class="${w===currentWeek?'cur':''}"><div style="display:flex;gap:6px;justify-content:center;align-items:center">
+        ${pill('load', d.load ? fmtLoadTxt(d.load) : '— kg', d.load, 'kg')}
+        ${pill('rpe', lbl+' '+(d.rpe!=null&&d.rpe!==''?d.rpe:'—'), d.rpe, lbl)}
       </div></td>`;
     }
-    const txt = hasData ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(rowsOf[i].wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'✓ sin datos':'—');
+    const txt = hasData ? (d.load?fmtLoadTxt(d.load):'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(rowsOf[i].wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'✓ sin datos':'—');
     return `<td class="${w===currentWeek?'cur':''} ${cls}">${txt}</td>`;
   }).join('');
   const rowNote = anyNote ? `<tr><td>Nota</td>${weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}" style="white-space:normal;max-width:140px;font-size:11.5px;color:var(--text3)">${rowsOf[i].wp.note||''}</td>`).join('')}</tr>` : '';
@@ -9646,18 +9662,18 @@ function renderAtletaRutina(a) {
                     ${(()=>{
                       const sNameEsc = sName.replace(/'/g,"\\'");
                       const intensityLbl = wp.intensityType||'RPE';
-                      const loadTxt = doneData.load ? doneData.load+'kg' : '— kg';
+                      const loadTxt = doneData.load ? fmtLoadTxt(doneData.load) : '— kg';
                       const rpeTxt = intensityLbl+' '+(doneData.rpe!=null&&doneData.rpe!==''?doneData.rpe:'—');
                       const txtColor = hasCompletion ? 'var(--green)' : 'var(--text3)';
                       return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${loadTxt}</span>
-                        <input class="done-field-inp" type="text" inputmode="decimal" value="${attrVal(doneData.load)}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
+                        <input class="done-field-inp wide" type="text" inputmode="decimal" value="${attrVal(doneData.load)}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
                       </span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${rpeTxt}</span>
-                        <input class="done-field-inp" type="text" inputmode="decimal" value="${attrVal(doneData.rpe)}" placeholder="${intensityLbl}" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','rpe','${intensityLbl}',this)" onkeydown="if(event.key==='Enter')this.blur()">
+                        <input class="done-field-inp wide" type="text" inputmode="decimal" value="${attrVal(doneData.rpe)}" placeholder="${intensityLbl}" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','rpe','${intensityLbl}',this)" onkeydown="if(event.key==='Enter')this.blur()">
                       </span>
                     </div>`;
                     })()}

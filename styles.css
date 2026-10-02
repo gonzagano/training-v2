@@ -298,6 +298,7 @@ body{background:var(--bg);color:var(--text);font-size:16px}
    título de un bloque: se ve como texto, doble click lo vuelve editable. */
 .done-field-wrap{display:inline-flex;align-items:center}
 .done-field-txt{font-size:12px;font-weight:700;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;cursor:text;white-space:nowrap}
+.done-field-inp.wide{width:96px}
 .done-field-inp{display:none;width:60px;font-size:12px;text-align:center;background:var(--bg3);border:1px solid var(--accent);border-radius:6px;padding:4px 3px;color:var(--text);outline:none;font-family:inherit}
 .field-inp.vbt{border-color:rgba(74,158,255,0.3);color:var(--blue);width:64px}
 .field-inp.vbt:focus{border-color:var(--blue)}
