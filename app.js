@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion }
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion, FieldPath }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── FECHAS EN HORARIO LOCAL, NUNCA UTC ────────────────────────────
@@ -1007,6 +1007,7 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   S.user = user;
+  S._lastAthleteSync = Date.now();
   S.isAdmin = user.email === ADMIN_EMAIL;
 
   // Load user data from Firestore
@@ -1084,6 +1085,17 @@ onAuthStateChanged(auth, async (user) => {
     }
     // Athletes never load blocks — they come from assignedRoutine only
   }
+
+  // Si la última vez algo quedó sin subir (sin señal, app cerrada a mitad de
+  // guardado), se recupera de la copia que quedó en el celular y se reenvía.
+  // Va DESPUÉS de leer el servidor para que lo recuperado gane sobre el dato
+  // viejo, y el guardado ya mezcla por sesión/fecha sin pisar lo demás.
+  try {
+    if (restoreOutboxIntoState()) {
+      setSyncBanner(true);
+      saveToFirestore();
+    }
+  } catch(e) { console.error('No se pudo recuperar la copia de respaldo', e); }
 
   // Biblioteca de ejercicios y videos: son recursos COMPARTIDOS de todo el
   // gimnasio (un solo admin, un solo set de ejercicios/videos) — viven en un
@@ -1203,13 +1215,32 @@ window.scheduleSave = scheduleSave; // encontrado sin exportar — un onchange i
 // helper usa updateDoc() de verdad (que sí entiende las rutas con puntos), y
 // si el documento todavía no existe (updateDoc no lo crea solo, a diferencia
 // de setDoc+merge), lo crea vacío primero y reintenta.
-async function updateDocSafe(ref, dotPathData) {
+//
+// OTRO BUG DE BASE (descubierto al revisar por qué una carga podía "no
+// llegar"): las rutas con puntos se arman pegando texto escrito por el
+// entrenador — el NOMBRE DE LA SESIÓN — adentro de la ruta ("history.w4-Día
+// 1"). Un nombre con un punto ("Día 1.") se partía en dos niveles y el dato
+// quedaba guardado en un lugar donde nadie lo iba a buscar; uno con una
+// barra, corchete, * o ~ ("Fuerza / Core") hacía que Firestore RECHAZARA el
+// guardado ENTERO (con todo lo demás que viajaba en el mismo envío:
+// wellness, carga, lesiones...) y como el atleta seguía viendo sus números
+// en pantalla, no se enteraba. `fpEntries` permite mandar esas rutas como
+// lista de segmentos (FieldPath), que acepta cualquier texto adentro.
+async function updateDocSafe(ref, dotPathData, fpEntries) {
+  const hasFp = !!(fpEntries && fpEntries.length);
+  const run = () => {
+    if(!hasFp) return updateDoc(ref, dotPathData);
+    const args = [];
+    Object.entries(dotPathData||{}).forEach(([k,v])=>{ args.push(k, v); });
+    fpEntries.forEach(([segs,v])=>{ args.push(new FieldPath(...segs), v); });
+    return updateDoc(ref, ...args);
+  };
   try {
-    await updateDoc(ref, dotPathData);
+    await run();
   } catch(e) {
     if (e.code === 'not-found') {
       await setDoc(ref, {}, { merge: true });
-      await updateDoc(ref, dotPathData);
+      await run();
     } else {
       throw e;
     }
@@ -1288,8 +1319,154 @@ function markRoutineDirty(sk) {
 }
 window.markRoutineDirty = markRoutineDirty;
 
-async function saveToFirestore() {
-  if (!S.user) return;
+// ── GUARDADO: EN COLA, CON COPIA DE RESPALDO Y REINTENTO ──────────────────
+// Las cargas de rutina (kg/RPE por ejercicio), la carga de sesión, el
+// wellness y las molestias son lo más importante que el atleta le manda al
+// entrenador — que se pierdan en silencio no es aceptable. Tres problemas
+// reales de la versión anterior que se arreglan acá:
+//
+// 1) Sin red (típico: gimnasio con mala señal) el guardado de Firestore NO
+//    falla — se queda esperando para siempre. El atleta ve sus números en
+//    pantalla, cierra la app, y lo que tipeó nunca salió del celular.
+//    Ahora cada guardado tiene un tiempo máximo, y ANTES de intentarlo se
+//    deja una copia de respaldo en el propio celular (localStorage). Si la
+//    app se cierra con algo sin subir, la próxima vez que se abra se vuelve
+//    a mandar sola (restoreOutboxIntoState).
+// 2) Dos guardados pisándose: al terminar el primero se borraba TODO lo
+//    marcado como pendiente — incluso lo que el atleta acababa de tocar
+//    mientras tanto — y si el segundo fallaba, ese cambio quedaba sin
+//    reintento. Ahora los guardados van de a uno y al terminar solo se
+//    descuenta lo que ese guardado realmente mandó.
+// 3) Si fallaba, quedaba solo un cartelito de 3 segundos. Ahora hay un aviso
+//    fijo mientras haya algo sin subir y reintenta solo (cada tanto, al
+//    volver la conexión y al volver a la app).
+const SAVE_TIMEOUT_MS = 20000;
+let _saveChain = Promise.resolve(true);
+let _retryTimer = null;
+let _retryDelay = 8000;
+
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_,rej)=>setTimeout(()=>rej(new Error('save-timeout')), ms))]);
+}
+
+function hasPendingSaves() {
+  return !!((S._dirtyRoutineSessions&&S._dirtyRoutineSessions.size)||(S._dirtyWellnessDates&&S._dirtyWellnessDates.size)||
+    (S._dirtyCargaDates&&S._dirtyCargaDates.size)||(S._dirtyInjuryZones&&S._dirtyInjuryZones.size)||
+    (S._dirtyEvalTests&&S._dirtyEvalTests.size)||(S._dirtyIllnessIds&&S._dirtyIllnessIds.size));
+}
+window.hasPendingSaves = hasPendingSaves;
+
+function outboxKey() { return S.user ? 'gm-outbox-'+S.user.uid : null; }
+
+// Copia de lo que todavía no se confirmó en el servidor, con el DATO adentro
+// (no solo qué claves están sucias) para poder rearmarlo aunque la app se cierre.
+function writeOutbox() {
+  const key = outboxKey(); if(!key) return;
+  try {
+    if(!hasPendingSaves()) { localStorage.removeItem(key); return; }
+    const ob = { t: Date.now(), routine:{}, wellness:{}, carga:{}, injuries:{}, evals:{}, illnesses:[] };
+    (S._dirtyRoutineSessions||[]).forEach(sk=>{ if(S.history?.[sk]) ob.routine[sk] = S.history[sk]; });
+    (S._dirtyWellnessDates||[]).forEach(d=>{ if(S.wellness?.[d]) ob.wellness[d] = S.wellness[d]; });
+    (S._dirtyCargaDates||[]).forEach(d=>{ ob.carga[d] = (S.history?._sessionLogs||[]).filter(l=>l.date===d); });
+    (S._dirtyInjuryZones||[]).forEach(z=>{ ob.injuries[z] = S.injuries?.[z] || null; });
+    (S._dirtyEvalTests||[]).forEach(t=>{ if(S.evals?.[t]) ob.evals[t] = S.evals[t]; });
+    const ill = S._dirtyIllnessIds||new Set();
+    ob.illnesses = (S.illnesses||[]).filter(x=>ill.has(x.id));
+    localStorage.setItem(key, JSON.stringify(ob));
+  } catch(e) { /* cuota llena o modo privado: no es crítico, el guardado normal sigue andando */ }
+}
+window.writeOutbox = writeOutbox;
+
+// Al abrir la app: si quedó algo sin subir la vez anterior, se vuelve a meter
+// en memoria como "pendiente" para que el próximo guardado lo mande.
+function restoreOutboxIntoState() {
+  const key = outboxKey(); if(!key) return false;
+  let ob = null;
+  try { ob = JSON.parse(localStorage.getItem(key)||'null'); } catch(e) { ob = null; }
+  if(!ob) return false;
+  let any = false;
+  if(!S.history) S.history = {};
+  Object.entries(ob.routine||{}).forEach(([sk,sess])=>{
+    const cur = S.history[sk] || {};
+    S.history[sk] = {...cur, ...sess, exercises:{...(cur.exercises||{}), ...(sess.exercises||{})}};
+    markRoutineDirty(sk); any = true;
+  });
+  Object.entries(ob.wellness||{}).forEach(([d,w])=>{ if(!S.wellness) S.wellness={}; S.wellness[d] = w; markWellnessDirty(d); any = true; });
+  Object.entries(ob.carga||{}).forEach(([d,logs])=>{
+    if(!S.history._sessionLogs) S.history._sessionLogs = [];
+    S.history._sessionLogs = [...S.history._sessionLogs.filter(l=>l.date!==d), ...logs];
+    markCargaDirty(d); any = true;
+  });
+  Object.entries(ob.injuries||{}).forEach(([z,inj])=>{
+    if(!S.injuries) S.injuries = {};
+    if(inj) S.injuries[z] = inj; else delete S.injuries[z];
+    markInjuryDirty(z); any = true;
+  });
+  Object.entries(ob.evals||{}).forEach(([t,rec])=>{ if(!S.evals) S.evals={}; S.evals[t] = rec; markEvalDirty(t); any = true; });
+  (ob.illnesses||[]).forEach(x=>{
+    if(!S.illnesses) S.illnesses = [];
+    S.illnesses = [...S.illnesses.filter(y=>y.id!==x.id), x];
+    markIllnessDirty(x.id); any = true;
+  });
+  return any;
+}
+window.restoreOutboxIntoState = restoreOutboxIntoState;
+
+function setSyncBanner(show) {
+  let el = document.getElementById('sync-banner');
+  if(!show) { if(el) el.remove(); return; }
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'sync-banner';
+    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:600;max-width:92vw;background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber);border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;text-align:center;box-shadow:var(--sh-card);backdrop-filter:blur(6px)';
+    el.textContent = '⚠ Hay datos sin subir — se guardan en tu celular y se reintenta solo. No borres la app.';
+    document.body.appendChild(el);
+  }
+}
+window.setSyncBanner = setSyncBanner;
+
+function scheduleSaveRetry() {
+  if(_retryTimer) return;
+  _retryTimer = setTimeout(async ()=>{
+    _retryTimer = null;
+    if(!hasPendingSaves()) { _retryDelay = 8000; return; }
+    const ok = await saveToFirestore();
+    if(!ok) _retryDelay = Math.min(_retryDelay*2, 60000); else _retryDelay = 8000;
+  }, _retryDelay);
+}
+
+// Entradas que vuelven a intentar el guardado apenas se puede.
+window.addEventListener('online', ()=>{ if(hasPendingSaves()) saveToFirestore(); });
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden') writeOutbox();
+  else if(S.user && hasPendingSaves()) saveToFirestore();
+});
+window.addEventListener('pagehide', ()=>{ writeOutbox(); });
+
+// Si ya hay un guardado en espera (todavía no arrancó), no se encola otro:
+// cuando ese arranque va a tomar la "foto" de lo pendiente en ese momento,
+// así que ya va a incluir lo último que se tocó. Sin esto, sin señal, cada
+// campo tipeado sumaba un intento más de 20s a la fila.
+let _saveWaiting = null;
+function saveToFirestore() {
+  if(_saveWaiting) return _saveWaiting;
+  const run = () => { _saveWaiting = null; return _doSaveToFirestore(); };
+  _saveWaiting = _saveChain.then(run, run);
+  _saveChain = _saveWaiting;
+  return _saveWaiting;
+}
+window.saveToFirestore = saveToFirestore;
+
+async function _doSaveToFirestore() {
+  if (!S.user) return false;
+  // Foto de lo pendiente AL EMPEZAR — al terminar solo se descuenta esto, no
+  // lo que se haya tocado mientras el guardado estaba en viaje.
+  const snap = {
+    routine:[...(S._dirtyRoutineSessions||[])], wellness:[...(S._dirtyWellnessDates||[])],
+    carga:[...(S._dirtyCargaDates||[])], injuries:[...(S._dirtyInjuryZones||[])],
+    evals:[...(S._dirtyEvalTests||[])], ill:[...(S._dirtyIllnessIds||[])],
+  };
+  writeOutbox(); // respaldo ANTES de intentar
   try {
     const dataToSave = {
       // injuryArchive queda como campo completo a propósito: es historial que
@@ -1310,39 +1487,42 @@ async function saveToFirestore() {
     // mientras esta sesión sigue abierta; si mandáramos el mapa "evals"
     // entero, el próximo guardado de wellness/carga de esta sesión pisaría
     // ese test recién cargado por el admin.
-    (S._dirtyEvalTests||new Set()).forEach(testId=>{
+    snap.evals.forEach(testId=>{
       if(S.evals[testId]) dataToSave['evals.'+testId] = S.evals[testId];
     });
     // Wellness: SOLO las fechas que esta sesión modificó, por campo puntual
     // (dot-path) — así una fecha que un admin ya movió/borró en otro lado
     // nunca se puede "resucitar" con una copia vieja, aunque esta sesión
     // todavía la tenga en memoria.
-    (S._dirtyWellnessDates||new Set()).forEach(date=>{
+    snap.wellness.forEach(date=>{
       if(S.wellness[date]) dataToSave['wellness.'+date] = S.wellness[date];
     });
     // Lesiones/molestias: mismo criterio, por zona puntual — si la zona ya
     // no existe en memoria es porque se resolvió/quitó, así que se borra en
     // Firestore con deleteField() en vez de mandar el mapa entero (que podía
     // pisar una gravedad o fase de retorno que el entrenador acababa de fijar).
-    (S._dirtyInjuryZones||new Set()).forEach(zid=>{
+    snap.injuries.forEach(zid=>{
       dataToSave['injuries.'+zid] = S.injuries[zid] ? S.injuries[zid] : deleteField();
     });
-    // Progreso de rutina — por sesión puntual (dot-path), la que se tocó de
-    // verdad esta vez.
-    (S._dirtyRoutineSessions||new Set()).forEach(sk=>{
-      if(S.history[sk]) dataToSave['history.'+sk] = S.history[sk];
+    // Progreso de rutina — por sesión puntual, la que se tocó de verdad esta
+    // vez. Va por FieldPath (lista de segmentos), NO por texto con puntos:
+    // el nombre de la sesión lo escribe el entrenador y puede traer un punto
+    // o una barra (ver updateDocSafe).
+    const fpEntries = [];
+    snap.routine.forEach(sk=>{
+      if(S.history[sk]) fpEntries.push([['history', sk], S.history[sk]]);
     });
     // Carga (_sessionLogs): es un array, no se puede tocar una fecha suelta
     // con dot-path — leemos lo que hay guardado de verdad ahora mismo,
     // sacamos las fechas que esta sesión tocó (van a quedar reemplazadas) y
     // le sumamos las versiones locales de esas fechas. Cualquier otra fecha
     // (tocada por un admin mientras tanto) queda tal cual estaba en el server.
-    const dirtyCarga = S._dirtyCargaDates||new Set();
+    const dirtyCarga = new Set(snap.carga);
     if(dirtyCarga.size) {
       let serverLogs = [];
       try {
-        const snap = await getDoc(doc(db,'personal',S.user.uid));
-        if(snap.exists()) serverLogs = snap.data().history?._sessionLogs || snap.data().sessionLogs || [];
+        const sSnap = await withTimeout(getDoc(doc(db,'personal',S.user.uid)), 8000);
+        if(sSnap.exists()) serverLogs = sSnap.data().history?._sessionLogs || sSnap.data().sessionLogs || [];
       } catch(e) { serverLogs = S.history._sessionLogs||[]; }
       const keptServerLogs = serverLogs.filter(l=>!dirtyCarga.has(l.date));
       const localDirtyLogs = (S.history._sessionLogs||[]).filter(l=>dirtyCarga.has(l.date));
@@ -1356,12 +1536,12 @@ async function saveToFirestore() {
     // adminResolveIllness ya escriben esto mismo desde el lado admin, así
     // que sin esto el próximo guardado del propio atleta podía revivir una
     // enfermedad que el admin acababa de marcar como recuperada.
-    const dirtyIll = S._dirtyIllnessIds||new Set();
+    const dirtyIll = new Set(snap.ill);
     if(dirtyIll.size) {
       let serverIll = [];
       try {
-        const snap = await getDoc(doc(db,'personal',S.user.uid));
-        if(snap.exists()) serverIll = snap.data().illnesses || [];
+        const sSnap = await withTimeout(getDoc(doc(db,'personal',S.user.uid)), 8000);
+        if(sSnap.exists()) serverIll = sSnap.data().illnesses || [];
       } catch(e) { serverIll = S.illnesses||[]; }
       const keptServerIll = serverIll.filter(x=>!dirtyIll.has(x.id));
       const localDirtyIll = (S.illnesses||[]).filter(x=>dirtyIll.has(x.id));
@@ -1371,17 +1551,25 @@ async function saveToFirestore() {
       // Admin saves their own personal blocks
       dataToSave.blocks = S.blocks;
       // Biblioteca y videos son compartidos — van a su propio documento, no al personal
-      await setDoc(doc(db, 'shared', 'library'), { library: S.library, videos: S.videos }, { merge: true });
+      await withTimeout(setDoc(doc(db, 'shared', 'library'), { library: S.library, videos: S.videos }, { merge: true }), SAVE_TIMEOUT_MS);
     }
-    await updateDocSafe(doc(db, 'personal', S.user.uid), dataToSave);
-    S._dirtyWellnessDates = new Set();
-    S._dirtyCargaDates = new Set();
-    S._dirtyInjuryZones = new Set();
-    S._dirtyEvalTests = new Set();
-    S._dirtyIllnessIds = new Set();
-    S._dirtyRoutineSessions = new Set();
+    await withTimeout(updateDocSafe(doc(db, 'personal', S.user.uid), dataToSave, fpEntries), SAVE_TIMEOUT_MS);
+    // Éxito: se descuenta SOLO lo que este guardado mandó.
+    snap.routine.forEach(k=>S._dirtyRoutineSessions?.delete(k));
+    snap.wellness.forEach(k=>S._dirtyWellnessDates?.delete(k));
+    snap.carga.forEach(k=>S._dirtyCargaDates?.delete(k));
+    snap.injuries.forEach(k=>S._dirtyInjuryZones?.delete(k));
+    snap.evals.forEach(k=>S._dirtyEvalTests?.delete(k));
+    snap.ill.forEach(k=>S._dirtyIllnessIds?.delete(k));
+    writeOutbox(); // si quedó algo nuevo pendiente, se re-respalda; si no, se borra
+    if(!hasPendingSaves()) { setSyncBanner(false); _retryDelay = 8000; }
     return true;
-  } catch(e) { console.error('Save error', e); return false; }
+  } catch(e) {
+    console.error('Save error', e);
+    if(hasPendingSaves()) setSyncBanner(true);
+    scheduleSaveRetry();
+    return false;
+  }
 }
 
 // ── HELPERS ───────────────────────────────────────────────────
@@ -2321,9 +2509,53 @@ window.addEventListener('resize', ()=>{ renderBottomBar(); });
 // recarga de cero. Solo actuamos si el DÍA realmente cambió — no en cada
 // cambio de pestaña dentro del mismo día — para no pisar algo que el atleta
 // estuviera completando a mitad de camino.
+// Una PWA instalada puede pasar horas o días "congelada" con la rutina que
+// había al abrirla. Si el entrenador mientras tanto la editó (renombró un
+// día, cambió ejercicios, reasignó la rutina), el atleta seguiría cargando
+// kg sobre ids/nombres VIEJOS — y esos registros no calzarían con la rutina
+// que ve el entrenador. Al volver a la app (después de un rato) se vuelve a
+// leer lo que el entrenador controla: su ficha, la rutina asignada, y los
+// ejercicios extra/personalizados. Nunca toca lo que el atleta registró
+// (history/wellness/etc.) — eso es suyo y se maneja por el guardado normal.
+window.refreshAthleteDataIfStale = refreshAthleteDataIfStale;
+async function refreshAthleteDataIfStale() {
+  if(S.isAdmin || !S.user || !S.userData) return;
+  if(Date.now() - (S._lastAthleteSync||0) < 10*60*1000) return;
+  if(hasPendingSaves()) return;
+  const ae = document.activeElement;
+  if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return; // está tipeando
+  S._lastAthleteSync = Date.now();
+  try {
+    const uSnap = await getDoc(doc(db,'users',S.user.uid));
+    if(!uSnap.exists()) return;
+    const before = JSON.stringify([S.userData, S.assignedRoutine?.sessions, S.personalExtras, S.routineOverrides]);
+    S.userData = uSnap.data();
+    const pSnap = await getDoc(doc(db,'personal',S.user.uid));
+    if(pSnap.exists()) {
+      const d = pSnap.data();
+      S.personalExtras = d.personalExtras || {};
+      S.routineOverrides = d.routineOverrides || {};
+    }
+    const assignedId = S.userData.assignedRoutine || null;
+    if(assignedId) {
+      const rSnap = await getDoc(doc(db,'routines',assignedId));
+      if(rSnap.exists()) {
+        S.assignedRoutine = { id: assignedId, ...rSnap.data() };
+        S.currentRoutineSessions = getOrderedSessionNames(S.assignedRoutine);
+      }
+    }
+    const after = JSON.stringify([S.userData, S.assignedRoutine?.sessions, S.personalExtras, S.routineOverrides]);
+    if(before !== after) {
+      refreshTodaysTrainingContext();
+      renderAll();
+    }
+  } catch(e) { console.error('No se pudo refrescar la rutina', e); }
+}
+
 document.addEventListener('visibilitychange', () => {
   if(document.visibilityState !== 'visible') return;
   if(!S.user || !S.userData) return;
+  refreshAthleteDataIfStale();
   const today = todayLocal();
   if(S._lastKnownDay === undefined || S._lastKnownDay === null) { S._lastKnownDay = today; return; }
   if(today === S._lastKnownDay) return;
@@ -2843,8 +3075,23 @@ function toggleBlock(id) {
 }
 window.toggleBlock=toggleBlock;
 
+// Guarda junto a la carga el NOMBRE del ejercicio tal como lo veía el atleta.
+// Si el entrenador después cambia la rutina (renombra o borra un ejercicio o
+// una sesión), el registro queda huérfano — sin el nombre guardado no habría
+// forma de saber a qué ejercicio correspondía ese kg/RPE. Con el nombre, el
+// panel de 'cargas sin ubicar' de la ficha del atleta lo puede mostrar igual.
+function stampExerciseName(d, exId) {
+  if(d.exname) return;
+  try {
+    for(const b of (getCurrentBlocks()||[]))
+      for(const c of (b.categories||[]))
+        for(const e of (c.exercises||[])) if(e.id===exId && e.name) { d.exname = e.name; return; }
+  } catch(e) { /* solo informativo */ }
+}
+
 function toggleCheck(exId) {
   const d=getED(getRoutineWeek(),S.currentSession,exId);
+  stampExerciseName(d, exId);
   d.checked=!d.checked;
   const rowEl=document.querySelector(`#exrow-${exId}`);
   const el=rowEl?.querySelector('.ex-check');
@@ -2884,6 +3131,7 @@ window.updateBlockCheckmark = updateBlockCheckmark;
 
 function setField(exId,field,val) {
   const d=getED(getRoutineWeek(),S.currentSession,exId);
+  stampExerciseName(d, exId);
   d[field]=val;
   if(!getSD(getRoutineWeek(),S.currentSession).date)
     getSD(getRoutineWeek(),S.currentSession).date=todayLocal();
@@ -2933,6 +3181,46 @@ function closeSessionFeedback() {
 }
 window.closeSessionFeedback=closeSessionFeedback;
 
+// Cruza una sesión de la rutina del entrenador (RPE de la sesión + minutos)
+// con la carga del día en "Gimnasio individual (fuera del club)" y devuelve
+// las UA totales de ese casillero. Cada tramo se guarda en `parts`, así:
+//  - si el atleta vuelve a completar/corregir la MISMA sesión ese día, se
+//    reemplaza su tramo (no se duplica);
+//  - si ya había algo cargado a mano en "fuera del club" ese día, se
+//    conserva como otro tramo y las UA se suman (no se pierde);
+//  - dos sesiones de rutina el mismo día también suman.
+// Las analíticas suman `ua` por día, así que ua tiene que ser SIEMPRE la
+// suma exacta de rpe×minutos de cada tramo (el RPE del casillero queda como
+// promedio ponderado por minutos, solo para mostrar).
+function addRoutineSessionToOutsideGym({date, week, sessionName, rpe, mins, feel, injury}) {
+  const logs = S.history._sessionLogs;
+  const prev = logs.find(l=>l.date===date && l.activity==='gimnasio2');
+  let parts = [];
+  if(prev) {
+    parts = (prev.parts && prev.parts.length)
+      ? prev.parts.map(p=>({...p}))
+      : [{session: prev.source==='rutina' ? (prev.session||'Rutina') : 'Gimnasio fuera del club', rpe:prev.rpe, mins:prev.mins, routine: prev.source==='rutina'}];
+    parts = parts.filter(p=>!(p.routine && p.session===sessionName));
+  }
+  parts.push({session:sessionName, rpe, mins, routine:true});
+  const totalMins = parts.reduce((s,p)=>s+p.mins,0);
+  const totalUA   = parts.reduce((s,p)=>s+p.rpe*p.mins,0);
+  const routineNames = parts.filter(p=>p.routine).map(p=>p.session).join(' + ');
+  const hasManual = parts.some(p=>!p.routine);
+  const log = {
+    date, week, activity:'gimnasio2', source:'rutina',
+    session: routineNames + (hasManual ? ' + carga manual' : ''),
+    rpe: Math.round(totalUA/totalMins*10)/10, mins: totalMins, ua: totalUA,
+    note: 'Rutina del entrenador · ' + routineNames + (hasManual ? ' + carga manual' : ''),
+    feel: feel || (prev?.feel||''), injury: !!(injury || prev?.injury),
+  };
+  if(parts.length>1) log.parts = parts;
+  S.history._sessionLogs = logs.filter(l=>!(l.date===date && l.activity==='gimnasio2'));
+  S.history._sessionLogs.push(log);
+  return totalUA;
+}
+window.addRoutineSessionToOutsideGym = addRoutineSessionToOutsideGym;
+
 async function submitSessionFeedback() {
   const rpe    = parseInt(document.getElementById('sf-rpe')?.value||'0');
   const mins   = parseInt(document.getElementById('sf-mins')?.value||'0');
@@ -2941,23 +3229,25 @@ async function submitSessionFeedback() {
 
   if(!rpe||!mins) { showToast('Completá RPE y duración'); return; }
 
-  const ua = rpe * mins;
   const date = todayLocal();
-  const log = { date, week:S.currentWeek, session:S.currentSession, rpe, mins, ua, feel, injury, activity:'gimnasio' };
 
-  // Save to sessionLogs — si ya había un log de gimnasio hoy (por ejemplo cargado
-  // manualmente desde Wellness), lo reemplaza en vez de duplicar la carga del día.
+  // La sesión de la rutina del entrenador se carga en "Gimnasio individual
+  // (fuera del club)" y NO en "Gimnasio (club)" — así el casillero del club
+  // queda libre por si ese mismo día el atleta además va a entrenar al club,
+  // y no se mezclan dos cosas distintas en una sola carga. Si ese día ya
+  // había algo en "fuera del club", se SUMAN las UA (ver
+  // addRoutineSessionToOutsideGym) en vez de pisarlo.
   if(!S.history) S.history={};
   if(!S.history._sessionLogs) S.history._sessionLogs=[];
-  S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity==='gimnasio'));
-  S.history._sessionLogs.push(log);
+  const ua = addRoutineSessionToOutsideGym({date, week:S.currentWeek, sessionName:S.currentSession, rpe, mins, feel, injury});
+  if(S.loadDraft?.[date]) delete S.loadDraft[date].gimnasio2; // un borrador viejo del formulario de Carga no debe pisar esto
   markCargaDirty(date);
   showToast('Guardando…');
   const ok = await saveNow();
   if(!ok) { showToast('No se pudo guardar — revisá tu conexión y volvé a intentar'); return; }
 
   closeSessionFeedback();
-  showToast(`✓ Sesión guardada · ${ua} UA`);
+  showToast(`✓ Sesión guardada · ${ua} UA (Gimnasio fuera del club)`);
 
   if(injury) {
     setTimeout(()=>switchView('wellness'),600);
@@ -3075,7 +3365,24 @@ async function saveLoadLog(date) {
     if(mins && rpe) {
       // saca cualquier log previo de esta actividad en esa fecha, para no duplicar carga
       S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity===act.key));
-      S.history._sessionLogs.push({date, activity:act.key, session:getLoadActivityDisplay(act, S.userData?.sport).label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe});
+      const newLog = {date, activity:act.key, session:getLoadActivityDisplay(act, S.userData?.sport).label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe};
+      // Si este casillero lo llenó una sesión de la rutina (ver
+      // addRoutineSessionToOutsideGym), al re-guardar el formulario de Carga
+      // sin tocar minutos ni RPE se conservan sus datos (origen, tramos, UA
+      // exactas, sensación). Si el atleta SÍ los cambia, pasa a ser una edición
+      // manual: queda el origen pero se descartan los tramos.
+      if(existing && existing.source) {
+        newLog.source = existing.source;
+        if(existing.mins===mins && existing.rpe===rpe) {
+          newLog.session = existing.session || newLog.session;
+          newLog.week = existing.week ?? newLog.week;
+          newLog.ua = existing.ua ?? newLog.ua;
+          if(existing.parts) newLog.parts = existing.parts;
+        }
+        if(existing.feel!==undefined) newLog.feel = existing.feel;
+        if(existing.injury!==undefined) newLog.injury = existing.injury;
+      }
+      S.history._sessionLogs.push(newLog);
       markCargaDirty(date);
       savedAny=true;
     } else if((mins && !rpe) || (!mins && rpe)) {
@@ -3788,10 +4095,12 @@ async function adminSetExerciseField(uid, wKey, sName, exId, field, value) {
       rec = snap.exists() ? (snap.data().history?.[sk]?.exercises?.[exId] || {}) : {};
     } catch(e) { rec = a._personal.history[sk]?.exercises?.[exId] || {}; }
     rec = {...rec};
-    rec[field] = (num===null || isNaN(num)) ? null : num;
+    // Vacío = borrar. Algo que no se puede leer como número (ej. "40+10")
+    // se guarda tal cual en vez de borrar la carga del atleta.
+    const rawTxt = String(value==null?'':value).trim();
+    rec[field] = (num===null || isNaN(num)) ? (rawTxt ? rawTxt : null) : num;
     if(rec.load || rec.rpe) rec.checked = true;
-    const path = `history.${sk}.exercises.${exId}`;
-    await updateDocSafe(doc(db,'personal',uid), {[path]: rec});
+    await updateDocSafe(doc(db,'personal',uid), {}, [[['history', sk, 'exercises', exId], rec]]);
     if(!a._personal.history[sk]) a._personal.history[sk] = {};
     if(!a._personal.history[sk].exercises) a._personal.history[sk].exercises = {};
     a._personal.history[sk].exercises[exId] = rec;
@@ -3827,6 +4136,10 @@ function saveAthleteDoneField(uid, week, sName, exId, field, unitLabel, inp) {
     if(span) span.style.display = '';
   }
   inp.style.display = 'none';
+  // Sin cambios no se escribe nada: antes un doble click + salir del campo
+  // volvía a guardar lo que mostraba el input (y si el dato del atleta no
+  // era un número puro, el campo estaba en blanco y se borraba la carga).
+  if(inp.value === inp.defaultValue) return;
   adminSetExerciseField(uid, week, sName, exId, field, inp.value);
 }
 window.saveAthleteDoneField = saveAthleteDoneField;
@@ -3835,6 +4148,9 @@ window.saveAthleteDoneField = saveAthleteDoneField;
 // semana, cada fila una métrica (series/reps/%RM/intensidad/completó) —
 // así se puede leer de un vistazo cómo progresa el plan y qué pasó
 // realmente, sin tener que scrollear una lista vertical semana por semana.
+// Valor seguro para meter dentro de value="..." de un input.
+function attrVal(v) { return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
 function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx, firstWeek) {
   firstWeek = firstWeek||1;
   const weeks = Array.from({length:Math.max(0,lastWeek-firstWeek+1)}, (_,i)=>firstWeek+i);
@@ -3861,8 +4177,8 @@ function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx
     if (editCtx) {
       const base = `adminSetExerciseField('${editCtx.uid}',${w},'${editCtx.sName.replace(/'/g,"\\'")}','${editCtx.exId}'`;
       return `<td class="${w===currentWeek?'cur':''}"><div style="display:flex;gap:3px;justify-content:center;align-items:center">
-        <input type="number" value="${d.load||''}" placeholder="kg" onchange="${base},'load',this.value)" style="width:44px;font-size:11.5px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 2px;color:var(--text)">
-        <input type="number" value="${d.rpe||''}" placeholder="${(rowsOf[i].wp.intensityType||'RPE').slice(0,3)}" onchange="${base},'rpe',this.value)" style="width:36px;font-size:11.5px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 2px;color:var(--text)">
+        <input type="text" inputmode="decimal" value="${attrVal(d.load)}" placeholder="kg" onchange="${base},'load',this.value)" style="width:52px;font-size:11.5px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 2px;color:var(--text)">
+        <input type="text" inputmode="decimal" value="${attrVal(d.rpe)}" placeholder="${(rowsOf[i].wp.intensityType||'RPE').slice(0,3)}" onchange="${base},'rpe',this.value)" style="width:40px;font-size:11.5px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 2px;color:var(--text)">
       </div></td>`;
     }
     const txt = hasData ? (d.load?d.load+'kg':'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(rowsOf[i].wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'✓ sin datos':'—');
@@ -4026,7 +4342,9 @@ window.goToTodayWellness=goToTodayWellness;
 function renderLoadItemRow(act, wKey, sport) {
   const existing=getLoadLog(act.key,wKey);
   const draft=(S.loadDraft?.[wKey]?.[act.key]) || (existing?{mins:existing.mins,rpe:existing.rpe,note:existing.note||''}:{mins:'',rpe:0,note:''});
-  const ua=(draft.mins&&draft.rpe)?draft.mins*draft.rpe:0;
+  // Un casillero armado con varias sesiones tiene RPE promedio (decimal): las
+  // UA exactas son la suma guardada, no mins×RPE redondeado.
+  const ua=(draft.mins&&draft.rpe)?((existing?.ua && existing.mins===draft.mins && existing.rpe===draft.rpe)?existing.ua:draft.mins*draft.rpe):0;
   const display = getLoadActivityDisplay(act, sport);
   // Marcaron el RPE (tocar un puntito es rápido y llamativo) pero se
   // olvidan de los minutos (un campo de texto chico, fácil de saltear) — se
@@ -8180,7 +8498,7 @@ async function addPersonalExtraExercise(uid,sessionName,exObj){
   if(!personal.personalExtras[sessionName]) personal.personalExtras[sessionName]=[];
   personal.personalExtras[sessionName].push(exObj);
   try {
-    await updateDocSafe(doc(db,'personal',uid), {[`personalExtras.${sessionName}`]: personal.personalExtras[sessionName]});
+    await updateDocSafe(doc(db,'personal',uid), {}, [[['personalExtras', sessionName], personal.personalExtras[sessionName]]]);
     showToast(`✓ ${exObj.name} agregado (solo para este atleta)`);
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -8192,7 +8510,7 @@ async function removePersonalExtraExercise(uid,sessionName,exId){
   if(!personal?.personalExtras?.[sessionName]) return;
   personal.personalExtras[sessionName]=personal.personalExtras[sessionName].filter(e=>e.id!==exId);
   try {
-    await updateDocSafe(doc(db,'personal',uid), {[`personalExtras.${sessionName}`]: personal.personalExtras[sessionName]});
+    await updateDocSafe(doc(db,'personal',uid), {}, [[['personalExtras', sessionName], personal.personalExtras[sessionName]]]);
     showToast('✓ Eliminado');
     renderMain();
   } catch(e) { showToast('Error al guardar'); }
@@ -8210,7 +8528,7 @@ async function saveAthleteExerciseOverride(uid, routineId, sName, exId, data) {
   if(!personal.routineOverrides[routineId][sName]) personal.routineOverrides[routineId][sName] = {};
   personal.routineOverrides[routineId][sName][exId] = data;
   try {
-    await updateDocSafe(doc(db,'personal',uid), {[`routineOverrides.${routineId}.${sName}.${exId}`]: data});
+    await updateDocSafe(doc(db,'personal',uid), {}, [[['routineOverrides', routineId, sName, exId], data]]);
     if(S.viewingAthlete?.uid===uid) S.routineOverrides = personal.routineOverrides;
     showToast('✓ Personalización guardada');
     renderMain();
@@ -8223,7 +8541,7 @@ async function removeAthleteExerciseOverride(uid, routineId, sName, exId) {
   if(!personal?.routineOverrides?.[routineId]?.[sName]?.[exId]) return;
   delete personal.routineOverrides[routineId][sName][exId];
   try {
-    await updateDocSafe(doc(db,'personal',uid), {[`routineOverrides.${routineId}.${sName}.${exId}`]: deleteField()});
+    await updateDocSafe(doc(db,'personal',uid), {}, [[['routineOverrides', routineId, sName, exId], deleteField()]]);
     if(S.viewingAthlete?.uid===uid) S.routineOverrides = personal.routineOverrides;
     showToast('✓ Vuelto a la plantilla original');
     renderMain();
@@ -9114,6 +9432,62 @@ window.addPastRoutinePhase = addPastRoutinePhase;
 // Vista de solo-lectura de la rutina asignada, + el mismo control de
 // asignación que ya existe en Panel Admin → Alumnos (misma id de <select>,
 // así assignRoutineToAthlete funciona sin cambios).
+// Panel de control de cargas del atleta (lo que él registró): dice qué semanas
+// tienen cargas y, sobre todo, AVISA si hay cargas guardadas que no se están
+// mostrando en la rutina (ejercicio o día renombrado/borrado después de que
+// el atleta entrenó). Sin esto, un registro huérfano se ve igual que "el
+// atleta no cargó nada" — y es justo la confusión que no puede pasar.
+function renderLoadsAudit(a, routine, previewWeek) {
+  const hist = a._personal?.history || {};
+  const sessions = routine.sessions || {};
+  const extras = a._personal?.personalExtras || {};
+  const idsBySession = {};
+  Object.keys(sessions).forEach(sn=>{
+    const ids = new Map();
+    (sessions[sn]||[]).forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(e=>ids.set(e.id,e.name))));
+    (extras[sn]||[]).forEach(e=>ids.set(e.id,e.name));
+    idsBySession[sn] = ids;
+  });
+  const firstWeek = getCurrentPhaseStartWeek(a);
+  const weeks = {};
+  const orphans = [];
+  Object.entries(hist).forEach(([k,sd])=>{
+    const m = /^w(\d+)-([\s\S]*)$/.exec(k);
+    if(!m || !sd || typeof sd!=='object') return;
+    const w = +m[1], sn = m[2];
+    const exs = Object.entries(sd.exercises||{}).filter(([id,e])=>e && (e.load||e.rpe||e.checked||e.athleteNote));
+    if(!exs.length) return;
+    if(!weeks[w]) weeks[w] = new Set();
+    weeks[w].add(sn);
+    if(w < firstWeek) return; // semanas de planificaciones anteriores: sus ejercicios son de OTRA rutina
+    exs.forEach(([id,e])=>{
+      if(!idsBySession[sn] || !idsBySession[sn].has(id)) orphans.push({w, sn, id, e, sessionKnown: !!idsBySession[sn]});
+    });
+  });
+  const wList = Object.keys(weeks).map(Number).sort((x,y)=>x-y);
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const chips = wList.map(w=>`<button class="abtn ${w===previewWeek?'abtn-p':''}" style="padding:4px 10px;font-size:12px" onclick="jumpRoutineWeekPreview('${a.uid}',${w})" title="Ir a la Semana ${w}">S${w} · ${weeks[w].size} ${weeks[w].size===1?'día':'días'}</button>`).join('');
+  const orphanHtml = orphans.length ? `<div style="margin-top:10px;background:var(--amber-dim);border:1px solid var(--amber);border-radius:var(--rxs);padding:10px 12px">
+      <div style="font-size:12px;font-weight:700;color:var(--amber);margin-bottom:6px">⚠ Hay ${orphans.length} ${orphans.length===1?'carga guardada que no se muestra':'cargas guardadas que no se muestran'} en la rutina de abajo</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">El atleta sí las registró, pero el ejercicio o el día ya no coincide con la rutina actual (se renombró o se borró después).</div>
+      ${orphans.slice(0,40).map(o=>`<div style="font-size:12px;padding:3px 0;border-top:1px solid var(--border)"><b>S${o.w}</b> · ${esc(o.sn)} · ${esc(o.e.exname||('ejercicio '+o.id))} — <b>${o.e.load?esc(o.e.load)+'kg':'sin kg'}</b>${o.e.rpe?' · RPE '+esc(o.e.rpe):''}${o.e.series?' · '+esc(o.e.series)+' series':''} <span style="color:var(--text3)">(${o.sessionKnown?'ese ejercicio ya no está en el día':'ese día ya no existe en la rutina'})</span></div>`).join('')}
+    </div>` : '';
+  return `<div class="admin-section">
+    <div class="admin-section-title">Cargas registradas por el atleta</div>
+    <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:6px">
+      ${wList.length ? `<div style="font-size:11px;color:var(--text3)">Semanas con cargas (tocá una para verla):</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>`
+        : '<div style="font-size:12px;color:var(--text3)">El atleta todavía no registró ninguna carga.</div>'}
+      ${orphanHtml}
+    </div>
+  </div>`;
+}
+function jumpRoutineWeekPreview(uid, w) {
+  if(!S._routineWeekPreview) S._routineWeekPreview = {};
+  S._routineWeekPreview[uid] = w;
+  renderMain();
+}
+window.jumpRoutineWeekPreview = jumpRoutineWeekPreview;
+
 function renderAtletaRutina(a) {
   const routine = S.routines.find(r => r.id === a.assignedRoutine);
   const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
@@ -9185,6 +9559,7 @@ function renderAtletaRutina(a) {
   </div>
   ${renderPastRoutinePhases(a)}
   ${renderAddPastPhaseForm(a)}
+  ${renderLoadsAudit(a, routine, previewWeek)}
   <div class="admin-section">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
       <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
@@ -9206,11 +9581,15 @@ function renderAtletaRutina(a) {
       const dayCollapsed = S._atletaRoutineCollapsedDays?.has(sName);
       const dayDone = !!(a._personal?.history?.[sessionKey(previewWeek, sName)]?.done);
       const isToday = sName===todaySession && isViewingReal;
+      // Cuántos ejercicios de este día tienen carga/RPE cargada por el atleta
+      // en la semana que se está mirando — se ve aun con el día colapsado.
+      const dayLoadsN = Object.values(a._personal?.history?.[sessionKey(previewWeek, sName)]?.exercises||{}).filter(e=>e && (e.load||e.rpe)).length;
       return `<div style="border-top:1px solid var(--border)${isToday?';background:var(--accent-dim)':''}">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer" onclick="toggleAtletaRoutineDay('${sName}')">
           <div style="font-size:11px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px">
             ${sName}${isToday?'<span style="font-size:9px;font-weight:800;background:var(--accent);color:#fff;padding:2px 6px;border-radius:10px;text-transform:none;letter-spacing:0">HOY</span>':''}
             ${dayDone?'<span style="color:var(--green);font-size:13px">✓</span>':''}
+            ${dayLoadsN?`<span style="font-size:9px;font-weight:700;background:var(--green-dim);color:var(--green);padding:2px 6px;border-radius:10px;text-transform:none;letter-spacing:0">${dayLoadsN} ${dayLoadsN===1?'carga':'cargas'}</span>`:''}
           </div>
           <span style="color:var(--text3);font-size:16px;transition:transform .15s;transform:rotate(${dayCollapsed?'-90':'0'}deg)">›</span>
         </div>
@@ -9274,11 +9653,11 @@ function renderAtletaRutina(a) {
                       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${loadTxt}</span>
-                        <input class="done-field-inp" type="number" value="${doneData.load||''}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
+                        <input class="done-field-inp" type="text" inputmode="decimal" value="${attrVal(doneData.load)}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
                       </span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${rpeTxt}</span>
-                        <input class="done-field-inp" type="number" value="${doneData.rpe||''}" placeholder="${intensityLbl}" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','rpe','${intensityLbl}',this)" onkeydown="if(event.key==='Enter')this.blur()">
+                        <input class="done-field-inp" type="text" inputmode="decimal" value="${attrVal(doneData.rpe)}" placeholder="${intensityLbl}" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','rpe','${intensityLbl}',this)" onkeydown="if(event.key==='Enter')this.blur()">
                       </span>
                     </div>`;
                     })()}
@@ -10970,7 +11349,11 @@ window.confirmWeekdayAssign = confirmWeekdayAssign;
 function adjustAthleteRoutineWeek(uid, delta) {
   const a = S.adminAthletes?.find(x=>x.uid===uid);
   if(!a) return;
-  const realWeek = a.routineAssignedDate ? computeWeekFromDate(a.routineAssignedDate)
+  // Misma cuenta que usa renderAtletaRutina para 'Semana real' (ancla fija
+  // trainingStartDate) — antes acá se usaba routineAssignedDate a secas y, en
+  // atletas con rutinas encadenadas, el primer toque de ‹/› saltaba a una
+  // semana que no era la vecina de la que se estaba mirando.
+  const realWeek = a.routineAssignedDate ? computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate)
     : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
   if(!S._routineWeekPreview) S._routineWeekPreview = {};
   const current = S._routineWeekPreview[uid] ?? realWeek;

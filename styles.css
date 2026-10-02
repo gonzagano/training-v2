@@ -61,7 +61,7 @@
 [data-theme="dark"] {
   --bg:#161826; --bg2:#1c1f30; --bg3:#242840; --bg4:#2c3149;
   --border:rgba(233,233,237,0.08); --border2:rgba(233,233,237,0.15);
-  --text:#e9e9ed; --text2:#b7b9c6; --text3:#8d90a3;
+  --text:#e9e9ed; --text2:#b7b9c6; --text3:#969ab0;
   /* --accent/--accent-hover/--accent-dim/--accent-dim2 de acá casi nunca se
      ven: applyAccentColor() en app.js los pisa con un estilo inline en
      <html> en cuanto carga la página (son el mismo valor en claro y oscuro,
@@ -82,9 +82,17 @@
   --warm:#ff9e5c; --warm-dim:rgba(255,158,92,0.16);
   --green:#3ddc84; --green-dim:rgba(61,220,132,0.16);
   --amber:#f0a838; --amber-dim:rgba(240,168,56,0.16);
-  --red:#f2685c; --red-dim:rgba(242,104,92,0.16);
-  --blue:#5b8bf5; --blue-dim:rgba(91,139,245,0.16);
-  --purple:#a08ae0; --purple-dim:rgba(160,138,224,0.16);
+  /* Auditoría de contraste en modo oscuro (2026-09-23): el rojo, azul y
+     violeta originales daban <4.5:1 (WCAG AA) como texto sobre su propia
+     versión "-dim" (el fondo de los badges/pills que usan este color) —
+     el más grave era el rojo (4.30:1 en tarjetas, 3.85:1 en inputs), que es
+     el color de mayor peso semántico de la app (alertas, lesiones, borrar).
+     Aclarados los 3 hasta ≥4.5:1 en ambos fondos, sin cambiar el verde/ámbar/
+     teal/warm que ya pasaban cómodos. --text3 también se aclaró un toque
+     (4.58:1 → 5.19:1 sobre --bg3) por lo seguido que se usa a 9-11px. */
+  --red:#f6897f; --red-dim:rgba(246,137,127,0.16);
+  --blue:#8ab0fa; --blue-dim:rgba(138,176,250,0.16);
+  --purple:#b5a3e8; --purple-dim:rgba(181,163,232,0.16);
   --teal:#2dd4c0; --teal-dim:rgba(45,212,192,0.16);
   --purple-dim2:rgba(145,132,217,0.09);
   --sh-card: 0 1px 2px rgba(0,0,0,0.2), 0 6px 16px rgba(0,0,0,0.24);
