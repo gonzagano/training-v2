@@ -6771,7 +6771,7 @@ function renderTeamRoutineAssignWizard() {
   let html = `<div style="padding:12px 16px;border-top:1px solid var(--border)">
     <select class="abtn" style="width:100%;margin-bottom:10px" onchange="setTeamRoutineAssignRoutine(this.value)">
       <option value="">Elegí una rutina...</option>
-      ${S.routines.map(r=>`<option value="${r.id}" ${st.routineId===r.id?'selected':''}>${r.name}</option>`).join('')}
+      ${routineSelectOptions(st.routineId)}
     </select>`;
   if(routine) {
     const sessionNames = getOrderedSessionNames(routine);
@@ -9508,7 +9508,7 @@ function renderAddPastPhaseForm(a) {
       <div style="font-size:12px;color:var(--text3)">¿Le desapareció una rutina anterior de la pantalla? Reconstruí acá el tramo que falta — los datos que ya había cargado (semanas, pesos) siguen intactos, esto solo hace que vuelvan a aparecer.</div>
       <select id="add-past-phase-routine-${a.uid}" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px">
         <option value="">— Elegí qué rutina tenía antes —</option>
-        ${S.routines.map(r=>`<option value="${r.id}">${r.name}</option>`).join('')}
+        ${routineSelectOptions(null)}
       </select>
       <input type="date" id="add-past-phase-date-${a.uid}" class="abtn" style="width:100%" title="¿Desde qué día arrancó esa rutina?">
       <div style="display:flex;gap:6px">
@@ -9622,7 +9622,7 @@ function renderAtletaRutina(a) {
   const routine = S.routines.find(r => r.id === a.assignedRoutine);
   const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
     <option value="">— Sin rutina —</option>
-    ${S.routines.map(r => `<option value="${r.id}" ${a.assignedRoutine === r.id ? 'selected' : ''}>${r.name}</option>`).join('')}
+    ${routineSelectOptions(a.assignedRoutine)}
   </select>`;
 
   let html = `<div class="admin-section">
@@ -11601,6 +11601,30 @@ function buildRoutineChains() {
   return { childrenOf, roots };
 }
 
+// Opciones de rutinas para los desplegables de ASIGNAR, en orden de
+// continuación (no alfabético ni de creación): cada rutina seguida de las que
+// la continúan, con una flechita y sangría para ver la cadena. Las rutinas
+// independientes y el arranque de cada cadena mantienen el orden en que se
+// crearon. Usa el mismo agrupado que la lista de Rutinas (buildRoutineChains).
+function routineSelectOptions(selectedId) {
+  const {childrenOf, roots} = buildRoutineChains();
+  const seen = new Set();
+  const out = [];
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const walk = (r, depth) => {
+    if(seen.has(r.id)) return;
+    seen.add(r.id);
+    const prefix = depth>0 ? '\u00A0\u00A0'.repeat(depth)+'↳ ' : '';
+    out.push(`<option value="${r.id}" ${selectedId===r.id?'selected':''}>${prefix}${esc(r.name)}</option>`);
+    (childrenOf.get(r.id)||[]).forEach(c=>walk(c, depth+1));
+  };
+  roots.forEach(r=>walk(r, 0));
+  // por si hubiera un ciclo de continuaciones, nada queda afuera
+  S.routines.forEach(r=>walk(r, 0));
+  return out.join('');
+}
+window.routineSelectOptions = routineSelectOptions;
+
 function renderRoutineCard(r, weekLabel, depth) {
   return `<div class="card" style="padding:14px;${depth>0?'margin-left:22px;border-left:2px solid var(--accent-dim)':''}">
     ${depth>0?`<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">↳ Continuación</div>`:''}
@@ -11819,7 +11843,9 @@ function renderRoutineEditor() {
     && !sessionNames.every(n => WEEKDAY_ORDER[n.trim().toLowerCase()] !== undefined);
 
   const sessionTabs = sessionNames.map((s,i)=>'<span style="display:inline-flex;align-items:center;gap:2px">'
-    +'<button class="snav-tab '+(curSession===s?'active':'')+'" onclick="routineSelectSession(\''+s+'\')">'+s+'</button>'
+    +(S._renamingSession===s
+      ? '<input id="rsess-inp" value="'+s.replace(/"/g,'&quot;')+'" style="width:130px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--accent);border-radius:20px;padding:6px 12px;color:var(--text);outline:none;font-family:inherit" onblur="commitRenameRoutineSession(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){S._renamingSession=null;renderMain();}">'
+      : '<button class="snav-tab '+(curSession===s?'active':'')+'" onclick="routineSelectSession(\''+s+'\')">'+s+'</button>')
     +(canReorderManually?(
       '<button class="ex-icon-btn" style="'+(i===0?'opacity:.3;pointer-events:none':'')+'" onclick="moveRoutineDay(\''+s+'\',-1)" title="Mover antes"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="15 18 9 12 15 6"/></svg></button>'
       +'<button class="ex-icon-btn" style="'+(i===sessionNames.length-1?'opacity:.3;pointer-events:none':'')+'" onclick="moveRoutineDay(\''+s+'\',1)" title="Mover después"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="9 18 15 12 9 6"/></svg></button>'
@@ -11852,7 +11878,7 @@ function renderRoutineEditor() {
   <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
     ${sessionTabs}
     <button class="abtn" onclick="addRoutineSession()" style="font-size:11px">+ Sesión</button>
-    ${curSession?`<button class="abtn abtn-d" onclick="deleteRoutineSession('${curSession}')" style="font-size:11px">× ${curSession}</button>`:''}
+    ${curSession?`<button class="abtn" onclick="startRenameRoutineSession('${curSession}')" style="font-size:11px" title="Cambiar el nombre de este día">✎ Renombrar</button><button class="abtn abtn-d" onclick="deleteRoutineSession('${curSession}')" style="font-size:11px">× ${curSession}</button>`:''}
   </div>
   ${curSession?`
     ${blocksHtml}
@@ -12008,6 +12034,112 @@ function addRoutineSession() {
   renderMain();
 }
 window.addRoutineSession=addRoutineSession;
+
+// RENOMBRAR un día de una rutina ya creada. El nombre del día es parte de la
+// "dirección" donde se guardan las cargas de cada atleta (semana + nombre),
+// sus ejercicios personalizados y sus ejercicios extra. Si solo se cambiara
+// el nombre en la rutina, todo lo que ya registraron quedaría guardado bajo
+// el nombre viejo y dejaría de verse (justo el tipo de pérdida que no puede
+// pasar). Por eso el cambio queda anotado en la rutina en edición
+// (_renames) y, al tocar Guardar, se traslada también el registro de cada
+// atleta que tiene esta rutina asignada (migrateRoutineSessionRenames).
+function startRenameRoutineSession(sessionName) {
+  S._renamingSession = sessionName;
+  renderMain();
+  setTimeout(()=>{ const i=document.getElementById('rsess-inp'); if(i){ i.focus(); i.select(); } }, 0);
+}
+window.startRenameRoutineSession = startRenameRoutineSession;
+
+function commitRenameRoutineSession(inp) {
+  const r = S.editingRoutine;
+  const from = S._renamingSession;
+  S._renamingSession = null;
+  const to = (inp.value||'').trim();
+  if(!r || !from || !to || to===from) { renderMain(); return; }
+  if(/['"`\\<>]/.test(to)) { showToast('El nombre no puede llevar comillas, barra invertida ni < >'); renderMain(); return; }
+  if(r.sessions[to]) { showToast('Ya hay un día con ese nombre'); renderMain(); return; }
+  // El orden de los días define qué día de gimnasio le toca a cada fecha
+  // (el 1.º con el 1.º día de la semana elegido, etc.). Sin un orden fijo,
+  // renombrar "Día 1" a "Fuerza A" lo mandaría al final de la lista
+  // (el orden por defecto es alfabético/numérico) y movería los entrenamientos
+  // de fecha. Se congela el orden actual antes de cambiar el nombre.
+  if(!Array.isArray(r.sessionOrder)) r.sessionOrder = getOrderedSessionNames(r);
+  const ns = {};
+  Object.keys(r.sessions).forEach(k=>{ ns[k===from ? to : k] = r.sessions[k]; });
+  r.sessions = ns;
+  if(Array.isArray(r.sessionOrder)) r.sessionOrder = r.sessionOrder.map(n=>n===from ? to : n);
+  if(S._routineEditSession===from) S._routineEditSession = to;
+  // Si el mismo día se renombra dos veces antes de guardar, se junta en un
+  // solo cambio (original → final).
+  if(!r._renames) r._renames = [];
+  const prev = r._renames.find(x=>x.to===from);
+  if(prev) prev.to = to; else r._renames.push({from, to});
+  r._renames = r._renames.filter(x=>x.from!==x.to);
+  renderMain();
+}
+window.commitRenameRoutineSession = commitRenameRoutineSession;
+
+// Traslada al nuevo nombre lo que cada atleta con esta rutina ya registró.
+// Solo toca las semanas de la planificación ACTUAL del atleta (las de
+// planificaciones anteriores pertenecen a su copia congelada, con los
+// nombres de entonces). Idempotente: si se corta a la mitad, volver a
+// guardar la rutina retoma sin duplicar nada. Devuelve {moved, failed}.
+async function migrateRoutineSessionRenames(routineId, renames) {
+  const rmap = {};
+  renames.forEach(x=>{ rmap[x.from] = x.to; });
+  const qs = await getDocs(query(collection(db,'users'), where('assignedRoutine','==',routineId)));
+  const users = qs.docs.filter(d=>d.data().assignedRoutine===routineId);
+  let moved = 0, failed = 0;
+  for(const u of users) {
+    try {
+      const startWeek = getCurrentPhaseStartWeek(u.data());
+      const pRef = doc(db,'personal',u.id);
+      const pSnap = await getDoc(pRef);
+      if(!pSnap.exists()) continue;
+      const p = pSnap.data();
+      const writes = [], dels = new Set(), written = new Set();
+      const put = (segs, val) => { writes.push([segs, val]); written.add(segs.join('\u0000')); };
+      const del = (segs) => { dels.add(segs.join('\u0000')); };
+      const segsOf = k => k.split('\u0000');
+      // progreso (cargas, tilde de hecho, RPE de la sesión)
+      Object.entries(p.history||{}).forEach(([k,v])=>{
+        const m = /^w(\d+)-([\s\S]*)$/.exec(k);
+        if(!m || !(m[2] in rmap) || +m[1] < startWeek) return;
+        const nk = 'w'+m[1]+'-'+rmap[m[2]];
+        const ex = p.history[nk];
+        // si el destino ya tenía algo (y no es él mismo un día que también se renombra), se combinan
+        const exName = ex ? (/^w\d+-([\s\S]*)$/.exec(nk)||[])[1] : null;
+        const merge = ex && !(exName in rmap);
+        put(['history', nk], merge ? {...v, ...ex, exercises:{...(v.exercises||{}), ...(ex.exercises||{})}} : v);
+        del(['history', k]);
+      });
+      // ejercicios personalizados de esta rutina
+      const ovAll = p.routineOverrides?.[routineId] || {};
+      Object.entries(ovAll).forEach(([sn,v])=>{
+        if(!(sn in rmap)) return;
+        const nn = rmap[sn];
+        put(['routineOverrides', routineId, nn], (nn in rmap) ? v : {...(ovAll[nn]||{}), ...v});
+        del(['routineOverrides', routineId, sn]);
+      });
+      // ejercicios extra de este atleta (guardados por nombre de día)
+      Object.entries(p.personalExtras||{}).forEach(([sn,arr])=>{
+        if(!(sn in rmap)) return;
+        const nn = rmap[sn];
+        put(['personalExtras', nn], (nn in rmap) ? arr : [...(p.personalExtras[nn]||[]), ...arr]);
+        del(['personalExtras', sn]);
+      });
+      dels.forEach(k=>{ if(!written.has(k)) writes.push([segsOf(k), deleteField()]); });
+      if(writes.length) {
+        await updateDocSafe(pRef, {}, writes);
+        moved++;
+        const loaded = S.adminAthletes?.find(a=>a.uid===u.id);
+        if(loaded) { const fresh = await getDoc(pRef); if(fresh.exists()) loaded._personal = fresh.data(); }
+      }
+    } catch(e) { console.error('No se pudo trasladar el registro de un atleta', u.id, e); failed++; }
+  }
+  return {moved, failed};
+}
+window.migrateRoutineSessionRenames = migrateRoutineSessionRenames;
 
 function deleteRoutineSession(sessionName) {
   showConfirmModal({message:`¿Eliminar la sesión "${sessionName}"?`, danger:true, confirmLabel:'Eliminar', onConfirm: () => {
@@ -12276,11 +12408,23 @@ async function saveRoutineToFirestore() {
       else if(obj&&typeof obj==='object') { delete obj._open; delete obj._editing; Object.values(obj).forEach(clean); }
     };
     clean(toSave);
+    delete toSave._renames;
     await setDoc(doc(db,'routines',r.id), toSave);
     // Update local list
     const idx=S.routines.findIndex(x=>x.id===r.id);
     if(idx>=0) S.routines[idx]=JSON.parse(JSON.stringify(toSave));
     else S.routines.push(JSON.parse(JSON.stringify(toSave)));
+    // Días renombrados: se traslada lo que los atletas ya registraron.
+    if(r._renames && r._renames.length) {
+      const {moved, failed} = await migrateRoutineSessionRenames(r.id, r._renames);
+      if(failed) {
+        showToast(`Rutina guardada, pero no se pudo actualizar el registro de ${failed} ${failed===1?'atleta':'atletas'} — tocá Guardar de nuevo`);
+        return;
+      }
+      r._renames = [];
+      showToast(`✓ Rutina guardada${moved ? ' · nombres actualizados en '+moved+(moved===1?' atleta':' atletas') : ''}`);
+      return;
+    }
     showToast('✓ Rutina guardada');
   } catch(e) { showToast('Error al guardar: '+e.message); }
 }
