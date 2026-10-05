@@ -3023,7 +3023,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
           <div class="ex-icon-btn ex-note-btn ${d.athleteNote?'has-note':''}" onclick="openAthleteNoteModal('${ex.id}','${ex.name.replace(/'/g,"\\'")}')" title="Mi nota">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </div>
-          ${canEdit?`<div class="ex-icon-btn del-ex" onclick="deleteExercise('${ex.id}','${blockId}',${catIdx})" title="Eliminar">×</div>`:''}
+          ${canEdit?`<div class="ex-icon-btn" onclick="replaceExercise('own','${ex.id}','${blockId}',${catIdx})" title="Reemplazar por otro ejercicio"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div><div class="ex-icon-btn del-ex" onclick="deleteExercise('${ex.id}','${blockId}',${catIdx})" title="Eliminar">×</div>`:''}
         </div>
       </div>
       ${prescNoteRow}
@@ -3575,7 +3575,12 @@ function hideLibNewExerciseForm() {
 }
 window.hideLibNewExerciseForm = hideLibNewExerciseForm;
 
-function closeLib() { document.getElementById('lib-overlay').classList.remove('open'); }
+function closeLib() {
+  document.getElementById('lib-overlay').classList.remove('open');
+  if(S.libTarget) { delete S.libTarget.replaceExId; delete S.libTarget.replaceName; }
+  const t = document.querySelector('#lib-overlay .lib-title');
+  if(t) t.textContent = 'Biblioteca de ejercicios';
+}
 window.closeLib=closeLib;
 
 function closeLibIfOutside(e) { if(e.target===document.getElementById('lib-overlay')) closeLib(); }
@@ -3709,15 +3714,58 @@ function renderLibList() {
 }
 window.renderLibList=renderLibList;
 
+// REEMPLAZAR un ejercicio por otro sin borrarlo y volver a cargar todo: el
+// ejercicio nuevo hereda la prescripción de donde estaba (series, reps, %RM,
+// RPE/RIR, nota y la progresión semana a semana) y queda en la misma
+// posición. Lleva un id propio a propósito: las cargas que los atletas ya
+// registraron del ejercicio VIEJO están ligadas a su id, y si el nuevo lo
+// heredara, esos kg aparecerían en la ficha como si fueran del ejercicio
+// nuevo. 'De qué RM' se limpia porque pertenece al ejercicio anterior.
+function placeLibExercise(arr, newEx) {
+  const rid = S.libTarget?.replaceExId;
+  const i = rid ? arr.findIndex(e=>e.id===rid) : -1;
+  if(i<0) { arr.push(newEx); return false; }
+  const rep = JSON.parse(JSON.stringify(arr[i]));
+  rep.id = newEx.id; rep.libId = newEx.libId; rep.name = newEx.name; rep.rmLift = '';
+  arr[i] = rep;
+  return true;
+}
+
+// Abre la biblioteca en modo "reemplazar" para el ejercicio tocado — la misma
+// lista de siempre para elegir (o crear) el nuevo.
+function replaceExercise(kind, exId, blockId, catIdx, sessionName, teamId, dayIdx) {
+  let oldName = '';
+  if(kind==='routine') {
+    const b = getRBlock(blockId, sessionName);
+    oldName = b?.categories?.[catIdx]?.exercises?.find(e=>e.id===exId)?.name || '';
+    openRoutineLib(blockId, sessionName, catIdx);
+  } else if(kind==='td') {
+    const b = getTDBlock(blockId, teamId, dayIdx);
+    oldName = b?.categories?.[catIdx]?.exercises?.find(e=>e.id===exId)?.name || '';
+    openTDLib(blockId, teamId, dayIdx, catIdx);
+  } else {
+    const b = S.blocks.find(x=>x.id===blockId);
+    oldName = b?.categories?.[catIdx]?.exercises?.find(e=>e.id===exId)?.name || '';
+    openLib(blockId, catIdx);
+  }
+  S.libTarget.replaceExId = exId;
+  S.libTarget.replaceName = oldName;
+  const t = document.querySelector('#lib-overlay .lib-title');
+  if(t) t.textContent = 'Reemplazar: ' + oldName;
+}
+window.replaceExercise = replaceExercise;
+
 function addFromLib(libId) {
   const libEx=S.library.find(e=>e.id===libId); if(!libEx||!S.libTarget) return;
   const {blockId,catIdx,sessionName,isRoutine}=S.libTarget;
+  const replacedName = S.libTarget.replaceName;
+  let didReplace = false;
   if(S.libTarget.isTD) {
     // Adding to team day editor
     const {teamId,dayIdx}=S.libTarget;
     const b=getTDBlock(blockId,teamId,dayIdx);
     if(!b)return;
-    b.categories[catIdx].exercises.push({id:genId(),libId:libEx.id,name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''});
+    didReplace = placeLibExercise(b.categories[catIdx].exercises, {id:genId(),libId:libEx.id,name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''});
     closeLib();renderMain();
   } else if(S.libTarget.isPersonal) {
     // Adding a personal-only exercise for ONE specific athlete
@@ -3729,16 +3777,16 @@ function addFromLib(libId) {
     const b=(S.editingRoutine.sessions[sessionName]||[]).find(x=>x.id===blockId);
     if(!b) return;
     const newEx={id:genId(),libId:libEx.id,name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''};
-    b.categories[catIdx].exercises.push(newEx);
+    didReplace = placeLibExercise(b.categories[catIdx].exercises, newEx);
     closeLib(); renderMain();
   } else {
     // Adding to admin's personal session
     const b=S.blocks.find(x=>x.id===blockId); if(!b) return;
     const newEx={id:genId(),libId:libEx.id,name:libEx.name};
-    b.categories[catIdx].exercises.push(newEx);
+    didReplace = placeLibExercise(b.categories[catIdx].exercises, newEx);
     scheduleSave(); closeLib(); renderMain();
   }
-  showToast(`✓ ${libEx.name} agregado`);
+  showToast(didReplace ? `✓ ${replacedName||'Ejercicio'} reemplazado por ${libEx.name}` : `✓ ${libEx.name} agregado`);
 }
 window.addFromLib=addFromLib;
 
@@ -3896,7 +3944,7 @@ function createAndAddExercise() {
       // Adding to team day editor (esto es lo que faltaba)
       const {teamId,dayIdx}=S.libTarget;
       const b=getTDBlock(blockId,teamId,dayIdx);
-      if(b) b.categories[catIdx].exercises.push({id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
+      if(b) placeLibExercise(b.categories[catIdx].exercises, {id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
       scheduleSave(); closeLib(); renderMain();
     } else if(S.libTarget.isPersonal) {
       const {uid,sessionName:pSName}=S.libTarget;
@@ -3905,11 +3953,11 @@ function createAndAddExercise() {
       closeLib();
     } else if(isRoutine && S.editingRoutine) {
       const b=(S.editingRoutine.sessions[sessionName]||[]).find(x=>x.id===blockId);
-      if(b) b.categories[catIdx].exercises.push({id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
+      if(b) placeLibExercise(b.categories[catIdx].exercises, {id:genId(),libId:newLibEx.id,name,series:'',reps:'',pct:'',rpe:'',note:''});
       scheduleSave(); closeLib(); renderMain();
     } else {
       const b=S.blocks.find(x=>x.id===blockId);
-      if(b) b.categories[catIdx].exercises.push({id:genId(),libId:newLibEx.id,name});
+      if(b) placeLibExercise(b.categories[catIdx].exercises, {id:genId(),libId:newLibEx.id,name});
       scheduleSave(); closeLib(); renderMain();
     }
   }
@@ -8422,7 +8470,7 @@ function renderTeamDayBlock(b,teamId,dayIdx){
     cat.exercises.forEach(ex=>{
       const videoKey = ex.libId || S.library.find(l=>l.name.trim().toLowerCase()===(ex.name||'').trim().toLowerCase())?.id || ex.id;
       const hasV = !!S.videos[videoKey];
-      inner+=`<div class="ex-row" id="tdexrow-${ex.id}"><div class="ex-main"><div class="ex-name-row"><span class="ex-name" ondblclick="editTDExName(this,'${ex.id}','${b.id}','${teamId}',${dayIdx},${ci})">${ex.name}</span><input class="ex-name-inp" id="tdexinp-${ex.id}" onblur="saveTDExName('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},this)" onkeydown="if(event.key==='Enter')this.blur()"><div class="ex-actions"><div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',true)" title="Video"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><div class="ex-icon-btn del-ex" onclick="deleteTDEx('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci})">×</div></div></div>
+      inner+=`<div class="ex-row" id="tdexrow-${ex.id}"><div class="ex-main"><div class="ex-name-row"><span class="ex-name" ondblclick="editTDExName(this,'${ex.id}','${b.id}','${teamId}',${dayIdx},${ci})">${ex.name}</span><input class="ex-name-inp" id="tdexinp-${ex.id}" onblur="saveTDExName('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},this)" onkeydown="if(event.key==='Enter')this.blur()"><div class="ex-actions"><div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',true)" title="Video"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><div class="ex-icon-btn" onclick="replaceExercise('td','${ex.id}','${b.id}',${ci},'','${teamId}',${dayIdx})" title="Reemplazar por otro ejercicio"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div><div class="ex-icon-btn del-ex" onclick="deleteTDEx('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci})">×</div></div></div>
       <div class="ex-fields">
         <div class="field-box"><span class="field-lbl">Series</span><input class="field-inp" type="text" placeholder="3x" value="${ex.series||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'series',this.value)"></div>
         <div class="field-box"><span class="field-lbl">Reps</span><input class="field-inp" type="text" placeholder="6–8" value="${ex.reps||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'reps',this.value)"></div>
@@ -8930,8 +8978,10 @@ function openAtleta(uid) {
   S._inAthleteDetail = true;
   S.atletaView = a;
   S.atletaSubview = 'perfil';
-  S._atletaRoutineCollapsedDays = null;
-  S._atletaRoutineCollapsedBlocks = null;
+  S._atletaRoutineDay = null;
+  S._atletaRoutineBlocksOpen = null;
+  S._pastPhaseDay = null;
+  S._pastPhaseBlocksOpen = null;
   S._routineWeekPreview = null;
   S._perfilWellnessDay = null;
   ensureGroupPersonalData(getEffectiveGroupUids(a)).then(()=>{
@@ -9317,28 +9367,60 @@ window.setAtletaSubview = setAtletaSubview;
 // vivo — puede haber sido editada o borrada después de que ese tramo
 // terminó — así siempre muestra exactamente lo que se prescribió en su
 // momento, no lo que la rutina sea hoy.
+// Cada planificación tiene un número y un color propios (el mismo que se usa
+// en la rutina actual) para que no se confundan entre sí a simple vista.
+const PHASE_COLORS = ['var(--accent)','var(--green)','var(--amber)','var(--blue)'];
+function phaseColor(n) { return PHASE_COLORS[(n-1) % PHASE_COLORS.length]; }
+window.phaseColor = phaseColor;
+function fmtPhaseDate(s) {
+  if(!s) return '';
+  const d = new Date(String(s).slice(0,10)+'T00:00:00');
+  return isNaN(d) ? s : d.toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'});
+}
+
 function renderPastRoutinePhases(a) {
   const hist = a.routineAssignmentHistory || [];
   if(hist.length < 2) return ''; // nada antes de la actual todavía
   const past = hist.slice(0, -1);
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const cards = past.map((phase,idx)=>{
+    const n = idx+1;
+    const color = phaseColor(n);
+    const realEndWeek = hist[idx+1] ? hist[idx+1].startWeek-1 : phase.startWeek+(phase.durationWeeks||1)-1;
+    const nWeeks = Math.max(1, realEndWeek-phase.startWeek+1);
+    const key = 'phase-'+idx;
+    const open = !!(S._atletaPastPhasesOpen && S._atletaPastPhasesOpen.has(key));
+    const snap = phase.routineSnapshot;
+    const endDate = hist[idx+1]?.startDate;
+    // Sesiones que el atleta marcó como completadas dentro de este tramo.
+    let doneN = 0;
+    Object.entries(a._personal?.history||{}).forEach(([k,sd])=>{
+      const m = /^w(\d+)-/.exec(k);
+      if(m && sd && sd.done && +m[1]>=phase.startWeek && +m[1]<=realEndWeek) doneN++;
+    });
+    return `<div style="border:1.5px solid var(--border2);border-left:5px solid ${color};border-radius:var(--rsm);background:var(--bg2);margin-bottom:10px;overflow:hidden">
+      <div style="padding:12px 14px;cursor:pointer" onclick="togglePastRoutinePhase('${key}')">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
+              <span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${color};padding:2px 8px;border-radius:20px">Planificación ${n}</span>
+              <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--bg3);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Finalizada</span>
+              ${phase.continuesFromRoutineId?'<span style="font-size:10px;color:var(--text3)">· continuación</span>':''}
+            </div>
+            <div style="font-size:15px;font-weight:700;line-height:1.25">${esc(phase.routineName||'Rutina')}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:3px">${nWeeks>1?'Semanas':'Semana'} ${phase.startWeek}${nWeeks>1?'–'+realEndWeek:''} · ${nWeeks} ${nWeeks===1?'semana':'semanas'}</div>
+            <div style="font-size:12px;color:var(--text3)">${fmtPhaseDate(phase.startDate)}${endDate?' → '+fmtPhaseDate(endDate):''}${doneN?` · ${doneN} ${doneN===1?'sesión completada':'sesiones completadas'}`:''}</div>
+          </div>
+          <span style="color:var(--text3);font-size:18px;flex-shrink:0;transition:transform .15s;transform:rotate(${open?'90':'0'}deg)">›</span>
+        </div>
+      </div>
+      ${open ? `<div style="border-top:1px solid var(--border);padding:10px 14px 12px">${snap ? renderPhaseSnapshotDetail(a, phase, snap, realEndWeek, key, color) : '<div style="font-size:12px;color:var(--text3)">Sin detalle guardado para esta planificación (asignada antes de que existiera este historial).</div>'}</div>` : ''}
+    </div>`;
+  });
+  // La más reciente primero: es la que más se consulta.
   return `<div class="admin-section">
     <div class="admin-section-title">Planificaciones anteriores (${past.length})</div>
-    ${past.map((phase,idx)=>{
-      const realEndWeek = hist[idx+1] ? hist[idx+1].startWeek-1 : phase.startWeek+(phase.durationWeeks||1)-1;
-      const key = 'phase-'+idx;
-      const collapsed = !(S._atletaPastPhasesOpen && S._atletaPastPhasesOpen.has(key));
-      const snap = phase.routineSnapshot;
-      return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer" onclick="togglePastRoutinePhase('${key}')">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <div>
-            <div class="admin-item-lbl">${(phase.routineName||'Rutina').replace(/</g,'&lt;')}${phase.continuesFromRoutineId?' <span style="font-size:10px;color:var(--text3);font-weight:400">· continuación</span>':''}</div>
-            <div class="admin-item-sub">Semana ${phase.startWeek}${realEndWeek>phase.startWeek?'–'+realEndWeek:''} · desde ${phase.startDate}</div>
-          </div>
-          <span style="color:var(--text3);font-size:16px;flex-shrink:0;transition:transform .15s;transform:rotate(${collapsed?'-90':'0'}deg)">›</span>
-        </div>
-        ${collapsed ? '' : (snap ? renderPhaseSnapshotDetail(a, phase, snap, realEndWeek) : '<div style="font-size:12px;color:var(--text3)">Sin detalle guardado para esta planificación (asignada antes de que existiera este historial).</div>')}
-      </div>`;
-    }).join('')}
+    <div style="padding:4px 0 0">${cards.reverse().join('')}</div>
   </div>`;
 }
 window.renderPastRoutinePhases = renderPastRoutinePhases;
@@ -9350,30 +9432,62 @@ function togglePastRoutinePhase(key) {
 }
 window.togglePastRoutinePhase = togglePastRoutinePhase;
 
-// Detalle read-only de una rutina vieja ya terminada — reusa la misma tabla
-// semana-a-semana de siempre (buildWeeklyProgressionTable), pero acotada al
-// rango de semanas absolutas que le correspondió a ESTE tramo puntual, y
-// leyendo los ejercicios del snapshot congelado (no de S.routines, que
-// puede no tener más esa rutina si se borró).
-function renderPhaseSnapshotDetail(a, phase, snap, endWeek) {
-  const sessionNames = getOrderedSessionNames(snap);
+// Día elegido dentro de una planificación vieja (volver a tocarlo lo cierra).
+function setPastPhaseDay(key, sIdx) {
+  if(!S._pastPhaseDay) S._pastPhaseDay = {};
+  S._pastPhaseDay[key] = (S._pastPhaseDay[key]===sIdx) ? null : sIdx;
+  renderMain();
+}
+window.setPastPhaseDay = setPastPhaseDay;
+function togglePastPhaseBlock(id) {
+  if(!S._pastPhaseBlocksOpen) S._pastPhaseBlocksOpen = new Set();
+  if(S._pastPhaseBlocksOpen.has(id)) S._pastPhaseBlocksOpen.delete(id); else S._pastPhaseBlocksOpen.add(id);
+  renderMain();
+}
+window.togglePastPhaseBlock = togglePastPhaseBlock;
+
+// Detalle read-only de una rutina vieja ya terminada. Los días van arriba,
+// uno al lado del otro, para saltar de uno a otro sin scrollear; nada se
+// despliega solo (ni el día, ni los bloques) — igual que la rutina actual.
+// Reusa la tabla semana-a-semana de siempre (buildWeeklyProgressionTable),
+// acotada al rango de semanas de ESTE tramo, y lee los ejercicios del
+// snapshot congelado (no de S.routines, que puede no tener más esa rutina).
+function renderPhaseSnapshotDetail(a, phase, snap, endWeek, key, color) {
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const sessionNames = getOrderedSessionNames(snap).filter(sn=>
+    (snap.sessions?.[sn]||[]).some(b=>(b.categories||[]).some(c=>(c.exercises||[]).length)));
   if(!sessionNames.length) return '<div style="font-size:12px;color:var(--text3)">Sin sesiones.</div>';
-  return sessionNames.map(sName=>{
-    const blocks = snap.sessions?.[sName]||[];
-    const exRows = [];
-    blocks.forEach(b=>(b.categories||[]).forEach(cat=>(cat.exercises||[]).forEach(ex=>exRows.push(ex))));
-    if(!exRows.length) return '';
-    return `<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px" onclick="event.stopPropagation()">
-      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${sName}</div>
-      ${exRows.map(ex=>`<div style="background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--rsm);padding:10px;margin-bottom:6px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:6px">${ex.name}</div>
+  const sel = S._pastPhaseDay?.[key];
+  const tabs = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch">${sessionNames.map((sn,i)=>{
+    const on = sel===i;
+    return `<button onclick="setPastPhaseDay('${key}',${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;border-radius:20px;border:1.5px solid ${on?color:'var(--border2)'};background:${on?color:'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${esc(sn)}</button>`;
+  }).join('')}</div>`;
+  if(sel==null || !sessionNames[sel]) {
+    return tabs;
+  }
+  const sName = sessionNames[sel];
+  const blocksHtml = (snap.sessions?.[sName]||[]).map((b,bi)=>{
+    const exs = (b.categories||[]).flatMap(c=>c.exercises||[]);
+    if(!exs.length) return '';
+    const bid = `${key}|${sel}|${bi}`;
+    const open = !!(S._pastPhaseBlocksOpen && S._pastPhaseBlocksOpen.has(bid));
+    return `<div class="card block ${b.colorKey||'bx'} ${open?'open':''}" style="margin:0 0 8px">
+      <div class="block-header" onclick="togglePastPhaseBlock('${bid}')">
+        <span class="block-badge">${esc(b.label)}</span>
+        <div class="block-title-wrap"><span class="block-title">${esc(b.title||'')}</span></div>
+        <span style="font-size:11px;color:var(--text3);flex-shrink:0">${exs.length} ${exs.length===1?'ejercicio':'ejercicios'}</span>
+        <span class="block-chevron">›</span>
+      </div>
+      <div class="block-body">${exs.map(ex=>`<div style="background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--rsm);padding:10px;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">${esc(ex.name)}</div>
         ${buildWeeklyProgressionTable(endWeek, endWeek, (w)=>({
           wp: getExPrescriptionForWeek(ex, w-phase.startWeek+1),
           d: a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[ex.id] || {}
         }), null, phase.startWeek)}
-      </div>`).join('')}
+      </div>`).join('')}</div>
     </div>`;
   }).join('');
+  return tabs + blocksHtml;
 }
 window.renderPhaseSnapshotDetail = renderPhaseSnapshotDetail;
 
@@ -9545,12 +9659,10 @@ function renderAtletaRutina(a) {
   // Qué día le toca hoy al atleta según su calendario real (días de gimnasio
   // asignados, o el nombre del día si son días de semana reales).
   const todaySession = getTodaysRoutineSession(sessionNames, a.routineAssignedDate, a.trainingWeekdays);
-  // La primera vez que se entra a esta ficha (nadie tocó un desplegable a
-  // mano todavía) arrancamos con SOLO el día de hoy abierto, el resto
-  // colapsado — así no hay que buscarlo entre todos los días de la rutina.
-  if (!S._atletaRoutineCollapsedDays) {
-    S._atletaRoutineCollapsedDays = new Set(sessionNames.filter(n=>n!==todaySession));
-  }
+  // Los días van como pastillas horizontales arriba; nada se abre solo (ni el
+  // día ni los bloques) hasta que se toca.
+  S._atletaRoutineDayNames = sessionNames;
+  const selDay = sessionNames.includes(S._atletaRoutineDay) ? S._atletaRoutineDay : null;
   html += `<div class="admin-section">
     <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
       <div>
@@ -9578,13 +9690,23 @@ function renderAtletaRutina(a) {
   ${renderLoadsAudit(a, routine, previewWeek)}
   <div class="admin-section">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
-      <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
+      <div>
+        ${(a.routineAssignmentHistory||[]).length>=2 ? `<div style="margin-bottom:4px"><span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${phaseColor(a.routineAssignmentHistory.length)};padding:2px 8px;border-radius:20px">Planificación ${a.routineAssignmentHistory.length}</span> <span style="font-size:10px;font-weight:700;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Actual</span></div>` : ''}
+        <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
+      </div>
       <div style="display:flex;gap:6px">
         <button class="abtn ${S._atletaRoutineCicloView!=='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('micro')">Vista microciclo</button>
         <button class="abtn ${S._atletaRoutineCicloView==='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('macro')">Vista macrociclo</button>
       </div>
     </div>
+    <div style="display:flex;gap:6px;overflow-x:auto;padding:10px 16px 10px;-webkit-overflow-scrolling:touch">${sessionNames.map((sn,i)=>{
+      const on = sn===selDay;
+      const isTodayTab = sn===todaySession && isViewingReal;
+      const doneTab = !!(a._personal?.history?.[sessionKey(previewWeek, sn)]?.done);
+      return `<button onclick="setAtletaRoutineDay(${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;border-radius:20px;border:1.5px solid ${on?'var(--accent)':(isTodayTab?'var(--accent)':'var(--border2)')};background:${on?'var(--accent)':'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${sn.replace(/&/g,'&amp;').replace(/</g,'&lt;')}${doneTab?' ✓':''}${isTodayTab?` <span style="font-size:9px;font-weight:800;opacity:.9">· HOY</span>`:''}</button>`;
+    }).join('')}</div>
     ${sessionNames.map(sName => {
+      if(sName!==selDay) return '';
       const blocks = getVisibleRoutineBlocks(routine, sName, a.teamId, a.position, a._personal?.personalExtras);
       // Si el día tiene bloques cargados en la rutina pero ninguno le queda
       // visible a ESTE atleta, es porque el filtro de puestos del equipo
@@ -9594,23 +9716,10 @@ function renderAtletaRutina(a) {
       // parecer que el día estaba vacío o mal asignado cuando en realidad
       // es un filtro de puesto funcionando como se configuró.
       const hiddenByPosition = !blocks.length && ((routine.sessions||{})[sName]||[]).length>0;
-      const dayCollapsed = S._atletaRoutineCollapsedDays?.has(sName);
-      const dayDone = !!(a._personal?.history?.[sessionKey(previewWeek, sName)]?.done);
-      const isToday = sName===todaySession && isViewingReal;
-      // Cuántos ejercicios de este día tienen carga/RPE cargada por el atleta
-      // en la semana que se está mirando — se ve aun con el día colapsado.
-      const dayLoadsN = Object.values(a._personal?.history?.[sessionKey(previewWeek, sName)]?.exercises||{}).filter(e=>e && (e.load||e.rpe)).length;
-      return `<div style="border-top:1px solid var(--border)${isToday?';background:var(--accent-dim)':''}">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer" onclick="toggleAtletaRoutineDay('${sName}')">
-          <div style="font-size:11px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px">
-            ${sName}${isToday?'<span style="font-size:9px;font-weight:800;background:var(--accent);color:#fff;padding:2px 6px;border-radius:10px;text-transform:none;letter-spacing:0">HOY</span>':''}
-            ${dayDone?'<span style="color:var(--green);font-size:13px">✓</span>':''}
-            ${dayLoadsN?`<span style="font-size:9px;font-weight:700;background:var(--green-dim);color:var(--green);padding:2px 6px;border-radius:10px;text-transform:none;letter-spacing:0">${dayLoadsN} ${dayLoadsN===1?'carga':'cargas'}</span>`:''}
-          </div>
-          <span style="color:var(--text3);font-size:16px;transition:transform .15s;transform:rotate(${dayCollapsed?'-90':'0'}deg)">›</span>
-        </div>
+      const dayCollapsed = false;
+      return `<div style="border-top:1px solid var(--border);padding-top:10px">
         ${dayCollapsed ? '' : (blocks.length ? blocks.map(b=>{
-          const blockOpen = !S._atletaRoutineCollapsedBlocks?.has(b.id);
+          const blockOpen = !!S._atletaRoutineBlocksOpen?.has(b.id);
           return `<div class="card block ${b.colorKey||'bx'} ${blockOpen?'open':''}" style="margin:0 16px 10px">
             <div class="block-header" onclick="toggleAtletaRoutineBlock('${b.id}')">
               <span class="block-badge">${b.label}</span>
@@ -9697,17 +9806,16 @@ window.renderAtletaRutina = renderAtletaRutina;
 // (ficha del atleta) — a propósito usa su propio estado (S._atletaRoutine...),
 // separado del que usa el editor real de rutinas, para no arriesgar mezclar
 // ediciones de una rutina con la vista de otra.
-function toggleAtletaRoutineDay(sName) {
-  if(!S._atletaRoutineCollapsedDays) S._atletaRoutineCollapsedDays = new Set();
-  const set = S._atletaRoutineCollapsedDays;
-  if(set.has(sName)) set.delete(sName); else set.add(sName);
+function setAtletaRoutineDay(idx) {
+  const name = (S._atletaRoutineDayNames||[])[idx];
+  S._atletaRoutineDay = (S._atletaRoutineDay===name) ? null : (name ?? null);
   renderMain();
 }
-window.toggleAtletaRoutineDay = toggleAtletaRoutineDay;
+window.setAtletaRoutineDay = setAtletaRoutineDay;
 
 function toggleAtletaRoutineBlock(blockId) {
-  if(!S._atletaRoutineCollapsedBlocks) S._atletaRoutineCollapsedBlocks = new Set();
-  const set = S._atletaRoutineCollapsedBlocks;
+  if(!S._atletaRoutineBlocksOpen) S._atletaRoutineBlocksOpen = new Set();
+  const set = S._atletaRoutineBlocksOpen;
   if(set.has(blockId)) set.delete(blockId); else set.add(blockId);
   renderMain();
 }
@@ -10925,8 +11033,10 @@ async function adminOpenAthlete(uid) {
   S.adminView='athlete_detail';
   S.currentView='admin';
   S.atletaSubview = 'perfil';
-  S._atletaRoutineCollapsedDays = null;
-  S._atletaRoutineCollapsedBlocks = null;
+  S._atletaRoutineDay = null;
+  S._atletaRoutineBlocksOpen = null;
+  S._pastPhaseDay = null;
+  S._pastPhaseBlocksOpen = null;
   S._routineWeekPreview = null;
   S._perfilWellnessDay = null;
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
@@ -11827,6 +11937,7 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
           <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',true)" title="Video">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </div>
+          <div class="ex-icon-btn" onclick="replaceExercise('routine','${ex.id}','${blockId}',${catIdx},'${sessionName}')" title="Reemplazar por otro ejercicio"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
           <div class="ex-icon-btn del-ex" onclick="deleteRExercise('${ex.id}','${blockId}','${sessionName}',${catIdx})" title="Eliminar">×</div>
         </div>
       </div>
