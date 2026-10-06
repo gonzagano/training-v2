@@ -1090,6 +1090,7 @@ onAuthStateChanged(auth, async (user) => {
   // guardado), se recupera de la copia que quedó en el celular y se reenvía.
   // Va DESPUÉS de leer el servidor para que lo recuperado gane sobre el dato
   // viejo, y el guardado ya mezcla por sesión/fecha sin pisar lo demás.
+  try { if(!S.isAdmin && archiveStaleRecordsInMemory()) saveToFirestore(); } catch(e) { console.error('No se pudo archivar lo de la planificación anterior', e); }
   try {
     if (restoreOutboxIntoState()) {
       setSyncBanner(true);
@@ -1510,7 +1511,7 @@ async function _doSaveToFirestore() {
     // o una barra (ver updateDocSafe).
     const fpEntries = [];
     snap.routine.forEach(sk=>{
-      if(S.history[sk]) fpEntries.push([['history', sk], S.history[sk]]);
+      fpEntries.push([['history', sk], S.history[sk] ? S.history[sk] : deleteField()]);
     });
     // Carga (_sessionLogs): es un array, no se puede tocar una fecha suelta
     // con dot-path — leemos lo que hay guardado de verdad ahora mismo,
@@ -1894,6 +1895,67 @@ function getProgramWeekRangeLabel(weekNum) {
 window.getProgramWeekRangeLabel = getProgramWeekRangeLabel;
 
 function sessionKey(w,s) { return `w${w}-${s}`; }
+
+// ── REGISTROS DE LA PLANIFICACIÓN ANTERIOR EN LA MISMA SEMANA ──────────────
+// El progreso se guarda por "semana absoluta + nombre del día" (w12-Lunes).
+// Al asignar una planificación nueva a mitad de semana, esa semana ya tiene
+// registros de la planificación anterior bajo los MISMOS nombres de día
+// (Lunes, Miércoles...), y la nueva los heredaba: días tildados como hechos y
+// cargas que el atleta nunca hizo en la planificación nueva. Un registro
+// fechado ANTES del inicio de la planificación actual pertenece a la anterior.
+function getCurrentPhase(userData) {
+  const h = userData?.routineAssignmentHistory;
+  if(!h || !h.length) return null;
+  const last = h[h.length-1];
+  return { startDate: last.startDate||null, startWeek: last.startWeek||1, idx: h.length-1 };
+}
+function isStaleSessionRecord(rec, phase) {
+  return !!(phase && phase.startDate && rec && rec.date && String(rec.date).slice(0,10) < phase.startDate);
+}
+window.isStaleSessionRecord = isStaleSessionRecord;
+// Registro de sesión SOLO si pertenece a la planificación actual.
+function getPhaseSessionRecord(userData, history, w, sName) {
+  const rec = history?.[sessionKey(w,sName)];
+  return (rec && !isStaleSessionRecord(rec, getCurrentPhase(userData))) ? rec : null;
+}
+window.getPhaseSessionRecord = getPhaseSessionRecord;
+// Registro de una planificación ANTERIOR (índice idx del historial): primero
+// el archivado (p{idx}-w..), si no el normal siempre que sea de antes del
+// inicio de la planificación siguiente.
+function getPastPhaseSessionRecord(userData, history, idx, w, sName) {
+  const arch = history?.[`p${idx}-${sessionKey(w,sName)}`];
+  if(arch) return arch;
+  const rec = history?.[sessionKey(w,sName)];
+  if(!rec) return null;
+  const next = userData?.routineAssignmentHistory?.[idx+1];
+  if(!next) return rec;
+  if(w < (next.startWeek||1)) return rec;
+  return (next.startDate && rec.date && String(rec.date).slice(0,10) < next.startDate) ? rec : null;
+}
+window.getPastPhaseSessionRecord = getPastPhaseSessionRecord;
+
+// Del lado del atleta, al abrir la app: lo que quedó de la planificación
+// anterior en la semana de arranque se archiva aparte (p{idx}-w..) para que
+// no se mezcle con lo que haga ahora. No se pierde nada: sigue en su
+// historial y se ve en la planificación anterior.
+function archiveStaleRecordsInMemory() {
+  const ph = getCurrentPhase(S.userData);
+  if(!ph || ph.idx < 1 || !ph.startDate || !S.history) return false;
+  let any = false;
+  Object.keys(S.history).forEach(k=>{
+    const m = /^w(\d+)-/.exec(k);
+    if(!m || +m[1] < ph.startWeek) return;
+    const rec = S.history[k];
+    if(!isStaleSessionRecord(rec, ph)) return;
+    const ak = 'p'+(ph.idx-1)+'-'+k;
+    S.history[ak] = S.history[ak] || rec;
+    delete S.history[k];
+    markRoutineDirty(ak); markRoutineDirty(k);
+    any = true;
+  });
+  return any;
+}
+window.archiveStaleRecordsInMemory = archiveStaleRecordsInMemory;
 function getSD(w,s) {
   const k=sessionKey(w,s);
   if(!S.history[k]) S.history[k]={date:null,exercises:{},rpe:7.5,done:false};
@@ -4275,7 +4337,7 @@ function openProgressionModal(exId, exName) {
   const override = (routine && ex) ? getExerciseOverride(S.routineOverrides, routine.id, S.currentSession, exId) : null;
   const body = ex ? buildWeeklyProgressionTable(lastWeek, S.currentWeek, (w) => ({
     wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, S.userData), override),
-    d: (S.history[sessionKey(w,S.currentSession)]||{}).exercises?.[exId] || {}
+    d: (getPhaseSessionRecord(S.userData, S.history, w, S.currentSession)||{}).exercises?.[exId] || {}
   }), null, firstWeek) : '';
   document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
   document.getElementById('progression-overlay').classList.add('open');
@@ -4305,7 +4367,7 @@ function openAdminProgressionModal(uid, exId, exName, sName) {
   const override = (routine && ex) ? getExerciseOverride(a._personal?.routineOverrides, routine.id, sName, exId) : null;
   const body = ex ? buildWeeklyProgressionTable(lastWeek, athleteWeek, (w) => ({
     wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, a), override),
-    d: a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[exId] || {}
+    d: getPhaseSessionRecord(a, a._personal?.history, w, sName)?.exercises?.[exId] || {}
   }), {uid:a.uid, sName, exId}, firstWeek) : '';
   document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
   document.getElementById('progression-overlay').classList.add('open');
@@ -9392,12 +9454,25 @@ function renderPastRoutinePhases(a) {
     const open = !!(S._atletaPastPhasesOpen && S._atletaPastPhasesOpen.has(key));
     const snap = phase.routineSnapshot;
     const endDate = hist[idx+1]?.startDate;
-    // Sesiones que el atleta marcó como completadas dentro de este tramo.
-    let doneN = 0;
-    Object.entries(a._personal?.history||{}).forEach(([k,sd])=>{
-      const m = /^w(\d+)-/.exec(k);
-      if(m && sd && sd.done && +m[1]>=phase.startWeek && +m[1]<=realEndWeek) doneN++;
+    // Sesiones que el atleta marcó como completadas dentro de este tramo
+    // (incluye lo de la semana en que arrancó la planificación siguiente, si
+    // quedó registrado de esta).
+    let doneN = 0, overlapData = false;
+    const hAll = a._personal?.history||{}; const seenDone = new Set();
+    const nextStart = hist[idx+1]?.startWeek;
+    Object.keys(hAll).forEach(k=>{
+      const m = /^(?:p(\d+)-)?w(\d+)-([\s\S]*)$/.exec(k);
+      if(!m) return;
+      const w = +m[2], sn = m[3];
+      if(w < phase.startWeek) return;
+      if(m[1]!==undefined && +m[1]!==idx) return;
+      const dk = w+"|"+sn; if(seenDone.has(dk)) return; seenDone.add(dk);
+      const rec = getPastPhaseSessionRecord(a, hAll, idx, w, sn);
+      if(!rec) return;
+      if(w > realEndWeek) { if(nextStart && w===nextStart && Object.values(rec.exercises||{}).some(e=>e&&(e.load||e.rpe||e.checked))) overlapData = true; else return; }
+      if(rec.done) doneN++;
     });
+    const shownEndWeek = overlapData ? realEndWeek+1 : realEndWeek;
     return `<div style="border:1.5px solid var(--border2);border-left:5px solid ${color};border-radius:var(--rsm);background:var(--bg2);margin-bottom:10px;overflow:hidden">
       <div style="padding:12px 14px;cursor:pointer" onclick="togglePastRoutinePhase('${key}')">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
@@ -9414,7 +9489,7 @@ function renderPastRoutinePhases(a) {
           <span style="color:var(--text3);font-size:18px;flex-shrink:0;transition:transform .15s;transform:rotate(${open?'90':'0'}deg)">›</span>
         </div>
       </div>
-      ${open ? `<div style="border-top:1px solid var(--border);padding:10px 14px 12px">${snap ? renderPhaseSnapshotDetail(a, phase, snap, realEndWeek, key, color) : '<div style="font-size:12px;color:var(--text3)">Sin detalle guardado para esta planificación (asignada antes de que existiera este historial).</div>'}</div>` : ''}
+      ${open ? `<div style="border-top:1px solid var(--border);padding:10px 14px 12px">${snap ? renderPhaseSnapshotDetail(a, phase, snap, shownEndWeek, key, color, idx) : '<div style="font-size:12px;color:var(--text3)">Sin detalle guardado para esta planificación (asignada antes de que existiera este historial).</div>'}</div>` : ''}
     </div>`;
   });
   // La más reciente primero: es la que más se consulta.
@@ -9452,7 +9527,7 @@ window.togglePastPhaseBlock = togglePastPhaseBlock;
 // Reusa la tabla semana-a-semana de siempre (buildWeeklyProgressionTable),
 // acotada al rango de semanas de ESTE tramo, y lee los ejercicios del
 // snapshot congelado (no de S.routines, que puede no tener más esa rutina).
-function renderPhaseSnapshotDetail(a, phase, snap, endWeek, key, color) {
+function renderPhaseSnapshotDetail(a, phase, snap, endWeek, key, color, phaseIdx) {
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const sessionNames = getOrderedSessionNames(snap).filter(sn=>
     (snap.sessions?.[sn]||[]).some(b=>(b.categories||[]).some(c=>(c.exercises||[]).length)));
@@ -9482,7 +9557,7 @@ function renderPhaseSnapshotDetail(a, phase, snap, endWeek, key, color) {
         <div style="font-size:13px;font-weight:600;margin-bottom:6px">${esc(ex.name)}</div>
         ${buildWeeklyProgressionTable(endWeek, endWeek, (w)=>({
           wp: getExPrescriptionForWeek(ex, w-phase.startWeek+1),
-          d: a._personal?.history?.[sessionKey(w,sName)]?.exercises?.[ex.id] || {}
+          d: getPastPhaseSessionRecord(a, a._personal?.history, phaseIdx, w, sName)?.exercises?.[ex.id] || {}
         }), null, phase.startWeek)}
       </div>`).join('')}</div>
     </div>`;
@@ -9585,11 +9660,13 @@ function renderLoadsAudit(a, routine, previewWeek) {
     const m = /^w(\d+)-([\s\S]*)$/.exec(k);
     if(!m || !sd || typeof sd!=='object') return;
     const w = +m[1], sn = m[2];
+    // Solo la planificación actual: lo anterior ya se ve en "Planificaciones
+    // anteriores", y lo fechado antes del inicio de esta es de la anterior.
+    if(w < firstWeek || isStaleSessionRecord(sd, getCurrentPhase(a))) return;
     const exs = Object.entries(sd.exercises||{}).filter(([id,e])=>e && (e.load||e.rpe||e.checked||e.athleteNote));
     if(!exs.length) return;
     if(!weeks[w]) weeks[w] = new Set();
     weeks[w].add(sn);
-    if(w < firstWeek) return; // semanas de planificaciones anteriores: sus ejercicios son de OTRA rutina
     exs.forEach(([id,e])=>{
       if(!idsBySession[sn] || !idsBySession[sn].has(id)) orphans.push({w, sn, id, e, sessionKnown: !!idsBySession[sn]});
     });
@@ -9605,8 +9682,8 @@ function renderLoadsAudit(a, routine, previewWeek) {
   return `<div class="admin-section">
     <div class="admin-section-title">Cargas registradas por el atleta</div>
     <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:6px">
-      ${wList.length ? `<div style="font-size:11px;color:var(--text3)">Semanas con cargas (tocá una para verla):</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>`
-        : '<div style="font-size:12px;color:var(--text3)">El atleta todavía no registró ninguna carga.</div>'}
+      ${wList.length ? `<div style="font-size:11px;color:var(--text3)">Semanas de esta planificación con cargas registradas:</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>`
+        : '<div style="font-size:12px;color:var(--text3)">El atleta todavía no registró cargas en esta planificación.</div>'}
       ${orphanHtml}
     </div>
   </div>`;
@@ -9622,7 +9699,7 @@ function renderAtletaRutina(a) {
   const routine = S.routines.find(r => r.id === a.assignedRoutine);
   const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
     <option value="">— Sin rutina —</option>
-    ${routineSelectOptions(a.assignedRoutine)}
+    ${routineSelectOptions(a.assignedRoutine, a.uid)}
   </select>`;
 
   let html = `<div class="admin-section">
@@ -9631,6 +9708,7 @@ function renderAtletaRutina(a) {
       ${routineOpts}
       <button class="abtn abtn-p" onclick="assignRoutineToAthlete('${a.uid}')">Asignar</button>
     </div>
+    <div style="margin-top:8px"><button class="abtn" onclick="createPersonalRoutine('${a.uid}')" title="Armás una rutina o días de entrenamiento solo para este atleta. No aparece en Gestionar rutinas ni se ofrece a nadie más.">+ Crear rutina propia para ${(a.name||a.email||'este atleta').split(' ')[0]}</button></div>
     ${(routine && a.trainingWeekdays && a.trainingWeekdays.length) ? `<div style="font-size:12px;color:var(--text3);margin-top:6px">
       Días de gimnasio: ${[...a.trainingWeekdays].sort((x,y)=>x-y).map(d=>WEEKDAY_LABELS[d]).join(' · ')}
       — para cambiarlos, elegí la misma rutina y tocá "Asignar" de nuevo.
@@ -9638,7 +9716,7 @@ function renderAtletaRutina(a) {
   </div>`;
 
   if (!routine) {
-    html += `<div class="empty-state">Este atleta no tiene una rutina asignada todavía.</div>`;
+    html += `<div class="empty-state">Este atleta no tiene una rutina asignada todavía. Elegí una arriba o creá una propia.</div>`;
     return html;
   }
   // La semana REAL es absoluta — se cuenta desde trainingStartDate (el
@@ -9702,7 +9780,7 @@ function renderAtletaRutina(a) {
     <div style="display:flex;gap:6px;overflow-x:auto;padding:10px 16px 10px;-webkit-overflow-scrolling:touch">${sessionNames.map((sn,i)=>{
       const on = sn===selDay;
       const isTodayTab = sn===todaySession && isViewingReal;
-      const doneTab = !!(a._personal?.history?.[sessionKey(previewWeek, sn)]?.done);
+      const doneTab = !!(getPhaseSessionRecord(a, a._personal?.history, previewWeek, sn)?.done);
       return `<button onclick="setAtletaRoutineDay(${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;border-radius:20px;border:1.5px solid ${on?'var(--accent)':(isTodayTab?'var(--accent)':'var(--border2)')};background:${on?'var(--accent)':'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${sn.replace(/&/g,'&amp;').replace(/</g,'&lt;')}${doneTab?' ✓':''}${isTodayTab?` <span style="font-size:9px;font-weight:800;opacity:.9">· HOY</span>`:''}</button>`;
     }).join('')}</div>
     ${sessionNames.map(sName => {
@@ -9738,7 +9816,7 @@ function renderAtletaRutina(a) {
                   // (que el atleta nunca hizo), se mostraba la carga/RPE de una
                   // semana anterior como si fuera de esa semana, lo cual además
                   // guardaba cualquier edición en la semana equivocada.
-                  const doneData = a._personal?.history?.[sessionKey(previewWeek, sName)]?.exercises?.[ex.id] || {};
+                  const doneData = getPhaseSessionRecord(a, a._personal?.history, previewWeek, sName)?.exercises?.[ex.id] || {};
                   const hasCompletion = !!(doneData.load || doneData.rpe);
                   const durationWeeksEx = routine?.durationWeeks || 1;
                   // La tabla nunca mira semanas de ANTES de que esta rutina
@@ -9754,7 +9832,7 @@ function renderAtletaRutina(a) {
                       <div style="font-size:14px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${ex.name}</span>${personalizarBtn}</div>
                       ${buildWeeklyProgressionTable(lastWeekEx, previewWeek, (w) => ({
                         wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, a), override),
-                        d: a._personal?.history?.[sessionKey(w, sName)]?.exercises?.[ex.id] || {}
+                        d: getPhaseSessionRecord(a, a._personal?.history, w, sName)?.exercises?.[ex.id] || {}
                       }), {uid:a.uid, sName, exId:ex.id}, firstWeekEx)}
                     </div>`;
                   }
@@ -10763,7 +10841,7 @@ function renderAdminMain() {
   <div class="admin-section">
     <div class="admin-section-title">Rutinas</div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Gestionar rutinas</div><div class="admin-item-sub">${S.routines.length} rutina${S.routines.length!==1?'s':''} creada${S.routines.length!==1?'s':''}</div></div>
+      <div><div class="admin-item-lbl">Gestionar rutinas</div><div class="admin-item-sub">${getTemplateRoutines().length} rutina${getTemplateRoutines().length!==1?'s':''} creada${getTemplateRoutines().length!==1?'s':''}</div></div>
       <button class="abtn abtn-p" onclick="adminGoRoutines()">Gestionar →</button>
     </div>
   </div>
@@ -11210,6 +11288,26 @@ window.renderWeeklyReport = renderWeeklyReport;
 // tramo saliente queda CONGELADO con una copia de cómo era en ese momento
 // (routineSnapshot) — así mirarlo después nunca depende de que esa rutina
 // siga existiendo o sin editar en S.routines.
+// Al asignar una planificación nueva, lo que el atleta ya había registrado de
+// la anterior en la semana de arranque (mismos nombres de día) se archiva
+// aparte (p{idx}-w..) para que la nueva no lo herede como propio. Idempotente.
+async function archiveOutgoingOverlap(uid, outgoingIdx, startWeek, startDate) {
+  const pRef = doc(db,'personal',uid);
+  const pSnap = await getDoc(pRef);
+  if(!pSnap.exists()) return;
+  const h = pSnap.data().history || {};
+  const fp = [];
+  Object.entries(h).forEach(([k,rec])=>{
+    const m = /^w(\d+)-/.exec(k);
+    if(!m || +m[1] < startWeek || !rec || !rec.date) return;
+    if(String(rec.date).slice(0,10) >= startDate) return;
+    fp.push([['history','p'+outgoingIdx+'-'+k], rec], [['history',k], deleteField()]);
+  });
+  if(fp.length) await updateDocSafe(pRef, {}, fp);
+  const loaded = S.adminAthletes?.find(x=>x.uid===uid);
+  if(loaded && fp.length) { const fresh = await getDoc(pRef); if(fresh.exists()) loaded._personal = fresh.data(); }
+}
+
 async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDate, isContinuation) {
   const today = todayLocal();
   const a = S.adminAthletes.find(x=>x.uid===uid) || (S.viewingAthlete?.uid===uid ? S.viewingAthlete.userData : null);
@@ -11270,6 +11368,10 @@ async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDat
   }
   update.trainingWeekdays = routineId ? (trainingWeekdays||[]) : [];
   await setDoc(doc(db,'users',uid), update, {merge:true});
+  if(routineId && hist.length>=2) {
+    try { await archiveOutgoingOverlap(uid, hist.length-2, hist[hist.length-1].startWeek, hist[hist.length-1].startDate); }
+    catch(e) { console.error('No se pudo archivar lo de la planificación anterior', e); }
+  }
   if(S.viewingAthlete?.userData) Object.assign(S.viewingAthlete.userData, update);
   if(a) Object.assign(a, update);
 }
@@ -11462,7 +11564,9 @@ async function confirmWeekdayAssign() {
   try {
     await writeRoutineAssignment(st.uid, st.routineId, [...st.selected], st.startDate, st.isContinuation);
     showToast('✓ Rutina y días asignados');
+    const wasOwnEditing = S.editingRoutine && S.editingRoutine.id===st.routineId && S.editingRoutine.ownerUid;
     closeWeekdayAssignModal();
+    if(wasOwnEditing) { S.editingRoutine=null; S.adminView='athlete_detail'; S.currentView='admin'; S.atletaSubview='rutina'; S._atletaRoutineDay=null; }
     renderMain();
   } catch(e) { showToast('Error al asignar'); }
 }
@@ -11587,17 +11691,24 @@ window.adminGoRoutines=adminGoRoutines;
 // cada tramo — no es la semana real de ningún atleta en particular (eso
 // vive en routineAssignmentHistory, por atleta), es solo para poder ver de
 // un vistazo cuánto dura el programa completo y dónde arranca cada tramo.
+// Rutinas propias de UN atleta (creadas desde su ficha, con ownerUid): viven
+// en la misma colección pero NO se ofrecen como plantilla ni aparecen en la
+// lista de Rutinas — solo en la ficha de su dueño.
+function getTemplateRoutines() { return (S.routines||[]).filter(r=>!r.ownerUid); }
+window.getTemplateRoutines = getTemplateRoutines;
+
 function buildRoutineChains() {
-  const byId = new Map(S.routines.map(r=>[r.id, r]));
+  const tpl = getTemplateRoutines();
+  const byId = new Map(tpl.map(r=>[r.id, r]));
   const childrenOf = new Map();
-  S.routines.forEach(r=>{
+  tpl.forEach(r=>{
     const parentId = r.continuesFromRoutineId;
     if(parentId && byId.has(parentId)) {
       if(!childrenOf.has(parentId)) childrenOf.set(parentId, []);
       childrenOf.get(parentId).push(r);
     }
   });
-  const roots = S.routines.filter(r=>!r.continuesFromRoutineId || !byId.has(r.continuesFromRoutineId));
+  const roots = tpl.filter(r=>!r.continuesFromRoutineId || !byId.has(r.continuesFromRoutineId));
   return { childrenOf, roots };
 }
 
@@ -11606,7 +11717,7 @@ function buildRoutineChains() {
 // la continúan, con una flechita y sangría para ver la cadena. Las rutinas
 // independientes y el arranque de cada cadena mantienen el orden en que se
 // crearon. Usa el mismo agrupado que la lista de Rutinas (buildRoutineChains).
-function routineSelectOptions(selectedId) {
+function routineSelectOptions(selectedId, ownerUid) {
   const {childrenOf, roots} = buildRoutineChains();
   const seen = new Set();
   const out = [];
@@ -11620,7 +11731,10 @@ function routineSelectOptions(selectedId) {
   };
   roots.forEach(r=>walk(r, 0));
   // por si hubiera un ciclo de continuaciones, nada queda afuera
-  S.routines.forEach(r=>walk(r, 0));
+  getTemplateRoutines().forEach(r=>walk(r, 0));
+  // las rutinas propias de este atleta (si tiene), aparte
+  const own = ownerUid ? (S.routines||[]).filter(r=>r.ownerUid===ownerUid) : [];
+  if(own.length) out.push(`<optgroup label="Propias de este atleta">${own.map(r=>`<option value="${r.id}" ${selectedId===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>`);
   return out.join('');
 }
 window.routineSelectOptions = routineSelectOptions;
@@ -11663,7 +11777,7 @@ function renderAdminRoutines() {
     <div class="team-detail-title">Rutinas</div>
     <button class="abtn abtn-p" onclick="createRoutine()">+ Nueva</button>
   </div>`;
-  if(!S.routines.length) {
+  if(!getTemplateRoutines().length) {
     html+=`<div class="empty-state">No hay rutinas creadas.<br><span style="font-size:12px">Creá una rutina para asignarla a tus alumnos.</span></div>`;
   } else {
     const { childrenOf, roots } = buildRoutineChains();
@@ -11709,6 +11823,31 @@ async function saveRoutineListName(id, inp) {
   }
 }
 window.saveRoutineListName = saveRoutineListName;
+
+// Crear una rutina (o días de entrenamiento) PROPIOS de un atleta, desde su
+// ficha, sin tocar "Gestionar rutinas": mismo editor completo, pero la rutina
+// lleva ownerUid y no se ofrece como plantilla a nadie más. Nada se guarda
+// hasta tocar Guardar en el editor (si volvés atrás, se descarta); al guardar
+// se pasa directo a elegir los días de gimnasio para asignársela.
+function createPersonalRoutine(uid) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid) || S.atletaView;
+  if(!a) return;
+  const first = (a.name||a.email||'').split(' ')[0];
+  const name = prompt('Nombre de la rutina de '+(first||'este atleta')+':', 'Rutina de '+first);
+  if(!name) return;
+  const sessionsRaw = prompt('Nombres de los días separados por coma\n(ej: Lunes,Miércoles,Viernes)','Día 1,Día 2,Día 3');
+  if(!sessionsRaw) return;
+  const sessionNames = sessionsRaw.split(',').map(x=>x.trim()).filter(Boolean);
+  if(!sessionNames.length) return;
+  const sessions = {};
+  sessionNames.forEach(n=>{ sessions[n]=[]; });
+  S.editingRoutine = { id: genId(), name: name.trim(), sessions, ownerUid: uid, createdAt: new Date().toISOString() };
+  S._routineEditSession = sessionNames[0];
+  S._routineEditorPrev = 'athlete_detail';
+  S.adminView = 'routine_edit';
+  renderMain();
+}
+window.createPersonalRoutine = createPersonalRoutine;
 
 async function createRoutine() {
   const name = prompt('Nombre de la rutina (ej: Fuerza Base Baloncesto):');
@@ -11872,7 +12011,7 @@ function renderRoutineEditor() {
     <span style="font-size:12px;font-weight:600;color:var(--text2)">¿Es continuación de otra rutina?</span>
     <select style="flex:1;min-width:160px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 8px;color:var(--text);font-size:13px" onchange="setRoutineContinuesFrom(this.value)">
       <option value="">— No, es independiente —</option>
-      ${S.routines.filter(x=>x.id!==r.id).map(x=>`<option value="${x.id}" ${r.continuesFromRoutineId===x.id?'selected':''}>${x.name}</option>`).join('')}
+      ${getTemplateRoutines().filter(x=>x.id!==r.id).map(x=>`<option value="${x.id}" ${r.continuesFromRoutineId===x.id?'selected':''}>${x.name}</option>`).join('')}
     </select>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
@@ -12414,6 +12553,9 @@ async function saveRoutineToFirestore() {
     const idx=S.routines.findIndex(x=>x.id===r.id);
     if(idx>=0) S.routines[idx]=JSON.parse(JSON.stringify(toSave));
     else S.routines.push(JSON.parse(JSON.stringify(toSave)));
+    // Rutina propia de un atleta que todavía no la tiene asignada: se pasa
+    // directo a elegir sus días de gimnasio.
+    const ownerNeedsAssign = r.ownerUid && (S.adminAthletes||[]).find(x=>x.uid===r.ownerUid)?.assignedRoutine !== r.id;
     // Días renombrados: se traslada lo que los atletas ya registraron.
     if(r._renames && r._renames.length) {
       const {moved, failed} = await migrateRoutineSessionRenames(r.id, r._renames);
@@ -12426,6 +12568,7 @@ async function saveRoutineToFirestore() {
       return;
     }
     showToast('✓ Rutina guardada');
+    if(ownerNeedsAssign) openWeekdayAssignModal(r.ownerUid, r.id);
   } catch(e) { showToast('Error al guardar: '+e.message); }
 }
 window.saveRoutineToFirestore=saveRoutineToFirestore;
@@ -14746,6 +14889,7 @@ document.addEventListener('click', e => {
       S.adminView='athletes'; S.currentView='admin'; adminGoAthletes(); break;
     case 'routine-editor':
       S.adminView=(S._routineEditorPrev||'routines');
+      if(S.adminView==='athlete_detail') S.atletaSubview='rutina';
       S.currentView='admin'; renderBottomBar(); renderMain(); break;
     case 'home':
       goHome(); break;
