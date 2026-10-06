@@ -9773,6 +9773,7 @@ function renderAtletaRutina(a) {
         <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
       </div>
       <div style="display:flex;gap:6px">
+        ${routine.ownerUid===a.uid ? `<button class="abtn abtn-p" onclick="editPersonalRoutine('${routine.id}')" title="Seguir armando o cambiar esta rutina propia">✎ Editar rutina</button>` : ''}
         <button class="abtn ${S._atletaRoutineCicloView!=='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('micro')">Vista microciclo</button>
         <button class="abtn ${S._atletaRoutineCicloView==='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('macro')">Vista macrociclo</button>
       </div>
@@ -11871,6 +11872,15 @@ async function createRoutine() {
   } catch(e) { showToast('Error al crear'); }
 }
 window.createRoutine=createRoutine;
+
+// Editar desde la ficha una rutina PROPIA del atleta (la creada con "+ Crear
+// rutina propia"): mismo editor completo, y al volver cae de nuevo en la ficha.
+function editPersonalRoutine(id) {
+  editRoutine(id);
+  S._routineEditorPrev = 'athlete_detail';
+  renderMain();
+}
+window.editPersonalRoutine = editPersonalRoutine;
 
 function editRoutine(id) {
   const r = S.routines.find(x=>x.id===id);
