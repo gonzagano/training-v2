@@ -12199,14 +12199,9 @@ function startRenameRoutineSession(sessionName) {
 }
 window.startRenameRoutineSession = startRenameRoutineSession;
 
-function commitRenameRoutineSession(inp) {
-  const r = S.editingRoutine;
-  const from = S._renamingSession;
-  S._renamingSession = null;
-  const to = (inp.value||'').trim();
-  if(!r || !from || !to || to===from) { renderMain(); return; }
-  if(/['"`\\<>]/.test(to)) { showToast('El nombre no puede llevar comillas, barra invertida ni < >'); renderMain(); return; }
-  if(r.sessions[to]) { showToast('Ya hay un día con ese nombre'); renderMain(); return; }
+// Cambia el nombre de un día dentro de la rutina en edición (solo en memoria)
+// y anota el cambio para trasladar después el registro de los atletas.
+function applySessionRename(r, from, to) {
   // El orden de los días define qué día de gimnasio le toca a cada fecha
   // (el 1.º con el 1.º día de la semana elegido, etc.). Sin un orden fijo,
   // renombrar "Día 1" a "Fuerza A" lo mandaría al final de la lista
@@ -12216,7 +12211,7 @@ function commitRenameRoutineSession(inp) {
   const ns = {};
   Object.keys(r.sessions).forEach(k=>{ ns[k===from ? to : k] = r.sessions[k]; });
   r.sessions = ns;
-  if(Array.isArray(r.sessionOrder)) r.sessionOrder = r.sessionOrder.map(n=>n===from ? to : n);
+  r.sessionOrder = r.sessionOrder.map(n=>n===from ? to : n);
   if(S._routineEditSession===from) S._routineEditSession = to;
   // Si el mismo día se renombra dos veces antes de guardar, se junta en un
   // solo cambio (original → final).
@@ -12224,6 +12219,40 @@ function commitRenameRoutineSession(inp) {
   const prev = r._renames.find(x=>x.to===from);
   if(prev) prev.to = to; else r._renames.push({from, to});
   r._renames = r._renames.filter(x=>x.from!==x.to);
+}
+
+function commitRenameRoutineSession(inp) {
+  const r = S.editingRoutine;
+  const from = S._renamingSession;
+  S._renamingSession = null;
+  const to = (inp.value||'').trim();
+  if(!r || !from || !to || to===from) { renderMain(); return; }
+  if(/['"`\\<>]/.test(to)) { showToast('El nombre no puede llevar comillas, barra invertida ni < >'); renderMain(); return; }
+  if(r.sessions[to]) {
+    // Ya existe un día con ese nombre: se ofrece INTERCAMBIAR los nombres
+    // (típico error: armar el contenido del Día 3 dentro del Día 1). Cada día
+    // conserva su contenido y su lugar en la lista; solo se cruzan los nombres.
+    renderMain();
+    showConfirmModal({
+      title:'Intercambiar nombres',
+      message:`Ya hay un día "${to}". ¿Intercambiar los nombres de "${from}" y "${to}"? Cada uno conserva su contenido; solo se cruzan los nombres.`,
+      confirmLabel:'Intercambiar',
+      onConfirm: () => {
+        const order0 = getOrderedSessionNames(r);
+        const i = order0.indexOf(from), j = order0.indexOf(to);
+        const tmp = '__tmp__'+genId();
+        applySessionRename(r, from, tmp);
+        applySessionRename(r, to, from);
+        applySessionRename(r, tmp, to);
+        // los nombres se quedan en su lugar de la lista; viaja el contenido
+        if(i>=0 && j>=0) { const o = [...r.sessionOrder]; o[i]=from; o[j]=to; r.sessionOrder = o; }
+        S._routineEditSession = to;
+        renderMain();
+      }
+    });
+    return;
+  }
+  applySessionRename(r, from, to);
   renderMain();
 }
 window.commitRenameRoutineSession = commitRenameRoutineSession;
