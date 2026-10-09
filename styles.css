@@ -853,3 +853,33 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 .px-sum-i.ok{color:var(--green);font-weight:700}
 
 @media(max-width:560px){.team-detail-header .hs{display:none}.team-detail-header .abtn{padding:8px 11px}}
+
+/* Dashboard: los 4 contadores en una sola fila, compactos */
+.metric-grid4{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:var(--sp-4)}
+@media(min-width:900px){.metric-grid4{grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:var(--sp-5)}
+  .metric-grid4 .metric-card{padding:14px 18px}
+  .metric-grid4 .metric-card-label{margin-bottom:6px}
+  .metric-grid4 .metric-card-value{font-size:32px}}
+
+/* Wellness del atleta: tira deslizable (barra en compu, dedo en celular) */
+.wk-strip{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding-bottom:10px;margin-bottom:var(--sp-3);overscroll-behavior-x:contain}
+.wk-cell{flex:0 0 calc((100% - 36px)/7);scroll-snap-align:end;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;min-width:0}
+.wk-cell>div{width:100%;aspect-ratio:1}
+.wk-strip::-webkit-scrollbar{height:8px}
+.wk-strip::-webkit-scrollbar-track{background:var(--bg3);border-radius:8px}
+.wk-strip::-webkit-scrollbar-thumb{background:var(--border2);border-radius:8px}
+.wk-strip{scrollbar-width:thin;scrollbar-color:var(--border2) var(--bg3)}
+@media(max-width:899px){.wk-strip::-webkit-scrollbar{height:4px}}
+
+/* Wellness por día: nombres fijos a la izquierda, días que se deslizan */
+.hm{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;padding-bottom:8px;scrollbar-width:thin;scrollbar-color:var(--border2) var(--bg3)}
+.hm::-webkit-scrollbar{height:8px}.hm::-webkit-scrollbar-track{background:var(--bg3);border-radius:8px}.hm::-webkit-scrollbar-thumb{background:var(--border2);border-radius:8px}
+.hm-in{width:max-content;min-width:100%;padding:8px 0 4px}
+.hm-row{display:flex;align-items:center;border-top:1px solid var(--border)}
+.hm-head{border-top:0}
+.hm-nm{position:sticky;left:0;z-index:2;flex:0 0 112px;width:112px;box-sizing:border-box;background:var(--bg2);padding:10px 8px 10px 16px;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;border-right:1px solid var(--border)}
+.hm-nm{align-self:stretch}
+.hm-d{flex:0 0 46px;text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;padding-bottom:4px}
+.hm-d small{display:block;font-weight:400;font-size:11px}
+.hm-d.hm-today{color:var(--accent-text)}
+.hm-c{flex:0 0 46px;display:flex;justify-content:center;padding:8px 0;cursor:pointer}

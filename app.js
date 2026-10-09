@@ -2792,6 +2792,7 @@ function renderMain() {
   }
   // re-draw charts if needed
   if(S.currentView==='evals') setTimeout(drawEvalCharts,50);
+  document.querySelectorAll('.hstrip').forEach(el=>{ const v=S._hs?.[el.dataset.k]; el.scrollLeft = (v==null) ? el.scrollWidth : v; });
   updateRestTimerFabVisibility();
   maybePushNavState();
 }
@@ -8133,7 +8134,7 @@ function renderGroupWellness(memberUids, opts) {
   // ficha real del equipo en Equipos.
   if (opts && opts.compareOnly) {
     const selfMember = members.find(m=>m.uid===opts.selfUid);
-    let html = selfMember ? renderAthleteSummaryCard(selfMember) : '';
+    let html = selfMember ? `<div class="ar-list" style="margin-bottom:14px">${athleteRowHtml(selfMember,{})}</div>` : '';
     html += members.length > 1
       ? renderTeamMetricsCard('Promedio del equipo con el que se compara', members)
       : `<div class="empty-state">El equipo elegido para comparar todavía no tiene datos.</div>`;
@@ -8184,7 +8185,7 @@ function renderGroupWellness(memberUids, opts) {
   // usamos en el Dashboard (alertas / lesiones recientes en paralelo).
   const isDesktopWellness = window.innerWidth >= 900;
   html += `<div style="margin:14px 0 12px;font-size:12px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
-    <div style="display:${isDesktopWellness?'grid':'flex'};${isDesktopWellness?'grid-template-columns:1fr 1fr;':'flex-direction:column;'}gap:10px">${members.map(renderAthleteSummaryCard).join('')}</div>`;
+    <div class="ar-list">${members.map(a=>athleteRowHtml(a,{onclick:members.length>1?"adminOpenAthlete('"+a.uid+"')":''})).join('')}</div>`;
   return html;
 }
 window.renderGroupWellness = renderGroupWellness;
@@ -8198,11 +8199,11 @@ window.setWellnessPosFilter = setWellnessPosFilter;
 // (típico de alguien que se olvidó de cargar ayer y lo hace hoy con la fecha
 // de hoy en vez de volver atrás). Wellness y carga van SEPARADOS a propósito
 // en cada celda — mezclarlos en un solo indicador escondería justo eso.
-function getWeeklyComplianceDates(offsetWeeks) {
+function getWeeklyComplianceDates(offsetWeeks, nDays) {
   const base = new Date(); base.setHours(0,0,0,0);
   base.setDate(base.getDate() + (offsetWeeks||0)*7);
   const dates = [];
-  for(let i=6; i>=0; i--) {
+  for(let i=(nDays||7)-1; i>=0; i--) {
     const d = new Date(base); d.setDate(d.getDate()-i);
     dates.push(toLocalDateStr(d));
   }
@@ -8210,63 +8211,36 @@ function getWeeklyComplianceDates(offsetWeeks) {
 }
 window.getWeeklyComplianceDates = getWeeklyComplianceDates;
 
-function setComplianceWeekOffset(delta) {
-  S._complianceWeekOffset = Math.min(0, (S._complianceWeekOffset||0) + delta);
-  renderMain();
-}
-window.setComplianceWeekOffset = setComplianceWeekOffset;
 
 function renderWeeklyComplianceGrid(members) {
-  const offset = S._complianceWeekOffset||0;
-  const dates = getWeeklyComplianceDates(offset);
+  // 13 semanas hacia atrás, termina en hoy. Se ven ~7 días y el resto se desliza
+  // (barra en la compu, dedo en el celular). Cada día es la misma barrita del
+  // Dashboard: color y alto según el wellness, punto naranja si entrenó.
+  const dates = getWeeklyComplianceDates(0, 91);
   const todayStr = todayLocal();
-  const colW = 46;
-
   const dayHead = dates.map(d=>{
     const dt = new Date(d+'T00:00:00');
-    const isToday = d===todayStr;
-    return `<div style="width:${colW}px;flex-shrink:0;text-align:center;font-size:11px;font-weight:700;color:${isToday?'var(--accent)':'var(--text3)'};text-transform:uppercase">${dt.toLocaleDateString('es-AR',{weekday:'short'}).replace('.','')}<div style="font-weight:400;font-size:11px">${dt.getDate()}/${dt.getMonth()+1}</div></div>`;
+    return `<div class="hm-d${d===todayStr?' hm-today':''}">${dt.toLocaleDateString('es-AR',{weekday:'short'}).replace('.','')}<small>${dt.getDate()}/${dt.getMonth()+1}</small></div>`;
   }).join('');
-
   const rows = members.map(a=>{
     const p = a._personal||{};
     const logs = p.history?._sessionLogs || p.sessionLogs || [];
     const cells = dates.map(d=>{
-      const wDone = getWellnessScore(p.wellness?.[d]).allFilled;
-      const cDone = logs.some(l=>l.date===d);
-      return `<div style="width:${colW}px;flex-shrink:0;display:flex;justify-content:center;gap:3px;padding:7px 0;cursor:pointer" onclick="viewWellnessDay('${a.uid}','${d}')" title="${(a.name||a.email||'').replace(/"/g,'')} · ${d}">
-        <span style="width:8px;height:8px;border-radius:50%;background:${wDone?'var(--accent)':'var(--border2)'}"></span>
-        <span style="width:8px;height:8px;border-radius:50%;background:${cDone?'var(--warm)':'var(--border2)'}"></span>
-      </div>`;
+      const v = computeHooperScore(p.wellness?.[d]);
+      const h = v==null ? 3 : Math.round(8+v/100*20);
+      const col = v==null ? 'var(--border2)' : getWellnessState(v).color;
+      const tr = logs.some(l=>l.date===d);
+      return `<div class="hm-c" onclick="viewWellnessDay('${a.uid}','${d}')" title="${(a.name||a.email||'').replace(/"/g,'')} · ${d}${v!=null?' · '+v+'%':' · sin wellness'}"><span class="ar-bc"><i style="height:${h}px;background:${col}"></i><u style="${tr?'':'visibility:hidden'}"></u></span></div>`;
     }).join('');
-    return `<div style="display:flex;align-items:center;border-top:1px solid var(--border)">
-      <div style="width:104px;flex-shrink:0;font-size:12px;font-weight:600;padding:8px 6px 8px 0;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onclick="adminOpenAthlete('${a.uid}')">${a.name||a.email}</div>
-      <div style="display:flex">${cells}</div>
-    </div>`;
+    return `<div class="hm-row"><div class="hm-nm" onclick="adminOpenAthlete('${a.uid}')">${(a.name||a.email||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>${cells}</div>`;
   }).join('');
-
   return `<div class="admin-section">
-    <div class="admin-item" style="border-bottom:1px solid var(--border)">
-      <div class="admin-section-title" style="margin:0">Cumplimiento semanal</div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <button class="abtn" onclick="setComplianceWeekOffset(-1)" title="Semana anterior">‹</button>
-        <span style="font-size:11px;color:var(--text3);white-space:nowrap">${offset===0?'Esta semana':(offset*-1)+' sem. atrás'}</span>
-        <button class="abtn" onclick="setComplianceWeekOffset(1)" title="Semana siguiente" ${offset>=0?'disabled style="opacity:.3;cursor:not-allowed"':''}>›</button>
-      </div>
-    </div>
-    <div style="overflow-x:auto">
-      <div style="min-width:${104+7*colW}px;padding:10px 16px 4px">
-        <div style="display:flex;align-items:center">
-          <div style="width:104px;flex-shrink:0"></div>
-          <div style="display:flex">${dayHead}</div>
-        </div>
+    <div class="admin-section-title">Wellness por día</div>
+    <div class="hstrip hm" data-k="cmp" onscroll="(S._hs=S._hs||{}).cmp=this.scrollLeft">
+      <div class="hm-in">
+        <div class="hm-row hm-head"><div class="hm-nm"></div>${dayHead}</div>
         ${rows}
       </div>
-    </div>
-    <div style="display:flex;gap:14px;padding:10px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);flex-wrap:wrap">
-      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block"></span>Wellness completo</span>
-      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--warm);display:inline-block"></span>Carga cargada</span>
-      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--border2);display:inline-block"></span>Sin completar</span>
     </div>
   </div>`;
 }
@@ -9445,7 +9419,7 @@ function openAtleta(uid) {
   S._pastPhaseDay = null;
   S._pastPhaseBlocksOpen = null;
   S._routineWeekPreview = null;
-  S._perfilWellnessDay = null;
+  S._perfilWellnessDay = null; S._hs = null;
   ensureGroupPersonalData(getEffectiveGroupUids(a)).then(()=>{
     S.viewingAthlete = { uid, userData: a, personal: a._personal||{} };
     renderMain();
@@ -9771,7 +9745,8 @@ function renderPerfilTab(a) {
        semáforo de arriba. -->
   ${(()=>{
     if(!wEntries.length) return `<div class="admin-section"><div class="admin-section-title">Wellness — últimos 7 días</div><div style="padding:var(--sp-3) var(--sp-4);font-size:13px;color:var(--text3)">Sin registros de wellness.</div></div>`;
-    const weekDates = getWeeklyComplianceDates(0);
+    // Tira deslizable: 13 semanas hacia atrás, termina en hoy; se ven 7 días a la vez.
+    const weekDates = getWeeklyComplianceDates(0, 91);
     const lastFilled = [...weekDates].reverse().find(d=>getWellnessScore(wellness[d]).allFilled);
     const selDate = S._perfilWellnessDay || lastFilled || weekDates[weekDates.length-1];
     const dimByColor = {'var(--green)':'var(--green-dim)','var(--amber)':'var(--amber-dim)','var(--red)':'var(--red-dim)'};
@@ -9781,8 +9756,8 @@ function renderPerfilTab(a) {
       const bg = allFilled ? (dimByColor[col]||'var(--bg3)') : 'var(--bg3)';
       const dow = new Date(date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'short'}).replace(/\.$/,'');
       const isSel = selDate===date;
-      return `<div onclick="setPerfilWellnessDay('${date}')" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer">
-        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">${dow}</span>
+      return `<div class="wk-cell" data-d="${date}" onclick="setPerfilWellnessDay('${date}')">
+        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600;white-space:nowrap">${dow} ${+date.slice(8)}</span>
         <div style="width:100%;aspect-ratio:1;border-radius:9px;background:${bg};display:flex;align-items:center;justify-content:center;border:${isSel?'2px':'1px'} solid ${isSel?col:'var(--border)'}">
           <span style="font-size:11px;font-weight:700;color:${col}">${allFilled?pct+'%':'—'}</span>
         </div>
@@ -9807,24 +9782,61 @@ function renderPerfilTab(a) {
       </div>`;
     }
     return `<div class="admin-section">
-      <div class="admin-section-title">Wellness — últimos 7 días</div>
+      <div class="admin-section-title">Wellness</div>
       <div style="padding:2px var(--sp-4) var(--sp-4)">
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:var(--sp-3)">${cells}</div>
+        <div id="wk-strip" class="wk-strip hstrip" data-k="perfil" onscroll="(S._hs=S._hs||{}).perfil=this.scrollLeft">${cells}</div>
         ${detail}
       </div>
     </div>`;
   })()}
 
   <div class="admin-section">
-    <div class="admin-section-title">Perfil</div>
+    <div class="admin-section-title">Molestias activas</div>
+    ${activeInj.length?`<div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px">${activeInj.map(([id,inj])=>{
+      const zone=allZones.find(z=>z.id===id);
+      const sev = severityInfo(inj.severity) || severityInfo('leve');
+      const trend = getInjuryTrend(inj);
+      return `<div style="background:var(--bg);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${sev.color};flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${zone?.label||id}${inj.type?' · '+(INJURY_TYPES[inj.type]||''):''}</div>
+            <div style="font-size:11px;color:var(--text3);cursor:pointer" onclick="openPainTrendModal('${uid}','${id}')" title="Tocá para ver la progresión">
+              Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}
+              ${trend?` <span style="color:${trend.color};font-weight:800;font-size:13px" title="${trend.label}">${trend.arrow}</span>`:''}
+            </div>
+            ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:11px;color:var(--text3)">Puntaje OSTRC: <b style="color:var(--text)">${sc}/100</b></div>`:''; })()}
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica</div>
+        <div style="display:flex;gap:6px">
+          ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.dim:'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
+        </div>
+        ${isRealInjury(inj)?`
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 5px">Fase de retorno al juego</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${RTP_PHASES.map(p=>`<button onclick="adminSetInjuryRtpPhase('${uid}','${id}','${p.id}')" style="flex:1;min-width:80px;padding:6px;border-radius:var(--rxs);border:1px solid ${inj.rtpPhase===p.id?'var(--accent)':'var(--border2)'};background:${inj.rtpPhase===p.id?'var(--accent-dim)':'transparent'};color:${inj.rtpPhase===p.id?'var(--accent)':'var(--text3)'};font-weight:${inj.rtpPhase===p.id?'700':'400'};font-size:11px;cursor:pointer">${p.label}</button>`).join('')}
+        </div>`:''}
+        ${renderInjuryStudies(id, inj, uid)}
+      </div>`;
+    }).join('')}</div>`:`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin molestias registradas.</div>`}
+  </div>
+
+  <!-- RM del atleta: editable acá, y se actualiza solo desde Evaluaciones -->
+  <div class="admin-section">
+    <div class="admin-section-title">RM del atleta</div>
+        ${RM_LIFTS.map(rm=>`<div class="admin-item">
+      <span style="font-size:13px">${rm.label}</span>
+      <input type="number" step="0.5" min="0" placeholder="kg" value="${personal.oneRM?.[rm.id]||''}" style="width:90px;text-align:right;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="adminSaveOneRM('${uid}','${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+    </div>`).join('')}
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-title">Datos del atleta</div>
     <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:10px">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
         <span style="font-size:11px;color:var(--text3);min-width:50px">Nombre</span>
         <input id="edit-name-${uid}" value="${a.name||''}" placeholder="Apellido y nombre" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Color</span>
-        ${TEAM_COLORS.map(c=>`<div onclick="setAthleteColor('${uid}','${c}')" style="width:20px;height:20px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${a.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
         <span style="font-size:11px;color:var(--text3);min-width:50px">Posición</span>
@@ -9865,47 +9877,6 @@ function renderPerfilTab(a) {
       </div>
       `:''}
     </div>
-  </div>
-
-  <!-- RM del atleta: editable acá, y se actualiza solo desde Evaluaciones -->
-  <div class="admin-section">
-    <div class="admin-section-title">RM del atleta</div>
-        ${RM_LIFTS.map(rm=>`<div class="admin-item">
-      <span style="font-size:13px">${rm.label}</span>
-      <input type="number" step="0.5" min="0" placeholder="kg" value="${personal.oneRM?.[rm.id]||''}" style="width:90px;text-align:right;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="adminSaveOneRM('${uid}','${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
-    </div>`).join('')}
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Molestias activas</div>
-    ${activeInj.length?`<div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px">${activeInj.map(([id,inj])=>{
-      const zone=allZones.find(z=>z.id===id);
-      const sev = severityInfo(inj.severity) || severityInfo('leve');
-      const trend = getInjuryTrend(inj);
-      return `<div style="background:var(--bg);border:1px solid var(--border2);border-radius:var(--rsm);padding:10px 12px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <div style="width:8px;height:8px;border-radius:50%;background:${sev.color};flex-shrink:0"></div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600">${zone?.label||id}${inj.type?' · '+(INJURY_TYPES[inj.type]||''):''}</div>
-            <div style="font-size:11px;color:var(--text3);cursor:pointer" onclick="openPainTrendModal('${uid}','${id}')" title="Tocá para ver la progresión">
-              Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}
-              ${trend?` <span style="color:${trend.color};font-weight:800;font-size:13px" title="${trend.label}">${trend.arrow}</span>`:''}
-            </div>
-            ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:11px;color:var(--text3)">Puntaje OSTRC: <b style="color:var(--text)">${sc}/100</b></div>`:''; })()}
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica</div>
-        <div style="display:flex;gap:6px">
-          ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.dim:'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
-        </div>
-        ${isRealInjury(inj)?`
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 5px">Fase de retorno al juego</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${RTP_PHASES.map(p=>`<button onclick="adminSetInjuryRtpPhase('${uid}','${id}','${p.id}')" style="flex:1;min-width:80px;padding:6px;border-radius:var(--rxs);border:1px solid ${inj.rtpPhase===p.id?'var(--accent)':'var(--border2)'};background:${inj.rtpPhase===p.id?'var(--accent-dim)':'transparent'};color:${inj.rtpPhase===p.id?'var(--accent)':'var(--text3)'};font-weight:${inj.rtpPhase===p.id?'700':'400'};font-size:11px;cursor:pointer">${p.label}</button>`).join('')}
-        </div>`:''}
-        ${renderInjuryStudies(id, inj, uid)}
-      </div>`;
-    }).join('')}</div>`:`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin molestias registradas.</div>`}
   </div>
 
   ${(()=>{
@@ -11754,7 +11725,7 @@ async function adminOpenAthlete(uid) {
   S._pastPhaseDay = null;
   S._pastPhaseBlocksOpen = null;
   S._routineWeekPreview = null;
-  S._perfilWellnessDay = null;
+  S._perfilWellnessDay = null; S._hs = null;
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
   try {
     await ensureAdminAthletes();
@@ -12484,8 +12455,7 @@ function createPersonalRoutine(uid) {
   S.editingRoutine = { id: genId(), name: name.trim(), sessions, ownerUid: uid, createdAt: new Date().toISOString() };
   S._routineEditSession = sessionNames[0];
   S._routineEditorPrev = 'athlete_detail';
-  S.adminView = 'routine_edit';
-  renderMain();
+  openRoutineEditorScreen();
 }
 window.createPersonalRoutine = createPersonalRoutine;
 
@@ -12506,30 +12476,37 @@ async function createRoutine() {
     S.editingRoutine = JSON.parse(JSON.stringify(routine));
     S._routineEditSession = sessionNames[0]||null;
     S._routineEditorPrev = 'routines'; // track where to go back
-    S.adminView='routine_edit';
-    renderMain();
+    openRoutineEditorScreen();
   } catch(e) { showToast('Error al crear'); }
 }
 window.createRoutine=createRoutine;
 
 // Editar desde la ficha una rutina PROPIA del atleta (la creada con "+ Crear
 // rutina propia"): mismo editor completo, y al volver cae de nuevo en la ficha.
-function editPersonalRoutine(id) {
-  editRoutine(id);
-  S._routineEditorPrev = 'athlete_detail';
-  renderMain();
-}
+// Abre el editor desde la ficha del atleta (la 'X' de volver lo deja en su ficha, pestaña Rutina)
+function editPersonalRoutine(id) { editRoutine(id, 'athlete_detail'); }
 window.editPersonalRoutine = editPersonalRoutine;
 
-function editRoutine(id) {
+// Muestra el editor de rutinas SIEMPRE en la pantalla correcta: la ficha del atleta
+// puede estar abierta desde Atletas/Dashboard/Equipos (currentView distinto de 'admin'),
+// y ahí cambiar solo adminView no hacía nada hasta entrar al Panel Admin.
+function openRoutineEditorScreen() {
+  S.currentView = 'admin';
+  S.adminView = 'routine_edit';
+  renderBottomBar();
+  renderMain();
+  window.scrollTo(0,0);
+}
+window.openRoutineEditorScreen = openRoutineEditorScreen;
+
+function editRoutine(id, prev) {
   const r = S.routines.find(x=>x.id===id);
   if(!r) return;
   S.editingRoutine = JSON.parse(JSON.stringify(r));
-  S._routineEditorPrev = 'routines';
-  S.adminView='routine_edit';
+  S._routineEditorPrev = (typeof prev==='string') ? prev : 'routines';
   const sessions = sortSessionNames(Object.keys(S.editingRoutine.sessions||{}));
   S._routineEditSession = sessions[0]||null;
-  renderMain();
+  openRoutineEditorScreen();
 }
 window.editRoutine=editRoutine;
 
@@ -12555,8 +12532,7 @@ async function duplicateRoutine(id) {
     const sessions = sortSessionNames(Object.keys(S.editingRoutine.sessions||{}));
     S._routineEditSession = sessions[0]||null;
     S._routineEditorPrev = 'routines';
-    S.adminView='routine_edit';
-    renderMain();
+    openRoutineEditorScreen();
   } catch(e) { showToast('Error al duplicar'); }
 }
 window.duplicateRoutine = duplicateRoutine;
@@ -15232,9 +15208,7 @@ function renderDashboardContent() {
   const filterHtml = groups.length>1 ? `<div id="dash-team-filters" class="dash-filters">${renderDashTeamFilters(everyone)}</div>` : '<div id="dash-team-filters"></div>';
 
   let html = filterHtml;
-  html += attPanel ? (isDesktop ? `<div class="att-grid">${attPanel}${recentPanel}</div>` : `${attPanel}${recentFeed.length?recentPanel:''}`) : (recentFeed.length ? `<div class="att-grid att-solo">${recentPanel}</div>` : '');
-
-  html += `<div class="metric-grid" style="margin-bottom:var(--sp-5)">
+  html += `<div class="metric-grid metric-grid4">
     <div class="metric-card" style="border-left:3px solid var(--accent);cursor:pointer" onclick="scrollToDashAthleteList()">
       <div class="metric-card-label">ATLETAS <span class="metric-card-icon">${metricIconSvg('atletas')}</span></div>
       <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
@@ -15249,11 +15223,12 @@ function renderDashboardContent() {
       <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}" data-countup="${wellnessToday}">${wellnessToday}</div>
       <div class="metric-card-sub">de ${totalAthletes}</div>
     </div>
-    ${attCount?`<div class="metric-card" style="border-left:3px solid var(--red);cursor:pointer" onclick="scrollToDashAtt()">
-      <div class="metric-card-label" style="color:var(--red)">ALERTAS ${craftIconSvg('alert','var(--red)',12)}</div>
-      <div class="metric-card-value" style="color:var(--red)" data-countup="${attCount}">${attCount}</div>
-    </div>`:''}
+    <div class="metric-card" style="border-left:3px solid ${attCount?'var(--red)':'var(--green)'};cursor:pointer" onclick="scrollToDashAtt()">
+      <div class="metric-card-label" style="color:${attCount?'var(--red)':'var(--text2)'}">ALERTAS <span class="metric-card-icon">${craftIconSvg('alert',attCount?'var(--red)':'currentColor',14)}</span></div>
+      <div class="metric-card-value" style="color:${attCount?'var(--red)':'var(--text)'}" data-countup="${attCount}">${attCount}</div>
+    </div>
   </div>`;
+  html += attPanel ? (isDesktop ? `<div class="att-grid">${attPanel}${recentPanel}</div>` : `${attPanel}${recentFeed.length?recentPanel:''}`) : (recentFeed.length ? `<div class="att-grid att-solo">${recentPanel}</div>` : '');
 
   html += `<div class="dash-search"><input id="dash-search-inp" value="${esc(S.dashSearch||'')}" placeholder="Buscar atleta" oninput="setDashSearch(this.value)"></div>
     <div id="dash-athlete-list">${renderDashboardAthleteList()}</div>`;
