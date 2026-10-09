@@ -772,13 +772,13 @@ const INFO_LEGENDS = {
   },
   coord: { title:'Coordinación de Brazos', html:
     `<p>Compara tu salto Abalakov (con brazos) contra tu CMJ. Muestra cuánto te ayuda — o no — el braceo al saltar. Un valor bajo puede indicar una técnica de braceo a pulir, no necesariamente un déficit físico.</p>`
-    + `<p style="margin-top:10px;font-size:11px;color:var(--text3)">Cálculo: (Abalakov − CMJ) / CMJ</p>`
+    + ``
   },
   asym: { title:'Asimetría Unilateral', html:
     `<p style="margin-bottom:10px">Marca la diferencia entre tu pierna derecha e izquierda en el CMJ unilateral.</p>`
     + infoLegendRow('var(--green)','hasta 10% de asimetría','normal')
     + infoLegendRow('var(--red)','más de 10% de asimetría','la literatura la asocia con mayor riesgo de lesión — candidato a trabajo unilateral compensatorio')
-    + `<p style="margin-top:10px;font-size:11px;color:var(--text3)">Cálculo: |Der − Izq| / máx(Der, Izq)</p>`
+    + ``
   },
 };
 // Vista combinada para el toggle RPE/RIR de la rutina — un solo ícono ahí
@@ -996,6 +996,63 @@ async function signOut() {
 }
 window.signOut = signOut;
 
+// ── ÍCONOS DE LÍNEA EN VEZ DE EMOJIS DE COLORES ─────────────────────────────
+// Los emojis "decorativos" (🏋️ 🏆 🩹 🤒 📝 🖨️ 📥 📅 ✏️ ⚠️ …) se muestran como
+// íconos de línea con el mismo trazo que el resto de la app. Se conservan
+// como emoji los que SON contenido: las caritas del wellness y los deportes.
+// Un observador de la página los cambia en todo lo que se dibuje (pantallas,
+// modales, avisos), así no hay que tocar cada texto por separado.
+const EMOJI_ICONS = {
+  '🏋️':'<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>', '🏋':'<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>',
+  '🏆':'<path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v1a3 3 0 0 0 3 3M16 6h4v1a3 3 0 0 1-3 3M12 13v4M9 20h6"/>',
+  '🩹':'<path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/>',
+  '🤒':'<path d="M14 4v10.5a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"/>',
+  '📝':'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  '🖨️':'<path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M7 14h10v7H7z"/>', '🖨':'<path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M7 14h10v7H7z"/>',
+  '📥':'<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',
+  '🧮':'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2M12 11h2M8 15h2M12 15h2"/>',
+  '📅':'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  '🔁':'<path d="M17 2l3 3-3 3M3 11V9a4 4 0 0 1 4-4h13M7 22l-3-3 3-3M21 13v2a4 4 0 0 1-4 4H4"/>',
+  '✈️':'<path d="M2 16l20-8-8 20-3-9z"/>', '✈':'<path d="M2 16l20-8-8 20-3-9z"/>',
+  '🏠':'<path d="M3 11l9-8 9 8M5 10v10h14V10"/>',
+  '✏️':'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', '✏':'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', '✎':'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  '⚠️':'<path d="M12 4 2.5 20h19zM12 10v4M12 17v.5"/>', '⚠':'<path d="M12 4 2.5 20h19zM12 10v4M12 17v.5"/>',
+  '📄':'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6"/>',
+  '📡':'<circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5"/>',
+  '🎯':'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  '🚦':'<rect x="8" y="2" width="8" height="20" rx="3"/><circle cx="12" cy="7" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="17" r="1.2"/>',
+  '📈':'<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
+  '⏰':'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M5 3L2 6M22 6l-3-3"/>',
+};
+(function setupIconify(){
+  const keys = Object.keys(EMOJI_ICONS).sort((a,b)=>b.length-a.length);
+  const re = new RegExp(keys.map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'),'g');
+  const SKIP = new Set(['SCRIPT','STYLE','TEXTAREA','INPUT','SELECT','OPTION','TITLE','CANVAS','SVG']);
+  const svg = p=>`<svg class="eic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+  function convert(root) {
+    if(!root || root.nodeType!==1 && root.nodeType!==3) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {acceptNode(n){
+      if(!n.nodeValue || n.nodeValue.search(re)<0) return NodeFilter.FILTER_REJECT;
+      const p = n.parentNode; if(!p || SKIP.has((p.nodeName||'').toUpperCase())) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT; }});
+    const nodes=[]; let n; while((n=walker.nextNode())) nodes.push(n);
+    nodes.forEach(t=>{
+      re.lastIndex=0;
+      const html = t.nodeValue.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(re, m=>svg(EMOJI_ICONS[m]));
+      const span = document.createElement('span'); span.className='eic-wrap'; span.innerHTML = html;
+      t.parentNode.replaceChild(span, t);
+    });
+  }
+  window.iconifyEmojis = convert;
+  let pending=false;
+  const obs = new MutationObserver(muts=>{
+    if(pending) return; pending=true;
+    requestAnimationFrame(()=>{ pending=false; convert(document.body); });
+  });
+  document.addEventListener('DOMContentLoaded', ()=>{ obs.observe(document.body,{childList:true,subtree:true,characterData:true}); convert(document.body); });
+  if(document.readyState!=='loading') { obs.observe(document.body,{childList:true,subtree:true,characterData:true}); convert(document.body); }
+})();
+
 // ── AUTH STATE ────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
   document.getElementById('loading').style.display = 'none';
@@ -1041,6 +1098,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.illnesses) S.illnesses = d.illnesses;
     if (d.personalExtras) S.personalExtras = d.personalExtras;
     if (d.routineOverrides) S.routineOverrides = d.routineOverrides;
+    if (d.coachNotes) S.coachNotes = d.coachNotes;
     if (d.notifications) S.notifications = d.notifications;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     // BUG encontrado y corregido acá — la causa real de "siempre me dice
@@ -1972,6 +2030,22 @@ function getED(w,s,id) {
 // de lo que se cargó explícitamente). Si NO tiene progresión (todas las
 // rutinas ya existentes), cae en los campos planos de siempre — así ninguna
 // rutina vieja se rompe ni cambia de comportamiento.
+// UNA sola cuenta de cuántas semanas dura una rutina, usada en TODAS las
+// pantallas. Antes el editor mostraba 4 si no había nada guardado y el resto
+// de la app usaba 1 — la ficha podía decir "Semana 2 de 2". Orden: el valor
+// guardado; si falta, la progresión semana a semana más larga que tenga algún
+// ejercicio; si no hay nada, 4 (lo que el editor siempre ofreció).
+function getRoutineDurationWeeks(r) {
+  const d = parseInt(r?.durationWeeks, 10);
+  if(d>0) return d;
+  let m = 0;
+  Object.values(r?.sessions||{}).forEach(blocks=>(blocks||[]).forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(e=>{
+    if(Array.isArray(e.progression)) m = Math.max(m, e.progression.length);
+  }))));
+  return m>0 ? m : 4;
+}
+window.getRoutineDurationWeeks = getRoutineDurationWeeks;
+
 function getExPrescriptionForWeek(ex, week) {
   // El tipo de intensidad (RPE/RIR) es UN SOLO interruptor para todo el
   // ejercicio (el botón está una sola vez, arriba de toda la tabla de
@@ -2063,7 +2137,7 @@ function renderOnboarding() {
   const d = S.onboardingData;
   let html = `<div class="page-header">
     <div class="page-title">Completá tu perfil</div>
-    <div class="page-subtitle">Paso ${step} de 4 · Necesario antes de usar la app</div>
+    <div class="page-subtitle">Paso ${step} de 4</div>
   </div>`;
 
   html += `<div style="display:flex;gap:6px;margin-bottom:20px">
@@ -2082,8 +2156,7 @@ window.renderOnboarding = renderOnboarding;
 function renderOnboardingStep1(d) {
   return `<div class="wellness-card">
     <div class="wellness-title">Datos personales</div>
-    <div class="wellness-sub">Completá tu información básica</div>
-    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+        <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div><label class="eval-lbl">Apellido</label><input class="auth-inp" style="margin:0" type="text" value="${d.lastName||''}" oninput="setOnboardingField('lastName',this.value)" onblur="this.value=capitalizeName(this.value);setOnboardingField('lastName',this.value)" placeholder="Ej: Pérez"></div>
         <div><label class="eval-lbl">Nombre</label><input class="auth-inp" style="margin:0" type="text" value="${d.firstName||''}" oninput="setOnboardingField('firstName',this.value)" onblur="this.value=capitalizeName(this.value);setOnboardingField('firstName',this.value)" placeholder="Ej: Juan"></div>
@@ -2103,8 +2176,7 @@ function renderOnboardingStep1(d) {
 function renderOnboardingStep2(d) {
   let html = `<div class="wellness-card">
     <div class="wellness-title">¿Qué tipo de atleta sos?</div>
-    <div class="wellness-sub">Esto define cómo se organizan tus datos</div>
-    <div style="padding:16px;display:flex;gap:10px">
+        <div style="padding:16px;display:flex;gap:10px">
       <div onclick="selectAthleteType('individual')" style="flex:1;cursor:pointer;border:2px solid ${d.athleteType==='individual'?'var(--accent)':'var(--border2)'};border-radius:var(--r);padding:16px;text-align:center;background:${d.athleteType==='individual'?'var(--bg3)':'transparent'}">
         <div style="font-size:14px;font-weight:700">Atleta individual</div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">No pertenezco a ningún equipo</div>
@@ -2166,8 +2238,7 @@ function renderOnboardingStep2(d) {
 function renderOnboardingStep3(d) {
   return `<div class="wellness-card">
     <div class="wellness-title">Lesiones o molestias</div>
-    <div class="wellness-sub">Si tenés alguna lesión pasada o actual, marcala en el mapa (es opcional)</div>
-    <div class="body-map-wrap">
+        <div class="body-map-wrap">
       <div class="body-svg-wrap"><div class="body-svg-label">Frente</div>${renderBodySVG('front')}</div>
       <div class="body-svg-wrap"><div class="body-svg-label">Espalda</div>${renderBodySVG('back')}</div>
     </div>
@@ -2434,7 +2505,14 @@ function getNavSnapshot() {
     teamSubview: S.teamSubview||null,
     teamReportSubview: S.teamReportSubview||null,
     teamDayEditIdx: S.teamDayEdit ? S.teamDayEdit.dayIdx : null,
-    viewingAthleteUid: S.viewingAthlete?.uid||null,
+    // Con la ficha del profe abierta, viewingAthlete se carga DESPUÉS (cuando
+    // llegan los datos) — si contara por separado, un solo "abrir atleta"
+    // empujaba DOS entradas de historial y el botón atrás parecía no hacer nada.
+    viewingAthleteUid: S.atletaView ? S.atletaView.uid : (S.viewingAthlete?.uid||null),
+    // la ficha de atleta que ve el profe (Dashboard/Atletas/Equipos): sin esto,
+    // al volver con el botón atrás del navegador la ficha quedaba "abierta" en
+    // memoria y reaparecía en otra pestaña (ej. Atletas mostraba al último atleta)
+    atletaViewUid: S.atletaView?.uid||null,
     atletaSubview: S.atletaSubview||null,
     editingRoutineId: S.editingRoutine?.id||null,
     routineEditorPrev: S._routineEditorPrev||null,
@@ -2476,6 +2554,12 @@ function applyNavSnapshot(snap) {
     S.viewingAthlete = a ? {uid:a.uid, userData:a, personal:a._personal||{}} : null;
   } else {
     S.viewingAthlete = null;
+  }
+  if(snap.atletaViewUid) {
+    const av = (S.adminAthletes||[]).find(x=>x.uid===snap.atletaViewUid) || (S.dashAthletes||[]).find(x=>x.uid===snap.atletaViewUid) || null;
+    S.atletaView = av; S._inAthleteDetail = !!av;
+  } else {
+    S.atletaView = null; S._inAthleteDetail = false; S._athleteDetailReturnCtx = null;
   }
   S.atletaSubview = snap.atletaSubview;
   S.editingRoutine = snap.editingRoutineId ? (S.routines||[]).find(r=>r.id===snap.editingRoutineId)||S.editingRoutine||null : null;
@@ -2597,6 +2681,7 @@ async function refreshAthleteDataIfStale() {
       const d = pSnap.data();
       S.personalExtras = d.personalExtras || {};
       S.routineOverrides = d.routineOverrides || {};
+      S.coachNotes = d.coachNotes || {};
     }
     const assignedId = S.userData.assignedRoutine || null;
     if(assignedId) {
@@ -2824,25 +2909,25 @@ function rmCalcInputsHtml(lift, s) {
     return `<div style="font-size:12px;color:var(--amber)">Todavía no tenés un RM cargado para ${lift.short} — cargalo en Ajustes, o estimalo con Repeticiones o Velocidad.</div>`;
   }
   const fld = (label,f,val,placeholder,step) => `<div style="flex:1">
-      <label style="display:block;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">${label}</label>
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">${label}</label>
       <input class="field-inp" style="width:100%" type="number" inputmode="decimal" ${step?`step="${step}"`:''} value="${val??''}" placeholder="${placeholder}" onchange="setRMCalcField('${lift.liftId}','${f}',this.value)">
     </div>`;
   if(s.mode==='epley') {
     return `<div style="display:flex;gap:8px">${fld('Peso (kg)','epleyWeight',s.epleyWeight,'ej. 60')}${fld('Repeticiones','epleyReps',s.epleyReps,'ej. 6')}</div>
-    <div style="font-size:11px;color:var(--text3);margin-top:6px">Hacé una serie cerca del fallo (1 a 10 reps) y cargá cuánto pesaste y cuántas hiciste.</div>`;
+    `;
   }
   return `<div style="display:flex;gap:8px">${fld('Peso (kg)','velKg',s.velKg,'ej. 80')}${fld('Velocidad (m/s)','velV',s.velV,'ej. 0.39','0.01')}</div>
-  <div style="font-size:11px;color:var(--text3);margin-top:6px">Cargá el peso movido y la velocidad de ejecución de esa serie.</div>`;
+  `;
 }
 
 function rmCalcTableHtml(rm) {
-  if(rm==null) return `<div style="font-size:12px;color:var(--text3);padding:8px 0">Completá los datos de arriba para ver la tabla.</div>`;
+  if(rm==null) return ``;
   const rows = RM_CALC_PCTS.map(p=>({ pct:p, kg: Math.round(rm*p/100*10)/10 }));
   return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">
     <thead><tr>
-      <th style="text-align:left;font-size:9.5px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">%RM</th>
-      <th style="text-align:right;font-size:9.5px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Kg</th>
-      <th style="text-align:right;font-size:9.5px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Reps aprox.</th>
+      <th style="text-align:left;font-size:11px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">%RM</th>
+      <th style="text-align:right;font-size:11px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Kg</th>
+      <th style="text-align:right;font-size:11px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Reps aprox.</th>
     </tr></thead>
     <tbody>
       ${rows.map(r=>{
@@ -2889,8 +2974,7 @@ function renderRMCalcSection(standalone) {
     <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleSection('${key}')">
       <div>
         <div class="wellness-title">🏋️ Calculadora de %RM</div>
-        <div class="wellness-sub">Con qué peso trabajar hoy, en cada ejercicio</div>
-      </div>
+              </div>
       <span style="color:var(--text3);font-size:15px;transform:rotate(${collapsed?'-90':'0'}deg);transition:transform .15s">›</span>
     </div>
     ${body}
@@ -2906,8 +2990,7 @@ function renderSession() {
   if (!S.isAdmin && S.rmCalcTabActive) {
     const header = `<div class="page-header">
       <div class="page-title">Calculadora de %RM</div>
-      <div class="page-subtitle">Con qué peso trabajar hoy, en cada ejercicio</div>
-    </div>`;
+          </div>`;
     return header + renderRMCalcSection(true);
   }
   const blocks = getCurrentBlocks();
@@ -2957,7 +3040,7 @@ function renderBlock(b) {
     if(getED(getRoutineWeek(),S.currentSession,ex.id).checked) doneEx++;
   }));
   const blockAllDone = totalEx>0 && doneEx===totalEx;
-  let inner=`<p class="block-note">${b.note||''}</p>`;
+  let inner=b.note?`<p class="block-note">${b.note}</p>`:'';
   b.categories.forEach((cat,ci)=>{
     inner+=`<div class="cat-header">
       <div class="cat-label-wrap">
@@ -2993,14 +3076,16 @@ function renderBlock(b) {
     <div class="block-header" onclick="toggleBlock('${b.id}')">
       <span class="block-badge">${b.label}</span>
       <div class="block-title-wrap">
-        <span class="block-title" ${S.isAdmin?`ondblclick="editBlockTitle(event,'${b.id}')"`:''}>${b.title}</span>
+        <span class="block-title" ${S.isAdmin?`ondblclick="event.stopPropagation();renameBlockPicker('own','${b.id}')"`:''}>${b.title}</span>
         <input class="block-title-inp" id="btinp-${b.id}" onblur="saveBlockTitle('${b.id}',this)" onkeydown="if(event.key==='Enter')this.blur()">
       </div>
-      <span class="block-time">${b.time}</span>
+      <span class="block-time">${b.time||''}</span>
+      ${S.isAdmin?`<span class="ex-icon-btn" onclick="event.stopPropagation();renameBlockPicker('own','${b.id}')" title="Cambiar el nombre del bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>`:''}
       ${blockAllDone?`<span class="block-done-badge" title="Bloque completo" style="width:20px;height:20px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>`:''}
       ${S.isAdmin?`<span class="block-del" onclick="deleteBlock(event,'${b.id}')">×</span>`:''}
       <span class="block-chevron">›</span>
     </div>
+    ${!S.isAdmin&&totalEx?`<div class="blk-prog" id="bprog-${b.id}"><i style="width:${Math.round(doneEx/totalEx*100)}%"></i></div>`:''}
     <div class="block-body">${inner}</div>
   </div>`;
 }
@@ -3051,17 +3136,18 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const suggestedKg = (pctParts.length && rmValue)
     ? pctParts.map(p=>{ const n=parseDecimal(p); return isNaN(n)?'?':Math.round((n/100)*rmValue); }).join('/')
     : null;
-  // Prescription display for athlete (read-only pill row above fields)
-  const prescRow = isAthleteMode && (prescSeries||prescReps||prescPct||prescRpe) ? `
-    <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;cursor:pointer" onclick="openProgressionModal('${ex.id}','${displayExName.replace(/'/g,"\\'")}')" title="Ver progresión semana a semana">
-        ${prescSeries?`<span style="font-size:11px;background:var(--purple-dim);color:var(--purple);padding:2px 8px;border-radius:20px;border:1px solid rgba(212,100,122,0.3)">${prescSeries} series</span>`:''}
-        ${prescReps?`<span style="font-size:11px;background:var(--blue-dim);color:var(--blue);padding:2px 8px;border-radius:20px;border:1px solid rgba(96,165,250,0.3)">${prescReps} reps</span>`:''}
-        ${prescPct?`<span style="font-size:11px;background:var(--teal-dim);color:var(--teal);padding:2px 8px;border-radius:20px;border:1px solid rgba(45,212,191,0.3)">${prescPct}%RM${suggestedKg?' ≈ '+suggestedKg+'kg':''}</span>`:''}
-        ${prescRpe?`<span style="font-size:11px;background:var(--amber-dim);color:var(--amber);padding:2px 8px;border-radius:20px;border:1px solid rgba(198,124,15,0.3)">${prescIntensityType} objetivo: ${prescRpe}</span>`:''}
-        ${(prescPct && ex.rmLift && !rmValue)?`<span style="font-size:11px;color:var(--amber)">Cargá tu RM de ${RM_LIFTS.find(r=>r.id===ex.rmLift)?.label||''} en Ajustes para ver los kilos</span>`:''}
-        <span style="font-size:10px;color:var(--text3)">📈</span>
-      </div>
+  // Dosis del atleta en UNA línea grande: "4 × 8", con rango "4 × 6–8", o
+  // solo las repeticiones si no hay series ("5 · 3 · 2 · 1" queda tal cual);
+  // la intensidad al lado, y si el ejercicio tiene %RM y el atleta cargó su RM,
+  // "Hoy toca X kg" ya calculado.
+  const doseMain = (prescSeries && prescReps) ? `${prescSeries} × ${prescReps}` : (prescReps || (prescSeries ? `${prescSeries} ×` : ''));
+  const prescRow = isAthleteMode && (doseMain||prescPct||prescRpe) ? `
+    <div class="dose-row" onclick="openProgressionModal('${ex.id}','${displayExName.replace(/'/g,"\\'")}')" title="Ver progresión semana a semana">
+      ${doseMain?`<span class="dose-n">${doseMain}</span>`:''}
+      ${prescRpe?`<span class="dose-i">${prescIntensityType} ${prescRpe}</span>`:''}
+      ${prescPct?`<span class="dose-i">${prescPct}%RM</span>`:''}
+      ${suggestedKg?`<span class="dose-kg">Hoy toca ${suggestedKg} kg</span>`:''}
+      ${(prescPct && ex.rmLift && !rmValue)?`<span class="dose-warn">Cargá tu RM de ${RM_LIFTS.find(r=>r.id===ex.rmLift)?.label||''} en Ajustes</span>`:''}
       ${prescRpe?infoBtn('intensity'):''}
     </div>` : '';
   const prescNoteRow = prescNote ? `<div style="font-size:12px;color:var(--text3);font-style:italic;margin:2px 0 6px">${prescNote}</div>` : '';
@@ -3076,7 +3162,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
     <div class="ex-check ${d.checked?'checked':''}" onclick="toggleCheck('${ex.id}')"></div>
     <div class="ex-main">
       <div class="ex-name-row">
-        <span class="ex-name" ${canEdit?`ondblclick="editExName(this,'${ex.id}','${blockId}',${catIdx})"`:''}>${displayExName}${exOverride?' <span style="font-size:9px;font-weight:700;color:var(--accent-text)">· personalizado</span>':''}</span>
+        <span class="ex-name" ${canEdit?`ondblclick="editExName(this,'${ex.id}','${blockId}',${catIdx})"`:''}>${displayExName}${exOverride?' <span style="font-size:11px;font-weight:700;color:var(--accent-text)">· personalizado</span>':''}</span>
         <input class="ex-name-inp" id="exinp-${ex.id}" ${canEdit?`onblur="saveExName('${ex.id}','${blockId}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"`:''}>
         <div class="ex-actions" style="flex-direction:column">
           <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',${canEdit})" title="${canEdit?'Video':'Ver video'}">
@@ -3090,6 +3176,8 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
       </div>
       ${prescNoteRow}
       ${prescRow}
+      ${isAthleteMode && S.coachNotes?.[ex.id]?.text ? `<div class="coach-note"><b>Nota de tu profe</b>${String(S.coachNotes[ex.id].text).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>` : ''}
+      ${isAthleteMode ? trendChipHtml(S.userData, S.history, S.assignedRoutine, S.currentWeek, ex, "openProgressionModal('"+ex.id+"','"+displayExName.replace(/'/g,"\\'")+"')").replace('class="trend-chip"','class="trend-chip" style="margin:0 0 8px"') : ''}
       <div class="ex-fields">
         ${isAthleteMode ? `
           <div class="field-box"><span class="field-lbl" style="color:var(--green)">Carga real (kg)</span>
@@ -3173,6 +3261,8 @@ function updateBlockCheckmark(rowEl) {
   const checks = blockEl.querySelectorAll('.ex-check');
   const total = checks.length;
   const done = blockEl.querySelectorAll('.ex-check.checked').length;
+  const prog = blockEl.querySelector('.blk-prog i');
+  if(prog && total) prog.style.width = Math.round(done/total*100)+'%';
   const header = blockEl.querySelector('.block-header');
   if(!header) return;
   let badge = header.querySelector('.block-done-badge');
@@ -3577,22 +3667,138 @@ function clonedBlockFromClipboard() {
 }
 window.clonedBlockFromClipboard = clonedBlockFromClipboard;
 
-// ── ADD BLOCK ─────────────────────────────────────────────────
-function addBlock() {
-  const colors=['b1','b2','b3','b4','bx'];
-  const cc=colors[S.blocks.length % colors.length];
-  S.blocks.push({
-    id:genId(), label:`Bloque ${S.blocks.length+1}`, title:'Nuevo bloque',
-    time:'', colorKey:cc, note:'', _open:true, categories:[
-      {id:genId(),label:'Categoría',exercises:[]}
-    ]
-  });
-  scheduleSave(); renderMain();
-  setTimeout(()=>{
-    const last=document.querySelectorAll('.block-title');
-    if(last.length) last[last.length-1].dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
-  },100);
+// ── NOMBRES FIJOS DE BLOQUE ────────────────────────────────────────────────
+// Los bloques ya no se nombran a mano: se elige de esta lista. Tres tienen
+// subcategorías OPCIONALES; el nombre final es "CATEGORÍA // SUBCATEGORÍA".
+// Reglas: (1) dentro de un día no se repite un nombre ya usado (no aparece en
+// el desplegable); (2) una categoría con subcategorías sigue disponible
+// mientras le quede alguna opción libre; (3) al quitar o renombrar un bloque,
+// su nombre vuelve a estar disponible.
+const BLOCK_NAMES = [
+  {main:'MOVILIDAD',         subs:[], color:'b6'},
+  {main:'ACONDICIONAMIENTO', subs:[], color:'b4'},
+  {main:'DLO',               subs:['PLYO MMII','PLYO MMSS'], color:'b3'},
+  {main:'FUERZA A',          subs:['CONTRASTE MMII','CONTRASTE MMSS'], color:'b1'},
+  {main:'FUERZA B',          subs:['MMII','MMSS'], color:'b2'},
+  {main:'ESTRUCTURA',        subs:[], color:'b5'},
+  {main:'ACCESORIOS',        subs:[], color:'bx'},
+  {main:'PUMP',              subs:[], color:'b7'},
+];
+window.BLOCK_NAMES = BLOCK_NAMES;
+function blockFullName(main, sub) { return sub ? main+' // '+sub : main; }
+function normBlockName(t) { return String(t||'').toUpperCase().replace(/\s*\/\/\s*/g,' // ').replace(/\s+/g,' ').trim(); }
+// main/sub de un bloque: los guardados, o (bloques viejos) los que coincidan
+// exactamente con un nombre de la lista; si no, null (queda "sin clasificar").
+function getBlockMainSub(b) {
+  if(b.main) return {main:b.main, sub:b.sub||null};
+  const t = normBlockName(b.title);
+  for(const c of BLOCK_NAMES) {
+    if(t===c.main) return {main:c.main, sub:null};
+    for(const s of c.subs) if(t===blockFullName(c.main,s)) return {main:c.main, sub:s};
+  }
+  return null;
 }
+window.getBlockMainSub = getBlockMainSub;
+function blockColorFor(main) { return (BLOCK_NAMES.find(c=>c.main===main)||{}).color || 'bx'; }
+function newNamedBlock(n, main, sub) {
+  return { id:genId(), label:`Bloque ${n+1}`, title:blockFullName(main,sub), main, sub:sub||null, time:'', colorKey:blockColorFor(main), note:'', _open:true, categories:[{id:genId(),label:'Categoría',exercises:[]}] };
+}
+
+// Bloques del día sobre el que se está eligiendo el nombre.
+function bnpBlocks(ctx) {
+  if(ctx.kind==='routine') return (S.editingRoutine?.sessions?.[ctx.sessionName]) || [];
+  if(ctx.kind==='td') return getTeamDay(ctx.teamId, ctx.dayIdx)?.blocks || [];
+  return S.blocks || [];
+}
+function bnpUsed(ctx) {
+  return bnpBlocks(ctx).filter(b=>b.id!==ctx.blockId).map(b=>{ const ms=getBlockMainSub(b); return ms ? blockFullName(ms.main, ms.sub) : null; }).filter(Boolean);
+}
+// Opciones libres de una categoría en este día: null = "sin subcategoría".
+function bnpAvail(cat, used) {
+  const out = [];
+  if(!used.includes(cat.main)) out.push(null);
+  cat.subs.forEach(s=>{ if(!used.includes(blockFullName(cat.main,s))) out.push(s); });
+  return out;
+}
+
+function openBlockNamePicker(ctx) {
+  const cur = ctx.blockId ? getBlockMainSub(bnpBlocks(ctx).find(b=>b.id===ctx.blockId)||{}) : null;
+  S._bnp = { ctx, step:1, main:null, sub:undefined, cur };
+  renderBlockNamePicker();
+  document.getElementById('blockname-overlay').classList.add('open');
+}
+window.openBlockNamePicker = openBlockNamePicker;
+function closeBlockNamePicker() { document.getElementById('blockname-overlay').classList.remove('open'); S._bnp = null; }
+window.closeBlockNamePicker = closeBlockNamePicker;
+function closeBlockNameIfOutside(e) { if(e.target===document.getElementById('blockname-overlay')) closeBlockNamePicker(); }
+window.closeBlockNameIfOutside = closeBlockNameIfOutside;
+
+function renderBlockNamePicker() {
+  const st = S._bnp; if(!st) return;
+  const used = bnpUsed(st.ctx);
+  const body = document.getElementById('blockname-body');
+  const title = document.getElementById('blockname-title');
+  if(st.step===1) {
+    title.textContent = 'Nombre del bloque';
+    const rows = BLOCK_NAMES.filter(c=>bnpAvail(c,used).length);
+    body.innerHTML = rows.length
+      ? rows.map(c=>`<button class="bnp-opt" onclick="bnpPickMain('${c.main}')"><span>${c.main}</span>${c.subs.length?'<span class="bnp-go">›</span>':''}</button>`).join('')
+      : '<div class="bnp-empty">Ya usaste todos los nombres en este día.</div>';
+  } else {
+    const cat = BLOCK_NAMES.find(c=>c.main===st.main);
+    const av = bnpAvail(cat, used);
+    if(st.sub===undefined) st.sub = av.includes(null) ? null : av[0];
+    title.textContent = cat.main;
+    body.innerHTML = `<div class="bnp-chips">${av.map(s=>`<button class="chip-btn ${st.sub===s?'on':''}" onclick="bnpPickSub(${s===null?'null':`'${s}'`})">${s||'Sin subcategoría'}</button>`).join('')}</div>
+      <div class="bnp-foot"><button class="abtn" onclick="bnpBack()">‹ Volver</button><b>${blockFullName(cat.main, st.sub)}</b><button class="abtn abtn-p" onclick="bnpConfirm()">Listo</button></div>`;
+  }
+}
+function bnpPickMain(m) {
+  const st = S._bnp; if(!st) return;
+  const cat = BLOCK_NAMES.find(c=>c.main===m);
+  if(!cat.subs.length) { st.main=m; st.sub=null; bnpConfirm(); return; }
+  st.main = m; st.sub = undefined; st.step = 2; renderBlockNamePicker();
+}
+function bnpPickSub(s) { if(S._bnp) { S._bnp.sub = s; renderBlockNamePicker(); } }
+function bnpBack() { if(S._bnp) { S._bnp.step = 1; renderBlockNamePicker(); } }
+window.bnpPickMain=bnpPickMain; window.bnpPickSub=bnpPickSub; window.bnpBack=bnpBack;
+
+function bnpConfirm() {
+  const st = S._bnp; if(!st || !st.main) return;
+  const {ctx, main} = st, sub = st.sub || null;
+  const blocks = bnpBlocks(ctx);
+  if(ctx.blockId) {
+    const b = blocks.find(x=>x.id===ctx.blockId);
+    if(b) { b.main=main; b.sub=sub; b.title=blockFullName(main,sub); b.colorKey=blockColorFor(main); }
+  } else if(ctx.kind==='routine') {
+    const r = S.editingRoutine; if(!r) return;
+    if(!r.sessions[ctx.sessionName]) r.sessions[ctx.sessionName]=[];
+    r.sessions[ctx.sessionName].push(newNamedBlock(r.sessions[ctx.sessionName].length, main, sub));
+  } else if(ctx.kind==='td') {
+    const day = getTeamDay(ctx.teamId, ctx.dayIdx); if(!day) return;
+    if(!day.blocks) day.blocks=[];
+    day.blocks.push(newNamedBlock(day.blocks.length, main, sub));
+  } else {
+    S.blocks.push(newNamedBlock(S.blocks.length, main, sub));
+    scheduleSave();
+  }
+  if(ctx.blockId && ctx.kind==='own') scheduleSave();
+  closeBlockNamePicker();
+  renderMain();
+}
+window.bnpConfirm = bnpConfirm;
+
+// Puntos de entrada (reemplazan el "Nuevo bloque" + doble click para escribir).
+function renameBlockPicker(kind, blockId, a, b) {
+  const ctx = {kind, blockId};
+  if(kind==='routine') ctx.sessionName = a;
+  if(kind==='td') { ctx.teamId = a; ctx.dayIdx = b; }
+  openBlockNamePicker(ctx);
+}
+window.renameBlockPicker = renameBlockPicker;
+
+// ── ADD BLOCK ─────────────────────────────────────────────────
+function addBlock() { openBlockNamePicker({kind:'own'}); }
 window.addBlock=addBlock;
 
 // ── LIBRARY ───────────────────────────────────────────────────
@@ -3659,16 +3865,45 @@ window.closeLibIfOutside=closeLibIfOutside;
 // onClickFn: nombre de la función global a invocar por cada chip tocado
 // (recibe el tag como único argumento) — cada llamador tiene la suya porque
 // cada una guarda su selección en un Set de estado distinto.
+// Tres niveles: FAMILIA → categoría → subcategoría, con la cantidad de
+// ejercicios en cada chip. La familia solo ordena la lista (no filtra por sí
+// sola): al elegirla se muestran únicamente sus categorías.
+const LIB_FAMILIES = [
+  {id:'Fuerza',   mains:['Empuje MMSS','Tracción MMSS','Empuje MMII','Tracción MMII','Zona Media']},
+  {id:'Potencia', mains:['DLO','Pliometría Extensiva','Pliometría Intensiva','Lanzamientos']},
+  {id:'ISO',      mains:['ISO HOLD','ISO PUSH','ISO CATCH','ISO SWITCH']},
+  {id:'Movilidad y estabilidad', mains:['Movilidad','Estabilidad','Rehabilitación']},
+  {id:'Auxiliares', mains:['Auxiliar Brazos','Auxiliar MMII']},
+];
 function renderCategoryFilterChips(selected, onClickFn) {
+  const lib = S.library||[];
   const selectedMains = LIB_MAIN_CATEGORIES.filter(c=>selected.has(c));
   const subOptionsToShow = [];
   selectedMains.forEach(main=>{
     (LIB_SUBCATEGORY_RULES[main]||[]).forEach(g=>g.options.forEach(o=>{ if(!subOptionsToShow.includes(o)) subOptionsToShow.push(o); }));
   });
-  const mainRow = LIB_MAIN_CATEGORIES.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('');
-  const subRow = subOptionsToShow.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" style="opacity:.9" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('');
+  const mainCount = {};
+  lib.forEach(e=>{ const m=getExerciseMainCategory(e.tags); if(m) mainCount[m]=(mainCount[m]||0)+1; });
+  // si hay una categoría elegida, su familia queda abierta
+  let fam = S._libFamily || null;
+  if(!fam && selectedMains.length) fam = (LIB_FAMILIES.find(f=>f.mains.includes(selectedMains[0]))||{}).id || null;
+  const famChips = LIB_FAMILIES.map(f=>{
+    const n = f.mains.reduce((t,m)=>t+(mainCount[m]||0),0);
+    return `<button class="lib-filter ${fam===f.id?'active':''}" onclick="setLibFamily('${f.id}')">${f.id} <small>${n}</small></button>`;
+  }).join('');
+  const visibleMains = fam ? (LIB_FAMILIES.find(f=>f.id===fam)?.mains||LIB_MAIN_CATEGORIES) : LIB_MAIN_CATEGORIES;
+  const mains = visibleMains.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t} <small>${mainCount[t]||0}</small></button>`).join('');
+  const subCount = o => lib.filter(e=>(e.tags||[]).includes(o) && (!selectedMains.length || selectedMains.includes(getExerciseMainCategory(e.tags)))).length;
+  const subRow = subOptionsToShow.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" style="opacity:.9" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t} <small>${subCount(t)}</small></button>`).join('');
+  const mainRow = `<div style="flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;padding-bottom:8px;margin-bottom:2px;border-bottom:1px dashed var(--border)">${famChips}</div>${mains}`;
   return { mainRow, subRow, hasSubRow: subOptionsToShow.length>0 };
 }
+function setLibFamily(f) {
+  S._libFamily = (S._libFamily===f) ? null : f;
+  if(document.getElementById('lib-filters')) renderLibFilters();
+  if(document.getElementById('lib-view-body')) updateLibViewResults();
+}
+window.setLibFamily = setLibFamily;
 window.renderCategoryFilterChips = renderCategoryFilterChips;
 
 // Miniatura placeholder para una fila de ejercicio de la Biblioteca — hasta
@@ -3715,7 +3950,7 @@ function renderLibFilters() {
     <span style="font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
       ${filters.size?`<span onclick="event.stopPropagation();setFilter('null')" style="font-size:11px;color:var(--text3);font-weight:600">Limpiar</span>`:''}
-      <span style="color:var(--text3);font-size:10px;transition:transform .15s;display:inline-block;transform:rotate(${open?'180':'0'}deg)">▾</span>
+      <span style="color:var(--text3);font-size:11px;transition:transform .15s;display:inline-block;transform:rotate(${open?'180':'0'}deg)">▾</span>
     </div>
   </div>`;
   if(open) {
@@ -3952,7 +4187,7 @@ function renderTagChipPicker(containerId, setKey) {
   if(!S[setKey]) S[setKey] = new Set();
   const selected = S[setKey];
   const main = getExerciseMainCategory([...selected]);
-  let html = '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Categoría principal</div>'
+  let html = '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Categoría principal</div>'
     + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
     + LIB_MAIN_CATEGORIES.map(c=>`<span class="lib-filter ${main===c?'active':''}" onclick="selectMainCategoryChip('${containerId}','${setKey}','${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
     + '</div>';
@@ -3963,7 +4198,7 @@ function renderTagChipPicker(containerId, setKey) {
         + '</div>';
     });
   } else {
-    html += '<div style="font-size:11px;color:var(--text3)">Elegí una categoría principal arriba.</div>';
+    html += '';
   }
   // Aviso EN VIVO de qué falta — se recalcula en cada toggle, no solo al
   // intentar guardar, así se ve de entrada qué queda pendiente en vez de
@@ -4323,10 +4558,212 @@ function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx
   </tbody></table></div>${athleteNoteRows?`<div style="margin-top:10px">${athleteNoteRows}</div>`:''}`;
 }
 
+// ── GRÁFICO DE PROGRESIÓN DE CARGAS POR EJERCICIO ───────────────────────────
+// Se arma con lo que el atleta va cargando semana a semana (el campo "kg" de
+// cada ejercicio), siguiendo al MISMO ejercicio de la biblioteca a través de
+// todas las planificaciones (si la sentadilla está en la planificación 1 y en
+// la 2, la curva continúa). Solo lo llevan los ejercicios de fuerza:
+// Empuje y Tracción de miembros superiores e inferiores, y DLO. Cada ejercicio
+// de la biblioteca puede forzarse a mano (chartMode: 'on' | 'off').
+const LOAD_CHART_CATEGORIES = new Set(['Empuje MMSS','Tracción MMSS','Empuje MMII','Tracción MMII','DLO']);
+const LOAD_CHART_MIN_WEEKS = 3;
+
+function findLibExercise(ex) {
+  if(!ex) return null;
+  return (ex.libId && S.library.find(l=>l.id===ex.libId))
+    || S.library.find(l=>(l.name||'').trim().toLowerCase()===(ex.name||'').trim().toLowerCase())
+    || null;
+}
+function exerciseSeriesKey(ex) {
+  const l = findLibExercise(ex);
+  return l ? 'lib:'+l.id : 'name:'+(ex.name||'').trim().toLowerCase();
+}
+function getLibMainCategory(ex) {
+  const l = findLibExercise(ex);
+  return (l?.tags||[]).find(t=>LIB_MAIN_CATEGORIES.includes(t)) || null;
+}
+// El atleta escribe texto libre ("82,5", "80 kg", "50×2-60"): se lee el número;
+// si trae varias cargas, se toma la más alta. Sin ningún número → no cuenta.
+function parseLoadKg(t) {
+  if(t==null) return null;
+  const nums = (String(t).match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFloat(x.replace(',','.'))).filter(n=>isFinite(n));
+  return nums.length ? Math.max(...nums) : null;
+}
+
+// Tramos (planificaciones) del atleta con su rutina y rango de semanas.
+function getAthletePhases(userData, currentRoutine, currentWeek) {
+  const h = userData?.routineAssignmentHistory || [];
+  if(!h.length) return [{idx:0, startWeek:1, endWeek:currentWeek, routine:currentRoutine, last:true}];
+  return h.map((p,i)=>{
+    const next = h[i+1];
+    return {
+      idx:i, startWeek:p.startWeek||1,
+      // un tramo viejo llega hasta la semana en que arrancó el siguiente
+      // (ahí puede haber quedado algo registrado de él, ver getPastPhaseSessionRecord)
+      endWeek: next ? (next.startWeek||1) : Math.max(currentWeek, p.startWeek||1),
+      routine: p.routineSnapshot || (i===h.length-1 ? currentRoutine : S.routines.find(r=>r.id===p.routineId)),
+      last: i===h.length-1,
+    };
+  });
+}
+
+function buildLoadSeries(userData, history, currentRoutine, currentWeek, targetEx) {
+  const key = exerciseSeriesKey(targetEx);
+  const byWeek = new Map();
+  getAthletePhases(userData, currentRoutine, currentWeek).forEach(ph=>{
+    const sessions = ph.routine?.sessions || {};
+    Object.keys(sessions).forEach(sName=>{
+      (sessions[sName]||[]).forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(e=>{
+        if(exerciseSeriesKey(e)!==key) return;
+        for(let w=ph.startWeek; w<=ph.endWeek; w++) {
+          const rec = ph.last ? getPhaseSessionRecord(userData, history, w, sName)
+                              : getPastPhaseSessionRecord(userData, history, ph.idx, w, sName);
+          const d = rec?.exercises?.[e.id];
+          const kg = parseLoadKg(d?.load);
+          if(kg==null) continue;
+          const prev = byWeek.get(w);
+          if(prev && prev.kg>=kg) continue;
+          const reps = String(getExPrescriptionForWeek(e, w-ph.startWeek+1).reps||'').trim();
+          byWeek.set(w, {w, kg, raw:d.load, rpe:d.rpe||null, reps:/^\d+$/.test(reps)?parseInt(reps,10):null, plan:ph.idx+1});
+        }
+      })));
+    });
+  });
+  return [...byWeek.values()].sort((a,b)=>a.w-b.w);
+}
+
+function getChartEligibility(ex, pts) {
+  const lib = findLibExercise(ex);
+  const mode = lib?.chartMode || 'auto';
+  const cat = getLibMainCategory(ex);
+  if(mode==='off') return {s:'no'};
+  if(!(mode==='on' || (cat && LOAD_CHART_CATEGORIES.has(cat)))) return {s:'no'};
+  const need = mode==='on' ? 2 : LOAD_CHART_MIN_WEEKS;
+  return pts.length>=need ? {s:'yes', cat} : {s:'wait', have:pts.length, need};
+}
+
+// Miniatura de tendencia para la tarjeta del ejercicio: las últimas 6 semanas
+// con carga, el cambio en kg y "PR" si la última carga es récord. Solo en
+// ejercicios que llevan gráfico; al tocarla se abre el gráfico grande.
+function trendChipHtml(userData, history, currentRoutine, currentWeek, ex, onclick) {
+  let pts;
+  try { pts = buildLoadSeries(userData, history, currentRoutine, currentWeek, ex); } catch(e) { return ''; }
+  if(getChartEligibility(ex, pts).s!=='yes') return '';
+  const last6 = pts.slice(-6);
+  if(last6.length<2) return '';
+  const W=56, H=20, vs=last6.map(p=>p.kg), mn=Math.min(...vs), mx=Math.max(...vs);
+  const xy = last6.map((p,i)=>[2+i*(W-4)/(last6.length-1), H-3-(mx===mn?.5:(p.kg-mn)/(mx-mn))*(H-6)]);
+  const delta = Math.round((last6[last6.length-1].kg-last6[0].kg)*2)/2;
+  const prevMax = Math.max(...pts.slice(0,-1).map(p=>p.kg));
+  const isPR = pts.length>=2 && pts[pts.length-1].kg>prevMax;
+  const fmt = n=>String(Math.abs(n)).replace('.',',');
+  const col = delta>0 ? 'var(--green)' : delta<0 ? 'var(--red)' : 'var(--text3)';
+  const txt = delta>0 ? '▲ +'+fmt(delta)+' kg' : delta<0 ? '▼ −'+fmt(delta)+' kg' : '= igual';
+  return `<span class="trend-chip" onclick="event.stopPropagation();${onclick}" title="Evolución de la carga — tocá para ver el gráfico"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><polyline fill="none" stroke="var(--accent-text)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="${xy.map(a=>a[0].toFixed(1)+','+a[1].toFixed(1)).join(' ')}"/><circle cx="${xy[xy.length-1][0].toFixed(1)}" cy="${xy[xy.length-1][1].toFixed(1)}" r="2.4" fill="${isPR?'var(--amber)':'var(--green)'}"/></svg><span class="trend-txt"><b style="color:${col}">${txt}</b><small>${isPR?'<em>PR</em> · ':''}últimas ${last6.length} sem</small></span></span>`;
+}
+
+function loadChartHtml(userData, history, currentRoutine, currentWeek, ex) {
+  const pts = buildLoadSeries(userData, history, currentRoutine, currentWeek, ex);
+  const el = getChartEligibility(ex, pts);
+  if(el.s==='no') { S._lc = null; return ''; }
+  if(el.s==='wait') {
+    S._lc = null;
+    return `<div style="font-size:12px;color:var(--text3);margin-bottom:12px">Gráfico de carga: ${el.have} de ${el.need} semanas con carga — aparece solo al llegar.</div>`;
+  }
+  S._lcHist = userData?.routineAssignmentHistory || [];
+  const nPlans = Math.max(1, S._lcHist.length);
+  const prevSame = S._lc && S._lc.key===exerciseSeriesKey(ex);
+  const e1rmOk = el.cat!=='DLO' && pts.some(p=>p.reps && p.reps<=10);
+  S._lc = { key:exerciseSeriesKey(ex), name:ex.name, pts, lastWeek:Math.max(currentWeek, pts[pts.length-1].w), nPlans,
+            period: prevSame ? S._lc.period : 12, metric: (prevSame && S._lc.metric==='e1' && e1rmOk) ? 'e1' : 'kg',
+            pick:null, e1rmOk };
+  return `<div id="lc-wrap" style="margin-bottom:14px">${loadChartInner()}</div>`;
+}
+
+function loadChartInner() {
+  const lc = S._lc; if(!lc) return '';
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const key = lc.metric==='e1' ? 'e1' : 'kg';
+  const all = lc.pts.map(p=>({...p, e1:(p.reps && p.reps<=10) ? Math.round(p.kg*(1+p.reps/30)*2)/2 : null}));
+  const nWeeks = lc.period===0 ? lc.lastWeek : Math.min(lc.period, lc.lastWeek);
+  const from = lc.lastWeek-nWeeks+1;
+  const pts = all.filter(p=>p.w>=from && p[key]!=null);
+  const chips = (items, cur, fn) => items.map(([v,l,dis])=>`<button class="chip-btn${cur===v?' on':''}${dis?' dis':''}" ${dis?'disabled':`onclick="${fn}(${typeof v==='string'?`'${v}'`:v})"`}>${l}</button>`).join('');
+  let h = `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+    <div class="lc-chips">${chips([['kg','Carga (kg)'],['e1','RM estimado',!lc.e1rmOk]], lc.metric, 'setLoadChartMetric')}</div>
+    <div class="lc-chips">${chips([[4,'4 sem'],[8,'8 sem'],[12,'12 sem'],[0,'Todo']], lc.period, 'setLoadChartPeriod')}</div>
+  </div>`;
+  if(pts.length<2) {
+    return h + `<div style="padding:26px 0;text-align:center;font-size:12px;color:var(--text3)">No hay suficientes semanas con dato en este período.</div>`;
+  }
+  const W=620, H=250, L=40, R=14, T=34, B=30;
+  const vals = pts.map(p=>p[key]);
+  let mn=Math.min(...vals), mx=Math.max(...vals);
+  const pad = Math.max((mx-mn)*0.25, 2.5);
+  mn = Math.floor((mn-pad)/2.5)*2.5; mx = Math.ceil((mx+pad)/2.5)*2.5;
+  const step = (W-L-R)/Math.max(nWeeks-1,1);
+  const X = w => L+(w-from)*step;
+  const Y = v => T+(1-(v-mn)/(mx-mn))*(H-T-B);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible" role="img" aria-label="Gráfico de carga por semana de ${esc(lc.name)}">`;
+  // bandas por planificación (solo si hay más de una)
+  if(lc.nPlans>1) {
+    let cur=null; const segs=[];
+    for(let w=from; w<=lc.lastWeek; w++) {
+      const ph = getPlanForWeek(w);
+      if(!cur || cur.p!==ph) { cur={p:ph,a:w,b:w}; segs.push(cur); } else cur.b=w;
+    }
+    segs.forEach(g=>{
+      if(!g.p) return;
+      const x1=Math.max(X(g.a)-step/2, L-6), x2=Math.min(X(g.b)+step/2, W-R+6), col=phaseColor(g.p);
+      s += `<rect x="${x1}" y="${T}" width="${x2-x1}" height="${H-T-B}" fill="${col}" fill-opacity=".08"/><text x="${x1+6}" y="${T-12}" font-size="10" font-weight="700" fill="${g.p%4===1?'var(--accent-text)':col}" letter-spacing=".06em">PLANIFICACIÓN ${g.p}</text>`;
+    });
+  }
+  for(let k=0;k<=4;k++){ const v=mn+(mx-mn)*k/4, y=Y(v); s += `<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--border)"/><text x="${L-6}" y="${y+4}" text-anchor="end" font-size="10" fill="var(--text3)">${Math.round(v*2)/2}</text>`; }
+  const every = nWeeks>16 ? Math.ceil(nWeeks/12) : 1;
+  for(let w=from; w<=lc.lastWeek; w++) { if((lc.lastWeek-w)%every) continue; s += `<text x="${X(w)}" y="${H-10}" text-anchor="middle" font-size="10" fill="${w===lc.lastWeek?'var(--text)':'var(--text3)'}" font-weight="${w===lc.lastWeek?700:500}">S${w}</text>`; }
+  const pr = pts.reduce((a,b)=>b[key]>a[key]?b:a, pts[0]);
+  for(let i=1;i<pts.length;i++){ const a=pts[i-1], b=pts[i], gap=b.w-a.w>1; s += `<line x1="${X(a.w)}" y1="${Y(a[key])}" x2="${X(b.w)}" y2="${Y(b[key])}" stroke="var(--accent-text)" stroke-width="2.4" stroke-linecap="round"${gap?' stroke-dasharray="3 6" opacity=".7"':''}/>`; }
+  for(let w=pts[0].w; w<=pts[pts.length-1].w; w++) { if(!pts.some(p=>p.w===w)) s += `<circle cx="${X(w)}" cy="${H-B}" r="2.5" fill="none" stroke="var(--text3)"/>`; }
+  const selW = lc.pick!=null && pts.some(p=>p.w===lc.pick) ? lc.pick : pts[pts.length-1].w;
+  pts.forEach(p=>{
+    const isPR = p===pr, isSel = p.w===selW;
+    s += `<g style="cursor:pointer" onclick="pickLoadChartWeek(${p.w})"><circle cx="${X(p.w)}" cy="${Y(p[key])}" r="16" fill="transparent"/><circle cx="${X(p.w)}" cy="${Y(p[key])}" r="${isSel?6.5:4.5}" fill="${isPR?'var(--amber)':'var(--bg2)'}" stroke="${isPR?'var(--amber)':'var(--accent-text)'}" stroke-width="2.4"/></g>`;
+  });
+  const px=X(pr.w), py=Y(pr[key]);
+  // la etiqueta del récord no se sale del gráfico cuando el récord está en una punta
+  const lx = Math.min(Math.max(px, L+32), W-4-32);
+  s += `<g><rect x="${lx-32}" y="${py-30}" width="64" height="19" rx="9.5" fill="var(--bg2)" stroke="var(--amber)"/><rect x="${lx-32}" y="${py-30}" width="64" height="19" rx="9.5" fill="var(--amber-dim)"/><text x="${lx}" y="${py-17}" text-anchor="middle" font-size="10.5" font-weight="800" fill="var(--amber)">PR ${pr[key]}</text></g></svg>`;
+  const first=pts[0], last=pts[pts.length-1], delta=last[key]-first[key];
+  const sel = pts.find(p=>p.w===selW);
+  const stat = (b,sp,c)=>`<div class="lc-stat"><b${c?` style="color:${c}"`:''}>${b}</b><span>${sp}</span></div>`;
+  h += s + `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      ${stat(pr[key]+' kg','Récord · S'+pr.w,'var(--amber)')}
+      ${stat(last[key]+' kg','Última · S'+last.w)}
+      ${stat((delta>=0?'+':'')+(Math.round(delta*2)/2)+' kg','desde S'+first.w+(first[key]?' ('+Math.round(delta/first[key]*100)+'%)':''),'var(--green)')}
+      ${stat(pts.length+'/'+nWeeks,'semanas con dato')}
+    </div>
+    <div style="font-size:11.5px;color:var(--text3);margin-top:10px;line-height:1.5"><b style="color:var(--text)">S${sel.w}</b>${lc.nPlans>1?' · Planificación '+sel.plan:''} · ${sel[key]} kg${sel.rpe?' · RPE '+esc(sel.rpe):''}${sel.reps?' · '+sel.reps+' rep prescriptas':''} · el atleta escribió «${esc(sel.raw)}»${lc.metric==='e1'?'<br>RM estimado = carga × (1 + repeticiones ÷ 30).':''}</div>`;
+  return h;
+}
+// semana absoluta → número de planificación (para las bandas)
+function getPlanForWeek(w) {
+  const h = S._lcHist || [];
+  if(!h.length) return 1;
+  let n = 1;
+  h.forEach((p,i)=>{ if((p.startWeek||1)<=w) n=i+1; });
+  return n;
+}
+function rerenderLoadChart() { const el=document.getElementById('lc-wrap'); if(el) el.innerHTML = loadChartInner(); }
+function setLoadChartPeriod(n) { if(S._lc){ S._lc.period=n; S._lc.pick=null; rerenderLoadChart(); } }
+function setLoadChartMetric(k) { if(S._lc){ S._lc.metric=k; S._lc.pick=null; rerenderLoadChart(); } }
+function pickLoadChartWeek(w) { if(S._lc){ S._lc.pick=w; rerenderLoadChart(); } }
+window.setLoadChartPeriod=setLoadChartPeriod; window.setLoadChartMetric=setLoadChartMetric; window.pickLoadChartWeek=pickLoadChartWeek;
+
+
 function openProgressionModal(exId, exName) {
   const ex = findExInAssignedRoutine(exId);
   const routine = S.assignedRoutine;
-  const durationWeeks = routine?.durationWeeks || 1;
+  const durationWeeks = getRoutineDurationWeeks(routine);
   // La tabla nunca mira semanas de ANTES de que esta rutina arrancara — si
   // es continuación de otra, esas semanas viejas pertenecen a ejercicios de
   // OTRA rutina (capaz ni siquiera existe este ejercicio ahí), mostrarlas acá
@@ -4339,7 +4776,8 @@ function openProgressionModal(exId, exName) {
     wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, S.userData), override),
     d: (getPhaseSessionRecord(S.userData, S.history, w, S.currentSession)||{}).exercises?.[exId] || {}
   }), null, firstWeek) : '';
-  document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
+  const chartHtml = ex ? loadChartHtml(S.userData, S.history, S.assignedRoutine, S.currentWeek, ex) : '';
+  document.getElementById('progression-modal-body').innerHTML = (chartHtml + body) || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
   document.getElementById('progression-overlay').classList.add('open');
 }
 window.openProgressionModal = openProgressionModal;
@@ -4359,7 +4797,7 @@ function openAdminProgressionModal(uid, exId, exName, sName) {
       }
     }
   }
-  const durationWeeks = routine?.durationWeeks || 1;
+  const durationWeeks = getRoutineDurationWeeks(routine);
   const athleteWeek = a.routineAssignedDate ? computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate) : (a._personal?.startDate ? computeWeekFromDate(a._personal.startDate) : 1);
   const firstWeek = getCurrentPhaseStartWeek(a);
   const lastWeek = Math.max(firstWeek+durationWeeks-1, athleteWeek);
@@ -4369,7 +4807,8 @@ function openAdminProgressionModal(uid, exId, exName, sName) {
     wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, a), override),
     d: getPhaseSessionRecord(a, a._personal?.history, w, sName)?.exercises?.[exId] || {}
   }), {uid:a.uid, sName, exId}, firstWeek) : '';
-  document.getElementById('progression-modal-body').innerHTML = body || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
+  const chartHtml = ex ? loadChartHtml(a, a._personal?.history, routine, athleteWeek, ex) : '';
+  document.getElementById('progression-modal-body').innerHTML = (chartHtml + body) || '<div style="padding:12px;color:var(--text3);font-size:13px">Sin datos de progresión.</div>';
   document.getElementById('progression-overlay').classList.add('open');
 }
 window.openAdminProgressionModal = openAdminProgressionModal;
@@ -4426,7 +4865,7 @@ function renderWellnessDayStrip(wKey) {
     const fg = (submitted || partial) ? '#fff' : 'var(--text3)';
     const border = isSel ? 'var(--accent)' : 'var(--border2)';
     return `<div onclick="goToWellnessDate('${d.key}')" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;min-width:0">
-      <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase">${d.dow}</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase">${d.dow}</div>
       <div style="width:100%;aspect-ratio:1;max-width:38px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:${isSel ? '2px' : '1px'} solid ${border};transition:all .15s">${d.num}</div>
     </div>`;
   }).join('');
@@ -4523,14 +4962,14 @@ function renderWellness() {
   // Desktop: two-column layout. Mobile: stacked.
   let html = `<div class="page-header">
     <div class="page-title">Wellness</div>
-    <div class="page-subtitle">${wKey} · Check-in diario</div>
+    <div class="page-subtitle">${wKey}</div>
   </div>
   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:10px 12px 8px;margin-bottom:14px">
   ${renderWellnessDayStrip(wKey)}
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:6px;border-top:1px solid var(--border)">
     <button class="abtn" onclick="shiftWellnessDate(-1)" ${canGoBack?'':'disabled style="opacity:.3;cursor:not-allowed"'}>‹</button>
     <div style="text-align:center">
-      <div style="font-size:14px;font-weight:700;text-transform:capitalize">${dateLabel}</div>
+      <div style="font-size:14px;font-weight:700;">${(dateLabel||'').charAt(0).toUpperCase()+(dateLabel||'').slice(1)}</div>
       ${!isToday?`<div style="font-size:11px;color:var(--accent-text);cursor:pointer" onclick="goToTodayWellness()">Volver a hoy →</div>`:''}
     </div>
     <button class="abtn" onclick="shiftWellnessDate(1)" ${canGoForward?'':'disabled style="opacity:.3;cursor:not-allowed"'}>›</button>
@@ -4549,7 +4988,7 @@ function renderWellness() {
   // Wellness card
   html += `<div class="wellness-card">
     <div class="wellness-title">${isToday?'¿Cómo estás hoy?':'¿Cómo estuviste ese día?'}</div>
-    <div class="wellness-sub">Tocá la opción que mejor te describe en cada ítem</div>`;
+    `;
 
   WELLNESS_ITEMS.forEach(item=>{
     const val=w[item.key]||0;
@@ -4579,22 +5018,20 @@ function renderWellness() {
       <span style="color:${sleepCat?sleepCat.color:'var(--text3)'};font-size:12px;font-weight:700">${hours!==null?`${hours}h · ${sleepCat.label}`:'—'}</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin:4px 0 2px">
-      <span style="font-size:10px;color:var(--text3);white-space:nowrap">0h</span>
+      <span style="font-size:11px;color:var(--text3);white-space:nowrap">0h</span>
       <input type="range" min="0" max="12" step="0.5" value="${hours||0}"
         style="flex:1;-webkit-appearance:none;height:6px;border-radius:3px;outline:none;cursor:pointer;accent-color:${sleepCat?sleepCat.color:'var(--border2)'};background:linear-gradient(to right,${sleepCat?sleepCat.color:'var(--border2)'} ${sleepPct}%,var(--bg3) ${sleepPct}%)"
         oninput="updateSleepHoursLive(this)" onchange="updateSleepHours('${wKey}',this)">
-      <span style="font-size:10px;color:var(--text3);white-space:nowrap">12h+</span>
+      <span style="font-size:11px;color:var(--text3);white-space:nowrap">12h+</span>
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:2px">0-3h insuficiente · 4-5h poco · 6-7h suficiente · 8h+ excelente</div>
-  </div>`;
+      </div>`;
 
   html+=`<div id="wellness-score-section-${wKey}">
   <div class="hooper-score-box">
     <div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy</div>
       <div class="hooper-score-val" style="color:${wState.color}" ${allFilled?`data-countup="${pct}" data-suffix="%"`:''}>${allFilled?pct+'%':'—'}</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">≥75% bien · ≥50% normal · &lt;50% fatigado</div>
-    </div>
+          </div>
     <div style="text-align:right">
       <div class="hooper-score-label" style="color:${wState.color};font-weight:700">${allFilled?wState.label:'Completá todos los ítems'}</div>
     </div>
@@ -4608,7 +5045,7 @@ function renderWellness() {
   // Usa wKey (la fecha que se esté viendo), no necesariamente hoy.
   html += `<div class="wellness-card">
     <div class="wellness-title">${isToday?'Carga de hoy':'Carga de ese día'}</div>
-    <div class="wellness-sub">Cargá minutos y RPE de cada actividad (las que no correspondan, dejalas en blanco)</div>`;
+    `;
 
   LOAD_ACTIVITIES.forEach(act=>{
     if(act.isExtraGym) return; // se muestra aparte, como desplegable, justo después de Gimnasio
@@ -4638,8 +5075,7 @@ function renderWellness() {
   // Body map card — fixed size, never full width
   html+=`<div class="wellness-card">
     <div class="wellness-title">Mapa de molestias</div>
-    <div class="wellness-sub">Tocá la zona donde sentís molestia</div>
-    <div class="body-map-wrap">
+        <div class="body-map-wrap">
       <div class="body-svg-wrap">
         <div class="body-svg-label">Frente</div>
         ${renderBodySVG('front')}
@@ -4701,23 +5137,22 @@ function renderZoneDetail() {
     <div class="zone-detail-title">${zone.label}
       <span class="zone-close" onclick="S.selectedZone=null;renderMain()">×</span>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">¿Qué es esto? — una molestia solo se ve dentro de tu equipo; una lesión también entra en las alertas del entrenador</div>
-    <div style="display:flex;gap:6px;margin-bottom:10px">
+        <div style="display:flex;gap:6px;margin-bottom:10px">
       <button onclick="setIsInjury('${zid}',false)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${!isInjury?'var(--accent)':'var(--border2)'};background:${!isInjury?'var(--bg3)':'transparent'};color:${!isInjury?'var(--text)':'var(--text3)'};font-weight:${!isInjury?'700':'400'};font-size:12px;cursor:pointer">Molestia</button>
       <button onclick="setIsInjury('${zid}',true)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${isInjury?'var(--red)':'var(--border2)'};background:${isInjury?'var(--red-dim)':'transparent'};color:${isInjury?'var(--red)':'var(--text3)'};font-weight:${isInjury?'700':'400'};font-size:12px;cursor:pointer">Lesión (esguince, edema, luxación...)</button>
     </div>
     ${isInjury?`
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Tipo de lesión</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">${typeBtns}</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Gravedad — esto lo evalúa tu entrenador, marcá lo que te haya dicho (o dejalo en "Leve" si es algo nuevo/sin evaluar)</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Gravedad</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">${sevBtns}</div>
     `:''}
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dolor de HOY 0–10</div>
     <div class="pain-scale" style="display:flex;gap:4px;margin:8px 0;flex-wrap:wrap">${painBtns}</div>
-    <div style="font-size:12px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px dashed var(--border)">Cuestionario rápido (4 preguntas — te ayuda a vos y a tu entrenador a ver cómo te está afectando de verdad, no solo cuánto duele)</div>
+    <div style="font-size:12px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px dashed var(--border)">Cuestionario rápido</div>
     ${OSTRC_QUESTIONS.map(q=>{
       const cur = inj.ostrc?.[q.id];
-      const opts = q.options.map(o=>`<button onclick="setOstrcAnswer('${zid}','${q.id}',${o.v})" style="flex:1;min-width:70px;padding:6px 4px;border-radius:var(--rxs);border:1px solid ${cur===o.v?'var(--accent)':'var(--border2)'};background:${cur===o.v?'var(--accent-dim)':'transparent'};color:${cur===o.v?'var(--accent)':'var(--text3)'};font-weight:${cur===o.v?'700':'400'};font-size:10.5px;cursor:pointer">${o.label}</button>`).join('');
+      const opts = q.options.map(o=>`<button onclick="setOstrcAnswer('${zid}','${q.id}',${o.v})" style="flex:1;min-width:70px;padding:6px 4px;border-radius:var(--rxs);border:1px solid ${cur===o.v?'var(--accent)':'var(--border2)'};background:${cur===o.v?'var(--accent-dim)':'transparent'};color:${cur===o.v?'var(--accent)':'var(--text3)'};font-weight:${cur===o.v?'700':'400'};font-size:11px;cursor:pointer">${o.label}</button>`).join('');
       return `<div style="margin-bottom:10px">
         <div style="font-size:11.5px;color:var(--text3);margin-bottom:5px">${q.label}</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">${opts}</div>
@@ -4742,7 +5177,7 @@ function renderInjuryList() {
         const zone=allZones.find(z=>z.id===id);
         const sev = severityInfo(inj.severity) || severityInfo('leve');
         const col = sev.color;
-        const typeLbl=inj.type?INJURY_TYPES[inj.type]:'';
+        const typeLbl=inj.type?(INJURY_TYPES[inj.type]||''):'';
         const trend = getInjuryTrend(inj);
         return `<div class="injury-item" style="cursor:pointer" onclick="openPainTrendModal('self','${id}')" title="Tocá para ver la progresión">
           <div class="injury-dot" style="background:${col}"></div>
@@ -4767,7 +5202,7 @@ function renderResolvedInjuries() {
   return `<div style="margin-top:10px">
     <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 4px">Historial (resueltas)</div>
     ${sorted.map(r=>{
-      const typeLbl = r.type?INJURY_TYPES[r.type]:'';
+      const typeLbl = r.type?(INJURY_TYPES[r.type]||''):'';
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:1px solid var(--border);font-size:12px">
         <div>
           <div style="font-weight:600">${r.zoneLabel}${typeLbl?` · ${typeLbl}`:''}</div>
@@ -4880,12 +5315,12 @@ function renderInjuryStudies(zid, inj, ownerUid) {
   const addFn = isAdmin ? `adminAddInjuryStudy('${ownerUid}','${zid}',this)` : `addInjuryStudy('${zid}',this)`;
   const rmFn = (sid) => isAdmin ? `adminRemoveInjuryStudy('${ownerUid}','${zid}','${sid}')` : `removeInjuryStudy('${zid}','${sid}')`;
   return `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
-    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Estudios (resonancia, placa, etc.) — opcional</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Estudios</div>
     ${studies.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${studies.map(s=>`
       <div style="position:relative">
         ${(s.type||'').startsWith('image/')
           ? `<img src="${s.url}" onclick="window.open('${s.url}','_blank')" style="width:64px;height:64px;object-fit:cover;border-radius:var(--rxs);border:1px solid var(--border2);cursor:pointer">`
-          : `<a href="${s.url}" target="_blank" style="width:64px;height:64px;display:flex;align-items:center;justify-content:center;border-radius:var(--rxs);border:1px solid var(--border2);background:var(--bg3);font-size:10px;text-align:center;padding:4px;color:var(--text3);text-decoration:none;overflow:hidden">${(s.name||'Archivo').slice(0,16)}</a>`}
+          : `<a href="${s.url}" target="_blank" style="width:64px;height:64px;display:flex;align-items:center;justify-content:center;border-radius:var(--rxs);border:1px solid var(--border2);background:var(--bg3);font-size:11px;text-align:center;padding:4px;color:var(--text3);text-decoration:none;overflow:hidden">${(s.name||'Archivo').slice(0,16)}</a>`}
         <span onclick="${rmFn(s.id)}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;font-size:12px;line-height:18px;text-align:center;cursor:pointer">×</span>
       </div>`).join('')}</div>`:''}
     <label class="abtn" style="cursor:pointer;font-size:11px;display:inline-block">+ Subir estudio<input type="file" accept="image/*,.pdf" style="display:none" onchange="${addFn}"></label>
@@ -4946,8 +5381,7 @@ function refreshWellnessScoreSection(wKey) {
       <div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy ${infoBtn('wellness')}</div>
         <div class="hooper-score-val" style="color:${wState.color}" ${allFilled?`data-countup="${pct}" data-suffix="%"`:''}>${allFilled?pct+'%':'—'}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">≥75% bien · ≥50% normal · &lt;50% fatigado</div>
-      </div>
+              </div>
       <div style="text-align:right">
         <div class="hooper-score-label" style="color:${wState.color};font-weight:700">${allFilled?wState.label:'Completá todos los ítems'}</div>
       </div>
@@ -5167,7 +5601,7 @@ function renderIllnessSection() {
   }
   if(S._showIllnessForm) {
     return `<div style="padding:10px 12px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm)">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Registrar enfermedad (gripe, fiebre, gastro, etc. — no es un golpe ni una molestia física)</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Registrar enfermedad</div>
       <input type="text" id="illness-note-inp" placeholder="Ej: Gripe" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box">
       <div style="display:flex;gap:8px">
         <button class="abtn abtn-p" style="flex:1" onclick="addIllness(document.getElementById('illness-note-inp').value)">Guardar</button>
@@ -5348,7 +5782,7 @@ function renderInjuryFollowup(wKey) {
       }).join('');
       return `<div style="padding:12px 16px;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <div style="font-size:13px;font-weight:600">${zone?.label||zid}${inj.type?` · ${INJURY_TYPES[inj.type]}`:''}</div>
+          <div style="font-size:13px;font-weight:600">${zone?.label||zid}${inj.type?` · ${(INJURY_TYPES[inj.type]||'')}`:''}</div>
           ${doneForDate?`<span style="font-size:11px;color:var(--text3)">✓ Registrado${isToday?' hoy':''} — tocá otro número para corregir</span>`:'<span style="font-size:11px;color:var(--amber);font-weight:700">Falta '+dayWord+'</span>'}
         </div>
         <div class="pain-scale" style="display:flex;gap:4px;flex-wrap:wrap">${scaleBtns}</div>
@@ -5436,7 +5870,7 @@ function renderProgress() {
   })));
 
   if(!exData.length) {
-    html+=`<div class="empty-state">Sin datos registrados para esta semana.<br><span style="font-size:12px">Completá sesiones para ver progresión.</span></div>`;
+    html+=`<div class="empty-state">Sin datos registrados para esta semana.</div>`;
   } else {
     html+=`<div class="prog-ex-list">`;
     exData.forEach(({ex,rows})=>{
@@ -5506,22 +5940,22 @@ function renderStats() {
   // Metric cards — 2x2 grid, no emojis, proper card styling
   html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
-      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Semanas</div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Semanas</div>
       <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${S.currentWeek}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">ciclo actual</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
-      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Sesiones</div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Sesiones</div>
       <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${totalS}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">completadas</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
-      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Racha semanal</div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Racha semanal</div>
       <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;line-height:1;color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}<span style="font-size:16px;font-weight:400;color:var(--text3)">/7</span></div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">días activos</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
-      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Ejerc./sesión</div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Ejerc./sesión</div>
       <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${totalS>0?Math.round(totalC/totalS):0}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">promedio</div>
     </div>
@@ -5536,7 +5970,7 @@ function renderStats() {
         const done=doneDs.has(d);
         return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
           <div style="width:34px;height:34px;border-radius:50%;background:${done?'var(--accent)':'var(--bg3)'};border:1px solid ${done?'var(--accent)':'var(--border2)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:${done?'#fff':'var(--text3)'}">${done?'✓':''}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:capitalize;text-align:center">${day.slice(0,2)}</div>
+          <div style="font-size:11px;color:var(--text3);text-transform:capitalize;text-align:center">${day.slice(0,2)}</div>
         </div>`;
       }).join('')}
     </div>
@@ -5575,7 +6009,7 @@ function renderStats() {
             <div style="height:100%;border-radius:3px;background:${st.color};width:${pct}%;transition:width .3s"></div>
           </div>
           <div style="font-size:13px;font-weight:700;color:${st.color};min-width:32px;text-align:right">${pct}%</div>
-          <div style="font-size:10px;color:${st.color};min-width:36px">${pct>=75?'Bien':pct>=50?'Normal':'Fatiga'}</div>
+          <div style="font-size:11px;color:${st.color};min-width:36px">${pct>=75?'Bien':pct>=50?'Normal':'Fatiga'}</div>
         </div>`;
       }).join('')}
     </div>
@@ -5594,7 +6028,7 @@ function renderTeams() {
     <div style="font-size:16px;font-weight:700">Equipos</div>
     <button class="abtn abtn-p" onclick="createTeam()">+ Nuevo equipo</button>
   </div>`;
-  if(!S.teams.length) html+=`<div class="empty-state">No hay equipos creados.<br><span style="font-size:12px">Creá un equipo para planificar.</span></div>`;
+  if(!S.teams.length) html+=`<div class="empty-state">No hay equipos creados.</div>`;
   else html+=S.teams.map(t=>`
     <div class="team-card" onclick="openTeam('${t.id}')" style="border-left:3px solid ${t.color||'var(--purple)'}">
       <div class="team-card-header">
@@ -5876,7 +6310,6 @@ function renderCalendarRepeatTool(team) {
         </div>
       </div>
       <button class="abtn abtn-p" style="width:100%" onclick="applyCalendarRepeat('${team.id}')">Aplicar</button>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">No pisa nada ya cargado: si ese día ya tiene esa actividad, se salta. Si elegís Partido, se crea sin rival cargado en cada fecha — después entrás día por día a poner el rival y Local/Visitante.</div>
     </div>`;
   }
   html += `</div>`;
@@ -5961,7 +6394,7 @@ function renderCalendarEventChips(events, maxChips) {
       const label = t?t.label:e.type;
       return `<div style="background:${color}26;color:${color};border-radius:3px;padding:1px 3px;font-size:8.5px;font-weight:700;line-height:1.5;width:100%;box-sizing:border-box;overflow:hidden;text-align:center;white-space:nowrap;text-overflow:ellipsis">${label}</div>`;
     }).join('')}
-    ${extraOthers>0?`<div style="font-size:8px;color:var(--text3);text-align:center">+${extraOthers}</div>`:''}
+    ${extraOthers>0?`<div style="font-size:11px;color:var(--text3);text-align:center">+${extraOthers}</div>`:''}
   </div>` : '';
   return `<div style="display:flex;flex-direction:column;gap:3px;width:100%;align-items:center">${matchBoxes}${otherChips}</div>`;
 }
@@ -5986,7 +6419,7 @@ function renderCalendarMonthView(team) {
     ${CALENDAR_TYPES.map(t=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3)"><div style="width:8px;height:8px;border-radius:50%;background:${t.color}"></div>${t.label}</div>`).join('')}
   </div>
   <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">
-    ${['L','M','X','J','V','S','D'].map(d=>`<div style="text-align:center;font-size:10px;color:var(--text3);font-weight:600">${d}</div>`).join('')}
+    ${['L','M','X','J','V','S','D'].map(d=>`<div style="text-align:center;font-size:11px;color:var(--text3);font-weight:600">${d}</div>`).join('')}
   </div>
   <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px">
     ${Array.from({length:startWeekday}).map(()=>'<div></div>').join('')}
@@ -6031,7 +6464,7 @@ function renderCalendarWeekView(team) {
       const isToday=dateStr===today, isSelected=dateStr===selected;
       return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:88px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:3px;padding:4px 2px;
         background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
-        <span style="font-size:9px;color:var(--text3);font-weight:600">${dayInitials[i]}</span>
+        <span style="font-size:11px;color:var(--text3);font-weight:600">${dayInitials[i]}</span>
         <span style="font-size:14px;color:${isToday?'var(--accent)':'var(--text)'}">${d.getDate()}</span>
         ${renderCalendarEventChips(events, 4)}
       </div>`;
@@ -6047,7 +6480,7 @@ function renderCalendarDayView(team) {
   const dateLabel = new Date(refDate+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
-    <div style="font-weight:700;font-size:14px;text-transform:capitalize">${dateLabel}</div>
+    <div style="font-weight:700;font-size:14px;">${(dateLabel||'').charAt(0).toUpperCase()+(dateLabel||'').slice(1)}</div>
     <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
   </div>`;
   html += S.isAdmin ? renderCalendarDayEditor(team, refDate) : renderCalendarDayReadOnly(team, refDate);
@@ -6081,7 +6514,7 @@ function renderCalendarDayReadOnly(team, dateStr) {
   const events = getCalendarEvents(team, dateStr);
   const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   return `<div class="admin-section">
-    <div class="admin-section-title" style="text-transform:capitalize">${dateLabel}</div>
+    <div class="admin-section-title" style="">${(dateLabel||'').charAt(0).toUpperCase()+(dateLabel||'').slice(1)}</div>
     ${events.length?events.map(e=>{
       const t=CALENDAR_TYPES.find(x=>x.id===e.type);
       return `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
@@ -6092,7 +6525,7 @@ function renderCalendarDayReadOnly(team, dateStr) {
         ${e.type==='partido'?`<div style="display:flex;gap:8px;align-items:center;padding-left:16px">
           ${e.crestUrl?`<img src="${e.crestUrl}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;border:1px solid var(--border2)">`:''}
           <span style="font-size:13px;font-weight:600">${e.opponent||'Rival'}</span>
-          <span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;color:#fff;background:${e.homeAway==='visitante'?'var(--blue)':'var(--red)'}">${e.homeAway==='visitante'?'VISITANTE':'LOCAL'}</span>
+          <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:4px;color:#fff;background:${e.homeAway==='visitante'?'var(--blue)':'var(--red)'}">${e.homeAway==='visitante'?'VISITANTE':'LOCAL'}</span>
         </div>`:''}
       </div>`;
     }).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin actividades este día.</div>`}
@@ -6132,7 +6565,7 @@ function renderCalendarDayEditor(team, dateStr) {
       </div>`;
     }).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin actividades este día.</div>`}
     <div style="padding:14px 16px;border-top:1px solid var(--border)">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Agregar actividad (podés combinar varias el mismo día)</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Agregar actividad</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${CALENDAR_TYPES.map(t=>`<button class="lib-filter" onclick="addCalendarEvent('${team.id}','${dateStr}','${t.id}')">+ ${t.label}</button>`).join('')}
       </div>
@@ -6380,19 +6813,19 @@ function renderTeamReportResumen(team, members) {
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
       <div style="background:${wellnessRag.bg};border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:9px;color:${wellnessRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Wellness</div>
+        <div style="font-size:11px;color:${wellnessRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Wellness</div>
         <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wellnessRag.c}">${avgW!=null?avgW+'%':'—'}</div>
-        <div style="font-size:10px;color:${wellnessRag.c};font-weight:600">${wellnessRag.label}${wellnessTrend?' '+wellnessTrend.arrow:''}</div>
+        <div style="font-size:11px;color:${wellnessRag.c};font-weight:600">${wellnessRag.label}${wellnessTrend?' '+wellnessTrend.arrow:''}</div>
       </div>
       <div style="background:${acwrRag.bg};border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:9px;color:${acwrRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Carga (ACWR)</div>
+        <div style="font-size:11px;color:${acwrRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Carga (ACWR)</div>
         <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRag.c}">${avgAcwr!=null?avgAcwr.toFixed(2):'—'}</div>
-        <div style="font-size:10px;color:${acwrRag.c};font-weight:600">${acwrRag.label}</div>
+        <div style="font-size:11px;color:${acwrRag.c};font-weight:600">${acwrRag.label}</div>
       </div>
       <div style="background:${injRag.bg};border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:9px;color:${injRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Lesiones</div>
+        <div style="font-size:11px;color:${injRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Lesiones</div>
         <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${injRag.c}">${injSum.total}</div>
-        <div style="font-size:10px;color:${injRag.c};font-weight:600">${injRag.label} · ${injuryRate}% plantel</div>
+        <div style="font-size:11px;color:${injRag.c};font-weight:600">${injRag.label} · ${injuryRate}% plantel</div>
       </div>
     </div>
 
@@ -6414,11 +6847,11 @@ function renderTeamReportResumen(team, members) {
 
     <div style="font-size:13px;font-weight:700;margin-bottom:8px">Lesiones activas por gravedad</div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
-      <div style="flex:1;background:#fdecea;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#b91c1c">${injSum.grave}</div><div style="font-size:9px;color:#b91c1c;text-transform:uppercase">Graves</div></div>
-      <div style="flex:1;background:#fdf3e3;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#a16207">${injSum.moderada}</div><div style="font-size:9px;color:#a16207;text-transform:uppercase">Moderadas</div></div>
-      <div style="flex:1;background:#e7f5ec;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#16803c">${injSum.leve}</div><div style="font-size:9px;color:#16803c;text-transform:uppercase">Leves</div></div>
-      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#16803c">${altas}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Altas (${periodDays}d)</div></div>
-      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#b91c1c">${bajas}</div><div style="font-size:9px;color:#555;text-transform:uppercase">Bajas nuevas</div></div>
+      <div style="flex:1;background:#fdecea;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#b91c1c">${injSum.grave}</div><div style="font-size:11px;color:#b91c1c;text-transform:uppercase">Graves</div></div>
+      <div style="flex:1;background:#fdf3e3;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#a16207">${injSum.moderada}</div><div style="font-size:11px;color:#a16207;text-transform:uppercase">Moderadas</div></div>
+      <div style="flex:1;background:#e7f5ec;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#16803c">${injSum.leve}</div><div style="font-size:11px;color:#16803c;text-transform:uppercase">Leves</div></div>
+      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#16803c">${altas}</div><div style="font-size:11px;color:#555;text-transform:uppercase">Altas (${periodDays}d)</div></div>
+      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#b91c1c">${bajas}</div><div style="font-size:11px;color:#555;text-transform:uppercase">Bajas nuevas</div></div>
     </div>
     ${injSum.details.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
       <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:left">Zona</th><th style="padding:6px 10px;text-align:center">Dolor</th><th style="padding:6px 10px;text-align:center">Gravedad</th></tr></thead>
@@ -6426,7 +6859,7 @@ function renderTeamReportResumen(team, members) {
         const col = d.sev==='grave'?'#b91c1c':d.sev==='moderada'?'#a16207':'#16803c';
         const bg = d.sev==='grave'?'#fdecea':d.sev==='moderada'?'#fdf3e3':'#e7f5ec';
         const lbl = d.sev==='grave'?'Grave':d.sev==='moderada'?'Moderada':'Leve';
-        return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.athlete}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.zoneId}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${d.pain}/10</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:${bg};color:${col};font-weight:700;font-size:10px;padding:2px 8px;border-radius:10px">${lbl}</span></td></tr>`;
+        return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.athlete}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.zoneId}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${d.pain}/10</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:${bg};color:${col};font-weight:700;font-size:11px;padding:2px 8px;border-radius:10px">${lbl}</span></td></tr>`;
       }).join('')}</tbody>
     </table>`:'<div style="font-size:12px;color:#777;margin-bottom:20px">Sin lesiones activas.</div>'}
 
@@ -6453,7 +6886,7 @@ function renderTeamReportResumen(team, members) {
       }).join('')}</tbody>
     </table>`:''}
 
-    <div style="font-size:10px;color:#999;text-align:right;margin-top:20px">Generado el ${today} · G-Metrics Performance Lab</div>
+    <div style="font-size:11px;color:#999;text-align:right;margin-top:20px">Generado el ${today} · G-Metrics Performance Lab</div>
   </div>`;
 }
 window.renderTeamReportResumen=renderTeamReportResumen;
@@ -6498,27 +6931,26 @@ function renderStaffMeetingReport(team, members) {
   return `<div class="admin-section">
     <div class="admin-section-title">Resumen ejecutivo del plantel — ${today}</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${members.length}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Plantel</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${realInjuriesActive>0?'var(--red)':'var(--text)'}">${realInjuriesActive}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${molestiasActive}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${members.length}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Plantel</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${realInjuriesActive>0?'var(--red)':'var(--text)'}">${realInjuriesActive}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${molestiasActive}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media</div></div>
     </div>
   </div>
 
   <div class="admin-section">
     <div class="admin-section-title">Cumplimiento del wellness diario</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-bottom:10px">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${cargaronHoy===members.length?'var(--green)':'var(--text)'}">${cargaronHoy}/${members.length}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Cargaron hoy</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${diasPromedio}/7</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Promedio días (últ. 7)</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${nuncaCargaron>0?'var(--amber)':'var(--text)'}">${nuncaCargaron}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Nunca cargaron</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${cargaronHoy===members.length?'var(--green)':'var(--text)'}">${cargaronHoy}/${members.length}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Cargaron hoy</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${diasPromedio}/7</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Promedio días (últ. 7)</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${nuncaCargaron>0?'var(--amber)':'var(--text)'}">${nuncaCargaron}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Nunca cargaron</div></div>
     </div>
     ${noCargaronHoy.length?`<div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">Todavía no cargaron hoy: ${noCargaronHoy.map(a=>a.name||a.email).join(', ')}</div>`:''}
   </div>
 
   <div class="admin-section">
     <div class="admin-section-title">Fatiga y dolor por jugador</div>
-    <div style="padding:6px 16px 4px;font-size:11px;color:var(--text3)">Se usa el último check-in cargado por cada jugador — no hace falta que todas hayan completado el wellness el mismo día.</div>
-    ${dolorRows.length?dolorRows.map(r=>`
+        ${dolorRows.length?dolorRows.map(r=>`
       <div style="padding:8px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">
         <div style="font-size:12px;font-weight:600">${r.name}</div>
         <div style="font-size:11px;color:var(--text3)">Fatiga ${r.fatiga??'—'}/5 · Dolor ${r.dolor??'—'}/5${r.date?' · '+r.date:''}</div>
@@ -6527,8 +6959,7 @@ function renderStaffMeetingReport(team, members) {
 
   <div class="admin-section">
     <div class="admin-section-title">Participación en partidos del plantel</div>
-    <div style="padding:6px 16px 4px;font-size:11px;color:var(--text3)">Quiénes acumulan más minutos de partido — cruzalo con fatiga y ACWR antes de definir la próxima carga.</div>
-    ${matchRows.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        ${matchRows.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:1px solid var(--border)">
         <th style="text-align:left;padding:8px 10px;color:var(--text2)">Jugador</th>
         <th style="text-align:center;padding:8px 10px;color:var(--text2)">Partidos</th>
@@ -6609,13 +7040,12 @@ function renderMedicalReport(team, members) {
   return `<div class="admin-section">
     <div class="admin-section-title">Resumen epidemiológico del plantel</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${st.prevalencia>0?'var(--red)':'var(--text)'}">${st.prevalencia}%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Prevalencia actual</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.lesionesPorJugador}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesiones/jugador</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.activeToday}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Activas hoy</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.incidencia??'—'}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Incidencia /1000hs</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${st.prevalencia>0?'var(--red)':'var(--text)'}">${st.prevalencia}%</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Prevalencia actual</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.lesionesPorJugador}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesiones/jugador</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.activeToday}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Activas hoy</div></div>
+      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.incidencia??'—'}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Incidencia /1000hs</div></div>
     </div>
-    <div style="padding:8px 16px 12px;font-size:11px;color:var(--text3)">La incidencia por horas de exposición se calcula con los minutos de entrenamiento/partido que cada atleta ya carga en "Carga de hoy".</div>
-  </div>
+      </div>
 
   <div class="admin-section">
     <div class="admin-section-title">Zonas del cuerpo más afectadas</div>
@@ -6760,10 +7190,10 @@ function renderMatchReadinessReport(team, members) {
   html += `</div>`;
 
   html += `<div class="admin-section"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media (7d)</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${dolorMedia??'—'}${dolorMedia?'/5':''}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Dolor medio (7d)</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRiesgo>0?'var(--red)':'var(--text)'}">${acwrRiesgo}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR en riesgo</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${lesionadasEnDuda>0?'var(--amber)':'var(--text)'}">${lesionadasEnDuda}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas/en duda</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media (7d)</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${dolorMedia??'—'}${dolorMedia?'/5':''}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Dolor medio (7d)</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRiesgo>0?'var(--red)':'var(--text)'}">${acwrRiesgo}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR en riesgo</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${lesionadasEnDuda>0?'var(--amber)':'var(--text)'}">${lesionadasEnDuda}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas/en duda</div></div>
   </div></div>`;
 
   if(noWellness7d>0) html += `<div style="background:var(--amber-dim);color:var(--amber);border-radius:var(--rsm);padding:10px 14px;margin-bottom:14px;font-size:12px">${craftIconSvg('alert','var(--amber)',12)} ${noWellness7d} atleta${noWellness7d===1?'':'s'} sin wellness cargado en los últimos 7 días — su estado real podría no estar reflejado.</div>`;
@@ -6782,7 +7212,7 @@ function renderMatchReadinessReport(team, members) {
       ${[...rows].sort((x,y)=>(x.a.name||x.a.email||'').localeCompare(y.a.name||y.a.email||'')).map(r=>`
         <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthlete('${r.a.uid}')">
           <td style="padding:8px 10px;font-weight:600">${r.a.name||r.a.email}</td>
-          <td style="padding:8px 10px;text-align:center"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${r.disponibilidad.dim};color:${r.disponibilidad.color}">${r.disponibilidad.label}</span></td>
+          <td style="padding:8px 10px;text-align:center"><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${r.disponibilidad.dim};color:${r.disponibilidad.color}">${r.disponibilidad.label}</span></td>
           <td style="padding:8px 10px;text-align:center">${r.fatigaAvg??'—'}</td>
           <td style="padding:8px 10px;text-align:center">${r.dolorAvg??'—'}</td>
           <td style="padding:8px 10px;text-align:center">${r.acwr!=null?r.acwr.toFixed(2):'—'}</td>
@@ -6837,7 +7267,7 @@ function renderTeamRoutineAssignWizard() {
     </select>`;
   if(routine) {
     const sessionNames = getOrderedSessionNames(routine);
-    html += `<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Marcá para qué puestos es cada bloque — dejalo sin marcar si es para todos.</div>`;
+    html += ``;
     sessionNames.forEach(sName=>{
       const blocks = routine.sessions[sName]||[];
       if(!blocks.length) return;
@@ -6849,7 +7279,7 @@ function renderTeamRoutineAssignWizard() {
           <div style="display:flex;gap:5px;flex-wrap:wrap">
             ${ALL_POSITIONS.map(p=>`<button class="abtn ${sel.includes(p)?'abtn-p':''}" style="font-size:11px;padding:4px 9px" onclick="toggleTeamRoutineBlockPosition('${b.id}','${p}')">${p}</button>`).join('')}
           </div>
-          ${!sel.length?`<div style="font-size:10px;color:var(--text3);margin-top:3px">Sin marcar = lo ven todos</div>`:''}
+          ${!sel.length?`<div style="font-size:11px;color:var(--text3);margin-top:3px">Sin marcar = lo ven todos</div>`:''}
         </div>`;
       });
     });
@@ -6993,7 +7423,7 @@ function renderTeamRutina(team) {
         </div>
       </div>`;
       if(!blocks.length){
-        html+=`<div class="empty-state" style="margin-bottom:10px">Sin ejercicios aún.<br><span style="font-size:12px">Tocá "Editar" para planificar esta sesión.</span></div>`;
+        html+=`<div class="empty-state" style="margin-bottom:10px">Sin ejercicios aún.</div>`;
       } else {
         html+=blocks.map(b=>{
           const exList=b.categories.flatMap(c=>c.exercises);
@@ -7013,7 +7443,7 @@ function renderTeamRutina(team) {
         ${(day.playerNotes||[]).map((n,ni)=>`<div class="player-note"><span class="player-note-name">${n.player}</span><span class="player-note-text">${n.note}</span><span style="cursor:pointer;color:var(--text3);font-size:14px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span></div>`).join('')}`;
     }
   } else {
-    html+=`<div class="empty-state">Sin sesiones de entrenamiento aún.<br><span style="font-size:12px">Agregá una sesión para comenzar a planificar.</span></div>`;
+    html+=`<div class="empty-state">Sin sesiones de entrenamiento aún.</div>`;
   }
 
   html+=`<button class="add-block-btn" style="margin-top:10px" onclick="addTrainingDay('${team.id}')">+ Agregar sesión</button>`;
@@ -7026,54 +7456,16 @@ function renderTeamRutina(team) {
   const unmatchedLinked = linkedMembers.filter(a=>!(team.players||[]).some(p=>namesLikelyMatch(p,a.name)||normPersonName(p)===normPersonName(a.email)));
 
   html+=`<div class="admin-section" style="margin-top:16px"><div class="admin-section-title">Jugadores</div>
-    <div style="padding:12px 16px 4px">
+    <div class="ar-list" style="border:0;border-radius:0;box-shadow:none">
     ${(team.players||[]).map((p,pi)=>{
       const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
       if(!match) {
-        return `<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:var(--sh-card);border-radius:var(--rsm);padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:14px;font-weight:600">${p} <span style="font-size:10px;color:var(--amber);font-weight:500;margin-left:6px">sin cuenta todavía</span></div>
+        return `<div class="ar-row ar-plain" style="cursor:default;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:14px;font-weight:600">${p} <span style="font-size:11px;color:var(--amber);font-weight:500;margin-left:6px">sin cuenta todavía</span></div>
           <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
         </div>`;
       }
-      const today = todayLocal();
-      const w = match._personal?.wellness?.[today];
-      const {pct, allFilled} = getWellnessScore(w);
-      const wState = getWellnessState(allFilled?pct:null);
-      const injuries = getActiveInjuriesSummary(match._personal);
-      const sevRank = {grave:3, moderada:2, leve:1};
-      const worstInjury = injuries.length ? injuries.reduce((worst,i)=>(sevRank[i.severity]||1)>(sevRank[worst.severity]||1)?i:worst, injuries[0]) : null;
-      const worstSev = worstInjury ? (severityInfo(worstInjury.severity)||severityInfo('leve')) : null;
-      const injColor = worstSev?.color||null, injDim = worstSev?.dim||null;
-      const matchInfo = getRecentMatchCardInfo(match._personal, today);
-
-      // Alertas puntuales de HOY: estrés, sueño y dolor muscular reportados bajos.
-      const alerts = [];
-      if(w?.estres!==undefined && w.estres<=2) alerts.push({emoji:'😩',label:'Estresado'});
-      if(w?.sueño_calidad!==undefined && w.sueño_calidad<=2) alerts.push({icon:craftIconSvg('sleep','currentColor',11),label:'Durmió mal'});
-      if(w?.dolor_muscular!==undefined && w.dolor_muscular<=2) alerts.push({emoji:'💪',label:'Dolor muscular'});
-      if(w?.sueño_horas!==undefined && w.sueño_horas!=='' && +w.sueño_horas<=5) alerts.push({emoji:'⏰',label:`Poco sueño (${w.sueño_horas}h)`});
-
-      return `<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:var(--sh-card);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="cursor:pointer;flex-shrink:0" onclick="adminOpenAthlete('${match.uid}')">${avatarHtml(match.name||p, match.color, 36, match.photoUrl)}</div>
-          <div style="flex:1;min-width:0;cursor:pointer" onclick="adminOpenAthlete('${match.uid}')">
-            <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${match.name||p}</div>
-            <div style="font-size:11px;color:var(--text3)">${match.position||'Sin posición cargada'}</div>
-          </div>
-          <div style="text-align:center;flex-shrink:0;cursor:pointer" onclick="adminOpenAthlete('${match.uid}')">
-            <div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wState.color}">${allFilled?pct+'%':'—'}</div>
-            <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Wellness</div>
-          </div>
-          <div style="flex-shrink:0">${sparklineSvg(getWellnessSparklineData(match._personal,14), wState.color, 44, 20)}</div>
-          <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
-        </div>
-        ${(worstInjury || alerts.length || matchInfo) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-          ${matchInfo?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700">${craftIconSvg('match','var(--accent-text)',11)} ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>`:''}
-          ${matchInfo?.hadMolestia?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700">${craftIconSvg('alert','var(--red)',11)} molestia en el partido</span>`:''}
-          ${worstInjury?`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${injDim};color:${injColor};border:1px solid ${injColor}">🩹 ${worstInjury.zoneLabel} · ${severityInfo(worstInjury.severity)?.label||'Leve'} · dolor ${worstInjury.pain}/10</span>`:''}
-          ${alerts.map(al=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${al.icon||al.emoji} ${al.label}</span>`).join('')}
-        </div>`:''}
-      </div>`;
+      return athleteRowHtml(match,{onclick:"adminOpenAthlete('"+match.uid+"')", sub:match.position||'Sin posición cargada', extra:`<button class="abtn abtn-d" onclick="event.stopPropagation();deletePlayer('${team.id}',${pi})" title="Quitar del roster">−</button>`});
     }).join('')}
     </div>
     <div class="admin-item">
@@ -7651,29 +8043,29 @@ function renderTeamMetricsCard(title,members,showLoad) {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wState.color}" ${avgW!==null?`data-countup="${avgW}" data-suffix="%"`:''}>${avgW!==null?avgW+'%':'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness sem. ${infoBtn('wellness')}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness sem. ${infoBtn('wellness')}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}" ${avgAcwr!==null?`data-countup="${avgAcwr}" data-decimals="2"`:''}>${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
-        <div style="font-size:9px;color:${acwrSt.color}">${acwrSt.label}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
+        <div style="font-size:11px;color:${acwrSt.color}">${acwrSt.label}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}" ${avgMono!==null?`data-countup="${avgMono}" data-decimals="1"`:''}>${avgMono!==null?avgMono.toFixed(1):'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
-        <div style="font-size:9px;color:${monSt.color}">${monSt.label}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
+        <div style="font-size:11px;color:${monSt.color}">${monSt.label}</div>
       </div>
       ${showLoad?`<div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:16px;font-weight:700" ${avgToday!==null?`data-countup="${Math.round(avgToday)}"`:''}>${avgToday!==null?Math.round(avgToday):'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga hoy (UA) ${infoBtn('ua')}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga hoy (UA) ${infoBtn('ua')}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:16px;font-weight:700" ${avgAcute!==null?`data-countup="${Math.round(avgAcute)}"`:''}>${avgAcute!==null?Math.round(avgAcute):'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
         <div style="font-size:16px;font-weight:700" ${avgChronic!==null?`data-countup="${Math.round(avgChronic)}"`:''}>${avgChronic!==null?Math.round(avgChronic):'—'}</div>
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga crónica (UA)</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga crónica (UA)</div>
       </div>`:''}
     </div>
   </div>`;
@@ -7702,7 +8094,7 @@ function renderAthleteSummaryCard(a) {
       const dt = new Date(d+'T00:00:00');
       const initial = dt.toLocaleDateString('es-AR',{weekday:'narrow'});
       return `<div style="flex:1;text-align:center" title="${d}${sc!=null?' · Wellness '+sc+'%':' · sin wellness'}">
-        <div style="font-size:8px;color:var(--text3);margin-bottom:2px;text-transform:uppercase">${initial}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px;text-transform:uppercase">${initial}</div>
         <div style="height:14px;border-radius:3px;background:${sc!=null?st.color:'var(--bg3)'}"></div>
       </div>`;
     }).join('')}
@@ -7716,12 +8108,12 @@ function renderAthleteSummaryCard(a) {
       </div>
       <div style="text-align:right;flex-shrink:0">
         ${score !== null
-          ? `<div style="font-size:18px;font-weight:700;color:${scoreColor}">${score}%</div><div style="font-size:10px;color:var(--text3)">Wellness</div>`
+          ? `<div style="font-size:18px;font-weight:700;color:${scoreColor}">${score}%</div><div style="font-size:11px;color:var(--text3)">Wellness</div>`
           : `<div style="font-size:11px;color:var(--text3)">Sin wellness hoy</div>`}
       </div>
     </div>
     ${injuries.length ? `<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
-      ${injuries.map(inj => `<div style="font-size:11px;color:var(--red);display:flex;align-items:center;gap:4px">${craftIconSvg('alert','var(--red)',11)} ${inj.zoneLabel}${inj.type ? ' · ' + INJURY_TYPES[inj.type] : ''} (${inj.pain}/10)</div>`).join('')}
+      ${injuries.map(inj => `<div style="font-size:11px;color:var(--red);display:flex;align-items:center;gap:4px">${craftIconSvg('alert','var(--red)',11)} ${inj.zoneLabel}${inj.type ? ' · ' + (INJURY_TYPES[inj.type]||'') : ''} (${inj.pain}/10)</div>`).join('')}
     </div>` : ''}
     ${lastLog ? `<div style="margin-top:6px;font-size:11px;color:var(--text3)">Última sesión: RPE ${lastLog.rpe} · ${lastLog.date}</div>` : ''}
     ${dayStrip}
@@ -7833,7 +8225,7 @@ function renderWeeklyComplianceGrid(members) {
   const dayHead = dates.map(d=>{
     const dt = new Date(d+'T00:00:00');
     const isToday = d===todayStr;
-    return `<div style="width:${colW}px;flex-shrink:0;text-align:center;font-size:9.5px;font-weight:700;color:${isToday?'var(--accent)':'var(--text3)'};text-transform:uppercase">${dt.toLocaleDateString('es-AR',{weekday:'short'}).replace('.','')}<div style="font-weight:400;font-size:9px">${dt.getDate()}/${dt.getMonth()+1}</div></div>`;
+    return `<div style="width:${colW}px;flex-shrink:0;text-align:center;font-size:11px;font-weight:700;color:${isToday?'var(--accent)':'var(--text3)'};text-transform:uppercase">${dt.toLocaleDateString('es-AR',{weekday:'short'}).replace('.','')}<div style="font-weight:400;font-size:11px">${dt.getDate()}/${dt.getMonth()+1}</div></div>`;
   }).join('');
 
   const rows = members.map(a=>{
@@ -8020,7 +8412,7 @@ function renderTeamLeaderboard(members) {
       ${LEADERBOARD_TESTS.map(t=>`<button class="lib-filter ${testId===t.id?'active':''}" onclick="setLeaderboardTest('${t.id}')">${t.label}</button>`).join('')}
     </div>
     <div style="padding:0 16px 12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Ordenar por</span>
+      <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Ordenar por</span>
       <button class="lib-filter ${mode==='pr'?'active':''}" onclick="setLeaderboardMode('pr')">PR histórico</button>
       <button class="lib-filter ${mode==='ultimo'?'active':''}" onclick="setLeaderboardMode('ultimo')">Último test</button>
     </div>`;
@@ -8083,9 +8475,7 @@ function renderTeamRadarSection(members, lockedAthleteId) {
         </select>
       </div>` : '';
       html += `<div style="padding:0 16px 8px;height:270px;position:relative"><canvas id="team-radar-chart"></canvas></div>
-      <div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">${mode==='equipo'
-        ? `Cada eje es el % respecto a ${scaleLabel} — línea llena: el atleta elegido. Punteada: promedio del resto del equipo.`
-        : `Cada eje es el % respecto a ${scaleLabel} — línea llena: su test más reciente. Punteada: su primer test registrado.`}</div>`;
+      `;
     }
   }
   html += `</div>`;
@@ -8429,8 +8819,8 @@ function renderTriageTable(members) {
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${acwrSt.color}">${summary.acwr!=null?summary.acwr.toFixed(2):'—'}</td>
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${monSt.color}">${summary.monotony!=null?summary.monotony.toFixed(1):'—'}</td>
           <td style="padding:8px 10px">
-            ${worst?`<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${worstSev.dim};color:${worstSev.color};margin-right:4px;white-space:nowrap">🩹 ${worst.zoneLabel}</span>`:''}
-            ${lowFlags.map(f=>`<span style="font-size:10px;color:var(--text3);margin-right:6px;white-space:nowrap">${f}</span>`).join('')}
+            ${worst?`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${worstSev.dim};color:${worstSev.color};margin-right:4px;white-space:nowrap">🩹 ${worst.zoneLabel}</span>`:''}
+            ${lowFlags.map(f=>`<span style="font-size:11px;color:var(--text3);margin-right:6px;white-space:nowrap">${f}</span>`).join('')}
             ${(!worst && !lowFlags.length)?'<span style="color:var(--text3)">—</span>':''}
           </td>
         </tr>`;
@@ -8551,12 +8941,12 @@ function renderTeamDayBlock(b,teamId,dayIdx){
     if(ci<b.categories.length-1)inner+=`<hr class="cat-divider">`;
   });
   inner+=`<button class="add-btn" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px" onclick="addTDCategory('${b.id}','${teamId}',${dayIdx})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar subcategoría</button>`;
-  return`<div class="card block ${cc} ${open?'open':''}" id="tdblock-${b.id}"><div class="block-header" onclick="toggleTDBlock('${b.id}','${teamId}',${dayIdx})"><span class="block-badge">${b.label}</span><div class="block-title-wrap"><span class="block-title" ondblclick="editTDBlockTitle(event,'${b.id}','${teamId}',${dayIdx})">${b.title}</span><input class="block-title-inp" id="tdbinp-${b.id}" onblur="saveTDBlockTitle('${b.id}','${teamId}',${dayIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"></div><span class="block-time">${b.time||''}</span><span class="ex-icon-btn" onclick="event.stopPropagation();copyBlockToClipboard(getTDBlock('${b.id}','${teamId}',${dayIdx}))" title="Copiar bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span class="block-del" onclick="deleteTDBlock(event,'${b.id}','${teamId}',${dayIdx})">×</span><span class="block-chevron">›</span></div><div class="block-body">${inner}</div></div>`;
+  return`<div class="card block ${cc} ${open?'open':''}" id="tdblock-${b.id}"><div class="block-header" onclick="toggleTDBlock('${b.id}','${teamId}',${dayIdx})"><span class="block-badge">${b.label}</span><div class="block-title-wrap"><span class="block-title" ondblclick="event.stopPropagation();renameBlockPicker('td','${b.id}','${teamId}',${dayIdx})">${b.title}</span><input class="block-title-inp" id="tdbinp-${b.id}" onblur="saveTDBlockTitle('${b.id}','${teamId}',${dayIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"></div><span class="block-time">${b.time||''}</span><span class="ex-icon-btn" onclick="event.stopPropagation();renameBlockPicker('td','${b.id}','${teamId}',${dayIdx})" title="Cambiar el nombre del bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span><span class="ex-icon-btn" onclick="event.stopPropagation();copyBlockToClipboard(getTDBlock('${b.id}','${teamId}',${dayIdx}))" title="Copiar bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span class="block-del" onclick="deleteTDBlock(event,'${b.id}','${teamId}',${dayIdx})">×</span><span class="block-chevron">›</span></div><div class="block-body">${inner}</div></div>`;
 }
 
 function getTDBlock(blockId,teamId,dayIdx){const day=getTeamDay(teamId,dayIdx);if(!day)return null;return(day.blocks||[]).find(b=>b.id===blockId)||null;}
 window.getTDBlock=getTDBlock;
-function addTeamDayBlock(teamId,dayIdx){const day=getTeamDay(teamId,dayIdx);if(!day)return;if(!day.blocks)day.blocks=[];const colors=['b1','b2','b3','b4','bx'],n=day.blocks.length;day.blocks.push({id:genId(),label:`Bloque ${n+1}`,title:'Nuevo bloque',time:'',colorKey:colors[n%colors.length],note:'',_open:true,categories:[{id:genId(),label:'Categoría',exercises:[]}]});renderMain();}
+function addTeamDayBlock(teamId,dayIdx){ if(!getTeamDay(teamId,dayIdx)) return; openBlockNamePicker({kind:'td', teamId, dayIdx}); }
 window.addTeamDayBlock=addTeamDayBlock;
 function pasteTeamDayBlock(teamId,dayIdx){
   const b=clonedBlockFromClipboard();
@@ -8704,8 +9094,7 @@ window.openExerciseOverrideModal = openExerciseOverrideModal;
 function renderExOverrideForm(ex, existing, realWeek) {
   const v = existing || {fromWeek:realWeek, name:ex.name, series:ex.series||'', reps:ex.reps||'', rpe:ex.rpe||'', intensityType:ex.intensityType||'RPE', note:''};
   return `<div style="display:flex;flex-direction:column;gap:10px;padding-top:2px">
-    <div style="font-size:12px;color:var(--text3)">Esto reemplaza el ejercicio SOLO para este atleta — la plantilla de la rutina no se toca, sus compañeros lo siguen viendo igual.</div>
-    <div><label class="eval-lbl">Nombre del ejercicio</label><input id="exov-name" class="auth-inp" style="margin:0" value="${(v.name||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="eval-lbl">Nombre del ejercicio</label><input id="exov-name" class="auth-inp" style="margin:0" value="${(v.name||'').replace(/"/g,'&quot;')}"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div><label class="eval-lbl">Series</label><input id="exov-series" class="auth-inp" style="margin:0" value="${v.series||''}"></div>
       <div><label class="eval-lbl">Reps</label><input id="exov-reps" class="auth-inp" style="margin:0" value="${v.reps||''}"></div>
@@ -8945,7 +9334,7 @@ async function saveTeam(teamId) {
 function renderAtletas() {
   if (S.atletaView) return renderAtletaDetail(S.atletaView);
 
-  let html = `<div style="font-size:16px;font-weight:700;margin-bottom:14px">Atletas individuales</div>`;
+  let html = `<div style="font-size:18px;font-weight:700;margin-bottom:14px">Atletas</div>`;
 
   if (!S.adminAthletesLoaded) {
     ensureAdminAthletes().then(renderMain);
@@ -8954,30 +9343,41 @@ function renderAtletas() {
 
   const individuals = (S.adminAthletes || []).filter(a => a.athleteType === 'individual');
   if (!individuals.length) {
-    html += `<div class="empty-state">No hay atletas individuales registrados todavía.<br><span style="font-size:12px">Aparecen acá los que se registran sin elegir un equipo.</span></div>`;
-  } else {
-    html += individuals.map(a => {
-      const icon = sportIconSvg(a.sport);
-      return `
-      <div class="card" style="padding:14px;cursor:pointer;margin-bottom:10px" onclick="openAtleta('${a.uid}')">
-        <div style="display:flex;align-items:center;gap:12px">
-          ${athleteListAvatarHtml(a, 44)}
-          <div style="flex:1;min-width:0">
-            <div style="font-size:15px;font-weight:700">${a.name || a.email}</div>
-            <div style="display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap">
-              ${(a.sport||a.position)?`<div style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--accent-text);background:var(--accent-dim);border:1px solid var(--border);border-radius:20px;padding:4px 10px">
-                ${icon?`<span style="display:flex;color:var(--accent-text)">${icon}</span>`:''}
-                <span>${a.sport||''}${a.sport&&a.position?' · ':''}${a.position||''}</span>
-              </div>`:`<span style="font-size:11px;color:var(--text3)">Sin deporte/posición cargados</span>`}
-            </div>
-          </div>
-          <span style="color:var(--text3);font-size:18px">›</span>
-        </div>
-      </div>`;
-    }).join('');
+    return html + `<div class="empty-state">No hay atletas individuales registrados todavía.</div>`;
   }
+  // La fila trae wellness y carga de cada atleta: se cargan una vez y quedan
+  // en memoria (si falla la lectura, igual se muestra la lista sin esos datos).
+  if (individuals.some(a=>!a._personal) && S._atletasPersonalState!=='done') {
+    if (!S._atletasPersonalState) {
+      S._atletasPersonalState = 'loading';
+      ensureGroupPersonalData(individuals.map(a=>a.uid)).catch(()=>{}).finally(()=>{ S._atletasPersonalState='done'; renderMain(); });
+    }
+    return html + `<div class="empty-state">Cargando...</div>`;
+  }
+
+  // Búsqueda + filtro por deporte con cantidad (se oculta si hay un solo deporte)
+  const sportOf = a => (a.sport||'').trim();
+  const sports = [...new Set(individuals.map(sportOf).filter(Boolean))].sort((x,y)=>x.localeCompare(y));
+  if (S.atletasSport && !sports.includes(S.atletasSport)) S.atletasSport = null;
+  html += `<div class="dash-search"><input id="atletas-search-inp" value="${String(S.atletasSearch||'').replace(/"/g,'&quot;')}" placeholder="Buscar atleta" oninput="setAtletasSearch(this.value)"></div>`;
+  if (sports.length > 1) {
+    html += `<div class="dash-filters"><button class="chip-btn ${!S.atletasSport?'on':''}" onclick="setAtletasSport(null)">Todos (${individuals.length})</button>${sports.map(sp=>`<button class="chip-btn ${S.atletasSport===sp?'on':''}" onclick="setAtletasSport('${sp.replace(/'/g,"\'")}')">${sp} (${individuals.filter(a=>sportOf(a)===sp).length})</button>`).join('')}</div>`;
+  }
+  html += `<div id="atletas-list">${renderAtletasList(individuals)}</div>`;
   return html;
 }
+function renderAtletasList(individuals) {
+  individuals = individuals || (S.adminAthletes || []).filter(a => a.athleteType === 'individual');
+  const q = (S.atletasSearch||'').trim().toLowerCase();
+  let list = individuals.slice().sort((x,y)=>(x.name||x.email||'').localeCompare(y.name||y.email||''));
+  if (S.atletasSport) list = list.filter(a=>(a.sport||'').trim()===S.atletasSport);
+  if (q) list = list.filter(a=>(a.name||a.email||'').toLowerCase().includes(q));
+  if (!list.length) return `<div class="empty-state">Sin atletas que coincidan.</div>`;
+  return `<div class="ar-list">${list.map(a=>athleteRowHtml(a,{onclick:"openAtleta('"+a.uid+"')", sub:[a.sport||'Individual', a.position].filter(Boolean).join(' · ')})).join('')}</div>`;
+}
+function setAtletasSearch(v) { S.atletasSearch=v; const el=document.getElementById('atletas-list'); if(el) el.innerHTML=renderAtletasList(); }
+function setAtletasSport(v) { S.atletasSport=v||null; renderMain(); }
+window.setAtletasSearch=setAtletasSearch; window.setAtletasSport=setAtletasSport;
 window.renderAtletas = renderAtletas;
 
 // Lista ordenada de uids "hermanos" del atleta que se está por abrir — se
@@ -9054,6 +9454,157 @@ function openAtleta(uid) {
 }
 window.openAtleta = openAtleta;
 
+// ── CARGAR EN NOMBRE DEL ATLETA (formulario del profe) ─────────────────────
+// El profe completa el wellness y/o la carga de un atleta para una fecha.
+// IMPORTANTE (lección de Forza AR: un guardado "exitoso" que caía en un
+// documento equivocado): este formulario NUNCA usa S.wellness / S.history (son
+// los del usuario logueado). Escribe directo en personal/{uid del atleta} y,
+// al terminar, vuelve a leer ese documento para confirmar que el dato quedó
+// ahí antes de decir "guardado".
+function proxyAthlete() { return (S.adminAthletes||[]).find(x=>x.uid===S._proxy?.uid) || null; }
+
+function openProxyForm(uid, date) {
+  const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
+  if(!a) { showToast('No se encontró al atleta'); return; }
+  const d = date || todayLocal();
+  const p = a._personal || {};
+  const w = {...(p.wellness?.[d]||{})};
+  delete w.submitted; delete w.date;
+  const logs = {};
+  (p.history?._sessionLogs||[]).filter(l=>l.date===d).forEach(l=>{ logs[l.activity] = {mins:l.mins||'', rpe:l.rpe||0}; });
+  S._proxy = { uid, date:d, w, logs, more:false };
+  renderProxyForm();
+  document.getElementById('proxy-overlay').classList.add('open');
+}
+function closeProxyForm() { document.getElementById('proxy-overlay').classList.remove('open'); S._proxy = null; }
+function closeProxyIfOutside(e) { if(e.target===document.getElementById('proxy-overlay')) closeProxyForm(); }
+window.openProxyForm=openProxyForm; window.closeProxyForm=closeProxyForm; window.closeProxyIfOutside=closeProxyIfOutside;
+
+function proxyDateChange(v) {
+  if(!S._proxy || !v) return;
+  const a = proxyAthlete(); const p = a?._personal||{};
+  S._proxy.date = v;
+  const w = {...(p.wellness?.[v]||{})}; delete w.submitted; delete w.date;
+  S._proxy.w = w;
+  const logs = {}; (p.history?._sessionLogs||[]).filter(l=>l.date===v).forEach(l=>{ logs[l.activity] = {mins:l.mins||'', rpe:l.rpe||0}; });
+  S._proxy.logs = logs;
+  renderProxyForm();
+}
+function proxySetW(key, v) { if(!S._proxy) return; S._proxy.w[key] = v; renderProxyForm(); }
+function proxySleep(delta) { const st=S._proxy; if(!st) return; const cur = st.w['sueño_horas']; st.w['sueño_horas'] = Math.max(0, Math.min(14, (cur===undefined||cur===''?7:+cur)+delta)); renderProxyForm(); }
+function proxySetRpe(act, v) { const st=S._proxy; if(!st) return; if(!st.logs[act]) st.logs[act]={mins:'',rpe:0}; st.logs[act].rpe = (st.logs[act].rpe===v?0:v); renderProxyForm(); }
+function proxySetMins(act, v) { const st=S._proxy; if(!st) return; if(!st.logs[act]) st.logs[act]={mins:'',rpe:0}; st.logs[act].mins = v===''?'':Math.max(0,+v); renderProxySummary(); }
+function proxyMore() { if(S._proxy) { S._proxy.more=true; renderProxyForm(); } }
+window.proxyDateChange=proxyDateChange; window.proxySetW=proxySetW; window.proxySleep=proxySleep; window.proxySetRpe=proxySetRpe; window.proxySetMins=proxySetMins; window.proxyMore=proxyMore;
+
+function proxyCalc() {
+  const st = S._proxy;
+  const wKeys = Object.keys(st.w).filter(k=>st.w[k]!==undefined && st.w[k]!=='');
+  const wItems = WELLNESS_ITEMS.filter(it=>st.w[it.key]).length;
+  const sleep = st.w['sueño_horas'];
+  const a = proxyAthlete();
+  const sport = a ? athleteSportOf(a) : '';
+  const logs = LOAD_ACTIVITIES.map(act=>{
+    const d = st.logs[act.key];
+    const ok = d && +d.mins>0 && +d.rpe>0;
+    const half = d && ((+d.mins>0) !== (+d.rpe>0));
+    return {act, label:getLoadActivityDisplay(act, sport).label, d, ok, half, ua: ok ? (+d.mins)*(+d.rpe) : 0};
+  });
+  return {wKeys, wItems, sleep, logs};
+}
+function renderProxySummary() {
+  const el = document.getElementById('proxy-summary'); if(!el || !S._proxy) return;
+  const c = proxyCalc();
+  const save = [], skip = [];
+  if(c.wKeys.length) save.push(`Wellness: ${c.wItems} de ${WELLNESS_ITEMS.length} ítems${c.sleep!==undefined&&c.sleep!==''?' + sueño '+c.sleep+' h':''}${c.wItems===WELLNESS_ITEMS.length && c.sleep!==undefined && c.sleep!=='' ? '' : ' (queda incompleto)'}`);
+  else skip.push('Wellness (sin datos)');
+  c.logs.forEach(l=>{ if(l.ok) save.push(`${l.label}: ${l.d.mins} min · RPE ${l.d.rpe} = ${l.ua} UA`); else if(l.half) skip.push(`${l.label} (falta ${+l.d.mins>0?'RPE':'minutos'})`); });
+  const btn = document.getElementById('proxy-save-btn'); if(btn) btn.disabled = !save.length;
+  el.innerHTML = `<div class="px-sum-t">Se guarda</div>${save.length?save.map(x=>`<div class="px-sum-i ok">${x}</div>`).join(''):'<div class="px-sum-i">Nada todavía</div>'}
+    ${skip.length?`<div class="px-sum-t" style="margin-top:8px">No se guarda</div>${skip.map(x=>`<div class="px-sum-i">${x}</div>`).join('')}`:''}`;
+}
+function renderProxyForm() {
+  const st = S._proxy; if(!st) return;
+  const a = proxyAthlete(); const name = a?.name||a?.email||'';
+  const box = document.getElementById('proxy-body');
+  const keepScroll = box ? box.scrollTop : 0;
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const sport = a ? athleteSportOf(a) : '';
+  const sleep = st.w['sueño_horas'];
+  const wHtml = WELLNESS_ITEMS.map(it=>{
+    const cur = st.w[it.key];
+    const sel = it.options.find(o=>o.v===cur);
+    return `<div class="px-row"><div class="px-lbl"><span>${it.label}</span><b style="color:${cur?`hsl(${Math.round((cur-1)/4*120)},65%,42%)`:'var(--text3)'}">${sel?sel.label:'—'}</b></div>
+      <div class="px-faces">${it.options.map(o=>`<button class="px-face ${cur===o.v?'on':''}" style="${cur===o.v?`background:hsl(${Math.round((o.v-1)/4*120)},65%,45%)`:''}" onclick="proxySetW('${it.key}',${o.v})" title="${o.label}">${o.emoji}</button>`).join('')}</div></div>`;
+  }).join('');
+  const sleepHtml = `<div class="px-row"><div class="px-lbl"><span>Horas de sueño</span><b>${sleep!==undefined&&sleep!==''?sleep+' h':'—'}</b></div>
+    <div class="px-sleep"><button class="chip-btn" onclick="proxySleep(-1)">−</button>${[4,5,6,7,8,9,10].map(h=>`<button class="chip-btn ${+sleep===h?'on':''}" onclick="proxySetW('sueño_horas',${h})">${h}</button>`).join('')}<button class="chip-btn" onclick="proxySleep(1)">+</button></div></div>`;
+  const acts = LOAD_ACTIVITIES.filter(act=> st.more || !(act.key==='gimnasio2' || act.key==='partido2') || (st.logs[act.key]));
+  const lHtml = acts.map(act=>{
+    const d = st.logs[act.key]||{mins:'',rpe:0};
+    const disp = getLoadActivityDisplay(act, sport);
+    return `<div class="px-act"><div class="px-lbl"><span>${disp.emoji} ${esc(disp.label)}</span><span id="px-ua-${act.key}" class="px-ua">${(+d.mins>0&&+d.rpe>0)?(+d.mins*+d.rpe)+' UA':''}</span></div>
+      <input type="number" inputmode="numeric" min="0" max="300" placeholder="Minutos" value="${d.mins===''?'':d.mins}" oninput="proxySetMins('${act.key}',this.value);document.getElementById('px-ua-${act.key}').textContent=(+this.value>0&&(S._proxy.logs['${act.key}']||{}).rpe>0)?(+this.value*S._proxy.logs['${act.key}'].rpe)+' UA':''" class="px-mins">
+      <div class="px-rpe">${Array.from({length:10},(_,i)=>i+1).map(v=>`<button class="px-r ${d.rpe===v?'on':''}" style="${d.rpe===v?`background:hsl(${Math.round((10-v)/9*120)},65%,45%);border-color:transparent;color:#fff`:''}" onclick="proxySetRpe('${act.key}',${v})">${v}</button>`).join('')}</div></div>`;
+  }).join('');
+  document.getElementById('proxy-title').textContent = 'Cargar en nombre de '+name;
+  box.innerHTML = `<div class="px-date"><input type="date" value="${st.date}" max="${todayLocal()}" onchange="proxyDateChange(this.value)"><span>${new Date(st.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</span></div>
+    <div class="px-sec">Wellness</div>${wHtml}${sleepHtml}
+    <div class="px-sec">Carga</div>${lHtml}
+    ${st.more?'':'<button class="abtn" style="margin:4px 0 8px" onclick="proxyMore()">Más actividades</button>'}
+    <div id="proxy-summary" class="px-sum"></div>`;
+  box.scrollTop = keepScroll;
+  renderProxySummary();
+}
+
+async function saveProxyForm() {
+  const st = S._proxy; if(!st) return;
+  const a = proxyAthlete();
+  if(!a || !st.uid) { showToast('No se pudo identificar al atleta'); return; }
+  const c = proxyCalc();
+  const entries = c.logs.filter(l=>l.ok);
+  if(!c.wKeys.length && !entries.length) { showToast('No hay nada para guardar'); return; }
+  const btn = document.getElementById('proxy-save-btn'); if(btn) btn.disabled = true;
+  const uid = st.uid, date = st.date;
+  try {
+    const ref = doc(db,'personal',uid);
+    const snap = await getDoc(ref);
+    const p = snap.exists() ? snap.data() : {};
+    const dot = {};
+    if(c.wKeys.length) {
+      const merged = {...(p.wellness?.[date]||{}), ...st.w, date};
+      if(getWellnessScore(merged).allFilled) merged.submitted = true;
+      dot['wellness.'+date] = merged;
+    }
+    if(entries.length) {
+      const server = p.history?._sessionLogs || p.sessionLogs || [];
+      const keys = new Set(entries.map(e=>e.act.key));
+      const kept = server.filter(l=>!(l.date===date && keys.has(l.activity)));
+      const wk = computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate||p.startDate||date) || 1;
+      entries.forEach(e=>kept.push({date, activity:e.act.key, session:e.label, week:wk, rpe:+e.d.rpe, mins:+e.d.mins, note:'', ua:e.ua}));
+      dot['history._sessionLogs'] = kept;
+      dot.sessionLogs = kept;
+    }
+    await updateDocSafe(ref, dot);
+    // Verificación: se vuelve a leer ESE documento y se comprueba que el dato esté ahí.
+    const chk = await getDoc(ref);
+    const cd = chk.exists() ? chk.data() : {};
+    let okW = true, okL = true;
+    if(dot['wellness.'+date]) okW = Object.keys(st.w).every(k=>String(cd.wellness?.[date]?.[k])===String(st.w[k]));
+    if(entries.length) okL = entries.every(e=>(cd.history?._sessionLogs||[]).some(l=>l.date===date && l.activity===e.act.key && +l.mins===+e.d.mins && +l.rpe===+e.d.rpe));
+    if(!okW || !okL) throw new Error('verificación');
+    a._personal = cd;
+    closeProxyForm();
+    showToast('✓ Guardado en la ficha de '+(a.name||a.email));
+    renderMain();
+  } catch(e) {
+    console.error('Cargar en nombre', e);
+    showToast('No se pudo guardar — revisá la conexión y probá de nuevo');
+    if(btn) btn.disabled = false;
+  }
+}
+window.saveProxyForm = saveProxyForm;
+
 function renderAtletaDetail(a) {
   const sub = S.atletaSubview || 'perfil';
   const myTeam = getAthleteTeam(a);
@@ -9064,7 +9615,7 @@ function renderAtletaDetail(a) {
   const sibIdx = sibs ? sibs.indexOf(a.uid) : -1;
   const sibNav = (sibs && sibs.length>1 && sibIdx>=0) ? `<div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
       <button class="ex-icon-btn" onclick="navigateAthleteSibling(-1)" title="Atleta anterior"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
-      <span style="font-size:10px;color:var(--text3);white-space:nowrap;padding:0 2px">${sibIdx+1}/${sibs.length}</span>
+      <span style="font-size:11px;color:var(--text3);white-space:nowrap;padding:0 2px">${sibIdx+1}/${sibs.length}</span>
       <button class="ex-icon-btn" onclick="navigateAthleteSibling(1)" title="Atleta siguiente"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
     </div>` : '';
   let html = `<div class="team-detail-header">
@@ -9074,7 +9625,8 @@ function renderAtletaDetail(a) {
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name || a.email}</span>
     </div>
     ${sibNav}
-    <button class="abtn" onclick="openWeeklyReport('${a.uid}')" title="Reporte semanal">📄 Reporte</button>
+    <button class="abtn" onclick="openProxyForm('${a.uid}')" title="Cargar wellness y carga en nombre de ${(a.name||'este atleta').replace(/"/g,'')}"><svg class="eic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="hs"> Cargar datos</span></button>
+    <button class="abtn" onclick="openWeeklyReport('${a.uid}')" title="Reporte semanal">📄<span class="hs"> Reporte</span></button>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text)">${myTeam.name}</span>`:''}
@@ -9083,10 +9635,10 @@ function renderAtletaDetail(a) {
   </div>
   <div class="card" style="padding:14px 16px;margin-bottom:14px">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:10px">
-      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Equipo</div><div style="font-size:13px;font-weight:600">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}</div></div>
-      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Edad</div><div style="font-size:13px;font-weight:600">${a.age?a.age+' años':'—'}</div></div>
-      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Talla</div><div style="font-size:13px;font-weight:600">${a.height?a.height+' cm':'—'}</div></div>
-      <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">Peso</div><div style="font-size:13px;font-weight:600">${a.weight?a.weight+' kg':'—'}</div></div>
+      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Equipo</div><div style="font-size:13px;font-weight:600">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}</div></div>
+      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Edad</div><div style="font-size:13px;font-weight:600">${a.age?a.age+' años':'—'}</div></div>
+      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Talla</div><div style="font-size:13px;font-weight:600">${a.height?a.height+' cm':'—'}</div></div>
+      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Peso</div><div style="font-size:13px;font-weight:600">${a.weight?a.weight+' kg':'—'}</div></div>
     </div>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
@@ -9185,29 +9737,29 @@ function renderPerfilTab(a) {
 
   <!-- Control de carga interna — detalle de apoyo, debajo del estado general -->
   ${(()=>{
-    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:var(--sp-3) var(--sp-4);font-size:13px;color:var(--text3)">Sin datos. El atleta debe cargar su carga de gimnasio/pelota/partido en Wellness.</div></div>';
+    if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:var(--sp-3) var(--sp-4);font-size:13px;color:var(--text3)">Sin datos.</div></div>';
     const monSt=getMonotonyStatus(m.monotony);
     return `<div class="admin-section">
       <div class="admin-section-title">Control de carga interna</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
         <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
           <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
         </div>
         <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
           <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
-          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
-          <div style="font-size:10px;color:${monSt.color};margin-top:1px">${monSt.label}</div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
+          <div style="font-size:11px;color:${monSt.color};margin-top:1px">${monSt.label}</div>
         </div>
         <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
           <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m.acuteUA}</div>
-          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana ${infoBtn('ua')}</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:1px">${m.sessions} sesiones</div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana ${infoBtn('ua')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:1px">${m.sessions} sesiones</div>
         </div>
         <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
           <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round(m.strain)}</div>
-          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain ${infoBtn('strain')}</div>
-          <div style="font-size:10px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'};margin-top:1px">${m.strain>6000?'Alto '+craftIconSvg('alert','var(--red)',11):m.strain>2000?'Moderado':'Bajo'}</div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain ${infoBtn('strain')}</div>
+          <div style="font-size:11px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'};margin-top:1px">${m.strain>6000?'Alto '+craftIconSvg('alert','var(--red)',11):m.strain>2000?'Moderado':'Bajo'}</div>
         </div>
       </div>
     </div>`;
@@ -9230,7 +9782,7 @@ function renderPerfilTab(a) {
       const dow = new Date(date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'short'}).replace(/\.$/,'');
       const isSel = selDate===date;
       return `<div onclick="setPerfilWellnessDay('${date}')" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer">
-        <span style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:600">${dow}</span>
+        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">${dow}</span>
         <div style="width:100%;aspect-ratio:1;border-radius:9px;background:${bg};display:flex;align-items:center;justify-content:center;border:${isSel?'2px':'1px'} solid ${isSel?col:'var(--border)'}">
           <span style="font-size:11px;font-weight:700;color:${col}">${allFilled?pct+'%':'—'}</span>
         </div>
@@ -9245,7 +9797,7 @@ function renderPerfilTab(a) {
       const itemChips = WELLNESS_ITEMS.map(item=>{
         const val = w[item.key];
         const c = wellnessValColor(val);
-        return `<span style="font-size:9.5px;font-weight:700;padding:3px 6px;border-radius:4px;background:${c?c.dim:'var(--bg3)'};color:${c?c.solid:'var(--text3)'};white-space:nowrap;flex-shrink:0">${WELLNESS_SHORT_LABEL[item.key]||item.label}</span>`;
+        return `<span style="font-size:11px;font-weight:700;padding:3px 6px;border-radius:4px;background:${c?c.dim:'var(--bg3)'};color:${c?c.solid:'var(--text3)'};white-space:nowrap;flex-shrink:0">${WELLNESS_SHORT_LABEL[item.key]||item.label}</span>`;
       }).join('');
       const daySummary = renderDaySummaryChips(personal, selDate, a.sport);
       detail = `<div style="padding-top:10px;border-top:1px dashed var(--border);cursor:pointer" onclick="viewWellnessDay('${uid}','${selDate}')">
@@ -9287,7 +9839,7 @@ function renderPerfilTab(a) {
           return `<input id="pos-inp-${uid}" value="${a.position||''}" placeholder="Ej: Base, Alero..." style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
         })()}
       </div>
-      ${!myTeam?.sport&&myTeam?`<div style="font-size:11px;color:var(--text3)">El equipo no tiene deporte definido, así que es un campo de texto libre.</div>`:''}
+      ${!myTeam?.sport&&myTeam?``:''}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
         <span style="font-size:11px;color:var(--text3);min-width:50px">Equipo</span>
         ${(()=>{
@@ -9304,23 +9856,21 @@ function renderPerfilTab(a) {
           <button class="abtn abtn-p" onclick="saveReassignAthleteTeam('${uid}')">Guardar</button>`;
         })()}
       </div>
-      <div style="font-size:11px;color:var(--text3)">Se ven TODAS las categorías conocidas (existan o no como equipo todavía) — si elegís una que no existe aún, se crea sola. Sirve para mover a alguien de categoría, fusionar equipos duplicados, o pasarlo de individual a equipo (y viceversa).</div>
-      ${!myTeam ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;padding-top:6px;border-top:1px dashed var(--border);margin-top:2px">
+            ${!myTeam ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;padding-top:6px;border-top:1px dashed var(--border);margin-top:2px">
         <span style="font-size:11px;color:var(--text3);min-width:110px">Comparar con equipo</span>
         <select style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthleteCompareTeam('${uid}',this.value)">
           <option value="">— Ninguno —</option>
           ${S.teams.map(t=>`<option value="${t.id}" ${a.compareTeamId===t.id?'selected':''}>${t.name}${t.category?' · '+t.category:''}</option>`).join('')}
         </select>
       </div>
-      <div style="font-size:11px;color:var(--text3)">Para atletas individuales que igual juegan en un club: los suma solo en Wellness/Estadísticas/Evaluaciones para que se puedan comparar, sin volverlos parte real del roster ni tocar su rutina personal.</div>`:''}
+      `:''}
     </div>
   </div>
 
   <!-- RM del atleta: editable acá, y se actualiza solo desde Evaluaciones -->
   <div class="admin-section">
     <div class="admin-section-title">RM del atleta</div>
-    <div style="font-size:11px;color:var(--text3);padding:0 14px 8px">Se puede editar acá directamente. Si cargás un test de 1RM en Evaluaciones, el valor correspondiente se actualiza solo (nunca al revés).</div>
-    ${RM_LIFTS.map(rm=>`<div class="admin-item">
+        ${RM_LIFTS.map(rm=>`<div class="admin-item">
       <span style="font-size:13px">${rm.label}</span>
       <input type="number" step="0.5" min="0" placeholder="kg" value="${personal.oneRM?.[rm.id]||''}" style="width:90px;text-align:right;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="adminSaveOneRM('${uid}','${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
@@ -9336,7 +9886,7 @@ function renderPerfilTab(a) {
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:8px;height:8px;border-radius:50%;background:${sev.color};flex-shrink:0"></div>
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:600">${zone?.label||id}${inj.type?' · '+INJURY_TYPES[inj.type]:''}</div>
+            <div style="font-size:13px;font-weight:600">${zone?.label||id}${inj.type?' · '+(INJURY_TYPES[inj.type]||''):''}</div>
             <div style="font-size:11px;color:var(--text3);cursor:pointer" onclick="openPainTrendModal('${uid}','${id}')" title="Tocá para ver la progresión">
               Dolor de hoy: ${inj.pain}/10${inj.note?' · '+inj.note.slice(0,40):''}
               ${trend?` <span style="color:${trend.color};font-weight:800;font-size:13px" title="${trend.label}">${trend.arrow}</span>`:''}
@@ -9344,12 +9894,12 @@ function renderPerfilTab(a) {
             ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:11px;color:var(--text3)">Puntaje OSTRC: <b style="color:var(--text)">${sc}/100</b></div>`:''; })()}
           </div>
         </div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica (la fijás vos, no depende del dolor del día)</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica</div>
         <div style="display:flex;gap:6px">
           ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.dim:'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
         </div>
         ${isRealInjury(inj)?`
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 5px">Fase de retorno al juego</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 5px">Fase de retorno al juego</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${RTP_PHASES.map(p=>`<button onclick="adminSetInjuryRtpPhase('${uid}','${id}','${p.id}')" style="flex:1;min-width:80px;padding:6px;border-radius:var(--rxs);border:1px solid ${inj.rtpPhase===p.id?'var(--accent)':'var(--border2)'};background:${inj.rtpPhase===p.id?'var(--accent-dim)':'transparent'};color:${inj.rtpPhase===p.id?'var(--accent)':'var(--text3)'};font-weight:${inj.rtpPhase===p.id?'700':'400'};font-size:11px;cursor:pointer">${p.label}</button>`).join('')}
         </div>`:''}
@@ -9386,7 +9936,7 @@ function renderPerfilTab(a) {
 
   <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
     <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:8px">
-      <div><div class="admin-item-lbl" style="color:var(--red)">Resetear cuenta</div><div class="admin-item-sub">Borra todo (nombre, equipo, tests, wellness) y lo manda al registro de cero la próxima vez que entre con el mismo mail. No borra el mail en sí — para eso, esa persona tiene que entrar y usar "Eliminar mi cuenta" en Ajustes.</div></div>
+      <div><div class="admin-item-lbl" style="color:var(--red)">Resetear cuenta</div></div>
       <button class="abtn abtn-d" onclick="resetAthleteAccount('${uid}')">Resetear cuenta</button>
     </div>
   </div>`;
@@ -9448,7 +9998,7 @@ function renderPastRoutinePhases(a) {
   const cards = past.map((phase,idx)=>{
     const n = idx+1;
     const color = phaseColor(n);
-    const realEndWeek = hist[idx+1] ? hist[idx+1].startWeek-1 : phase.startWeek+(phase.durationWeeks||1)-1;
+    const realEndWeek = hist[idx+1] ? hist[idx+1].startWeek-1 : phase.startWeek+getRoutineDurationWeeks(phase.routineSnapshot||phase)-1;
     const nWeeks = Math.max(1, realEndWeek-phase.startWeek+1);
     const key = 'phase-'+idx;
     const open = !!(S._atletaPastPhasesOpen && S._atletaPastPhasesOpen.has(key));
@@ -9478,9 +10028,9 @@ function renderPastRoutinePhases(a) {
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
           <div style="min-width:0">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
-              <span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${color};padding:2px 8px;border-radius:20px">Planificación ${n}</span>
-              <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--bg3);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Finalizada</span>
-              ${phase.continuesFromRoutineId?'<span style="font-size:10px;color:var(--text3)">· continuación</span>':''}
+              <span style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${color};padding:2px 8px;border-radius:20px">Planificación ${n}</span>
+              <span style="font-size:11px;font-weight:700;color:var(--text3);background:var(--bg3);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Finalizada</span>
+              ${phase.continuesFromRoutineId?'<span style="font-size:11px;color:var(--text3)">· continuación</span>':''}
             </div>
             <div style="font-size:15px;font-weight:700;line-height:1.25">${esc(phase.routineName||'Rutina')}</div>
             <div style="font-size:12px;color:var(--text3);margin-top:3px">${nWeeks>1?'Semanas':'Semana'} ${phase.startWeek}${nWeeks>1?'–'+realEndWeek:''} · ${nWeeks} ${nWeeks===1?'semana':'semanas'}</div>
@@ -9580,7 +10130,6 @@ function renderAddPastPhaseForm(a) {
   const open = S._addPastPhaseFormUid===a.uid;
   return `<div class="admin-section">
     ${open ? `<div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
-      <div style="font-size:12px;color:var(--text3)">¿Le desapareció una rutina anterior de la pantalla? Reconstruí acá el tramo que falta — los datos que ya había cargado (semanas, pesos) siguen intactos, esto solo hace que vuelvan a aparecer.</div>
       <select id="add-past-phase-routine-${a.uid}" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px">
         <option value="">— Elegí qué rutina tenía antes —</option>
         ${routineSelectOptions(null)}
@@ -9615,7 +10164,7 @@ async function addPastRoutinePhase(uid) {
   const newAnchor = (!a.trainingStartDate || startDate < a.trainingStartDate) ? startDate : a.trainingStartDate;
   hist.push({
     routineId, routineName: routine.name, startDate, startWeek: 1,
-    durationWeeks: routine.durationWeeks||1, trainingWeekdays: [],
+    durationWeeks: getRoutineDurationWeeks(routine), trainingWeekdays: [],
     continuesFromRoutineId: null,
     routineSnapshot: JSON.parse(JSON.stringify(routine)),
   });
@@ -9676,13 +10225,13 @@ function renderLoadsAudit(a, routine, previewWeek) {
   const chips = wList.map(w=>`<button class="abtn ${w===previewWeek?'abtn-p':''}" style="padding:4px 10px;font-size:12px" onclick="jumpRoutineWeekPreview('${a.uid}',${w})" title="Ir a la Semana ${w}">S${w} · ${weeks[w].size} ${weeks[w].size===1?'día':'días'}</button>`).join('');
   const orphanHtml = orphans.length ? `<div style="margin-top:10px;background:var(--amber-dim);border:1px solid var(--amber);border-radius:var(--rxs);padding:10px 12px">
       <div style="font-size:12px;font-weight:700;color:var(--amber);margin-bottom:6px">⚠ Hay ${orphans.length} ${orphans.length===1?'carga guardada que no se muestra':'cargas guardadas que no se muestran'} en la rutina de abajo</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">El atleta sí las registró, pero el ejercicio o el día ya no coincide con la rutina actual (se renombró o se borró después).</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">El atleta las registró, pero el ejercicio o el día ya no está en la rutina.</div>
       ${orphans.slice(0,40).map(o=>`<div style="font-size:12px;padding:3px 0;border-top:1px solid var(--border)"><b>S${o.w}</b> · ${esc(o.sn)} · ${esc(o.e.exname||('ejercicio '+o.id))} — <b>${o.e.load?esc(o.e.load)+'kg':'sin kg'}</b>${o.e.rpe?' · RPE '+esc(o.e.rpe):''}${o.e.series?' · '+esc(o.e.series)+' series':''} <span style="color:var(--text3)">(${o.sessionKnown?'ese ejercicio ya no está en el día':'ese día ya no existe en la rutina'})</span></div>`).join('')}
     </div>` : '';
   return `<div class="admin-section">
     <div class="admin-section-title">Cargas registradas por el atleta</div>
     <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:6px">
-      ${wList.length ? `<div style="font-size:11px;color:var(--text3)">Semanas de esta planificación con cargas registradas:</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>`
+      ${wList.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>`
         : '<div style="font-size:12px;color:var(--text3)">El atleta todavía no registró cargas en esta planificación.</div>'}
       ${orphanHtml}
     </div>
@@ -9695,6 +10244,87 @@ function jumpRoutineWeekPreview(uid, w) {
 }
 window.jumpRoutineWeekPreview = jumpRoutineWeekPreview;
 
+// Menú de tres puntos de la tarjeta de semana
+function toggleWeekMenu(e) { e.stopPropagation(); const m=document.getElementById('wk-menu'); if(m) m.style.display = m.style.display==='none' ? 'block' : 'none'; }
+function closeWeekMenu() { const m=document.getElementById('wk-menu'); if(m) m.style.display='none'; }
+document.addEventListener('click', ()=>closeWeekMenu());
+window.toggleWeekMenu=toggleWeekMenu; window.closeWeekMenu=closeWeekMenu;
+
+// Cambiar la semana REAL del atleta (lo que él ve en su celular) pide confirmación.
+function confirmShiftRealWeek(uid, delta, realWeek) {
+  const target = Math.max(1, realWeek+delta);
+  if(target===realWeek) return;
+  showConfirmModal({title:'Cambiar la semana real', message:'El atleta va a ver la Semana '+target+' en su celular.', confirmLabel:'Cambiar', onConfirm:()=>adminSetRealRoutineWeek(uid, target)});
+}
+function markWeekAsCurrent(uid, week) {
+  showConfirmModal({title:'Marcar como actual', message:'El atleta va a ver la Semana '+week+' en su celular.', confirmLabel:'Marcar', onConfirm:()=>adminSetRealRoutineWeek(uid, week)});
+}
+window.confirmShiftRealWeek=confirmShiftRealWeek; window.markWeekAsCurrent=markWeekAsCurrent;
+
+// "Personalizar para X": copia la rutina asignada (plantilla) a una rutina PROPIA
+// del atleta y la deja asignada, conservando su semana, sus días, su historial
+// y sus ejercicios personalizados. Editar esa copia no toca la plantilla.
+async function personalizeAssignedRoutine(uid) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  const src = S.routines.find(r=>r.id===a?.assignedRoutine);
+  if(!a || !src) return;
+  const first = (a.name||a.email||'').split(' ')[0];
+  showConfirmModal({title:'Personalizar para '+first, message:'Se crea una copia propia de "'+src.name+'" para '+first+'. Conserva su semana, sus días y todo lo que ya cargó. La rutina original no se toca.', confirmLabel:'Crear copia', onConfirm: async ()=>{
+    try {
+      const newId = genId();
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = newId; copy.ownerUid = uid; copy.name = src.name+' · '+first; copy.createdAt = new Date().toISOString();
+      delete copy._open;
+      await setDoc(doc(db,'routines',newId), copy);
+      S.routines.push(JSON.parse(JSON.stringify(copy)));
+      const hist = Array.isArray(a.routineAssignmentHistory) ? a.routineAssignmentHistory.map(h=>({...h})) : [];
+      if(hist.length) { hist[hist.length-1].routineId = newId; hist[hist.length-1].routineName = copy.name; }
+      const upd = { assignedRoutine:newId };
+      if(hist.length) upd.routineAssignmentHistory = hist;
+      await setDoc(doc(db,'users',uid), upd, {merge:true});
+      Object.assign(a, upd);
+      // los ejercicios personalizados del atleta pasan a colgar de la copia
+      const pRef = doc(db,'personal',uid);
+      const pSnap = await getDoc(pRef);
+      const ov = pSnap.exists() ? pSnap.data().routineOverrides?.[src.id] : null;
+      if(ov) await updateDocSafe(pRef, {}, [[['routineOverrides', newId], ov]]);
+      if(a._personal && ov) { if(!a._personal.routineOverrides) a._personal.routineOverrides={}; a._personal.routineOverrides[newId]=ov; }
+      showToast('✓ Copia creada');
+      editPersonalRoutine(newId);
+    } catch(e) { console.error(e); showToast('No se pudo crear la copia'); }
+  }});
+}
+window.personalizeAssignedRoutine = personalizeAssignedRoutine;
+
+// NOTA DEL PROFE en un ejercicio: queda en el documento del atleta (no toca la
+// plantilla ni cambia el ejercicio) y el atleta la ve destacada en esa tarjeta.
+function openCoachNoteModal(uid, exId, exName) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid);
+  const cur = a?._personal?.coachNotes?.[exId]?.text || '';
+  S._coachNote = {uid, exId};
+  document.getElementById('coachnote-title').textContent = 'Nota para '+((a?.name||'').split(' ')[0]||'el atleta')+' · '+exName;
+  document.getElementById('coachnote-textarea').value = cur;
+  document.getElementById('coachnote-remove-btn').style.display = cur ? '' : 'none';
+  document.getElementById('coachnote-overlay').classList.add('open');
+}
+function closeCoachNoteModal() { document.getElementById('coachnote-overlay').classList.remove('open'); S._coachNote=null; }
+function closeCoachNoteIfOutside(e) { if(e.target===document.getElementById('coachnote-overlay')) closeCoachNoteModal(); }
+async function saveCoachNote(remove) {
+  const st = S._coachNote; if(!st) return;
+  const a = S.adminAthletes?.find(x=>x.uid===st.uid); if(!a) return;
+  const text = remove ? '' : document.getElementById('coachnote-textarea').value.trim();
+  try {
+    await updateDocSafe(doc(db,'personal',st.uid), {}, [[['coachNotes', st.exId], text ? {text, date:todayLocal()} : deleteField()]]);
+    if(!a._personal) a._personal = {};
+    if(!a._personal.coachNotes) a._personal.coachNotes = {};
+    if(text) a._personal.coachNotes[st.exId] = {text, date:todayLocal()}; else delete a._personal.coachNotes[st.exId];
+    closeCoachNoteModal();
+    showToast(text ? '✓ Nota guardada' : 'Nota quitada');
+    renderMain();
+  } catch(e) { console.error(e); showToast('No se pudo guardar la nota'); }
+}
+window.openCoachNoteModal=openCoachNoteModal; window.closeCoachNoteModal=closeCoachNoteModal; window.closeCoachNoteIfOutside=closeCoachNoteIfOutside; window.saveCoachNote=saveCoachNote;
+
 function renderAtletaRutina(a) {
   const routine = S.routines.find(r => r.id === a.assignedRoutine);
   const routineOpts = `<select id="assign-routine-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
@@ -9702,21 +10332,24 @@ function renderAtletaRutina(a) {
     ${routineSelectOptions(a.assignedRoutine, a.uid)}
   </select>`;
 
+  const firstName = (a.name||a.email||'este atleta').split(' ')[0];
+  const wdays = routine && Array.isArray(a.trainingWeekdays) ? a.trainingWeekdays : [];
+  const dayCircles = routine ? `<div class="rt-days" onclick="assignRoutineToAthlete('${a.uid}')" role="button" title="Cambiar los días de gimnasio">${['L','M','X','J','V','S','D'].map((l,i)=>`<span class="rt-d${wdays.includes(i)?' on':''}">${l}</span>`).join('')}</div>` : '';
   let html = `<div class="admin-section">
     <div class="admin-section-title">Rutina asignada</div>
     <div class="admin-item" style="gap:8px;flex-wrap:wrap">
       ${routineOpts}
       <button class="abtn abtn-p" onclick="assignRoutineToAthlete('${a.uid}')">Asignar</button>
     </div>
-    <div style="margin-top:8px"><button class="abtn" onclick="createPersonalRoutine('${a.uid}')" title="Armás una rutina o días de entrenamiento solo para este atleta. No aparece en Gestionar rutinas ni se ofrece a nadie más.">+ Crear rutina propia para ${(a.name||a.email||'este atleta').split(' ')[0]}</button></div>
-    ${(routine && a.trainingWeekdays && a.trainingWeekdays.length) ? `<div style="font-size:12px;color:var(--text3);margin-top:6px">
-      Días de gimnasio: ${[...a.trainingWeekdays].sort((x,y)=>x-y).map(d=>WEEKDAY_LABELS[d]).join(' · ')}
-      — para cambiarlos, elegí la misma rutina y tocá "Asignar" de nuevo.
-    </div>` : ''}
+    ${dayCircles}
+    <div class="rt-actions">
+      ${routine && routine.ownerUid!==a.uid ? `<button class="abtn" onclick="personalizeAssignedRoutine('${a.uid}')" title="Copia la rutina asignada a una rutina propia de ${firstName} para editarla sin tocar la plantilla">Personalizar para ${firstName}</button>` : ''}
+      <button class="abtn" onclick="createPersonalRoutine('${a.uid}')" title="Armar una rutina o días de entrenamiento solo para ${firstName}. No aparece en Gestionar rutinas.">Rutina propia</button>
+    </div>
   </div>`;
 
   if (!routine) {
-    html += `<div class="empty-state">Este atleta no tiene una rutina asignada todavía. Elegí una arriba o creá una propia.</div>`;
+    html += `<div class="empty-state">Este atleta no tiene una rutina asignada todavía.</div>`;
     return html;
   }
   // La semana REAL es absoluta — se cuenta desde trainingStartDate (el
@@ -9741,27 +10374,34 @@ function renderAtletaRutina(a) {
   // día ni los bloques) hasta que se toca.
   S._atletaRoutineDayNames = sessionNames;
   const selDay = sessionNames.includes(S._atletaRoutineDay) ? S._atletaRoutineDay : null;
-  html += `<div class="admin-section">
-    <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px">
+  const phaseFirst = getCurrentPhaseStartWeek(a);
+  const phaseTotal = getRoutineDurationWeeks(routine);
+  const phaseLast = Math.max(phaseFirst+phaseTotal-1, realWeek, previewWeek);
+  const relNow = Math.max(1, previewWeek-phaseFirst+1), relTotal = phaseLast-phaseFirst+1;
+  const weekSegs = Array.from({length:phaseLast-phaseFirst+1}, (_,i)=>{
+    const w = phaseFirst+i;
+    const cls = [w===realWeek?'cur':(w<realWeek?'past':''), w===previewWeek?'view':''].join(' ');
+    return `<button class="wk-seg ${cls}" onclick="jumpRoutineWeekPreview('${a.uid}',${w})" title="Semana ${w}"><span>${w}</span></button>`;
+  }).join('');
+  html += `<div class="admin-section wk-card">
+    <div class="wk-head">
       <div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Semana real de esta planificación</div>
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--accent-text)">Semana ${realWeek}</div>
-        ${!isViewingReal?`<div style="font-size:11px;color:var(--amber);margin-top:2px">Estás mirando la Semana ${previewWeek} — esto no cambia la planificación real del atleta.</div>`:''}
+        <div class="wk-t">Semana ${relNow} de ${relTotal}</div>
+        ${!isViewingReal ? `<div class="wk-sub">Actual: ${Math.max(1,realWeek-phaseFirst+1)}</div>` : ''}
       </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',-1)" title="Ver la semana anterior (no cambia la fecha real)">‹ Semana</button>
-        <button class="abtn" onclick="adjustAthleteRoutineWeek('${a.uid}',1)" title="Ver la semana siguiente (no cambia la fecha real)">Semana ›</button>
-        ${!isViewingReal?`<button class="abtn abtn-p" onclick="resetRoutineWeekPreview('${a.uid}')" title="Volver a mostrar la semana real del atleta">Volver a la real</button>`:''}
-      </div>
-    </div>
-    <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:8px;border-top:1px solid var(--border)">
-      <div style="font-size:11px;color:var(--text3)">¿Está mal la semana real? Corregila acá (esto SÍ cambia lo que ve el atleta)</div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <button class="abtn" onclick="adminSetRealRoutineWeek('${a.uid}',${Math.max(1,realWeek-1)})" title="Corregir la semana real, un número menos">− Corregir</button>
-        <button class="abtn" onclick="adminSetRealRoutineWeek('${a.uid}',${realWeek+1})" title="Corregir la semana real, un número más">Corregir +</button>
-        <button class="abtn abtn-d" onclick="resetAthleteRoutineWeek('${a.uid}')" title="Reasigna la planificación para que arranque hoy en Semana 1">Reiniciar a Sem. 1</button>
+      <div class="wk-acts">
+        ${!isViewingReal ? `<button class="abtn" onclick="resetRoutineWeekPreview('${a.uid}')">Volver a la actual</button><button class="abtn abtn-p" onclick="markWeekAsCurrent('${a.uid}',${previewWeek})">Marcar como actual</button>` : ''}
+        <div class="menu3">
+          <button class="abtn" onclick="toggleWeekMenu(event)" aria-label="Más opciones">⋯</button>
+          <div class="menu3-list" id="wk-menu" style="display:none">
+            <button onclick="closeWeekMenu();confirmShiftRealWeek('${a.uid}',-1,${realWeek})">Retroceder la semana real</button>
+            <button onclick="closeWeekMenu();confirmShiftRealWeek('${a.uid}',1,${realWeek})">Adelantar la semana real</button>
+            <button class="danger" onclick="closeWeekMenu();resetAthleteRoutineWeek('${a.uid}')">Reiniciar a Semana 1</button>
+          </div>
+        </div>
       </div>
     </div>
+    <div class="wk-bar">${weekSegs}</div>
   </div>
   ${renderPastRoutinePhases(a)}
   ${renderAddPastPhaseForm(a)}
@@ -9769,7 +10409,7 @@ function renderAtletaRutina(a) {
   <div class="admin-section">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
       <div>
-        ${(a.routineAssignmentHistory||[]).length>=2 ? `<div style="margin-bottom:4px"><span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${phaseColor(a.routineAssignmentHistory.length)};padding:2px 8px;border-radius:20px">Planificación ${a.routineAssignmentHistory.length}</span> <span style="font-size:10px;font-weight:700;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Actual</span></div>` : ''}
+        ${(a.routineAssignmentHistory||[]).length>=2 ? `<div style="margin-bottom:4px"><span style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${phaseColor(a.routineAssignmentHistory.length)};padding:2px 8px;border-radius:20px">Planificación ${a.routineAssignmentHistory.length}</span> <span style="font-size:11px;font-weight:700;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Actual</span></div>` : ''}
         <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
       </div>
       <div style="display:flex;gap:6px">
@@ -9782,7 +10422,7 @@ function renderAtletaRutina(a) {
       const on = sn===selDay;
       const isTodayTab = sn===todaySession && isViewingReal;
       const doneTab = !!(getPhaseSessionRecord(a, a._personal?.history, previewWeek, sn)?.done);
-      return `<button onclick="setAtletaRoutineDay(${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;border-radius:20px;border:1.5px solid ${on?'var(--accent)':(isTodayTab?'var(--accent)':'var(--border2)')};background:${on?'var(--accent)':'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${sn.replace(/&/g,'&amp;').replace(/</g,'&lt;')}${doneTab?' ✓':''}${isTodayTab?` <span style="font-size:9px;font-weight:800;opacity:.9">· HOY</span>`:''}</button>`;
+      return `<button onclick="setAtletaRoutineDay(${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;border-radius:20px;border:1.5px solid ${on?'var(--accent)':(isTodayTab?'var(--accent)':'var(--border2)')};background:${on?'var(--accent)':'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${sn.replace(/&/g,'&amp;').replace(/</g,'&lt;')}${doneTab?' ✓':''}${isTodayTab?` <span style="font-size:11px;font-weight:800;opacity:.9">· HOY</span>`:''}</button>`;
     }).join('')}</div>
     ${sessionNames.map(sName => {
       if(sName!==selDay) return '';
@@ -9819,14 +10459,16 @@ function renderAtletaRutina(a) {
                   // guardaba cualquier edición en la semana equivocada.
                   const doneData = getPhaseSessionRecord(a, a._personal?.history, previewWeek, sName)?.exercises?.[ex.id] || {};
                   const hasCompletion = !!(doneData.load || doneData.rpe);
-                  const durationWeeksEx = routine?.durationWeeks || 1;
+                  const durationWeeksEx = getRoutineDurationWeeks(routine);
                   // La tabla nunca mira semanas de ANTES de que esta rutina
                   // arrancara — si es continuación de otra, esas semanas
                   // pertenecen a ejercicios de OTRA rutina.
                   const firstWeekEx = getCurrentPhaseStartWeek(a);
                   const lastWeekEx = Math.max(firstWeekEx+durationWeeksEx-1, previewWeek);
                   const exIdEsc = ex.id, sNameEsc = sName.replace(/'/g,"\\'");
-                  const personalizarBtn = isPersonalBlock ? '' : `<span style="font-size:10px;color:${override?'var(--accent-text)':'var(--text3)'};font-weight:600;cursor:pointer" onclick="openExerciseOverrideModal('${a.uid}','${routine.id}','${sNameEsc}','${exIdEsc}',${previewWeek})" title="Personalizar este ejercicio solo para este atleta">${override?'✎ Personalizado':'✎ Personalizar'}</span>`;
+                  const hasCoachNote = !!a._personal?.coachNotes?.[ex.id]?.text;
+                  const coachNoteBtn = `<span style="font-size:11px;color:${hasCoachNote?'var(--amber)':'var(--text3)'};font-weight:600;cursor:pointer" onclick="openCoachNoteModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}')" title="Dejarle una nota al atleta en este ejercicio">${hasCoachNote?'✎ Nota':'✎ Nota'}</span>`;
+                  const personalizarBtn = (isPersonalBlock ? '' : `<span style="font-size:11px;color:${override?'var(--accent-text)':'var(--text3)'};font-weight:600;cursor:pointer" onclick="openExerciseOverrideModal('${a.uid}','${routine.id}','${sNameEsc}','${exIdEsc}',${previewWeek})" title="Personalizar este ejercicio solo para este atleta">${override?'✎ Personalizado':'✎ Personalizar'}</span>`) + ' ' + coachNoteBtn;
                   if (S._atletaRoutineCicloView === 'macro') {
                     return `
                     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
@@ -9839,7 +10481,7 @@ function renderAtletaRutina(a) {
                   }
                   return `
                   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${wp.name}${override?` <span style="font-size:9px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);padding:1px 6px;border-radius:8px;text-transform:none;letter-spacing:0">personalizado desde S${override.fromWeek}</span>`:''} <span style="font-size:10px;color:var(--accent-text);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span> ${personalizarBtn}${isPersonalBlock?`<span style="float:right;font-size:10px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${trendChipHtml(a, a._personal?.history, routine, previewWeek>realWeek?previewWeek:realWeek, ex, "openAdminProgressionModal('"+a.uid+"','"+ex.id+"','"+ex.name.replace(/'/g,"\'")+"','"+sName.replace(/'/g,"\'")+"')").replace('class="trend-chip"','class="trend-chip" style="float:right;margin-left:8px"')}${wp.name}${override?` <span style="font-size:11px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);padding:1px 6px;border-radius:8px;text-transform:none;letter-spacing:0">personalizado desde S${override.fromWeek}</span>`:''} <span style="font-size:11px;color:var(--accent-text);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span> ${personalizarBtn}${isPersonalBlock?`<span style="float:right;font-size:11px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
@@ -9854,7 +10496,7 @@ function renderAtletaRutina(a) {
                       const rpeTxt = intensityLbl+' '+(doneData.rpe!=null&&doneData.rpe!==''?doneData.rpe:'—');
                       const txtColor = hasCompletion ? 'var(--green)' : 'var(--text3)';
                       return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
+                      <span style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${loadTxt}</span>
                         <input class="done-field-inp wide" type="text" inputmode="decimal" value="${attrVal(doneData.load)}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
@@ -10136,7 +10778,7 @@ function renderSettings() {
   <div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Apariencia</div>
     <div class="settings-item">
-      <div><div class="settings-lbl">Modo oscuro</div><div class="settings-sub">Ideal para entrenar de noche o con poca luz</div></div>
+      <div><div class="settings-lbl">Modo oscuro</div></div>
       <div class="theme-switch ${darkOn?'on':''}" onclick="toggleTheme()"><div class="theme-switch-knob"></div></div>
     </div>
     <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
@@ -10165,7 +10807,7 @@ function renderSettings() {
       </div>
       <div style="min-width:0">
         <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.name||'—'}</div>
-        <div style="font-size:12px;color:var(--text3)">Tocá la foto para cambiarla</div>
+        
       </div>
       <input type="file" id="profile-photo-inp" accept="image/*" style="display:none" onchange="handleProfilePhotoUpload(this)">
     </div>
@@ -10216,8 +10858,7 @@ function renderSettings() {
   </div>
   ${S.isAdmin ? '' : `<div class="card">
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mis marcas (1RM)</div>
-    <div style="padding:4px 14px 12px;font-size:11px;color:var(--text3)">Cargá tu máximo en cada levantamiento — la rutina va a calcular sola los kilos cuando el entrenador te prescriba un %RM.</div>
-    ${RM_LIFTS.map(rm=>`<div class="settings-item">
+        ${RM_LIFTS.map(rm=>`<div class="settings-item">
       <div class="settings-lbl">${rm.label}</div>
       <input class="abtn" type="number" style="text-align:right;width:80px" value="${S.oneRM?.[rm.id]||''}" placeholder="kg" onblur="saveOneRM('${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
@@ -10238,31 +10879,31 @@ function renderSettings() {
   </div>`}
   <div class="card">
     <div class="settings-item">
-      <div><div class="settings-lbl">Actualizar app</div><div class="settings-sub">Bajá la última versión ahora mismo (por si el celular guardó una copia vieja)</div></div>
+      <div><div class="settings-lbl">Actualizar app</div></div>
       <button class="abtn abtn-p" onclick="forceAppUpdate()">↻ Actualizar</button>
     </div>
   </div>
   <div class="card">
     <div class="settings-item">
-      <div><div class="settings-lbl">Exportar datos</div><div class="settings-sub">Descargá una copia local</div></div>
+      <div><div class="settings-lbl">Exportar datos</div></div>
       <button class="abtn" onclick="exportData()">Exportar</button>
     </div>
   </div>
   <div class="card">
     <div class="settings-item" style="border-bottom:none">
-      <div><div class="settings-lbl">Cambiar contraseña</div><div class="settings-sub">Te mandamos un mail a ${S.user?.email||'tu casilla'} con un link para elegir una nueva</div></div>
+      <div><div class="settings-lbl">Cambiar contraseña</div></div>
       <button class="abtn" onclick="sendMyPasswordReset()">Cambiar</button>
     </div>
   </div>
   <div class="card">
     <div class="settings-item" style="border-bottom:none">
-      <div><div class="settings-lbl" style="color:var(--red)">Cerrar sesión</div><div class="settings-sub">Volvés a la pantalla de inicio de sesión</div></div>
+      <div><div class="settings-lbl" style="color:var(--red)">Cerrar sesión</div></div>
       <button class="abtn abtn-d" onclick="signOut()">Cerrar sesión</button>
     </div>
   </div>
   <div class="card">
     <div class="settings-item" style="border-bottom:none">
-      <div><div class="settings-lbl" style="color:var(--red)">Eliminar mi cuenta</div><div class="settings-sub">Borra tu cuenta y todos tus datos definitivamente — el mail queda libre para registrarse de nuevo</div></div>
+      <div><div class="settings-lbl" style="color:var(--red)">Eliminar mi cuenta</div></div>
       <button class="abtn abtn-d" onclick="deleteMyAccount()">Eliminar cuenta</button>
     </div>
   </div>
@@ -10508,7 +11149,7 @@ function renderWellnessDetail() {
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <button class="abtn" onclick="shiftWellnessDetailDate(-1)">‹ Día anterior</button>
-    <div style="font-size:13px;color:var(--text3);text-transform:capitalize">${dateLabel}</div>
+    <div style="font-size:13px;color:var(--text3);">${(dateLabel||'').charAt(0).toUpperCase()+(dateLabel||'').slice(1)}</div>
     <button class="abtn" style="${isToday?'opacity:.3;pointer-events:none':''}" onclick="shiftWellnessDetailDate(1)">Día siguiente ›</button>
   </div>
   <div class="hooper-score-box">
@@ -10575,8 +11216,7 @@ function renderWellnessDetail() {
     html += `<div class="admin-section">
       <div class="admin-section-title">¿Se equivocaron de día?</div>
       <div style="padding:12px 16px">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Mueve el wellness y la carga de este día a otra fecha — típico caso: cargaron la sesión de ayer recién pasada la medianoche.</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <input type="date" id="move-wellness-date-inp" class="abtn" value="${prevDay}">
           <button class="abtn abtn-d" onclick="moveWellnessDayData('${uid}','${date}',document.getElementById('move-wellness-date-inp').value)">Mover a esa fecha</button>
         </div>
@@ -10674,7 +11314,7 @@ window.openTrainedTodayScreen = openTrainedTodayScreen;
 // alguna molestia o lesión en el mapa corporal ese mismo día.
 function renderTrainedTodayScreen() {
   const today = todayLocal();
-  const athletes = S.dashAthletes || [];
+  const athletes = getDashAthletes();
   const rows = [];
   athletes.forEach(a=>{
     const logs = (a._personal?.history?._sessionLogs||[]).filter(l=>l.date===today);
@@ -10686,7 +11326,7 @@ function renderTrainedTodayScreen() {
   rows.sort((x,y)=>(x.a.name||x.a.email||'').localeCompare(y.a.name||y.a.email||''));
 
   return `<div class="team-detail-header">
-    <button class="back-btn" data-back="admin-main">‹</button>
+    <button class="back-btn" data-back="dashboard">‹</button>
     <div class="team-detail-title">Entrenaron hoy</div>
   </div>
   <div class="admin-section">
@@ -10695,7 +11335,7 @@ function renderTrainedTodayScreen() {
       <div class="admin-item" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:6px" onclick="adminOpenAthleteDash('${a.uid}')">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div class="admin-item-lbl">${a.name||a.email}</div>
-          ${markedToday?`<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">${craftIconSvg('alert','var(--red)',10)} molestia/lesión</span>`:''}
+          ${markedToday?`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">${craftIconSvg('alert','var(--red)',10)} molestia/lesión</span>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${logs.map(l=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);white-space:nowrap">${l.session||l.activity} · ${l.mins}min · RPE ${l.rpe}</span>`).join('')}
@@ -10719,7 +11359,7 @@ window.toggleSection = toggleSection;
 
 function renderReminderScreen() {
   const today = todayLocal();
-  const athletes = S.dashAthletes || [];
+  const athletes = getDashAthletes();
   const pending = [];
   const done = [];
   athletes.forEach(a=>{
@@ -10736,11 +11376,8 @@ function renderReminderScreen() {
   S._reminderPendingUids = pending.map(p=>p.a.uid);
 
   let html = `<div class="team-detail-header">
-    <button class="back-btn" data-back="admin-main">‹</button>
+    <button class="back-btn" data-back="dashboard">‹</button>
     <div class="team-detail-title">Recordatorios de hoy</div>
-  </div>
-  <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
-    El recordatorio siempre les queda en la campanita de notificaciones adentro de la app. A los que ya activaron notificaciones push (Ajustes → Notificaciones), además les llega como aviso real al celular — a los que no, no.
   </div>
   <div class="admin-section">
     <div class="admin-section-title" style="color:var(--amber)">${craftIconSvg('alert','var(--amber)',12)} Faltan ${pending.length} de ${athletes.length}</div>
@@ -10831,11 +11468,11 @@ function renderAdminMain() {
   <div class="admin-section">
     <div class="admin-section-title">Alumnos</div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Ver alumnos</div><div class="admin-item-sub">Historial, wellness, molestias y asignación de rutinas</div></div>
+      <div><div class="admin-item-lbl">Ver alumnos</div></div>
       <button class="abtn abtn-p" onclick="adminGoAthletes()">Ver →</button>
     </div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Comparar atletas</div><div class="admin-item-sub">Wellness, ACWR, saltos y fuerza lado a lado</div></div>
+      <div><div class="admin-item-lbl">Comparar atletas</div></div>
       <button class="abtn abtn-p" onclick="adminGoCompare()">Comparar →</button>
     </div>
   </div>
@@ -10859,7 +11496,7 @@ function renderAdminMain() {
   </div>
   <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
     <div class="admin-item" style="border-bottom:none">
-      <div><div class="admin-item-lbl" style="color:var(--red)">Cerrar sesión</div><div class="admin-item-sub">Volvés a la pantalla de inicio de sesión</div></div>
+      <div><div class="admin-item-lbl" style="color:var(--red)">Cerrar sesión</div></div>
       <button class="abtn abtn-d" onclick="signOut()">Cerrar sesión</button>
     </div>
   </div>`;
@@ -11034,7 +11671,7 @@ function renderCompareAthletes() {
     </div>
     ${rows.map(r=>`
       <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:4px">${r.label}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:4px">${r.label}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr">
           <div style="text-align:center;font-size:16px;font-weight:700;color:${r.ca||'var(--text)'}">${r.va}</div>
           <div style="text-align:center;font-size:16px;font-weight:700;color:${r.cb||'var(--text)'}">${r.vb}</div>
@@ -11243,17 +11880,17 @@ function renderWeeklyReport() {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#ddd;border:1px solid #ddd;margin-bottom:20px">
       <div style="background:#fff;padding:12px;text-align:center">
         <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-        <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">ACWR</div>
-        <div style="font-size:10px;color:#555">${acwrSt.label}</div>
+        <div style="font-size:11px;color:#555;text-transform:uppercase;margin-top:2px">ACWR</div>
+        <div style="font-size:11px;color:#555">${acwrSt.label}</div>
       </div>
       <div style="background:#fff;padding:12px;text-align:center">
         <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.monotony!=null?m.monotony.toFixed(1):'—'}</div>
-        <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">Monotonía</div>
-        <div style="font-size:10px;color:#555">${monSt.label}</div>
+        <div style="font-size:11px;color:#555;text-transform:uppercase;margin-top:2px">Monotonía</div>
+        <div style="font-size:11px;color:#555">${monSt.label}</div>
       </div>
       <div style="background:#fff;padding:12px;text-align:center">
         <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acuteUA??'—'}</div>
-        <div style="font-size:10px;color:#555;text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
+        <div style="font-size:11px;color:#555;text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
       </div>
     </div>
 
@@ -11273,7 +11910,7 @@ function renderWeeklyReport() {
       ? `<ul style="font-size:12px;margin:0 0 10px;padding-left:18px">${injuries.map(([id,inj])=>`<li>${id} — ${severityInfo(inj.severity)?.label||'Leve'} · dolor de hoy ${inj.pain}/10${inj.note?' · '+inj.note:''}</li>`).join('')}</ul>`
       : `<div style="font-size:12px;color:#777;margin-bottom:10px">Sin molestias registradas.</div>`}
 
-    <div style="font-size:10px;color:#999;text-align:right;margin-top:24px">Generado el ${todayLocal()}</div>
+    <div style="font-size:11px;color:#999;text-align:right;margin-top:24px">Generado el ${todayLocal()}</div>
   </div>`;
 }
 window.renderWeeklyReport = renderWeeklyReport;
@@ -11347,7 +11984,7 @@ async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDat
       hist.push({
         routineId: a.assignedRoutine, routineName: outgoingRoutine?.name||'Rutina anterior',
         startDate: outgoingStartDate, startWeek: computeWeekOfDate(update.trainingStartDate, outgoingStartDate),
-        durationWeeks: outgoingRoutine?.durationWeeks||1, trainingWeekdays: a.trainingWeekdays||[],
+        durationWeeks: getRoutineDurationWeeks(outgoingRoutine), trainingWeekdays: a.trainingWeekdays||[],
         continuesFromRoutineId: null,
         routineSnapshot: outgoingRoutine ? JSON.parse(JSON.stringify(outgoingRoutine)) : null,
       });
@@ -11362,7 +11999,7 @@ async function writeRoutineAssignment(uid, routineId, trainingWeekdays, startDat
     const newRoutine = S.routines.find(r=>r.id===routineId);
     hist.push({
       routineId, routineName: newRoutine?.name||'Rutina', startDate: effectiveStart, startWeek,
-      durationWeeks: newRoutine?.durationWeeks||1, trainingWeekdays: trainingWeekdays||[],
+      durationWeeks: getRoutineDurationWeeks(newRoutine), trainingWeekdays: trainingWeekdays||[],
       continuesFromRoutineId: isContinuation ? (a?.assignedRoutine||null) : null,
     });
     update.routineAssignmentHistory = hist;
@@ -11451,7 +12088,7 @@ function renderStartDateCalendar(st) {
     <button class="abtn" style="padding:4px 10px;font-size:11px" onclick="shiftWeekdayAssignCalendar(1)">Después ›</button>
   </div>
   <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
-    ${dayLetters.map(l=>`<div style="text-align:center;font-size:10px;color:var(--text3);font-weight:700">${l}</div>`).join('')}
+    ${dayLetters.map(l=>`<div style="text-align:center;font-size:11px;color:var(--text3);font-weight:700">${l}</div>`).join('')}
   </div>`;
   for(let w=0; w<4; w++) {
     html += `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">`;
@@ -11504,8 +12141,7 @@ function renderWeekdayAssignBody() {
   const dateLabel = new Date(st.startDate+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   const html = `
     <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
-      Esta rutina tiene <strong>${need}</strong> día${need===1?'':'s'} (${st.sessionNames.join(' · ')}).
-      Elegí ${need} día${need===1?'':'s'} reales de la semana en que el atleta va al gimnasio.
+      Elegí <strong>${need}</strong> día${need===1?'':'s'} de la semana (${st.sessionNames.join(' · ')})
     </div>
     ${st.hasExistingRoutine ? `<div class="settings-item" style="padding:0 0 12px">
       <div class="settings-lbl" style="font-size:12px">¿Es continuación de la rutina actual?</div>
@@ -11644,7 +12280,7 @@ async function resetAthleteRoutineWeek(uid) {
         const routine = S.routines.find(r=>r.id===a.assignedRoutine);
         update.routineAssignmentHistory = [{
           routineId: a.assignedRoutine, routineName: routine?.name||'Rutina', startDate: today, startWeek: 1,
-          durationWeeks: routine?.durationWeeks||1, trainingWeekdays: a.trainingWeekdays||[], continuesFromRoutineId: null,
+          durationWeeks: getRoutineDurationWeeks(routine), trainingWeekdays: a.trainingWeekdays||[], continuesFromRoutineId: null,
         }];
       }
       await setDoc(doc(db,'users',uid), update, {merge:true});
@@ -11680,6 +12316,9 @@ window.changeAthleteWeek=changeAthleteWeek;
 function adminGoRoutines() {
   S.adminView='routines';
   renderMain();
+  // "Asignada a:" de cada rutina sale de la lista de atletas — si todavía no se
+  // cargó, decía "nadie" aunque la tuvieran asignada.
+  if(!S.adminAthletesLoaded) ensureAdminAthletes().then(()=>{ if(S.adminView==='routines') renderMain(); });
 }
 window.adminGoRoutines=adminGoRoutines;
 
@@ -11742,7 +12381,7 @@ window.routineSelectOptions = routineSelectOptions;
 
 function renderRoutineCard(r, weekLabel, depth) {
   return `<div class="card" style="padding:14px;${depth>0?'margin-left:22px;border-left:2px solid var(--accent-dim)':''}">
-    ${depth>0?`<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">↳ Continuación</div>`:''}
+    ${depth>0?`<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">↳ Continuación</div>`:''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
       <div style="min-width:0">
         <span id="routine-name-span-${r.id}" ondblclick="editRoutineListName(event,'${r.id}')" title="Doble click para renombrar" style="font-size:14px;font-weight:600;cursor:text">${r.name}</span>
@@ -11766,7 +12405,7 @@ function renderRoutineCard(r, weekLabel, depth) {
 function renderRoutineChainNode(r, startWeek, childrenOf, depth, visited) {
   if(visited.has(r.id)) return ''; // corta cualquier ciclo (A continúa B que continúa A) — no debería poder armarse desde la UI, pero por las dudas
   visited.add(r.id);
-  const endWeek = startWeek + (r.durationWeeks||1) - 1;
+  const endWeek = startWeek + getRoutineDurationWeeks(r) - 1;
   const weekLabel = `Semana ${startWeek}${endWeek>startWeek?'–'+endWeek:''}`;
   const kids = childrenOf.get(r.id)||[];
   return renderRoutineCard(r, weekLabel, depth) + kids.map(k=>renderRoutineChainNode(k, endWeek+1, childrenOf, depth+1, visited)).join('');
@@ -11779,7 +12418,7 @@ function renderAdminRoutines() {
     <button class="abtn abtn-p" onclick="createRoutine()">+ Nueva</button>
   </div>`;
   if(!getTemplateRoutines().length) {
-    html+=`<div class="empty-state">No hay rutinas creadas.<br><span style="font-size:12px">Creá una rutina para asignarla a tus alumnos.</span></div>`;
+    html+=`<div class="empty-state">No hay rutinas creadas.</div>`;
   } else {
     const { childrenOf, roots } = buildRoutineChains();
     html += roots.map(root=>{
@@ -11976,6 +12615,92 @@ function saveRoutineEditorName(inp) {
 }
 window.saveRoutineEditorName = saveRoutineEditorName;
 
+// ── COMPARAR DÍAS: columnas lado a lado ─────────────────────────────────────
+// Los días de una rutina como columnas (los ejercicios de cada día siguen de
+// arriba hacia abajo, bloque por bloque). Cada día se puede abrir o cerrar —
+// uno cerrado queda como una tira angosta —, se filtra por nombre de bloque
+// (los chips salen de los bloques que realmente existen) y se busca por
+// bloque o ejercicio. Al pasar el mouse por un ejercicio se marca el mismo en
+// los otros días. Solo lectura: "Editar" lleva ese día al editor de siempre.
+function getCmpState(routine) {
+  if(!S._cmp || S._cmp.rid!==routine.id) S._cmp = {rid:routine.id, closed:{}, main:null, sub:null, q:'', week:1};
+  return S._cmp;
+}
+function cmpExLine(ex, week) {
+  const p = getExPrescriptionForWeek(ex, week);
+  const parts = [];
+  if(p.series && p.reps) parts.push(`${p.series}×${p.reps}`); else if(p.series) parts.push(`${p.series}×`); else if(p.reps) parts.push(p.reps);
+  if(p.pct) parts.push(p.pct+'%RM');
+  if(p.rpe) parts.push((p.intensityType||'RPE')+' '+p.rpe);
+  return parts.join(' · ');
+}
+function cmpBlockMatches(b, st) {
+  const ms = getBlockMainSub(b);
+  if(st.main==='PRINC') { if(!ms || !['FUERZA A','FUERZA B','DLO'].includes(ms.main)) return false; }
+  else if(st.main==='NONE') { if(ms) return false; }
+  else if(st.main) { if(!ms || ms.main!==st.main) return false; if(st.sub && ms.sub!==st.sub) return false; }
+  if(st.q) {
+    const q = st.q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const n = t=>String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const inBlock = n(b.title).includes(q) || (b.categories||[]).some(c=>(c.exercises||[]).some(e=>n(e.name).includes(q)));
+    if(!inBlock) return false;
+  }
+  return true;
+}
+function renderDaysCompare(routine) {
+  const st = getCmpState(routine);
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const names = getOrderedSessionNames(routine);
+  const weeks = Math.max(1, getRoutineDurationWeeks(routine));
+  if(st.week>weeks) st.week = 1;
+  // chips de filtro: solo lo que existe en esta rutina
+  const mainCount = new Map(); let nNone = 0;
+  names.forEach(n=>(routine.sessions[n]||[]).forEach(b=>{ const ms=getBlockMainSub(b); if(ms) mainCount.set(ms.main,(mainCount.get(ms.main)||0)+1); else nNone++; }));
+  const mains = BLOCK_NAMES.map(c=>c.main).filter(m=>mainCount.has(m));
+  const subsOf = st.main && mainCount.has(st.main) ? (BLOCK_NAMES.find(c=>c.main===st.main)?.subs||[]).filter(sb=>names.some(n=>(routine.sessions[n]||[]).some(b=>{const ms=getBlockMainSub(b);return ms&&ms.main===st.main&&ms.sub===sb;}))) : [];
+  const chip = (on, fn, label)=>`<button class="chip-btn ${on?'on':''}" onclick="${fn}">${label}</button>`;
+  let h = `<div class="cmp-bar">
+    ${chip(!st.main,"cmpSet('main',null)",'Todo')}
+    ${mains.map(m=>chip(st.main===m,`cmpSet('main','${m}')`,`${m} <small>${mainCount.get(m)}</small>`)).join('')}
+    ${nNone?chip(st.main==='NONE',"cmpSet('main','NONE')",`Sin clasificar <small>${nNone}</small>`):''}
+    ${chip(st.main==='PRINC',"cmpSet('main','PRINC')",'Principales')}
+  </div>`;
+  if(subsOf.length) h += `<div class="cmp-bar">${chip(!st.sub,"cmpSet('sub',null)",'Todas')}${subsOf.map(sb=>chip(st.sub===sb,`cmpSet('sub','${sb}')`,sb)).join('')}</div>`;
+  h += `<div class="cmp-bar"><input type="text" class="cmp-q" id="cmp-q" value="${esc(st.q)}" placeholder="Buscar bloque o ejercicio" oninput="cmpSearch(this.value)">
+    ${weeks>1?`<span class="cmp-wk">${Array.from({length:weeks},(_,i)=>chip(st.week===i+1,`cmpSet('week',${i+1})`,'S'+(i+1))).join('')}</span>`:''}
+    <span class="cmp-days">${names.map((n,i)=>chip(!st.closed[n],`cmpToggleDay(${i})`,esc(n))).join('')}</span></div>`;
+  const open = names.filter(n=>!st.closed[n]);
+  const cols = names.map(n=>st.closed[n] ? '44px' : 'minmax(0,1fr)').join(' ');
+  h += `<div class="cmp-cols" style="--cmp-cols:${cols}">` + names.map((n,i)=>{
+    if(st.closed[n]) return `<div class="cmp-strip" onclick="cmpToggleDay(${i})" title="Abrir ${esc(n)}"><span>${esc(n)}</span><i>+</i></div>`;
+    const blocks = (routine.sessions[n]||[]).filter(b=>cmpBlockMatches(b,st));
+    return `<div class="cmp-col"><div class="cmp-dh"><span>${esc(n)}</span><button class="cmp-x" onclick="cmpEditDay(${i})">Editar</button>${open.length>1?`<button class="cmp-x" onclick="cmpToggleDay(${i})">Cerrar</button>`:''}</div>
+      ${blocks.length ? blocks.map(b=>`<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span>${esc(b.title)}</div>
+        ${(b.categories||[]).flatMap(c=>c.exercises||[]).map(e=>`<div class="cmp-ex" data-k="${esc(exerciseSeriesKey(e))}"><b>${esc(e.name)}</b><span>${esc(cmpExLine(e, st.week))}</span></div>`).join('')||'<div class="cmp-ex"><span>Sin ejercicios</span></div>'}
+      </div>`).join('') : '<div class="cmp-none">—</div>'}
+    </div>`; }).join('') + `</div>`;
+  return `<div id="cmp-wrap">${h}</div>`;
+}
+function cmpRefresh() { const el=document.getElementById('cmp-wrap'); if(el && S.editingRoutine) el.outerHTML = renderDaysCompare(S.editingRoutine); }
+function cmpSet(k,v) { const st=getCmpState(S.editingRoutine); st[k]=v; if(k==='main') st.sub=null; cmpRefresh(); }
+function cmpSearch(v) {
+  const st=getCmpState(S.editingRoutine); st.q=v; cmpRefresh();
+  const i=document.getElementById('cmp-q'); if(i){ i.focus(); i.setSelectionRange(v.length,v.length); }
+}
+function cmpToggleDay(i) { const n=getOrderedSessionNames(S.editingRoutine)[i]; const st=getCmpState(S.editingRoutine); st.closed[n]=!st.closed[n]; if(getOrderedSessionNames(S.editingRoutine).every(x=>st.closed[x])) st.closed[n]=false; cmpRefresh(); }
+function cmpEditDay(i) { S._routineEditSession=getOrderedSessionNames(S.editingRoutine)[i]; S._routineCompare=false; renderMain(); }
+function setRoutineCompare(on) { S._routineCompare=!!on; renderMain(); }
+window.cmpSet=cmpSet; window.cmpSearch=cmpSearch; window.cmpToggleDay=cmpToggleDay; window.cmpEditDay=cmpEditDay; window.setRoutineCompare=setRoutineCompare;
+// resaltado: el mismo ejercicio en los otros días
+document.addEventListener('mouseover', e=>{
+  const el = e.target.closest && e.target.closest('.cmp-ex[data-k]');
+  document.querySelectorAll('.cmp-ex.hl').forEach(x=>x.classList.remove('hl'));
+  if(!el) return;
+  const k = el.getAttribute('data-k');
+  document.querySelectorAll('.cmp-ex[data-k]').forEach(x=>{ if(x.getAttribute('data-k')===k) x.classList.add('hl'); });
+});
+
+
 function renderRoutineEditor() {
   const r = S.editingRoutine;
   if(!r) return `<div class="empty-state">Error: no hay rutina en edición.</div>`;
@@ -12014,7 +12739,7 @@ function renderRoutineEditor() {
   </div>
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 14px;background:var(--accent-dim);border-radius:var(--rsm)">
     <span style="font-size:12px;font-weight:600;color:var(--accent-text)">Duración de esta planificación</span>
-    <input type="number" min="1" max="52" value="${r.durationWeeks||4}" style="width:56px;text-align:center;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px;color:var(--text);font-size:13px" onchange="setRoutineDuration(this.value)">
+    <input type="number" min="1" max="52" value="${getRoutineDurationWeeks(r)}" style="width:56px;text-align:center;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px;color:var(--text);font-size:13px" onchange="setRoutineDuration(this.value)">
     <span style="font-size:12px;color:var(--text3)">semanas</span>
   </div>
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--bg3);border-radius:var(--rsm);flex-wrap:wrap">
@@ -12027,9 +12752,10 @@ function renderRoutineEditor() {
   <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
     ${sessionTabs}
     <button class="abtn" onclick="addRoutineSession()" style="font-size:11px">+ Sesión</button>
-    ${curSession?`<button class="abtn" onclick="startRenameRoutineSession('${curSession}')" style="font-size:11px" title="Cambiar el nombre de este día">✎ Renombrar</button><button class="abtn abtn-d" onclick="deleteRoutineSession('${curSession}')" style="font-size:11px">× ${curSession}</button>`:''}
+    ${sessionNames.length>1?`<button class="abtn ${S._routineCompare?'abtn-p':''}" onclick="setRoutineCompare(${!S._routineCompare})" style="font-size:11px">Comparar días</button>`:''}
+    ${curSession&&!S._routineCompare?`<button class="abtn" onclick="startRenameRoutineSession('${curSession}')" style="font-size:11px" title="Cambiar el nombre de este día">✎ Renombrar</button><button class="abtn abtn-d" onclick="deleteRoutineSession('${curSession}')" style="font-size:11px">× ${curSession}</button>`:''}
   </div>
-  ${curSession?`
+  ${S._routineCompare&&sessionNames.length>1 ? renderDaysCompare(r) : curSession?`
     ${blocksHtml}
     <div style="display:flex;gap:8px">
       <button class="add-block-btn" style="flex:1" onclick="addRoutineBlock('${curSession}')">+ Agregar bloque</button>
@@ -12070,10 +12796,11 @@ function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
     <div class="block-header" onclick="toggleRBlock('${b.id}','${sessionName}')">
       <span class="block-badge">${b.label}</span>
       <div class="block-title-wrap">
-        <span class="block-title" ondblclick="editRBlockTitle(event,'${b.id}','${sessionName}')">${b.title}</span>
+        <span class="block-title" ondblclick="event.stopPropagation();renameBlockPicker('routine','${b.id}','${sessionName}')">${b.title}</span>
         <input class="block-title-inp" id="rbtinp-${b.id}" onblur="saveRBlockTitle('${b.id}','${sessionName}',this)" onkeydown="if(event.key==='Enter')this.blur()">
       </div>
       <span class="block-time">${b.time||''}</span>
+      <span class="ex-icon-btn" onclick="event.stopPropagation();renameBlockPicker('routine','${b.id}','${sessionName}')" title="Cambiar el nombre del bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>
       <span class="ex-icon-btn" style="${bIdx===0?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',-1)" title="Mover arriba"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></span>
       <span class="ex-icon-btn" style="${bIdx===totalBlocks-1?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',1)" title="Mover abajo"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
       <span class="ex-icon-btn" onclick="event.stopPropagation();copyBlockToClipboard(getRBlock('${b.id}','${sessionName}'))" title="Copiar bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
@@ -12092,7 +12819,7 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
   const videoKey = ex.libId || (libMatch&&libMatch.id) || ex.id;
   const hasV = !!S.videos[videoKey];
   const isFirst = exIdx===0, isLast = exIdx===(totalEx-1);
-  const durationWeeks = S.editingRoutine?.durationWeeks || 4;
+  const durationWeeks = getRoutineDurationWeeks(S.editingRoutine);
   const weeksArr = Array.from({length:durationWeeks}, (_,i)=>i+1);
   const getWP = (w) => (ex.progression && ex.progression[w-1]) ? ex.progression[w-1] : {series:ex.series||'',reps:ex.reps||'',pct:ex.pct||'',rpe:ex.rpe||'',intensityType:ex.intensityType||'RPE',note:ex.note||''};
   return `<div class="ex-row" id="rexrow-${ex.id}">
@@ -12117,12 +12844,12 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-        <span style="font-size:10px;color:var(--text3);font-weight:600">De qué RM:</span>
+        <span style="font-size:11px;color:var(--text3);font-weight:600">De qué RM:</span>
         <select class="field-inp" style="width:auto;padding:5px 4px;font-size:11px" onchange="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'rmLift',this.value)">
           <option value="">—</option>
           ${RM_LIFTS.map(rm=>`<option value="${rm.id}" ${ex.rmLift===rm.id?'selected':''}>${rm.label}</option>`).join('')}
         </select>
-        <span style="font-size:10px;color:var(--text3);font-weight:600;margin-left:8px">Intensidad: ${infoBtn('intensity')}</span>
+        <span style="font-size:11px;color:var(--text3);font-weight:600;margin-left:8px">Intensidad: ${infoBtn('intensity')}</span>
         <div class="intensity-sel">
           <button class="intensity-type-btn ${(ex.intensityType||'RPE')==='RPE'?'active':''}" onclick="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
           <button class="intensity-type-btn ${ex.intensityType==='RIR'?'active':''}" onclick="setRExField('${ex.id}','${blockId}','${sessionName}',${catIdx},'intensityType','RIR');this.classList.add('active');this.previousElementSibling.classList.remove('active')">RIR</button>
@@ -12132,29 +12859,29 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
         <table style="border-collapse:collapse;width:100%">
           <thead>
             <tr style="background:var(--accent-dim)">
-              <th style="padding:6px 8px;text-align:left;font-size:10px;color:var(--accent-text);font-weight:700;position:sticky;left:0;background:var(--accent-dim);min-width:64px;z-index:1"></th>
+              <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--accent-text);font-weight:700;position:sticky;left:0;background:var(--accent-dim);min-width:64px;z-index:1"></th>
               ${weeksArr.map(w=>`<th style="padding:6px 8px;text-align:center;font-size:11px;color:var(--accent-text);font-weight:700;min-width:76px;white-space:nowrap">Semana ${w}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Series</td>
+              <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Series</td>
               ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="3x" value="${getWP(w).series||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'series',this.value)"></td>`).join('')}
             </tr>
             <tr>
-              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Reps</td>
+              <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Reps</td>
               ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="6–8" value="${getWP(w).reps||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'reps',this.value)"></td>`).join('')}
             </tr>
             <tr>
-              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">%RM</td>
+              <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">%RM</td>
               ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="—" value="${getWP(w).pct||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'pct',this.value)"></td>`).join('')}
             </tr>
             <tr>
-              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">${ex.intensityType||'RPE'}</td>
+              <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">${ex.intensityType||'RPE'}</td>
               ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="—" value="${getWP(w).rpe||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'rpe',this.value)"></td>`).join('')}
             </tr>
             <tr>
-              <td style="padding:5px 8px;font-size:10px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Nota</td>
+              <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Nota</td>
               ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:90px" type="text" placeholder="—" value="${getWP(w).note||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'note',this.value)"></td>`).join('')}
             </tr>
           </tbody>
@@ -12329,18 +13056,7 @@ function deleteRoutineSession(sessionName) {
 }
 window.deleteRoutineSession=deleteRoutineSession;
 
-function addRoutineBlock(sessionName) {
-  const r=S.editingRoutine; if(!r) return;
-  if(!r.sessions[sessionName]) r.sessions[sessionName]=[];
-  const colors=['b1','b2','b3','b4','bx'];
-  const n=r.sessions[sessionName].length;
-  r.sessions[sessionName].push({
-    id:genId(), label:`Bloque ${n+1}`, title:'Nuevo bloque',
-    time:'', colorKey:colors[n%colors.length], note:'', _open:true,
-    categories:[{id:genId(),label:'Categoría',exercises:[]}]
-  });
-  renderMain();
-}
+function addRoutineBlock(sessionName) { if(!S.editingRoutine) return; openBlockNamePicker({kind:'routine', sessionName}); }
 window.addRoutineBlock=addRoutineBlock;
 
 function pasteRoutineBlock(sessionName) {
@@ -12486,7 +13202,7 @@ window.setRExWeekField = setRExWeekField;
 function copyRExWeekForward(exId, blockId, sessionName, catIdx, week) {
   const b = getRBlock(blockId, sessionName); if(!b) return;
   const ex = b.categories[catIdx].exercises.find(e=>e.id===exId); if(!ex) return;
-  const durationWeeks = S.editingRoutine?.durationWeeks || 4;
+  const durationWeeks = getRoutineDurationWeeks(S.editingRoutine);
   const prog = ensureExProgression(ex);
   const base = {...prog[week-1]};
   for(let w=week+1; w<=durationWeeks; w++) prog[w-1] = {...base};
@@ -12702,7 +13418,7 @@ window.getJumpLevel = getJumpLevel;
 function jumpLevelTagHtml(testId, value) {
   const lv = getJumpLevel(testId, value);
   if(!lv) return '';
-  return `<span onclick="event.stopPropagation();openInfoModal('jumpTable')" style="cursor:pointer;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${lv.bg};color:${lv.c};white-space:nowrap">${lv.level}</span>`;
+  return `<span onclick="event.stopPropagation();openInfoModal('jumpTable')" style="cursor:pointer;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${lv.bg};color:${lv.c};white-space:nowrap">${lv.level}</span>`;
 }
 window.jumpLevelTagHtml = jumpLevelTagHtml;
 
@@ -12819,7 +13535,7 @@ function renderEvals() {
   const currentAthleteName = getAthleteDisplayName(S.evalAthleteId);
 
   let html = '<div class="page-header"><div class="page-title">Test de Saltabilidad</div>'
-    + '<div class="page-subtitle">Valoración neuromuscular · Índices elásticos y coordinación</div></div>';
+    + '</div>';
   html += catSwitcherHtml;
 
   if(S.isAdmin) {
@@ -12862,7 +13578,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
   const currentAthleteName = getAthleteDisplayName(S.evalAthleteId);
 
   let html = '<div class="page-header"><div class="page-title">Fuerza Máxima</div>'
-    + '<div class="page-subtitle">Tests de 1RM · Banca, peso muerto, sentadilla y cargada de potencia</div></div>';
+    + '</div>';
   html += catSwitcherHtml;
 
   if(S.isAdmin) {
@@ -12894,8 +13610,7 @@ function renderStrengthEntry(edata) {
   const today = todayLocal();
   let html = `<div class="wellness-card">
     <div class="wellness-title">Registrar test de 1RM</div>
-    <div class="wellness-sub">Cargá el máximo levantado en cada ejercicio — dejá en blanco los que no corresponda hoy</div>
-    <div style="padding:14px 16px 0">
+        <div style="padding:14px 16px 0">
       <label class="eval-lbl">Fecha</label>
       <input class="eval-inp" type="date" id="einp-strength-date" value="${today}">
     </div>`;
@@ -13185,11 +13900,11 @@ function renderEvalCompare() {
   let html = '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
   html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
   html += '<div style="font-size:15px;font-weight:600">Comparación de atletas</div>';
-  html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Último registro de cada test, por atleta</div></div>';
+  html += '</div>';
 
   if(positions.length) {
     html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border)">'
-      + '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Elegí cómo comparar:</div>'
+      + ''
       + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
       + '<select class="abtn" onchange="setEvalCompareGroupBy(this.value)">'
       +   '<option value="none" '+(groupBy==='none'?'selected':'')+'>Todos los atletas juntos</option>'
@@ -13236,7 +13951,7 @@ function renderEvalCompare() {
       + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>A reforzar</span>'
       + '</div>';
   } else {
-    html += '<div class="eval-no-data">Sin datos registrados.<br><span style="font-size:12px">Presioná Actualizar después de cargar evaluaciones.</span></div>';
+    html += '<div class="eval-no-data">Sin datos registrados.</div>';
   }
   if(withoutAnyData.length) {
     html += '<div style="font-size:11px;color:var(--text3);margin-top:8px">Sin ningún test cargado: '+withoutAnyData.map(d=>d.name).join(', ')+'</div>';
@@ -13277,7 +13992,7 @@ function renderAthleteTeamCompare(myData) {
   html += '<div style="font-size:12px;color:var(--text3);margin-bottom:14px">'+myTeam.name+(posAvgs?' · '+myPosition:'')+'</div>';
 
   html += '<div style="height:250px;position:relative;margin-bottom:8px"><canvas id="player-team-radar-chart"></canvas></div>'
-    + '<div style="font-size:11px;color:var(--text3);margin-bottom:16px">Cada eje es el % respecto al mejor valor del equipo — línea llena: vos. Punteada: '+avgLabel+'.</div>';
+    + '';
 
   html += '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tu mejor marca vs. '+avgLabel+'</div>';
 
@@ -13928,7 +14643,7 @@ function renderDaySummaryChips(personal, date, sport) {
     const text = isMatch ? `${display.emoji} ${l.mins}' · RPE ${l.rpe}` : `${display.emoji} ${display.label} · RPE ${l.rpe}`;
     const bg = isMatch ? 'var(--accent-dim)' : 'var(--bg3)';
     const color = isMatch ? 'var(--accent-text)' : 'var(--text2)';
-    return `<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:20px;background:${bg};color:${color};white-space:nowrap">${text}</span>`;
+    return `<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;background:${bg};color:${color};white-space:nowrap">${text}</span>`;
   });
 
   const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
@@ -13941,7 +14656,7 @@ function renderDaySummaryChips(personal, date, sport) {
     const zone = allZones.find(z=>z.id===zid);
     const sev = entry.pain>=7 ? 'var(--red)' : entry.pain>=4 ? 'var(--amber)' : 'var(--green)';
     const sevDim = entry.pain>=7 ? 'var(--red-dim)' : entry.pain>=4 ? 'var(--amber-dim)' : 'var(--green-dim)';
-    injuryChips.push(`<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:20px;background:${sevDim};color:${sev};border:1px solid ${sev};white-space:nowrap">${isFirstEver?'🆕 ':'🩹 '}${zone?.label||zid} ${entry.pain}/10</span>`);
+    injuryChips.push(`<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;background:${sevDim};color:${sev};border:1px solid ${sev};white-space:nowrap">${isFirstEver?'🆕 ':'🩹 '}${zone?.label||zid} ${entry.pain}/10</span>`);
   });
 
   if(!cargaChips.length && !injuryChips.length) return '';
@@ -14150,7 +14865,7 @@ function renderDashboard() {
   
   return `<div class="page-header">
     <div class="page-title">Dashboard</div>
-    <div class="page-subtitle">Vista general de tus atletas · ${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+    <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
   <div id="dashboard-content">
     <div class="empty-state" style="padding:30px">
@@ -14310,9 +15025,9 @@ function teamBadgeHtml(a) {
   const team = getAthleteTeam(a);
   const label = getAthleteCategoryLabel(a);
   if(team?.color) {
-    return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${team.color}22;color:${team.color};white-space:nowrap">${label}</span>`;
+    return `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${team.color}22;color:${team.color};white-space:nowrap">${label}</span>`;
   }
-  return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--bg4);color:var(--text2);white-space:nowrap">${label}</span>`;
+  return `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--bg4);color:var(--text2);white-space:nowrap">${label}</span>`;
 }
 window.teamBadgeHtml = teamBadgeHtml;
 
@@ -14323,173 +15038,232 @@ function injuryBadgesHtml({severity, zoneLabel, pain, athlete}) {
   const sevInfo = severityInfo(severity) || severityInfo('leve');
   const painC = getPainColor(pain);
   return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
-    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${sevInfo.dim};color:${sevInfo.color};white-space:nowrap">${sevInfo.label}</span>
-    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--blue-dim);color:var(--blue);white-space:nowrap">${zoneLabel}</span>
-    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${painC.bg};color:${painC.color};white-space:nowrap">dolor ${pain}/10</span>
+    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${sevInfo.dim};color:${sevInfo.color};white-space:nowrap">${sevInfo.label}</span>
+    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--blue-dim);color:var(--blue);white-space:nowrap">${zoneLabel}</span>
+    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${painC.bg};color:${painC.color};white-space:nowrap">dolor ${pain}/10</span>
     ${teamBadgeHtml(athlete)}
   </div>`;
 }
 window.injuryBadgesHtml = injuryBadgesHtml;
 
 
+// ── FILA UNIFICADA DE ATLETA ────────────────────────────────────────────────
+// UNA sola fila para todas las pantallas donde aparece un atleta (Dashboard,
+// Atletas, plantel de un equipo): nombre y equipo/posición, barras de
+// wellness de los últimos 7 días (altura y color = wellness de ese día, punto
+// = entrenó), el último porcentaje con su variación, y lo que hizo HOY
+// (gimnasio, entrenamiento de su deporte, partido — con RPE y minutos) más
+// las alertas. Necesita a._personal cargado.
+const ATH_ICONS = {
+  gym:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg>',
+  ball:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  cup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v1a3 3 0 0 0 3 3M16 6h4v1a3 3 0 0 1-3 3M12 13v4M9 20h6"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.5 20h19zM12 10v4M12 17v.5"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  inj:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+};
+window.ATH_ICONS = ATH_ICONS;
+
+function athleteSportOf(a) {
+  if(a.sport) return a.sport;
+  const t = a.teamId ? (S.teams||[]).find(x=>x.id===a.teamId) : null;
+  return t?.sport || '';
+}
+window.athleteSportOf = athleteSportOf;
+
+// Texto corto y ícono de una actividad de carga ("Gimnasio", "Partido", "Pádel"…).
+function activityChipInfo(l, sport) {
+  if(l.activity==='gimnasio' || l.activity==='gimnasio2') return {txt:'Gimnasio', ic:'gym'};
+  if(l.activity==='partido' || l.activity==='partido2') return {txt:'Partido', ic:'cup'};
+  const act = LOAD_ACTIVITIES.find(x=>x.key===l.activity);
+  let t = act ? getLoadActivityDisplay(act, sport).label : (l.session||l.activity||'');
+  t = t.replace(/^Entrenamiento de /i,'');
+  return {txt: t.charAt(0).toUpperCase()+t.slice(1), ic:'ball'};
+}
+
+// Todo lo que la fila necesita saber de un atleta, calculado una sola vez.
+function getAthleteRowData(a) {
+  const p = a._personal || {};
+  const dates = getWeeklyComplianceDates(0);
+  const today = dates[dates.length-1], yesterday = dates[dates.length-2];
+  const logs = p.history?._sessionLogs || [];
+  const scores = dates.map(d=>computeHooperScore(p.wellness?.[d]));
+  const trained = dates.map(d=>logs.some(l=>l.date===d));
+  let last=null, prev=null;
+  for(let i=scores.length-1;i>=0;i--) {
+    if(scores[i]==null) continue;
+    if(last==null) last={v:scores[i], i}; else { prev={v:scores[i], i}; break; }
+  }
+  const sport = athleteSportOf(a);
+  const mk = l=>{ const c=activityChipInfo(l, sport); return {...c, rpe:l.rpe, mins:l.mins}; };
+  const todayChips = logs.filter(l=>l.date===today).map(mk);
+  const yesterdayChips = todayChips.length ? [] : logs.filter(l=>l.date===yesterday).map(mk);
+  const metrics = calcLoadMetrics(logs);
+  const alerts = [];
+  const injuries = Object.entries(p.injuries||{}).filter(([,inj])=>inj.pain>0 && isRealInjury(inj));
+  const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  injuries.forEach(([zid,inj])=>{
+    alerts.push({kind:'inj', txt:(allZones.find(z=>z.id===zid)?.label||zid)+' · '+(severityInfo(inj.severity||'leve')?.label||'Leve').toLowerCase()});
+  });
+  if(metrics?.acwr!=null && metrics.acwr>1.5) alerts.push({kind:'acwr', txt:'ACWR '+metrics.acwr.toFixed(2)});
+  const dropToday = scores[scores.length-1]!=null && scores[scores.length-2]!=null ? scores[scores.length-1]-scores[scores.length-2] : null;
+  if(dropToday!=null && dropToday<=-20) alerts.push({kind:'drop', txt:'Wellness '+dropToday});
+  const noWellnessToday = scores[scores.length-1]==null;
+  const critical = alerts.some(x=>x.kind==='inj'||x.kind==='acwr'||x.kind==='drop');
+  return {dates, scores, trained, last, prev, todayChips, yesterdayChips, alerts, noWellnessToday, critical, metrics, today};
+}
+window.getAthleteRowData = getAthleteRowData;
+
+function athleteRowHtml(a, o) {
+  o = o || {};
+  const d = getAthleteRowData(a);
+  const team = a.teamId ? (S.teams||[]).find(t=>t.id===a.teamId) : null;
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const subParts = o.sub!=null ? [o.sub] : [team ? team.name+(team.category?' · '+team.category:'') : (athleteSportOf(a)||'Individual'), a.position||''];
+  const sub = subParts.filter(Boolean).join(' · ');
+  const bars = d.scores.map((v,i)=>{
+    const h = v==null ? 3 : Math.round(8+v/100*20);
+    const col = v==null ? 'var(--border2)' : getWellnessState(v).color;
+    return `<span class="ar-bc" title="${d.dates[i]}${v!=null?' · '+v+'%':' · sin wellness'}"><i style="height:${h}px;background:${col}"></i><u style="${d.trained[i]?'':'visibility:hidden'}"></u></span>`;
+  }).join('');
+  let pct = '<div class="ar-pc"><b style="color:var(--text3)">—</b></div>';
+  if(d.last) {
+    const delta = d.prev ? d.last.v-d.prev.v : null;
+    pct = `<div class="ar-pc"><b style="color:${getWellnessState(d.last.v).color}">${d.last.v}%</b>${delta?`<small style="color:${delta>0?'var(--green)':'var(--red)'}">${delta>0?'▲ +':'▼ −'}${Math.abs(delta)}</small>`:''}</div>`;
+  }
+  const rpeCls = r=> r>=7 ? 'ar-hi' : r>=5 ? 'ar-mid' : 'ar-lo';
+  const chip = (c, muted)=>`<span class="ar-ch ${rpeCls(+c.rpe)}${muted?' ar-muted':''}">${ATH_ICONS[c.ic]}${muted?'Ayer · ':''}${esc(c.txt)}${c.rpe?' · RPE '+esc(c.rpe):''}${c.mins?' · '+esc(c.mins)+' min':''}</span>`;
+  let chips = d.todayChips.map(c=>chip(c,false)).join('') + d.yesterdayChips.map(c=>chip(c,true)).join('');
+  chips += d.alerts.map(x=>`<span class="ar-ch ar-al">${ATH_ICONS[x.kind==='inj'?'inj':'warn']}${esc(x.txt)}</span>`).join('');
+  if(d.noWellnessToday) chips += `<span class="ar-ch ar-none">${ATH_ICONS.clock}Sin wellness hoy</span>`;
+  if(!chips) chips = '<span class="ar-ch ar-none">Sin actividad hoy</span>';
+  return `<div class="ar-row${d.critical?' ar-crit':''}" ${o.onclick?`onclick="${o.onclick}"`:''}>
+    <div class="ar-av">${avatarHtml(a.name||a.email, a.color, 38, a.photoUrl)}</div>
+    <div class="ar-who"><div class="ar-nm">${esc(a.name||a.email)}</div><div class="ar-sb">${esc(sub)}</div></div>
+    <div class="ar-viz"><div class="ar-bars">${bars}</div>${pct}</div>
+    <div class="ar-chips">${chips}</div>
+    ${o.extra?`<div class="ar-extra">${o.extra}</div>`:''}
+  </div>`;
+}
+window.athleteRowHtml = athleteRowHtml;
+
+
+// Atletas del Dashboard según el ÚNICO filtro de arriba (equipo / individuales).
+// TODO lo que se ve en el Dashboard (contadores, alertas, lesiones, lista y
+// las pantallas a las que lleva) sale de acá — antes había dos filtros que no
+// se hablaban y al tocar un equipo seguían apareciendo todos los atletas.
+function getDashAthletes() {
+  const all = S.dashAthletes || [];
+  const f = S.dashTeamFilter || null;
+  if(!f) return all;
+  if(f==='individual') return all.filter(a=>!a.teamId);
+  return all.filter(a=>a.teamId===f);
+}
+window.getDashAthletes = getDashAthletes;
+
 function renderDashboardContent() {
-  const athletes = S.dashAthletes;
+  const everyone = S.dashAthletes || [];
+  const athletes = getDashAthletes();
   const today = todayLocal();
   const isDesktop = window.innerWidth >= 900;
-  
-  // Aggregate stats
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+  if(!everyone.length) return `<div class="empty-state">No hay atletas registrados aún.</div>`;
+
   const totalAthletes = athletes.length;
-  const trainedToday = athletes.filter(a=>{
-    const logs = a._personal?.history?._sessionLogs||[];
-    return logs.some(l=>l.date===today);
-  }).length;
-  const wellnessToday = athletes.filter(a=>a._personal?.wellness?.[today]).length;
+  const trainedToday = athletes.filter(a=>(a._personal?.history?._sessionLogs||[]).some(l=>l.date===today)).length;
+  // wellness "hecho" = formulario completo, no solo abierto
+  const hasWellnessToday = a=>computeHooperScore(a._personal?.wellness?.[today])!=null;
+  const wellnessToday = athletes.filter(hasWellnessToday).length;
+  const withoutWellness = athletes.filter(a=>!hasWellnessToday(a));
 
-  // Alert detection: ACWR risk + wellness silence (2+ days without check-in)
-  const twoDaysAgo = new Date(); twoDaysAgo.setDate(twoDaysAgo.getDate()-2);
-  const twoDaysAgoStr = toLocalDateStr(twoDaysAgo);
-
-  const acwrAlerts = athletes.filter(a=>{
-    const logs = a._personal?.history?._sessionLogs||[];
-    const m = calcLoadMetrics(logs);
-    return m && m.acwr && m.acwr>1.5;
-  }).map(a=>({athlete:a, type:'acwr', detail:'ACWR elevado'}));
-
-  // Alertas de lesiones — lo que de verdad requiere atención, no "no llenó
-  // el wellness" ni una molestia pasajera sin diagnóstico. Acá SOLO entran
-  // lesiones reales (isRealInjury), en cualquier gravedad — leve, moderada o
-  // grave — sin importar el dolor puntual de hoy (una operación de cruzado
-  // sigue siendo grave aunque hoy no duela). Las molestias (dolores sin
-  // diagnóstico, tipo "me duele la espalda") NO entran acá para no inundar
-  // el panel de inicio de ruido — siguen viéndose completas dentro de cada
-  // equipo.
-  const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
-  const injuryAlerts = [];
+  // ── Atención requerida: un renglón por atleta con todo lo que lo marca ──
+  const attMap = new Map();
+  const add = (a, kind, txt, rank)=>{ if(!attMap.has(a.uid)) attMap.set(a.uid,{a, items:[], rank:9}); const o=attMap.get(a.uid); o.items.push({kind,txt}); o.rank=Math.min(o.rank, rank); };
+  const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
   athletes.forEach(a=>{
-    const injuries = a._personal?.injuries || {};
-    Object.entries(injuries).forEach(([zoneId, inj])=>{
-      if(!inj.pain || inj.pain<=0) return;
-      if(!isRealInjury(inj)) return;
-      const sev = inj.severity || 'leve';
-      const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
-      const sevInfo = severityInfo(sev);
-      injuryAlerts.push({
-        athlete:a, type:'injury', severity:sev, zoneLabel, pain:inj.pain,
-        detail: `${sevInfo?.label||'Leve'} · ${zoneLabel} · dolor ${inj.pain}/10`
-      });
+    const p = a._personal||{};
+    Object.entries(p.injuries||{}).forEach(([zid,inj])=>{
+      if(!inj.pain || inj.pain<=0 || !isRealInjury(inj)) return;
+      const sev = inj.severity||'leve';
+      add(a,'inj',(allZones.find(z=>z.id===zid)?.label||zid)+' · '+(severityInfo(sev)?.label||'Leve').toLowerCase()+' · dolor '+inj.pain+'/10', sev==='grave'?0:sev==='moderada'?1:2);
     });
+    const m = calcLoadMetrics(p.history?._sessionLogs||[]);
+    if(m?.acwr!=null && m.acwr>1.5) add(a,'acwr','ACWR '+m.acwr.toFixed(2), 3);
+    const dates = getWeeklyComplianceDates(0);
+    const sT = computeHooperScore(p.wellness?.[dates[6]]), sY = computeHooperScore(p.wellness?.[dates[5]]);
+    if(sT!=null && sY!=null && sT-sY<=-20) add(a,'drop','Wellness bajó a '+sT+'% · ayer '+sY+'%', 4);
+    else if(sT!=null && sT<50) add(a,'low','Wellness '+sT+'%', 5);
   });
+  const attRows = [...attMap.values()].sort((x,y)=>x.rank-y.rank || (x.a.name||'').localeCompare(y.a.name||''));
+  const attCount = attRows.length;
+  const attIcon = k=> k==='inj' ? ATH_ICONS.inj : k==='acwr' ? ATH_ICONS.warn : ATH_ICONS.warn;
+  const attPanel = (attRows.length || withoutWellness.length) ? `<div class="att-panel" id="dash-att">
+    ${attRows.map(r=>`<div class="att-row" onclick="adminOpenAthleteDash('${r.a.uid}')">
+      <span class="att-ic">${attIcon(r.items[0].kind)}</span>
+      <div class="att-main"><div class="att-nm">${esc(r.a.name||r.a.email)}</div><div class="ar-chips">${r.items.map(it=>`<span class="ar-ch ar-al">${esc(it.txt)}</span>`).join('')}${teamBadgeHtml(r.a)}</div></div>
+      <span class="att-go">›</span>
+    </div>`).join('')}
+    ${withoutWellness.length?`<div class="att-row" onclick="openReminderScreen()"><span class="att-ic att-ic-n">${ATH_ICONS.clock}</span><div class="att-main"><div class="att-nm">${withoutWellness.length} ${withoutWellness.length===1?'atleta sin wellness hoy':'atletas sin wellness hoy'}</div></div><span class="att-go">›</span></div>`:''}
+  </div>` : '';
 
-  const allAlerts = [...acwrAlerts, ...injuryAlerts];
-  const alertAthletes = acwrAlerts.map(x=>x.athlete); // keep for backward compat in metric card
+  // ── Lesiones recientes (con el mismo filtro) ──
+  const recentFeed = getRecentInjuryFeed(athletes).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const recentPanel = `<div class="att-side">
+    <div class="att-side-t">Lesiones recientes (${recentFeed.length})</div>
+    ${recentFeed.length?recentFeed.map(r=>{
+      const daysAgo = r.date ? Math.round((new Date(todayLocal()+'T00:00:00') - new Date(r.date+'T00:00:00'))/86400000) : null;
+      const whenLabel = daysAgo==null ? 'sin fecha' : daysAgo<=0 ? 'hoy' : daysAgo===1 ? 'ayer' : `hace ${daysAgo} días`;
+      return `<div class="att-row" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
+        <div class="att-main"><div class="att-nm">${esc(r.athlete.name||r.athlete.email)}</div>
+          ${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain, athlete:r.athlete})}
+          ${r.note?`<div class="att-note">"${esc(r.note)}"</div>`:''}
+          <div class="att-when">${whenLabel}</div></div>
+        <button class="att-x" onclick="event.stopPropagation();dismissDashboardInjury('${r.athlete.uid}','${r.zoneId}','${r.date}')" title="Sacar de este panel">×</button>
+      </div>`; }).join(''):`<div class="att-empty">Sin lesiones activas.</div>`}
+  </div>`;
 
-  let html = `<div class="metric-grid" style="margin-bottom:var(--sp-5)">
+  // ── Filtro único: equipos reales con su cantidad ──
+  const groups = [];
+  const teamIds = [...new Set(everyone.filter(a=>a.teamId).map(a=>a.teamId))];
+  teamIds.forEach(tid=>{ const t=(S.teams||[]).find(x=>x.id===tid); if(t) groups.push({id:tid, label:t.name+(t.category?' · '+t.category:''), n:everyone.filter(a=>a.teamId===tid).length}); });
+  const nInd = everyone.filter(a=>!a.teamId).length;
+  if(nInd) groups.push({id:'individual', label:'Individuales', n:nInd});
+  const filterHtml = groups.length>1 ? `<div id="dash-team-filters" class="dash-filters">${renderDashTeamFilters(everyone)}</div>` : '<div id="dash-team-filters"></div>';
+
+  let html = filterHtml;
+  html += attPanel ? (isDesktop ? `<div class="att-grid">${attPanel}${recentPanel}</div>` : `${attPanel}${recentFeed.length?recentPanel:''}`) : (recentFeed.length ? `<div class="att-grid att-solo">${recentPanel}</div>` : '');
+
+  html += `<div class="metric-grid" style="margin-bottom:var(--sp-5)">
     <div class="metric-card" style="border-left:3px solid var(--accent);cursor:pointer" onclick="scrollToDashAthleteList()">
       <div class="metric-card-label">ATLETAS <span class="metric-card-icon">${metricIconSvg('atletas')}</span></div>
       <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
-      <div class="metric-card-sub">registrados · tocá para ver la lista</div>
     </div>
     <div class="metric-card" style="border-left:3px solid var(--warm);cursor:pointer" onclick="openTrainedTodayScreen()">
       <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">${metricIconSvg('entrenaron')}</span></div>
       <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}" data-countup="${trainedToday}">${trainedToday}</div>
-      <div class="metric-card-sub">de ${totalAthletes} atletas · tocá para ver quiénes</div>
+      <div class="metric-card-sub">de ${totalAthletes}</div>
     </div>
     <div class="metric-card" style="border-left:3px solid var(--green);cursor:pointer" onclick="openReminderScreen()">
       <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">${metricIconSvg('wellness')}</span></div>
       <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}" data-countup="${wellnessToday}">${wellnessToday}</div>
-      <div class="metric-card-sub">registros enviados · tocá para recordar</div>
+      <div class="metric-card-sub">de ${totalAthletes}</div>
     </div>
-    ${allAlerts.length?`<div class="metric-card" style="border-left:3px solid var(--red);border-color:rgba(195,58,44,0.3)">
+    ${attCount?`<div class="metric-card" style="border-left:3px solid var(--red);cursor:pointer" onclick="scrollToDashAtt()">
       <div class="metric-card-label" style="color:var(--red)">ALERTAS ${craftIconSvg('alert','var(--red)',12)}</div>
-      <div class="metric-card-value" style="color:var(--red)" data-countup="${allAlerts.length}">${allAlerts.length}</div>
-      <div class="metric-card-sub">requieren atención</div>
+      <div class="metric-card-value" style="color:var(--red)" data-countup="${attCount}">${attCount}</div>
     </div>`:''}
   </div>`;
 
-  // "Atención requerida" y "Lesiones recientes" van al mismo nivel (lado a
-  // lado en desktop, apiladas en celular) — ambas ordenadas por grupo de
-  // población (Liga de Honor → Juniors → Juveniles → Cadetes → Individuales)
-  // y con el mismo filtro compartido arriba, en vez de una sola lista larga.
-  if(allAlerts.length || getRecentInjuryFeed(athletes).length) {
-    const catFilter = S.dashInjuryCategoryFilter || null;
-    let alertsSorted = catFilter ? allAlerts.filter(x=>getAthleteCategoryLabel(x.athlete)===catFilter) : allAlerts.slice();
-    alertsSorted.sort((a,b)=>injuryCategoryRank(getAthleteCategoryLabel(a.athlete))-injuryCategoryRank(getAthleteCategoryLabel(b.athlete)));
-
-    let recentFeed = getRecentInjuryFeed(athletes);
-    if(catFilter) recentFeed = recentFeed.filter(r=>getAthleteCategoryLabel(r.athlete)===catFilter);
-    // Solo por fecha de última actualización, la más reciente arriba — antes
-    // agrupaba por categoría primero, así que una lesión de hoy podía quedar
-    // más abajo que una de hace semanas solo por el orden de categorías.
-    recentFeed.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-
-    html += renderDashInjuryCategoryFilters();
-
-    const alertsPanel = `<div style="background:var(--bg2);border:1px solid rgba(195,58,44,0.25);border-radius:var(--r);overflow:hidden;height:100%">
-      <div style="padding:var(--sp-4) var(--sp-4);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:var(--sp-2)">
-        ${craftIconSvg('alert','var(--red)',16)}
-        <span style="font-size:14px;font-weight:600;flex:1">Atención requerida (${alertsSorted.length})</span>
-      </div>
-      ${alertsSorted.length?alertsSorted.map(({athlete,type,detail,severity,zoneLabel,pain})=>`
-        <div style="padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${athlete.uid}')">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)">
-            <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${athlete.name||athlete.email}</div>
-            <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
-          </div>
-          ${type==='injury'
-            ? injuryBadgesHtml({severity,zoneLabel,pain,athlete})
-            : `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:var(--sp-1)"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);white-space:nowrap">${detail}</span>${teamBadgeHtml(athlete)}</div>`}
-        </div>`).join(''):`<div style="padding:var(--sp-3) var(--sp-4);font-size:12px;color:var(--text3)">Sin alertas${catFilter?' en '+catFilter:''}.</div>`}
-    </div>`;
-
-    const recentPanel = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden;height:100%">
-      <div style="padding:var(--sp-4) var(--sp-4);border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Lesiones recientes (${recentFeed.length})</div>
-      ${recentFeed.length?recentFeed.map(r=>{
-        const daysAgo = r.date ? Math.round((new Date(todayLocal()+'T00:00:00') - new Date(r.date+'T00:00:00'))/86400000) : null;
-        const whenLabel = daysAgo==null ? 'sin fecha' : daysAgo<=0 ? 'hoy' : daysAgo===1 ? 'ayer' : `hace ${daysAgo} días`;
-        const whenColor = daysAgo==null ? 'var(--text3)' : daysAgo<=1 ? 'var(--accent)' : daysAgo<=3 ? 'var(--text2)' : 'var(--text3)';
-        return `
-        <div style="padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)">
-            <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.athlete.name||r.athlete.email}</div>
-            <div style="display:flex;align-items:center;gap:var(--sp-2);flex-shrink:0">
-              <button onclick="event.stopPropagation();dismissDashboardInjury('${r.athlete.uid}','${r.zoneId}','${r.date}')" title="Sacar de este panel — sigue viva en la ficha del atleta" style="appearance:none;border:none;background:var(--bg3);color:var(--text3);width:20px;height:20px;border-radius:50%;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">×</button>
-              <span style="color:var(--text3);font-size:16px">›</span>
-            </div>
-          </div>
-          ${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain, athlete:r.athlete})}
-          ${r.note?`<div style="font-size:12px;color:var(--text2);margin-top:var(--sp-1);line-height:1.4">"${r.note}"</div>`:''}
-          <div style="font-size:11.5px;font-weight:700;color:${whenColor};margin-top:var(--sp-1)">Última actualización: ${whenLabel}${r.date?` (${r.date})`:''}</div>
-        </div>`;
-      }).join(''):`<div style="padding:var(--sp-3) var(--sp-4);font-size:12px;color:var(--text3)">Sin lesiones activas${catFilter?' en '+catFilter:''}.</div>`}
-    </div>`;
-
-    html += isDesktop
-      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4);margin-bottom:var(--sp-5);align-items:start">${alertsPanel}${recentPanel}</div>`
-      : `<div style="margin-bottom:var(--sp-4)">${alertsPanel}</div><div style="margin-bottom:var(--sp-5)">${recentPanel}</div>`;
-  }
-
-  if(!athletes.length) {
-    html += `<div class="empty-state">No hay atletas registrados aún.<br><span style="font-size:12px">Cuando un atleta cree su cuenta, aparecerá aquí.</span></div>`;
-    return html;
-  }
-
-  // Búsqueda + filtro por equipo — para que esto siga siendo usable con 30-50 atletas,
-  // no solo con 2. Filas compactas en vez de una tarjeta enorme por atleta.
-  html += `<div style="margin-bottom:var(--sp-3)">
-    <input id="dash-search-inp" value="${S.dashSearch||''}" placeholder="Buscar atleta..."
-      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:var(--sp-2) var(--sp-3);color:var(--text);font-size:14px;outline:none;font-family:inherit"
-      oninput="setDashSearch(this.value)">
-  </div>
-  <div id="dash-team-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${renderDashTeamFilters(athletes)}</div>
-  <div id="dash-athlete-list">${renderDashboardAthleteList()}</div>`;
-
-  html += `<div style="text-align:center;margin-top:12px">
-    <button class="abtn" onclick="loadDashboard()" style="padding:8px 18px">↻ Actualizar</button>
-  </div>`;
-
+  html += `<div class="dash-search"><input id="dash-search-inp" value="${esc(S.dashSearch||'')}" placeholder="Buscar atleta" oninput="setDashSearch(this.value)"></div>
+    <div id="dash-athlete-list">${renderDashboardAthleteList()}</div>`;
+  html += `<div style="text-align:center;margin-top:12px"><button class="abtn" onclick="loadDashboard()" style="padding:8px 18px">Actualizar</button></div>`;
   return html;
 }
 window.renderDashboardContent=renderDashboardContent;
+
+function scrollToDashAtt() { const el=document.getElementById('dash-att'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }
+window.scrollToDashAtt = scrollToDashAtt;
 
 // Fila compacta por atleta (color, nombre, equipo/posición, chips de wellness/ACWR/hoy).
 // Separada de renderDashboardContent para poder refrescarla sola al buscar/filtrar,
@@ -14516,14 +15290,10 @@ function getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled) {
 }
 
 function renderDashboardAthleteList() {
-  const athletes = S.dashAthletes||[];
   const search = (S.dashSearch||'').toLowerCase();
-  const teamFilter = S.dashTeamFilter||null;
   const today = todayLocal();
 
-  let filtered = athletes;
-  if(teamFilter==='individual') filtered = filtered.filter(a=>!a.teamId);
-  else if(teamFilter) filtered = filtered.filter(a=>a.teamId===teamFilter);
+  let filtered = getDashAthletes();
   if(search) filtered = filtered.filter(a=>(a.name||a.email||'').toLowerCase().includes(search));
 
   if(!filtered.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan con la búsqueda.</div>`;
@@ -14542,51 +15312,7 @@ function renderDashboardAthleteList() {
   });
   withStatus.sort((x,y)=> x.status.tier-y.status.tier || (x.a.name||'').localeCompare(y.a.name||''));
 
-  return `<div class="wellness-card" style="padding:0">
-    ${withStatus.map(({a,logs,metrics,wPct,wAllFilled,acwrStatus,status})=>{
-      const todayLog = logs.filter(l=>l.date===today);
-      const matchInfo = getRecentMatchCardInfo(a._personal, today);
-      const team = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
-      // Últimos 7 días (mismo criterio y colores que "Cumplimiento semanal"
-      // en Equipos), no solo hoy — un punto de wellness y uno de carga por
-      // día, así se ve el patrón de la semana de un vistazo, no un solo día.
-      const weekDates = getWeeklyComplianceDates(0);
-      const weekStrip = `<span style="display:inline-flex;gap:2px;flex-shrink:0" title="Últimos 7 días — wellness arriba, carga abajo">
-        ${weekDates.map(d=>{
-          const wDone = getWellnessScore(a._personal?.wellness?.[d]).allFilled;
-          const cDone = logs.some(l=>l.date===d);
-          return `<span style="display:flex;flex-direction:column;gap:2px">
-            <span style="width:6px;height:6px;border-radius:50%;background:${wDone?'var(--accent)':'var(--border2)'}"></span>
-            <span style="width:6px;height:6px;border-radius:50%;background:${cDone?'var(--warm)':'var(--border2)'}"></span>
-          </span>`;
-        }).join('')}
-      </span>`;
-      return `<div style="display:flex;align-items:stretch;gap:0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthleteDash('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
-        <div style="width:4px;background:${status.color};flex-shrink:0"></div>
-        <div style="display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);flex:1;min-width:0">
-        ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
-          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${team?team.name+(team.category?' · '+team.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
-          ${matchInfo?`<div style="display:flex;align-items:center;gap:5px;margin-top:3px">
-            <span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);font-weight:700;white-space:nowrap">${craftIconSvg('match','var(--accent-text)',11)} ${matchInfo.mins}' · RPE ${matchInfo.rpe}${matchInfo.daysAgo>0?' · hace '+matchInfo.daysAgo+'d':''}</span>
-            ${matchInfo.hadMolestia?`<span style="font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">${craftIconSvg('alert','var(--red)',11)} molestia</span>`:''}
-          </div>`:''}
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-          <span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:${status.bg};color:${status.color};white-space:nowrap">${status.text}</span>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center">
-            ${weekStrip}
-            ${wAllFilled?`<span style="font-size:10px;color:${getWellnessState(wPct).color};font-weight:600;white-space:nowrap">${wPct}%</span>`:''}
-            ${metrics?.acwr!=null?`<span style="font-size:10px;color:${acwrStatus.color};font-weight:600;white-space:nowrap">ACWR ${metrics.acwr.toFixed(2)}</span>`:''}
-            ${todayLog.length?`<span style="font-size:10px;color:var(--text3);white-space:nowrap">✓ hoy</span>`:''}
-          </div>
-        </div>
-        <span style="color:var(--text3);font-size:16px;flex-shrink:0">›</span>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>`;
+  return `<div class="ar-list">${withStatus.map(({a})=>athleteRowHtml(a,{onclick:"adminOpenAthleteDash('"+a.uid+"')"})).join('')}</div>`;
 }
 window.renderDashboardAthleteList=renderDashboardAthleteList;
 
@@ -14601,11 +15327,13 @@ window.updateDashboardAthleteList=updateDashboardAthleteList;
 // lista de abajo: filtraba bien, pero el chip tocado nunca se pintaba de
 // azul porque su propio HTML no se volvía a generar.
 function renderDashTeamFilters(athletes) {
-  const teamsWithAthletes = [...new Set(athletes.filter(a=>a.teamId).map(a=>a.teamId))]
-    .map(tid=>S.teams?.find(t=>t.id===tid)).filter(Boolean);
-  return `<button class="lib-filter ${!S.dashTeamFilter?'active':''}" onclick="setDashTeamFilter(null)">Todos (${athletes.length})</button>
-    <button class="lib-filter ${S.dashTeamFilter==='individual'?'active':''}" onclick="setDashTeamFilter('individual')">Individuales</button>
-    ${teamsWithAthletes.map(t=>`<button class="lib-filter ${S.dashTeamFilter===t.id?'active':''}" onclick="setDashTeamFilter('${t.id}')">${t.name}${t.category?' · '+t.category:''}</button>`).join('')}`;
+  const teamIds = [...new Set(athletes.filter(a=>a.teamId).map(a=>a.teamId))];
+  const teams = teamIds.map(tid=>S.teams?.find(t=>t.id===tid)).filter(Boolean);
+  const nInd = athletes.filter(a=>!a.teamId).length;
+  const f = S.dashTeamFilter||null;
+  return `<button class="chip-btn ${!f?'on':''}" onclick="setDashTeamFilter(null)">Todos (${athletes.length})</button>
+    ${teams.map(t=>`<button class="chip-btn ${f===t.id?'on':''}" onclick="setDashTeamFilter('${t.id}')">${t.name}${t.category?' · '+t.category:''} (${athletes.filter(a=>a.teamId===t.id).length})</button>`).join('')}
+    ${nInd?`<button class="chip-btn ${f==='individual'?'on':''}" onclick="setDashTeamFilter('individual')">Individuales (${nInd})</button>`:''}`;
 }
 window.renderDashTeamFilters = renderDashTeamFilters;
 
@@ -14618,7 +15346,11 @@ window.updateDashTeamFilters = updateDashTeamFilters;
 function setDashSearch(v) { S.dashSearch=v; updateDashboardAthleteList(); }
 window.setDashSearch=setDashSearch;
 
-function setDashTeamFilter(v) { S.dashTeamFilter=v; updateDashTeamFilters(); updateDashboardAthleteList(); }
+function setDashTeamFilter(v) {
+  S.dashTeamFilter=v;
+  const el=document.getElementById('dashboard-content');
+  if(el) { el.innerHTML=renderDashboardContent(); setTimeout(()=>runCountUps(),30); }
+}
 window.setDashTeamFilter=setDashTeamFilter;
 
 async function adminOpenAthleteDash(uid) {
@@ -14634,64 +15366,63 @@ function renderAthleteHome() {
   const todayLogs = logs.filter(l=>l.date===today);
   const metrics = calcLoadMetrics(logs);
   const acwrSt = getACWRStatus(metrics?.acwr||null, metrics?.daysOfHistory);
-  const hasTodayWellness = !!S.wellness[today];
-  
-  const routineName = S.assignedRoutine?.name || null;
+  // "Wellness hecho" = formulario completo (no solo abierto: el objeto del día
+  // se crea vacío con solo mirar la pantalla).
+  const hasTodayWellness = getWellnessScore(S.wellness[today]).allFilled;
+  const hasRoutineToday = !!(S.assignedRoutine && S.currentSession);
+  let exTotal = 0, exDone = 0, sessDone = false;
+  if(hasRoutineToday) {
+    const rec = S.history[sessionKey(getRoutineWeek(), S.currentSession)];
+    sessDone = !!rec?.done;
+    getCurrentBlocks().forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(e=>{ exTotal++; if(rec?.exercises?.[e.id]?.checked) exDone++; })));
+  }
+  // con rutina asignada, la tarjeta es de ESA sesión (una carga suelta de pelota
+  // o partido no la marca como hecha); sin rutina, cuenta cualquier carga de hoy
+  const trainedToday = hasRoutineToday ? sessDone : todayLogs.length>0;
+  const relWeek = toRoutineRelativeWeek(getRoutineWeek(), S.userData);
+  const pct = exTotal ? Math.round(exDone/exTotal*100) : 0;
+  const check = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  const sessionCard = hasRoutineToday
+    ? `<div class="home-card ${trainedToday?'done':'pending'}" onclick="switchView('session')">
+        <div class="home-t">${trainedToday?'Sesión hecha':'Entrená hoy'}${trainedToday?`<span class="home-ck">${check}</span>`:''}</div>
+        <div class="home-s">${S.currentSession} · Semana ${relWeek}</div>
+        ${exTotal?`<div class="home-bar"><i style="width:${pct}%"></i></div><div class="home-n">${exDone} de ${exTotal} ejercicios</div>`:''}
+      </div>`
+    : `<div class="home-card ${trainedToday?'done':'pending'}" onclick="switchView('wellness')">
+        <div class="home-t">${trainedToday?'Carga registrada':'Cargá tu entrenamiento de hoy'}${trainedToday?`<span class="home-ck">${check}</span>`:''}</div>
+        ${trainedToday?`<div class="home-s">${todayLogs.reduce((a,l)=>a+(l.ua||0),0)} UA</div>`:''}
+      </div>`;
+  const wellnessCard = `<div class="home-card ${hasTodayWellness?'done':'pending'}" onclick="switchView('wellness')">
+      <div class="home-t">${hasTodayWellness?'Wellness hecho':'Completá tu wellness de hoy'}${hasTodayWellness?`<span class="home-ck">${check}</span>`:''}</div>
+    </div>`;
   return `<div class="page-header">
-    <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.trim().split(/\s+/).slice(-1)[0]:''}!</div>
+    <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.trim().split(/s+/).slice(-1)[0]:''}!</div>
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
-  ${routineName?`<div style="background:var(--accent-dim);border:1.5px solid rgba(36,59,107,0.25);border-radius:var(--rsm);padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
-    <span style="color:var(--accent-text);font-weight:600">Rutina activa:</span>
-    <span style="color:var(--text)">${routineName}</span>
-  </div>`:''}
-  
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-    <div class="metric-card" style="cursor:pointer" onclick="switchView('session')">
-      <div class="metric-card-label">HOY</div>
-      <div class="metric-card-value" style="font-size:22px">${todayLogs.length?'✓':'—'}</div>
-      <div class="metric-card-sub">${todayLogs.length?`${todayLogs.reduce((a,l)=>a+l.ua,0)} UA registradas`:'Sesión pendiente'}</div>
-    </div>
-    <div class="metric-card" style="cursor:pointer" onclick="switchView('wellness')">
-      <div class="metric-card-label">WELLNESS</div>
-      <div class="metric-card-value" style="font-size:22px">${hasTodayWellness?'✓':'—'}</div>
-      <div class="metric-card-sub">${hasTodayWellness?'Registrado hoy':'Sin registro hoy'}</div>
-    </div>
-  </div>
+  <div class="home-cards">${sessionCard}${wellnessCard}</div>
   
   ${metrics?`<div class="wellness-card" style="margin-bottom:14px">
     <div class="wellness-title">Control de carga</div>
-    <div class="wellness-sub">Últimas 4 semanas</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:14px 0">
       <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
         <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">ACWR ${infoBtn('acwr')}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:4px">ACWR ${infoBtn('acwr')}</div>
         <div style="font-size:11px;color:${acwrSt.color};margin-top:2px">${acwrSt.label}</div>
       </div>
       <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
         <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round((metrics.monotony||0)*10)/10}</div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">Monotonía ${infoBtn('monotony')}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:4px">Monotonía ${infoBtn('monotony')}</div>
         <div style="font-size:11px;color:${getMonotonyStatus(metrics.monotony).color};margin-top:2px">${getMonotonyStatus(metrics.monotony).label}</div>
       </div>
       <div style="text-align:center;padding:10px">
         <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${metrics.acuteUA}</div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:4px">UA semana ${infoBtn('ua')}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:4px">UA semana ${infoBtn('ua')}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${metrics.sessions} sesiones</div>
       </div>
     </div>
   </div>`:''}
   
-  <div style="display:flex;gap:10px;margin-top:4px">
-    <button class="finish-btn" style="flex:1" onclick="switchView('session')">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
-      Ir a mi sesión
-    </button>
-    ${!hasTodayWellness?`<button class="finish-btn" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2)" onclick="switchView('wellness')">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-      Wellness
-    </button>`:''}
-  </div>`;
+`;
 }
 
 // Also add 'dashboard' to renderMain
@@ -14759,11 +15490,11 @@ function renderLibViewBody() {
   <div onclick="toggleLibViewFilterDropdown()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rsm);padding:var(--sp-3) var(--sp-4);cursor:pointer;margin-bottom:var(--sp-3)">
     <div style="display:flex;align-items:center;gap:10px;min-width:0">
       <span style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filterLabel}</span>
-      ${S._libViewPendingOnly?`<span style="font-size:10px;font-weight:700;color:var(--amber);white-space:nowrap">${craftIconSvg('alert','var(--amber)',10)} Sin categorizar</span>`:''}
+      ${S._libViewPendingOnly?`<span style="font-size:11px;font-weight:700;color:var(--amber);white-space:nowrap">${craftIconSvg('alert','var(--amber)',10)} Sin categorizar</span>`:''}
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
       ${(filters.size||S._libViewPendingOnly)?`<span onclick="event.stopPropagation();S._libViewFilters=new Set();S._libViewPendingOnly=false;updateLibViewResults()" style="font-size:11px;color:var(--text3);font-weight:600">Limpiar</span>`:''}
-      <span style="color:var(--text3);font-size:10px;transition:transform .15s;display:inline-block;transform:rotate(${filterOpen?'180':'0'}deg)">▾</span>
+      <span style="color:var(--text3);font-size:11px;transition:transform .15s;display:inline-block;transform:rotate(${filterOpen?'180':'0'}deg)">▾</span>
     </div>
   </div>
   ${filterOpen?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${chips.hasSubRow?'8px':'16px'}">
@@ -14785,9 +15516,9 @@ function renderLibViewBody() {
            onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         ${libThumbnailHtml(S.videos[ex.id])}
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}${missing.length?` <span style="font-size:10px;color:var(--amber);font-weight:700">${craftIconSvg('alert','var(--amber)',10)} sin categorizar</span>`:''}</div>
+          <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}${missing.length?` <span style="font-size:11px;color:var(--amber);font-weight:700">${craftIconSvg('alert','var(--amber)',10)} sin categorizar</span>`:''}</div>
           <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-            ${(ex.tags||[]).map(t=>`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);border:1px solid var(--border2)">${t}</span>`).join('')}
+            ${(ex.tags||[]).map(t=>`<span style="font-size:11px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);border:1px solid var(--border2)">${t}</span>`).join('')}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
@@ -14798,7 +15529,7 @@ function renderLibViewBody() {
           <button class="abtn abtn-d" onclick="deleteLibraryExercise('${ex.id}')" style="font-size:11px">×</button>
         </div>
       </div>`;}).join('')}
-  </div>`:`<div class="empty-state">Sin ejercicios que coincidan.<br><span style="font-size:12px">Probá con otra búsqueda o creá uno nuevo.</span></div>`}`;
+  </div>`:`<div class="empty-state">Sin ejercicios que coincidan.</div>`}`;
 }
 window.renderLibViewBody=renderLibViewBody;
 
@@ -14825,6 +15556,7 @@ function openLibExerciseModal(id) {
   document.getElementById('exform-modal-title').textContent = ex ? 'Editar ejercicio' : 'Nuevo ejercicio';
   document.getElementById('exform-name-inp').value = ex?.name||'';
   document.getElementById('exform-video-inp').value = (id && S.videos[id]) || '';
+  document.getElementById('exform-chart-sel').value = ex?.chartMode || 'auto';
   document.getElementById('exform-delete-btn').style.display = ex ? 'block' : 'none';
   renderTagChipPicker('exform-tags-picker','_exFormTags');
   document.getElementById('exform-overlay').classList.add('open');
@@ -14844,12 +15576,15 @@ function saveLibExerciseModal() {
   const missing = getMissingLibRules(tags);
   if(missing.length) { showToast('Falta elegir: '+missing.map(m=>m.label).join(' · ')); return; }
   const videoUrl = document.getElementById('exform-video-inp').value.trim();
+  const cm = document.getElementById('exform-chart-sel').value;
+  const chartMode = (cm==='on'||cm==='off') ? cm : null;
   const exId = S._exFormEditId || genId();
   if(S._exFormEditId) {
     const ex = S.library.find(e=>e.id===S._exFormEditId);
-    if(ex) { ex.name=name; ex.tags=tags; }
+    if(ex) { ex.name=name; ex.tags=tags; if(chartMode) ex.chartMode=chartMode; else delete ex.chartMode; }
   } else {
-    S.library.push({id:exId, name, tags});
+    const nu = {id:exId, name, tags}; if(chartMode) nu.chartMode=chartMode;
+    S.library.push(nu);
   }
   if(videoUrl) S.videos[exId]=videoUrl; else delete S.videos[exId];
   scheduleSave();
@@ -14930,6 +15665,8 @@ document.addEventListener('click', e => {
       S.adminView=(S._routineEditorPrev||'routines');
       if(S.adminView==='athlete_detail') S.atletaSubview='rutina';
       S.currentView='admin'; renderBottomBar(); renderMain(); break;
+    case 'dashboard':
+      S.adminView='main'; S.currentView='dashboard'; renderBottomBar(); renderMain(); break;
     case 'home':
       goHome(); break;
   }
