@@ -883,3 +883,26 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 .hm-d small{display:block;font-weight:400;font-size:11px}
 .hm-d.hm-today{color:var(--accent-text)}
 .hm-c{flex:0 0 46px;display:flex;justify-content:center;padding:8px 0;cursor:pointer}
+
+/* Ficha del atleta (Perfil): franja de indicadores, carga 2x2 y actividad diaria */
+.kpi3{display:grid;grid-template-columns:repeat(3,1fr);background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--r);box-shadow:var(--sh-card);margin-bottom:var(--sp-4);overflow:hidden}
+.kpi-c{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:16px 8px;min-height:92px;text-align:center}
+.kpi-c+.kpi-c{border-left:1px solid var(--border)}
+.kpi-c b{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:700;line-height:1}
+.kpi-c span{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.load-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
+.load-grid>div{padding:16px 18px!important;text-align:left!important}
+.load-grid>div>div:first-child{font-size:26px!important}
+.act-scroll{max-height:378px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--border2) var(--bg3)}
+.act-scroll::-webkit-scrollbar{width:8px}.act-scroll::-webkit-scrollbar-track{background:var(--bg3)}.act-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:8px}
+.act-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border);cursor:pointer;min-height:54px;box-sizing:border-box}
+.act-row:hover{background:var(--bg3)}
+.act-d{flex:0 0 44px;text-align:center;line-height:1.2}
+.act-d small{display:block;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase}
+.act-d b{font-size:14px;font-weight:700;color:var(--text)}
+.act-d.act-today small,.act-d.act-today b{color:var(--accent-text)}
+.act-w{flex:0 0 52px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-weight:700}
+.act-w i{display:block;width:8px;height:8px;border-radius:50%}
+.act-c{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px}
+.wk-none{font-size:12px;color:var(--text3)}
+@media(max-width:560px){.kpi-c b{font-size:26px}.kpi-c{padding:12px 4px}}
