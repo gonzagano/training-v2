@@ -1,0 +1,3 @@
+#!/bin/sh
+# Red de seguridad: ningún push (aunque sea a mano) sale sin la revisión estática.
+node tools/check.js || { echo "Push bloqueado: la revisión estática falló."; exit 1; }

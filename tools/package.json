@@ -1,0 +1,6 @@
+{
+  "name": "gmetrics-testing",
+  "private": true,
+  "description": "Departamento de testing de G-Metrics (no se despliega; las dependencias viven solo acá)",
+  "dependencies": { "puppeteer-core": "^23.11.1" }
+}

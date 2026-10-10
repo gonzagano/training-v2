@@ -1,0 +1,3 @@
+node_modules/
+tools/harness/_test_*
+tools/node_modules/
