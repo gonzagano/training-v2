@@ -26,6 +26,24 @@
   goBackFromAthleteDetail(); switchView('admin'); adminGoRoutines(); await wait(600); editRoutine('r1'); await wait(500);
   addRoutineBlock('Día 3'); await wait(200); const av=[...document.querySelectorAll('#blockname-body .bnp-opt')].map(b=>b.innerText.replace(/\s+/g,' ').trim()); ok(!av.includes('ESTRUCTURA')&&!av.includes('ACONDICIONAMIENTO'),'selector oculta nombres usados'); ok(av.includes('PUMP'),'selector ofrece PUMP'); bnpPickMain('PUMP'); await wait(300);
   ok(S.editingRoutine.sessions['Día 3'].some(b=>b.title==='PUMP'&&b.main==='PUMP'),'bloque PUMP creado');
+  // HIIT con 0, 1 o 2 subcategorías + SPRINT / ACC / COD
+  { const order=BLOCK_NAMES.map(c=>c.main); ok(order.slice(order.indexOf('DLO'),order.indexOf('DLO')+5).join()==='DLO,HIIT,SPRINT,ACC,COD','bloques: HIIT, SPRINT, ACC y COD debajo de DLO');
+    const titles=()=>S.editingRoutine.sessions['Día 3'].map(b=>b.title);
+    addRoutineBlock('Día 3'); await wait(200); bnpPickMain('HIIT'); await wait(200);
+    ok([...document.querySelectorAll('#blockname-body .bnp-chips .chip-btn')].map(b=>b.innerText.trim()).join()==='RSA,CORTO,LARGO,SIT,NEUROMUSCULAR','HIIT: sus 5 subcategorías');
+    bnpConfirm(); await wait(250); ok(titles().includes('HIIT'),'HIIT sin subcategoría');
+    addRoutineBlock('Día 3'); await wait(200); bnpPickMain('HIIT'); await wait(200);
+    ok(document.querySelector('#blockname-body .abtn-p').disabled,'HIIT a secas repetido: no deja');
+    bnpToggleSub('SIT'); await wait(100); bnpConfirm(); await wait(250); ok(titles().includes('HIIT // SIT'),'HIIT con 1 subcategoría');
+    addRoutineBlock('Día 3'); await wait(200); bnpPickMain('HIIT'); await wait(200); bnpToggleSub('CORTO'); bnpToggleSub('RSA'); await wait(100);
+    ok(document.querySelector('#blockname-body .bnp-foot b').innerText==='HIIT // RSA // CORTO','HIIT: 2 subcategorías en orden de lista');
+    bnpToggleSub('LARGO'); await wait(100); ok(S._bnp.multi.length===2&&!S._bnp.multi.includes('CORTO'),'HIIT: máximo 2 (la tercera reemplaza a la más vieja)');
+    bnpToggleSub('LARGO'); bnpToggleSub('CORTO'); await wait(100); bnpConfirm(); await wait(250);
+    const hb=S.editingRoutine.sessions['Día 3'].find(b=>b.title==='HIIT // RSA // CORTO'); ok(hb&&hb.main==='HIIT'&&hb.sub==='RSA // CORTO','HIIT con 2 subcategorías guardado');
+    ok(getBlockMainSub({title:'hiit // corto // rsa'})?.sub==='RSA // CORTO','HIIT: reconoce un título escrito a mano');
+    addRoutineBlock('Día 3'); await wait(200); bnpPickMain('SPRINT'); await wait(250); addRoutineBlock('Día 3'); await wait(200); bnpPickMain('COD'); await wait(250);
+    ok(titles().includes('SPRINT')&&titles().includes('COD'),'SPRINT y COD creados');
+    addRoutineBlock('Día 3'); await wait(200); const av2=[...document.querySelectorAll('#blockname-body .bnp-opt')].map(b=>b.innerText.replace(/\s+/g,' ').trim().replace(/ ›$/,'')); ok(!av2.includes('SPRINT')&&!av2.includes('COD')&&av2.includes('ACC')&&av2.includes('HIIT'),'selector: SPRINT/COD usados no aparecen; ACC y HIIT sí'); closeBlockNamePicker(); }
   setRoutineCompare(true); await wait(500); txtBad('comparar'); cmpSet('main','PRINC'); await wait(200); ok(document.querySelectorAll('.cmp-blk').length>=2,'comparar: principales'); cmpSet('main',null);
   history.back; setRoutineCompare(false);
   // renombrar día con intercambio

@@ -3679,6 +3679,11 @@ const BLOCK_NAMES = [
   {main:'MOVILIDAD',         subs:[], color:'b6'},
   {main:'ACONDICIONAMIENTO', subs:[], color:'b4'},
   {main:'DLO',               subs:['PLYO MMII','PLYO MMSS'], color:'b3'},
+  // HIIT admite 0, 1 o 2 subcategorías a la vez: "HIIT // RSA // CORTO"
+  {main:'HIIT',              subs:['RSA','CORTO','LARGO','SIT','NEUROMUSCULAR'], maxSubs:2, color:'b4'},
+  {main:'SPRINT',            subs:[], color:'b7'},
+  {main:'ACC',               subs:[], color:'b7'},
+  {main:'COD',               subs:[], color:'b7'},
   {main:'FUERZA A',          subs:['CONTRASTE MMII','CONTRASTE MMSS'], color:'b1'},
   {main:'FUERZA B',          subs:['MMII','MMSS'], color:'b2'},
   {main:'ESTRUCTURA',        subs:[], color:'b5'},
@@ -3696,10 +3701,18 @@ function getBlockMainSub(b) {
   for(const c of BLOCK_NAMES) {
     if(t===c.main) return {main:c.main, sub:null};
     for(const s of c.subs) if(t===blockFullName(c.main,s)) return {main:c.main, sub:s};
+    if((c.maxSubs||1)>1 && t.startsWith(c.main+' // ')) {
+      const parts = t.slice(c.main.length+4).split(' // ');
+      if(parts.length<=c.maxSubs && parts.every(p=>c.subs.includes(p)) && new Set(parts).size===parts.length) return {main:c.main, sub:bnpJoinSubs(c, parts)};
+    }
   }
   return null;
 }
 window.getBlockMainSub = getBlockMainSub;
+// Varias subcategorías se guardan juntas, siempre en el orden de la lista: "RSA // CORTO".
+function bnpJoinSubs(cat, arr) { const l = cat.subs.filter(x=>(arr||[]).includes(x)); return l.length ? l.join(' // ') : null; }
+function blockSubParts(sub) { return sub ? String(sub).split(' // ') : []; }
+window.blockSubParts = blockSubParts;
 function blockColorFor(main) { return (BLOCK_NAMES.find(c=>c.main===main)||{}).color || 'bx'; }
 function newNamedBlock(n, main, sub) {
   return { id:genId(), label:`Bloque ${n+1}`, title:blockFullName(main,sub), main, sub:sub||null, time:'', colorKey:blockColorFor(main), note:'', _open:true, categories:[{id:genId(),label:'Categoría',exercises:[]}] };
@@ -3716,6 +3729,7 @@ function bnpUsed(ctx) {
 }
 // Opciones libres de una categoría en este día: null = "sin subcategoría".
 function bnpAvail(cat, used) {
+  if((cat.maxSubs||1)>1) return [null, ...cat.subs];
   const out = [];
   if(!used.includes(cat.main)) out.push(null);
   cat.subs.forEach(s=>{ if(!used.includes(blockFullName(cat.main,s))) out.push(s); });
@@ -3747,6 +3761,15 @@ function renderBlockNamePicker() {
       : '<div class="bnp-empty">Ya usaste todos los nombres en este día.</div>';
   } else {
     const cat = BLOCK_NAMES.find(c=>c.main===st.main);
+    if((cat.maxSubs||1)>1) {
+      if(!Array.isArray(st.multi)) st.multi = (st.cur && st.cur.main===cat.main) ? blockSubParts(st.cur.sub) : [];
+      const full = blockFullName(cat.main, bnpJoinSubs(cat, st.multi));
+      const taken = used.includes(full);
+      title.textContent = cat.main;
+      body.innerHTML = `<div class="bnp-chips">${cat.subs.map(sb=>`<button class="chip-btn ${st.multi.includes(sb)?'on':''}" onclick="bnpToggleSub('${sb}')">${sb}</button>`).join('')}</div>
+      <div class="bnp-foot"><button class="abtn" onclick="bnpBack()">‹ Volver</button><b>${full}</b><button class="abtn abtn-p" onclick="bnpConfirm()" ${taken?'disabled':''}>${taken?'Ya está en este día':'Listo'}</button></div>`;
+      return;
+    }
     const av = bnpAvail(cat, used);
     if(st.sub===undefined) st.sub = av.includes(null) ? null : av[0];
     title.textContent = cat.main;
@@ -3758,15 +3781,28 @@ function bnpPickMain(m) {
   const st = S._bnp; if(!st) return;
   const cat = BLOCK_NAMES.find(c=>c.main===m);
   if(!cat.subs.length) { st.main=m; st.sub=null; bnpConfirm(); return; }
-  st.main = m; st.sub = undefined; st.step = 2; renderBlockNamePicker();
+  st.main = m; st.sub = undefined; st.multi = null; st.step = 2; renderBlockNamePicker();
 }
+// Subcategorías múltiples: tocar suma o saca; con el máximo ya elegido, la nueva reemplaza a la más vieja.
+function bnpToggleSub(sb) {
+  const st = S._bnp; if(!st) return;
+  const cat = BLOCK_NAMES.find(c=>c.main===st.main); if(!cat) return;
+  if(!Array.isArray(st.multi)) st.multi = [];
+  if(st.multi.includes(sb)) st.multi = st.multi.filter(x=>x!==sb);
+  else { st.multi.push(sb); while(st.multi.length > (cat.maxSubs||1)) st.multi.shift(); }
+  renderBlockNamePicker();
+}
+window.bnpToggleSub = bnpToggleSub;
 function bnpPickSub(s) { if(S._bnp) { S._bnp.sub = s; renderBlockNamePicker(); } }
 function bnpBack() { if(S._bnp) { S._bnp.step = 1; renderBlockNamePicker(); } }
 window.bnpPickMain=bnpPickMain; window.bnpPickSub=bnpPickSub; window.bnpBack=bnpBack;
 
 function bnpConfirm() {
   const st = S._bnp; if(!st || !st.main) return;
-  const {ctx, main} = st, sub = st.sub || null;
+  const {ctx, main} = st;
+  const catC = BLOCK_NAMES.find(c=>c.main===main);
+  const sub = (catC && (catC.maxSubs||1)>1) ? bnpJoinSubs(catC, st.multi) : (st.sub || null);
+  if(bnpUsed(ctx).includes(blockFullName(main, sub))) { showToast('Ese nombre ya está en este día'); return; }
   const blocks = bnpBlocks(ctx);
   if(ctx.blockId) {
     const b = blocks.find(x=>x.id===ctx.blockId);
@@ -12834,7 +12870,7 @@ function cmpBlockMatches(b, st) {
   const ms = getBlockMainSub(b);
   if(st.main==='PRINC') { if(!ms || !['FUERZA A','FUERZA B','DLO'].includes(ms.main)) return false; }
   else if(st.main==='NONE') { if(ms) return false; }
-  else if(st.main) { if(!ms || ms.main!==st.main) return false; if(st.sub && ms.sub!==st.sub) return false; }
+  else if(st.main) { if(!ms || ms.main!==st.main) return false; if(st.sub && !blockSubParts(ms.sub).includes(st.sub)) return false; }
   if(st.q) {
     const q = st.q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
     const n = t=>String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
@@ -12853,7 +12889,7 @@ function renderDaysCompare(routine) {
   const mainCount = new Map(); let nNone = 0;
   names.forEach(n=>(routine.sessions[n]||[]).forEach(b=>{ const ms=getBlockMainSub(b); if(ms) mainCount.set(ms.main,(mainCount.get(ms.main)||0)+1); else nNone++; }));
   const mains = BLOCK_NAMES.map(c=>c.main).filter(m=>mainCount.has(m));
-  const subsOf = st.main && mainCount.has(st.main) ? (BLOCK_NAMES.find(c=>c.main===st.main)?.subs||[]).filter(sb=>names.some(n=>(routine.sessions[n]||[]).some(b=>{const ms=getBlockMainSub(b);return ms&&ms.main===st.main&&ms.sub===sb;}))) : [];
+  const subsOf = st.main && mainCount.has(st.main) ? (BLOCK_NAMES.find(c=>c.main===st.main)?.subs||[]).filter(sb=>names.some(n=>(routine.sessions[n]||[]).some(b=>{const ms=getBlockMainSub(b);return ms&&ms.main===st.main&&blockSubParts(ms.sub).includes(sb);}))) : [];
   const chip = (on, fn, label)=>`<button class="chip-btn ${on?'on':''}" onclick="${fn}">${label}</button>`;
   let h = `<div class="cmp-bar">
     ${chip(!st.main,"cmpSet('main',null)",'Todo')}
