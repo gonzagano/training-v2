@@ -1,4 +1,4 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion, FieldPath }
@@ -2189,8 +2189,10 @@ function renderOnboardingStep2(d) {
 
   if (d.athleteType === 'individual') {
     html += `<div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:12px">
-      <div><label class="eval-lbl">Deporte</label><input class="auth-inp" style="margin:0" type="text" value="${d.sport}" oninput="setOnboardingField('sport',this.value)" placeholder="Ej: Tenis, Básquet..."></div>
-      <div><label class="eval-lbl">Posición</label><input class="auth-inp" style="margin:0" type="text" value="${d.position}" oninput="setOnboardingField('position',this.value)" placeholder="Ej: Base, Alero..."></div>
+      <div><label class="eval-lbl">Deporte</label><select class="auth-inp" style="margin:0" onchange="setOnboardingField('sport',onSportSelect(this));setOnboardingField('position','');renderMain()">${sportOptionsHtml(d.sport)}</select></div>
+      <div><label class="eval-lbl">Posición</label>${(()=>{ const po=getPositionOptionsForSport(d.sport); return po
+        ? `<select class="auth-inp" style="margin:0" onchange="setOnboardingField('position',this.value);renderMain()"><option value="">Seleccionar...</option>${po.map(p=>`<option value="${p}" ${d.position===p?'selected':''}>${p}</option>`).join('')}</select>`
+        : `<input class="auth-inp" style="margin:0" type="text" value="${d.position||''}" oninput="setOnboardingField('position',this.value)" onblur="renderMain()" placeholder="Ej: Base, Alero...">`; })()}</div>
     </div>`;
   } else if (d.athleteType === 'team') {
     const instMap = getInstitutionsFromTeams();
@@ -3444,20 +3446,18 @@ const SPORT_ACTIVITY_ICONS = {
 function normSport(s) { return (s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
 function getLoadActivityDisplay(act, sport) {
   if(act.key!=='pelota') return {label:act.label, emoji:act.emoji};
-  const s=normSport(sport);
-  if(s) {
-    for(const key in SPORT_ACTIVITY_ICONS) {
-      if(s.includes(key)) { const info=SPORT_ACTIVITY_ICONS[key]; return {label:'Entrenamiento de '+info.name, emoji:info.emoji}; }
-    }
-    // Deporte cargado pero no está en el mapa de arriba — igual mostramos
-    // "Entrenamiento de [lo que haya puesto]", nunca "Pelota" a secas, con un
-    // ícono genérico de entrenamiento (no una pelota de ningún deporte
-    // puntual, para no sugerir uno que no es).
-    return {label:'Entrenamiento de '+sport.trim(), emoji:'🏋️'};
+  const c = canonicalSport(sport);
+  if(c) {
+    // "emoji" puede ser el dibujo SVG del deporte (se inserta como HTML en todos lados).
+    let icon = sportIconHtml(c, 18);
+    if(!icon) { const n=normSport(c); for(const key in SPORT_ACTIVITY_ICONS) if(n.includes(key)) { icon=SPORT_ACTIVITY_ICONS[key].emoji; break; } }
+    return {label:'Entrenamiento de '+c.toLowerCase(), emoji: icon || '🏋️'};
   }
-  return {label:act.label, emoji:act.emoji};
+  // Sin deporte cargado: nunca "Pelota" a secas.
+  return {label:'Entrenamiento del deporte', emoji:act.emoji};
 }
 window.getLoadActivityDisplay = getLoadActivityDisplay;
+window.LOAD_ACTIVITIES = LOAD_ACTIVITIES;
 
 function getLoadLog(activity,date) {
   const logs=(S.history?._sessionLogs)||[];
@@ -3518,7 +3518,7 @@ async function saveLoadLog(date) {
     if(mins && rpe) {
       // saca cualquier log previo de esta actividad en esa fecha, para no duplicar carga
       S.history._sessionLogs = S.history._sessionLogs.filter(l=>!(l.date===date && l.activity===act.key));
-      const newLog = {date, activity:act.key, session:getLoadActivityDisplay(act, S.userData?.sport).label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe};
+      const newLog = {date, activity:act.key, session:getLoadActivityDisplay(act, mySport()).label, week:S.currentWeek, rpe, mins, note, ua:mins*rpe};
       // Si este casillero lo llenó una sesión de la rutina (ver
       // addRoutineSessionToOutsideGym), al re-guardar el formulario de Carga
       // sin tocar minutos ni RPE se conservan sus datos (origen, tramos, UA
@@ -3542,7 +3542,7 @@ async function saveLoadLog(date) {
       // Cargó una mitad y no la otra — esto es justo lo que se perdía en
       // silencio antes: el toast de éxito tapaba que esa actividad puntual
       // no se había guardado.
-      incomplete.push(getLoadActivityDisplay(act, S.userData?.sport).label + (mins&&!rpe ? ' (falta RPE)' : ' (falta minutos)'));
+      incomplete.push(getLoadActivityDisplay(act, mySport()).label + (mins&&!rpe ? ' (falta RPE)' : ' (falta minutos)'));
     }
   });
   if(!savedAny && !incomplete.length) { showToast('Completá minutos y RPE de al menos una actividad'); return; }
@@ -3984,7 +3984,7 @@ function renderLibList() {
   const q=document.getElementById('lib-search').value.toLowerCase();
   const list=document.getElementById('lib-list');
   let items=S.library.filter(ex=>{
-    const matchQ=!q||ex.name.toLowerCase().includes(q);
+    const matchQ=txtMatches(ex.name, q);
     const matchF=exerciseMatchesFilters(ex, S.activeFilters);
     return matchQ&&matchF;
   });
@@ -4232,6 +4232,12 @@ function createAndAddExercise() {
   const tags=[...(S._newExTags||new Set())];
   const missing = getMissingLibRules(tags);
   if(missing.length) { showToast('Falta elegir: '+missing.map(m=>m.label).join(' · ')); return; }
+  const dupEx = similarLibExercises(name, null).find(x=>x.exact);
+  if(dupEx && !S._newExDupOk) {
+    showConfirmModal({message:`Ya existe "${dupEx.e.name}" en la biblioteca. ¿Crear otro con el mismo nombre?`, confirmLabel:'Crear igual', onConfirm:()=>{ S._newExDupOk=true; createAndAddExercise(); }});
+    return;
+  }
+  S._newExDupOk = false;
   const videoUrl=document.getElementById('lib-new-video').value.trim();
   const newLibEx={id:genId(),name,tags};
   S.library.push(newLibEx);
@@ -4260,6 +4266,7 @@ function createAndAddExercise() {
     }
   }
   document.getElementById('lib-new-name').value='';
+  updateSimilarExercises('lib-new-name','lib-new-dups');
   document.getElementById('lib-new-video').value='';
   showToast(`✓ Ejercicio creado`);
 }
@@ -5050,7 +5057,7 @@ function renderWellness() {
 
   LOAD_ACTIVITIES.forEach(act=>{
     if(act.isExtraGym) return; // se muestra aparte, como desplegable, justo después de Gimnasio
-    html += renderLoadItemRow(act, wKey, S.userData?.sport);
+    html += renderLoadItemRow(act, wKey, mySport());
     if(act.key==='gimnasio') {
       const extraAct = LOAD_ACTIVITIES.find(a=>a.key==='gimnasio2');
       const hasExtraData = !!getLoadLog('gimnasio2', wKey);
@@ -5058,7 +5065,7 @@ function renderWellness() {
       html += showExtra
         ? `<div style="position:relative">
              <button class="abtn" style="position:absolute;top:8px;right:0;font-size:11px;z-index:1" onclick="toggleExtraGym()">Ocultar</button>
-             ${renderLoadItemRow(extraAct, wKey, S.userData?.sport)}
+             ${renderLoadItemRow(extraAct, wKey, mySport())}
            </div>`
         : `<div style="text-align:center;padding:2px 0 12px">
              <button class="abtn" style="font-size:12px" onclick="toggleExtraGym()">+ Agregar entrenamiento individual (fuera del club)</button>
@@ -6037,7 +6044,7 @@ function renderTeams() {
           <div style="width:10px;height:10px;border-radius:50%;background:${t.color||'var(--purple)'};flex-shrink:0"></div>
           <div class="team-name">${t.name}${t.category?` / ${t.category}`:''}</div>
         </div>
-        <span class="team-sport-badge">${t.sport||'Deporte'}</span>
+        <span class="team-sport-badge">${sportIconHtml(t.sport,13)}${canonicalSport(t.sport)||'Sin deporte'}</span>
       </div>
       <div class="team-meta">${(t.players||[]).length} jugadores · ${Object.keys(t.calendar||{}).length} días con actividad en el calendario</div>
     </div>`).join('');
@@ -6055,7 +6062,7 @@ function renderTeamDetail(team) {
       <div style="width:12px;height:12px;border-radius:50%;background:${team.color||'var(--purple)'}"></div>
       ${team.name}${team.category?` / ${team.category}`:''}
     </div>
-    <span class="team-sport-badge">${team.sport||''}</span>
+    ${team.sport?`<span class="team-sport-badge">${sportIconHtml(team.sport,13)}${canonicalSport(team.sport)}</span>`:''}
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Rutina</button>
@@ -7402,7 +7409,11 @@ window.confirmTeamRoutineAssign = confirmTeamRoutineAssign;
 function renderTeamRutina(team) {
   const days=team.trainingDays||[];
   let html = renderTeamRoutineAssignSection(team);
-  html+=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+  html+=`<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+    <span style="font-size:11px;color:var(--text3)">Deporte:</span>
+    <select class="abtn" onchange="setTeamSport('${team.id}',onSportSelect(this))">${sportOptionsHtml(team.sport)}</select>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <span style="font-size:11px;color:var(--text3)">Color:</span>
     ${TEAM_COLORS.map(c=>`<div onclick="setTeamColor('${team.id}','${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${team.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
   </div>`;
@@ -7672,7 +7683,7 @@ window.runCountUps=runCountUps;
 
 async function createTeam() {
   const name=prompt('Nombre del equipo:'); if(!name) return;
-  const sport=prompt('Deporte (ej: Handball, Básquet):','');
+  const sport=canonicalSport(prompt('Deporte ('+SPORTS.join(', ')+'):','')||'');
   const category=prompt('Categoría (ej: Liga de Honor):','');
   // institution = mismo valor que el nombre — es lo que el onboarding de un
   // atleta de equipo usa para encontrar este equipo y no crear uno duplicado.
@@ -9304,11 +9315,240 @@ async function saveTeam(teamId) {
   try { await setDoc(doc(db,'teams',teamId),{players:t.players||[],trainingDays:t.trainingDays||[]},{merge:true}); } catch(e) { console.error(e); }
 }
 
+// ── TEXTO SIN TILDES ──────────────────────────────────────────
+// Para buscar: "biceps" encuentra "Bíceps", y las palabras pueden ir en
+// cualquier orden ("banca press" encuentra "Press banca").
+function normTxt(s) { return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
+function txtMatches(haystack, query) {
+  const q = normTxt(query); if(!q) return true;
+  const h = normTxt(haystack);
+  return q.split(' ').every(w=>h.includes(w));
+}
+window.normTxt = normTxt; window.txtMatches = txtMatches;
+
+// ── DEPORTES: lista fija, bien escrita, con su dibujo ──────────
+const SPORTS = ['Básquet','Fútbol','Handball','Rugby','Tenis','Pádel','Natación','Atletismo','Vóley'];
+// Cualquier forma de escribirlo ("basquet", "BASKET", "futbol 5") cae en el nombre correcto.
+const SPORT_ALIASES = [
+  ['basquet','Básquet'],['basket','Básquet'],['baloncesto','Básquet'],
+  ['futbol','Fútbol'],['futsal','Fútbol'],['football','Fútbol'],['soccer','Fútbol'],
+  ['handball','Handball'],['balonmano','Handball'],['rugby','Rugby'],
+  ['padel','Pádel'],['paddle','Pádel'],['tenis','Tenis'],['tennis','Tenis'],
+  ['natacion','Natación'],['swimming','Natación'],['atletismo','Atletismo'],['running','Atletismo'],
+  ['voley','Vóley'],['voleibol','Vóley'],['volley','Vóley'],
+];
+function canonicalSport(s) {
+  const n = normTxt(s); if(!n) return '';
+  for(const [k,v] of SPORT_ALIASES) if(n.includes(k)) return v;
+  const t = String(s).trim();
+  return t.charAt(0).toUpperCase()+t.slice(1);
+}
+const SPORT_SVG = {
+  'Fútbol':'<circle cx="12" cy="12" r="9"/><path d="M12 8l3.8 2.8-1.45 4.5h-4.7L8.2 10.8z"/><path d="M12 3v5M20.6 9.2l-4.8 1.6M17.3 19.3l-2.95-4M6.7 19.3l2.95-4M3.4 9.2l4.8 1.6"/>',
+  'Básquet':'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.6 5.6c3.2 3.2 3.2 9.6 0 12.8M18.4 5.6c-3.2 3.2-3.2 9.6 0 12.8"/>',
+  'Vóley':'<circle cx="12" cy="12" r="9"/><path d="M12 12c-.3-3.6 1.2-6.6 4.3-8M12 12c3.2 1.6 6.6 1.2 8.9-1M12 12c-3 2.2-4 5.4-3.2 8.5M7.2 4.4c2.6 1.2 4.4 3.6 4.8 7.6M20 15.5c-2.6 1.4-5.6 1.2-8-.5M4.3 16.6c.3-2.9 2.3-5 5.7-6"/>',
+  'Handball':'<circle cx="12" cy="12" r="9"/><path d="M12 7.6l3.9 6.7H8.1z"/><path d="M12 7.6V3M15.9 14.3l3.9 2.2M8.1 14.3l-3.9 2.2M10 11l-5.6-3.2M14 11l5.6-3.2M12 14.3V21"/>',
+  'Rugby':'<ellipse cx="12" cy="12" rx="10" ry="5.6" transform="rotate(-45 12 12)"/><path d="M8.6 15.4l6.8-6.8M10 12.6l1.4 1.4M12.6 10l1.4 1.4"/>',
+  'Natación':'<circle cx="17.5" cy="8" r="2"/><path d="M3.5 13.5l5.5-3.5 3.2 3 4.3-1.3M9 10l3.5-2.6"/><path d="M2 18c1.7 0 1.7 1.3 3.3 1.3S7 18 8.7 18s1.6 1.3 3.3 1.3 1.7-1.3 3.3-1.3 1.7 1.3 3.4 1.3S20.3 18 22 18"/>',
+  'Pádel':'<circle cx="10.5" cy="8.5" r="6"/><path d="M7.2 13.6L4.2 20.4" stroke-width="3"/><path d="M8.5 6.3h.01M12.5 6.3h.01M10.5 8.6h.01M8.5 10.9h.01M12.5 10.9h.01" stroke-width="2.4"/><circle cx="19" cy="18" r="2"/>',
+  'Tenis':'<ellipse cx="10" cy="8.5" rx="5.6" ry="6.6" transform="rotate(-20 10 8.5)"/><path d="M6.4 5.2l8.4 5M5.6 9l7.6 4.6M9 2.6l-3.4 9.6M12.6 3l-3.6 11"/><path d="M12.2 14.7L15.4 21" stroke-width="2.6"/><circle cx="19.5" cy="17" r="2"/>',
+  'Atletismo':'<circle cx="15.5" cy="4.5" r="2"/><path d="M8 10l4-2.2 3.4 2.6 3.1.4M12 7.8l-1.6 6 4.1 2.4-.6 5M10.4 13.8L8 17.2l-4.2.6"/>',
+};
+// Dibujo del deporte (línea, color del texto). Sin tamaño → lo define el CSS del lugar donde va.
+function sportIconHtml(sport, size) {
+  const p = SPORT_SVG[canonicalSport(sport)]; if(!p) return '';
+  return `<svg class="sp-ic" ${size?`width="${size}" height="${size}" `:''}viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+}
+function sportOptionsHtml(cur) {
+  const c = canonicalSport(cur);
+  const list = (c && !SPORTS.includes(c)) ? [...SPORTS, c] : SPORTS;
+  return `<option value="">Seleccionar...</option>${list.map(s=>`<option value="${s}" ${c===s?'selected':''}>${s}</option>`).join('')}<option value="__otro__">Otro deporte…</option>`;
+}
+// Devuelve el deporte elegido en un <select> armado con sportOptionsHtml ("Otro" pide el nombre).
+function onSportSelect(sel) {
+  if(sel.value !== '__otro__') return sel.value;
+  const c = canonicalSport(prompt('¿Qué deporte?')||'');
+  if(!c) { sel.value=''; return ''; }
+  if(![...sel.options].some(o=>o.value===c)) { const o=document.createElement('option'); o.value=c; o.textContent=c; sel.insertBefore(o, sel.options[sel.options.length-1]); }
+  sel.value = c;
+  return c;
+}
+// Deporte del atleta logueado: el suyo, o el de su equipo.
+function mySport() {
+  const u = S.userData||{};
+  if(u.sport) return canonicalSport(u.sport);
+  const t = u.teamId ? (S.teams||[]).find(x=>x.id===u.teamId) : null;
+  return canonicalSport(t?.sport||'');
+}
+window.SPORTS=SPORTS; window.canonicalSport=canonicalSport; window.sportIconHtml=sportIconHtml; window.sportOptionsHtml=sportOptionsHtml; window.onSportSelect=onSportSelect; window.mySport=mySport;
+
+async function setAthleteSport(uid, sport) {
+  try {
+    await setDoc(doc(db,'users',uid),{sport},{merge:true});
+    const a = (S.adminAthletes||[]).find(x=>x.uid===uid); if(a) a.sport=sport;
+    const d = (S.dashAthletes||[]).find(x=>x.uid===uid); if(d) d.sport=sport;
+    if(S.viewingAthlete?.userData) S.viewingAthlete.userData.sport=sport;
+    showToast('✓ Deporte guardado');
+    renderMain();
+  } catch(e) { showToast('Error'); }
+}
+async function setTeamSport(teamId, sport) {
+  const t = (S.teams||[]).find(x=>x.id===teamId); if(!t) return;
+  try {
+    await setDoc(doc(db,'teams',teamId),{sport},{merge:true});
+    t.sport = sport; if(S.teamView?.id===teamId) S.teamView.sport = sport;
+    showToast('✓ Deporte guardado');
+    renderMain();
+  } catch(e) { showToast('Error'); }
+}
+window.setAthleteSport=setAthleteSport; window.setTeamSport=setTeamSport;
+
+// ── CREAR ATLETA (desde Atletas) ───────────────────────────────
+// El profe carga los datos y la cuenta queda lista: usuario = mail, contraseña
+// = DNI (el atleta la cambia después desde Ajustes si quiere).
+// La cuenta se crea con una SEGUNDA sesión de Firebase, aparte de la del profe:
+// con la sesión principal, Firebase dejaría logueado al atleta nuevo y sacaría
+// al profe de la app. El DNI NO se guarda en la base (es la contraseña).
+function openNewAthleteModal() {
+  S._newAth = {last:'',first:'',age:'',height:'',weight:'',teamId:'',sport:'',position:'',email:'',dni:''};
+  renderNewAthleteForm();
+  document.getElementById('newath-err').textContent = '';
+  const b = document.getElementById('newath-save'); if(b) { b.disabled=false; b.textContent='Crear atleta'; }
+  document.getElementById('newath-overlay').classList.add('open');
+}
+function closeNewAthleteModal() { document.getElementById('newath-overlay').classList.remove('open'); S._newAth=null; }
+function closeNewAthleteIfOutside(e) { if(e.target===document.getElementById('newath-overlay')) closeNewAthleteModal(); }
+function naSet(k, v, rerender) { if(!S._newAth) return; S._newAth[k]=v; if(k==='teamId'||k==='sport') S._newAth.position=''; if(rerender) renderNewAthleteForm(); }
+function renderNewAthleteForm() {
+  const st = S._newAth; if(!st) return;
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const team = st.teamId ? (S.teams||[]).find(t=>t.id===st.teamId) : null;
+  const sport = team ? canonicalSport(team.sport) : st.sport;
+  const posOpts = getPositionOptionsForSport(sport);
+  const f = (lbl, inner)=>`<div><label class="eval-lbl">${lbl}</label>${inner}</div>`;
+  const inp = (k, type, ph, extra)=>`<input class="auth-inp" style="margin:0" id="na-${k}" type="${type}" value="${esc(st[k])}" placeholder="${ph}" oninput="naSet('${k}',this.value)" ${extra||''}>`;
+  document.getElementById('newath-body').innerHTML = `
+    <div class="na-grid2">
+      ${f('Apellido', inp('last','text','Pérez',`onblur="this.value=capitalizeName(this.value);naSet('last',this.value)"`))}
+      ${f('Nombre', inp('first','text','Juan',`onblur="this.value=capitalizeName(this.value);naSet('first',this.value)"`))}
+    </div>
+    <div class="na-grid3">
+      ${f('Edad', inp('age','number','años','min="1" inputmode="numeric"'))}
+      ${f('Altura (cm)', inp('height','number','cm','min="1" inputmode="decimal"'))}
+      ${f('Peso (kg)', inp('weight','number','kg','min="1" inputmode="decimal"'))}
+    </div>
+    <div class="na-grid2">
+      ${f('Equipo', `<select class="auth-inp" style="margin:0" id="na-teamId" onchange="naSet('teamId',this.value,true)">
+        <option value="">Sin equipo (individual)</option>
+        ${(S.teams||[]).map(t=>`<option value="${t.id}" ${st.teamId===t.id?'selected':''}>${esc(t.name)}${t.category?' / '+esc(t.category):''}</option>`).join('')}
+      </select>`)}
+      ${f('Deporte', team
+        ? `<input class="auth-inp" style="margin:0" id="na-sport" value="${esc(sport||'—')}" disabled>`
+        : `<select class="auth-inp" style="margin:0" id="na-sport" onchange="naSet('sport',onSportSelect(this),true)">${sportOptionsHtml(st.sport)}</select>`)}
+    </div>
+    ${f('Posición', posOpts
+      ? `<select class="auth-inp" style="margin:0" id="na-position" onchange="naSet('position',this.value)"><option value="">—</option>${posOpts.map(p=>`<option value="${p}" ${st.position===p?'selected':''}>${p}</option>`).join('')}</select>`
+      : inp('position','text','Opcional'))}
+    <div class="na-sep">Acceso</div>
+    <div class="na-grid2">
+      ${f('Mail (usuario)', inp('email','email','nombre@mail.com','autocomplete="off" autocapitalize="none"'))}
+      ${f('DNI (contraseña)', inp('dni','text','Solo números','inputmode="numeric" autocomplete="off"'))}
+    </div>`;
+}
+async function saveNewAthlete() {
+  const st = S._newAth; if(!st) return;
+  const errEl = document.getElementById('newath-err');
+  const fail = m=>{ errEl.textContent = m; };
+  errEl.textContent = '';
+  const last = capitalizeName((st.last||'').trim()), first = capitalizeName((st.first||'').trim());
+  const email = (st.email||'').trim().toLowerCase();
+  const dni = String(st.dni||'').replace(/\D/g,'');
+  const team = st.teamId ? (S.teams||[]).find(t=>t.id===st.teamId) : null;
+  const sport = team ? canonicalSport(team.sport) : canonicalSport(st.sport);
+  if(!last || !first) return fail('Falta el apellido o el nombre');
+  if(!team && !sport) return fail('Elegí el deporte');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('El mail no parece válido');
+  if(dni.length < 6) return fail('El DNI tiene que tener al menos 6 números');
+  await ensureAdminAthletes();
+  if((S.adminAthletes||[]).some(a=>(a.email||'').toLowerCase()===email)) return fail('Ya hay un atleta con ese mail');
+  const btn = document.getElementById('newath-save'); if(btn) { btn.disabled=true; btn.textContent='Creando…'; }
+  const name = last+' '+first;
+  const num = v=>{ const n=parseFloat(String(v).replace(',','.')); return isNaN(n)||n<=0 ? null : n; };
+  const data = { name, email, role:'athlete', age:num(st.age), height:num(st.height), weight:num(st.weight),
+    athleteType: team?'team':'individual', sport: sport||'', position:(st.position||'').trim()||null,
+    institution: team ? (team.institution||team.name) : null, category: team ? (team.category||'') : null, teamId: team ? team.id : null,
+    onboardingComplete:true, createdByAdmin:true };
+  let secApp = null, uid = null;
+  try {
+    secApp = initializeApp(firebaseConfig, 'crear-atleta-'+Date.now());
+    const secAuth = getAuth(secApp);
+    const cred = await createUserWithEmailAndPassword(secAuth, email, dni);
+    uid = cred.user.uid;
+    // El perfil lo escribe la cuenta recién creada (igual que cuando un atleta
+    // se registra solo) — así no depende de permisos especiales del profe.
+    try { await setDoc(doc(getFirestore(secApp),'users',uid), {...data, createdAt:serverTimestamp()}); }
+    catch(e1) { await setDoc(doc(db,'users',uid), {...data, createdAt:serverTimestamp()}); }
+    try { await fbSignOut(secAuth); } catch(e) {}
+  } catch(e) {
+    console.error('Crear atleta', e);
+    const msgs = {'auth/email-already-in-use':'Ese mail ya tiene una cuenta en la app','auth/invalid-email':'El mail no parece válido','auth/weak-password':'El DNI es muy corto para usarlo de contraseña (mínimo 6 números)','auth/network-request-failed':'No hay conexión a internet','auth/operation-not-allowed':'El registro con mail y contraseña está desactivado en Firebase','auth/too-many-requests':'Demasiados intentos seguidos — esperá unos minutos'};
+    fail(uid ? 'La cuenta se creó pero no se pudo guardar el perfil. Avisame y lo reviso.' : (msgs[e.code] || 'No se pudo crear la cuenta. Probá de nuevo.'));
+    if(btn) { btn.disabled=false; btn.textContent='Crear atleta'; }
+    if(secApp) { try { await deleteApp(secApp); } catch(e2) {} }
+    return;
+  }
+  if(secApp) { try { await deleteApp(secApp); } catch(e2) {} }
+  // Sumarlo al plantel del equipo (no frena la creación si falla)
+  if(team) {
+    try {
+      const tRef = doc(db,'teams',team.id);
+      await updateDoc(tRef, {memberUids: arrayUnion(uid)});
+      const players = team.players||[];
+      if(!players.some(p=>namesLikelyMatch(p,name))) { team.players=[...players,name]; await updateDoc(tRef,{players:team.players}); }
+      team.memberUids = [...new Set([...(team.memberUids||[]), uid])];
+    } catch(e) { console.error('Sumar al equipo', e); showToast('Atleta creado, pero no se pudo sumar al equipo'); }
+  }
+  const local = {uid, ...data, createdAt:new Date().toISOString(), _personal:{}};
+  if(!S.adminAthletes) S.adminAthletes=[];
+  S.adminAthletes.push(local);
+  if(Array.isArray(S.dashAthletes) && S.dashAthletes.length) S.dashAthletes.push(local);
+  closeNewAthleteModal();
+  renderMain();
+  showConfirmModal({title:'Atleta creado', message:`${name} ya puede entrar a la app. Usuario: ${email} · Contraseña: su DNI (${dni}).`});
+}
+window.openNewAthleteModal=openNewAthleteModal; window.closeNewAthleteModal=closeNewAthleteModal; window.closeNewAthleteIfOutside=closeNewAthleteIfOutside; window.naSet=naSet; window.saveNewAthlete=saveNewAthlete;
+
+// ── EJERCICIOS PARECIDOS (para no crear duplicados) ────────────
+function similarLibExercises(name, excludeId) {
+  const q = normTxt(name); if(q.length < 3) return [];
+  const words = q.split(' ').filter(w=>w.length>=3);
+  return (S.library||[]).filter(e=>e.id!==excludeId).map(e=>{
+    const n = normTxt(e.name); if(!n) return null;
+    const exact = n===q;
+    const hit = exact || n.includes(q) || (n.length>=3 && q.includes(n)) || (words.length>0 && words.every(w=>n.includes(w)));
+    return hit ? {e, exact} : null;
+  }).filter(Boolean).sort((a,b)=>(b.exact-a.exact) || a.e.name.localeCompare(b.e.name));
+}
+function updateSimilarExercises(inputId, boxId, excludeId) {
+  const box = document.getElementById(boxId), inp = document.getElementById(inputId);
+  if(!box || !inp) return;
+  const all = similarLibExercises(inp.value, excludeId||null);
+  if(!all.length) { box.innerHTML=''; return; }
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const exact = all.some(x=>x.exact);
+  box.innerHTML = `<div class="dup-box${exact?' dup-exact':''}">
+    <div class="dup-t">${exact?'Ya existe con ese nombre':'Ya hay parecidos'} (${all.length})</div>
+    ${all.slice(0,6).map(x=>`<div class="dup-i${x.exact?' dup-x':''}"><b>${esc(x.e.name)}</b>${(x.e.tags||[]).length?`<span>${esc((x.e.tags||[]).slice(0,2).join(' · '))}</span>`:''}</div>`).join('')}
+    ${all.length>6?`<div class="dup-more">y ${all.length-6} más</div>`:''}
+  </div>`;
+}
+window.similarLibExercises=similarLibExercises; window.updateSimilarExercises=updateSimilarExercises;
+
 // ── ATLETAS (individuales, sin equipo) ─────────────────────────
 function renderAtletas() {
   if (S.atletaView) return renderAtletaDetail(S.atletaView);
 
-  let html = `<div style="font-size:18px;font-weight:700;margin-bottom:14px">Atletas</div>`;
+  let html = `<div class="pg-head"><div class="pg-head-t">Atletas</div><button class="abtn abtn-p" onclick="openNewAthleteModal()">Crear nuevo atleta +</button></div>`;
 
   if (!S.adminAthletesLoaded) {
     ensureAdminAthletes().then(renderMain);
@@ -9330,12 +9570,12 @@ function renderAtletas() {
   }
 
   // Búsqueda + filtro por deporte con cantidad (se oculta si hay un solo deporte)
-  const sportOf = a => (a.sport||'').trim();
+  const sportOf = a => canonicalSport(a.sport);
   const sports = [...new Set(individuals.map(sportOf).filter(Boolean))].sort((x,y)=>x.localeCompare(y));
   if (S.atletasSport && !sports.includes(S.atletasSport)) S.atletasSport = null;
   html += `<div class="dash-search"><input id="atletas-search-inp" value="${String(S.atletasSearch||'').replace(/"/g,'&quot;')}" placeholder="Buscar atleta" oninput="setAtletasSearch(this.value)"></div>`;
   if (sports.length > 1) {
-    html += `<div class="dash-filters"><button class="chip-btn ${!S.atletasSport?'on':''}" onclick="setAtletasSport(null)">Todos (${individuals.length})</button>${sports.map(sp=>`<button class="chip-btn ${S.atletasSport===sp?'on':''}" onclick="setAtletasSport('${sp.replace(/'/g,"\'")}')">${sp} (${individuals.filter(a=>sportOf(a)===sp).length})</button>`).join('')}</div>`;
+    html += `<div class="dash-filters"><button class="chip-btn ${!S.atletasSport?'on':''}" onclick="setAtletasSport(null)">Todos (${individuals.length})</button>${sports.map(sp=>`<button class="chip-btn ${S.atletasSport===sp?'on':''}" onclick="setAtletasSport('${sp.replace(/'/g,"\'")}')">${sportIconHtml(sp,14)}${sp} (${individuals.filter(a=>sportOf(a)===sp).length})</button>`).join('')}</div>`;
   }
   html += `<div id="atletas-list">${renderAtletasList(individuals)}</div>`;
   return html;
@@ -9344,10 +9584,10 @@ function renderAtletasList(individuals) {
   individuals = individuals || (S.adminAthletes || []).filter(a => a.athleteType === 'individual');
   const q = (S.atletasSearch||'').trim().toLowerCase();
   let list = individuals.slice().sort((x,y)=>(x.name||x.email||'').localeCompare(y.name||y.email||''));
-  if (S.atletasSport) list = list.filter(a=>(a.sport||'').trim()===S.atletasSport);
-  if (q) list = list.filter(a=>(a.name||a.email||'').toLowerCase().includes(q));
+  if (S.atletasSport) list = list.filter(a=>canonicalSport(a.sport)===S.atletasSport);
+  if (q) list = list.filter(a=>txtMatches(a.name||a.email||'', q));
   if (!list.length) return `<div class="empty-state">Sin atletas que coincidan.</div>`;
-  return `<div class="ar-list">${list.map(a=>athleteRowHtml(a,{onclick:"openAtleta('"+a.uid+"')", sub:[a.sport||'Individual', a.position].filter(Boolean).join(' · ')})).join('')}</div>`;
+  return `<div class="ar-list">${list.map(a=>athleteRowHtml(a,{onclick:"openAtleta('"+a.uid+"')", sub:[canonicalSport(a.sport)||'Individual', a.position].filter(Boolean).join(' · ')})).join('')}</div>`;
 }
 function setAtletasSearch(v) { S.atletasSearch=v; const el=document.getElementById('atletas-list'); if(el) el.innerHTML=renderAtletasList(); }
 function setAtletasSport(v) { S.atletasSport=v||null; renderMain(); }
@@ -9377,7 +9617,7 @@ function computeAthleteSiblingUids() {
   if (S.adminView==='athletes') {
     const search=(S._athletesSearch||'').toLowerCase();
     let list=S.adminAthletes||[];
-    if(search) list=list.filter(a=>(a.name||a.email||'').toLowerCase().includes(search));
+    if(search) list=list.filter(a=>txtMatches(a.name||a.email||'', search));
     return list.map(a=>a.uid);
   }
   return null;
@@ -9756,7 +9996,7 @@ function renderPerfilTab(a) {
       const chips = dayLogs.length ? dayLogs.map(l=>{
         const c = activityChipInfo(l, sport);
         const r = +l.rpe;
-        return `<span class="ar-ch ${r>=7?'ar-hi':r>=5?'ar-mid':'ar-lo'}">${ATH_ICONS[c.ic]}${esc(c.txt)}${l.rpe?' · RPE '+esc(l.rpe):''}${l.mins?' · '+esc(l.mins)+' min':''}</span>`;
+        return `<span class="ar-ch ${r>=7?'ar-hi':r>=5?'ar-mid':'ar-lo'}">${c.svg||ATH_ICONS[c.ic]}${esc(c.txt)}${l.rpe?' · RPE '+esc(l.rpe):''}${l.mins?' · '+esc(l.mins)+' min':''}</span>`;
       }).join('') : '<span class="wk-none">Sin actividad registrada</span>';
       return `<div class="act-row" onclick="viewWellnessDay('${uid}','${d}')">
         <div class="act-d${d===today?' act-today':''}"><small>${dow}</small><b>${dt.getDate()}/${dt.getMonth()+1}</b></div>
@@ -9828,7 +10068,10 @@ function renderPerfilTab(a) {
           return `<input id="pos-inp-${uid}" value="${a.position||''}" placeholder="Ej: Base, Alero..." style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
         })()}
       </div>
-      ${!myTeam?.sport&&myTeam?``:''}
+      ${!myTeam?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Deporte</span>
+        <select style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthleteSport('${uid}',onSportSelect(this))">${sportOptionsHtml(a.sport)}</select>
+      </div>`:''}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
         <span style="font-size:11px;color:var(--text3);min-width:50px">Equipo</span>
         ${(()=>{
@@ -11145,7 +11388,7 @@ function renderWellnessDetail() {
     <div class="admin-section-title">Carga de ese día</div>
     ${logs.length ? logs.map(l=>{
       const act = LOAD_ACTIVITIES.find(x=>x.key===l.activity);
-      const display = act ? getLoadActivityDisplay(act, a.sport) : null;
+      const display = act ? getLoadActivityDisplay(act, athleteSportOf(a)) : null;
       return `<div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:4px">
         <div style="display:flex;justify-content:space-between;width:100%">
           <span style="font-size:13px;font-weight:600">${display?display.emoji+' '+display.label:l.activity}</span>
@@ -11528,7 +11771,7 @@ function renderAthletesListBody() {
   const search=(S._athletesSearch||'').toLowerCase();
   const routineFilter = S._athletesRoutineFilter||'todos';
   let list=S.adminAthletes;
-  if(search) list=list.filter(a=>(a.name||a.email||'').toLowerCase().includes(search));
+  if(search) list=list.filter(a=>txtMatches(a.name||a.email||'', search));
   if(routineFilter!=='todos') list=list.filter(a=>getAthleteRoutineStatus(a).id===routineFilter);
   if(!list.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan.</div>`;
   return `<div class="wellness-card" style="padding:0">
@@ -15018,9 +15261,9 @@ const ATH_ICONS = {
 window.ATH_ICONS = ATH_ICONS;
 
 function athleteSportOf(a) {
-  if(a.sport) return a.sport;
+  if(a.sport) return canonicalSport(a.sport);
   const t = a.teamId ? (S.teams||[]).find(x=>x.id===a.teamId) : null;
-  return t?.sport || '';
+  return canonicalSport(t?.sport || '');
 }
 window.athleteSportOf = athleteSportOf;
 
@@ -15031,7 +15274,7 @@ function activityChipInfo(l, sport) {
   const act = LOAD_ACTIVITIES.find(x=>x.key===l.activity);
   let t = act ? getLoadActivityDisplay(act, sport).label : (l.session||l.activity||'');
   t = t.replace(/^Entrenamiento de /i,'');
-  return {txt: t.charAt(0).toUpperCase()+t.slice(1), ic:'ball'};
+  return {txt: t.charAt(0).toUpperCase()+t.slice(1), ic:'ball', svg: sportIconHtml(sport)};
 }
 
 // Todo lo que la fila necesita saber de un atleta, calculado una sola vez.
@@ -15085,7 +15328,7 @@ function athleteRowHtml(a, o) {
     pct = `<div class="ar-pc"><b style="color:${getWellnessState(d.last.v).color}">${d.last.v}%</b>${delta?`<small style="color:${delta>0?'var(--green)':'var(--red)'}">${delta>0?'▲ +':'▼ −'}${Math.abs(delta)}</small>`:''}</div>`;
   }
   const rpeCls = r=> r>=7 ? 'ar-hi' : r>=5 ? 'ar-mid' : 'ar-lo';
-  const chip = (c, muted)=>`<span class="ar-ch ${rpeCls(+c.rpe)}${muted?' ar-muted':''}">${ATH_ICONS[c.ic]}${muted?'Ayer · ':''}${esc(c.txt)}${c.rpe?' · RPE '+esc(c.rpe):''}${c.mins?' · '+esc(c.mins)+' min':''}</span>`;
+  const chip = (c, muted)=>`<span class="ar-ch ${rpeCls(+c.rpe)}${muted?' ar-muted':''}">${c.svg||ATH_ICONS[c.ic]}${muted?'Ayer · ':''}${esc(c.txt)}${c.rpe?' · RPE '+esc(c.rpe):''}${c.mins?' · '+esc(c.mins)+' min':''}</span>`;
   let chips = d.todayChips.map(c=>chip(c,false)).join('') + d.yesterdayChips.map(c=>chip(c,true)).join('');
   chips += d.alerts.map(x=>`<span class="ar-ch ar-al">${ATH_ICONS[x.kind==='inj'?'inj':'warn']}${esc(x.txt)}</span>`).join('');
   if(d.noWellnessToday) chips += `<span class="ar-ch ar-none">${ATH_ICONS.clock}Sin wellness hoy</span>`;
@@ -15246,7 +15489,7 @@ function renderDashboardAthleteList() {
   const today = todayLocal();
 
   let filtered = getDashAthletes();
-  if(search) filtered = filtered.filter(a=>(a.name||a.email||'').toLowerCase().includes(search));
+  if(search) filtered = filtered.filter(a=>txtMatches(a.name||a.email||'', search));
 
   if(!filtered.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan con la búsqueda.</div>`;
 
@@ -15416,8 +15659,7 @@ function renderLibViewBody() {
   const pendingCount = S.library.filter(e=>getMissingLibRules(e.tags).length).length;
 
   let items = S.library;
-  if(search) items = items.filter(e=>e.name.toLowerCase().includes(search.toLowerCase())||
-    (e.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
+  if(search) items = items.filter(e=>txtMatches(e.name+' '+(e.tags||[]).join(' '), search));
   items = items.filter(e=>exerciseMatchesFilters(e, filters));
   if(S._libViewPendingOnly) items = items.filter(e=>getMissingLibRules(e.tags).length);
   // Los que cumplen TODAS las categorías elegidas van primero, después los
@@ -15507,6 +15749,8 @@ function openLibExerciseModal(id) {
   S._exFormTags = new Set(ex?.tags||[]);
   document.getElementById('exform-modal-title').textContent = ex ? 'Editar ejercicio' : 'Nuevo ejercicio';
   document.getElementById('exform-name-inp').value = ex?.name||'';
+  S._exFormDupOk = false;
+  updateSimilarExercises('exform-name-inp','exform-dups',S._exFormEditId);
   document.getElementById('exform-video-inp').value = (id && S.videos[id]) || '';
   document.getElementById('exform-chart-sel').value = ex?.chartMode || 'auto';
   document.getElementById('exform-delete-btn').style.display = ex ? 'block' : 'none';
@@ -15528,6 +15772,12 @@ function saveLibExerciseModal() {
   const missing = getMissingLibRules(tags);
   if(missing.length) { showToast('Falta elegir: '+missing.map(m=>m.label).join(' · ')); return; }
   const videoUrl = document.getElementById('exform-video-inp').value.trim();
+  const dupEx = similarLibExercises(name, S._exFormEditId||null).find(x=>x.exact);
+  if(dupEx && !S._exFormDupOk) {
+    showConfirmModal({message:`Ya existe "${dupEx.e.name}" en la biblioteca. ¿Guardar otro con el mismo nombre?`, confirmLabel:'Guardar igual', onConfirm:()=>{ S._exFormDupOk=true; saveLibExerciseModal(); }});
+    return;
+  }
+  S._exFormDupOk = false;
   const cm = document.getElementById('exform-chart-sel').value;
   const chartMode = (cm==='on'||cm==='off') ? cm : null;
   const exId = S._exFormEditId || genId();

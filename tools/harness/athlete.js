@@ -49,6 +49,9 @@
     // los bloques arrancan plegados: se mira el contenido del DOM, no solo lo visible
     ok(/hoy toca 83/i.test(document.getElementById('main').textContent),'aparece "Hoy toca 83 kg" en el ejercicio con %RM');
   }
+  // ── la carga de su deporte dice "Entrenamiento de handball" (lo hereda del equipo) ──
+  ok(mySport()==='Handball','deporte del atleta: lo toma de su equipo ('+mySport()+')');
+  { const pel=LOAD_ACTIVITIES.find(x=>x.key==='pelota'); const h=renderLoadItemRow(pel, todayLocal(), mySport()); ok(/Entrenamiento de handball/.test(h)&&h.includes('<svg class="sp-ic"'),'carga del atleta: "Entrenamiento de handball" con dibujo'); ok(!/Pelota/.test(h),'carga del atleta: ya no dice "Pelota"'); }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();

@@ -69,7 +69,12 @@ const quick = process.argv.includes('--quick');
         if (user !== 'admin1') await page.evaluate(u => localStorage.setItem('__testUser', JSON.stringify({uid: u, email: u + '@test.com'})), user);
         await page.reload({waitUntil: 'load'});
         await new Promise(r => setTimeout(r, 2500));
-        await page.evaluate(`window.${key}=null; ${code}`).catch(e => { err = e.message; });
+        // Si el script de prueba se corta por un error, se informa enseguida (no se espera al timeout).
+        await page.evaluate((k, c) => {
+          window[k] = null;
+          const cut = e => { window[k] = {fails: ['el script de prueba se cortó: ' + ((e && e.message) || e)], errs: []}; };
+          try { Promise.resolve((0, eval)(c)).catch(cut); } catch (e) { cut(e); }
+        }, key, code).catch(e => { err = e.message; });
         await page.waitForFunction(k => window[k], {timeout: 150000, polling: 500}, key);
         res = await page.evaluate(k => window[k], key);
       } catch (e) { err = e.message; }

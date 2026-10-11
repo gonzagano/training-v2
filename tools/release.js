@@ -31,7 +31,7 @@ console.log('── 3/4 Versión de caché: ' + ver); run(['tools/check.js']);
 console.log('── 4/4 Publicando');
 sh('git add -A');
 if (!sh('git status --porcelain')) { console.log('No hay cambios para publicar.'); process.exit(0); }
-const body = msg + '\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>';
+const body = msg + '\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>';
 fs.writeFileSync(path.join(root, '.git', 'GM_MSG'), body);
 sh('git commit -F .git/GM_MSG');
 try { sh('git pull --rebase origin main'); } catch (e) { console.error('✗ No pude integrar lo último de GitHub:\n' + e.message); process.exit(1); }
