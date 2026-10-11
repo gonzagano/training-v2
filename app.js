@@ -4445,7 +4445,7 @@ window.setAtletaRoutineCicloView = setAtletaRoutineCicloView;
 // varios atletas seguidos — mandar el objeto completo pisaba con esa foto
 // vieja cualquier sesión nueva que el atleta hubiera cargado mientras tanto.
 // Por eso acá se escribe SOLO el campo puntual tocado, por dot-path.
-async function adminSetExerciseField(uid, wKey, sName, exId, field, value) {
+async function adminSetExerciseField(uid, wKey, sName, exId, field, value, noRender) {
   const a = S.adminAthletes?.find(x=>x.uid===uid) || (S.viewingAthlete?.uid===uid ? S.viewingAthlete : null);
   if(!a) return;
   if(!a._personal) a._personal = {};
@@ -4478,10 +4478,23 @@ async function adminSetExerciseField(uid, wKey, sName, exId, field, value) {
     if(!a._personal.history[sk].exercises) a._personal.history[sk].exercises = {};
     a._personal.history[sk].exercises[exId] = rec;
     showToast('✓ Guardado');
-  } catch(e) { showToast('Error al guardar'); }
+  } catch(e) { showToast('Error al guardar'); if(noRender) return false; }
+  if(noRender) return true;
   renderMain();
 }
 window.adminSetExerciseField = adminSetExerciseField;
+// Kilos / RPE cargados desde la vista horizontal de la ficha.
+async function cmpSaveDone(uid, week, sName, exId, field, inp) {
+  // En fila: cada guardado relee el registro y lo reescribe entero, así que dos
+  // a la vez (kilos y enseguida RPE) se pisaban y se perdía uno.
+  const val = inp.value;
+  const run = (S._doneSaveQ || Promise.resolve()).then(()=>adminSetExerciseField(uid, week, sName, exId, field, val, true));
+  S._doneSaveQ = run.catch(()=>{});
+  const ok = await run;
+  if(ok===false) { inp.classList.add('err'); return; }
+  inp.classList.remove('err'); inp.classList.toggle('has', String(inp.value).trim()!=='');
+}
+window.cmpSaveDone = cmpSaveDone;
 
 // "Completó" (kg/RPE reales del atleta, editables por el admin por si se
 // equivocó al cargar) — mismo patrón que editar el título de un bloque: se
@@ -10694,7 +10707,7 @@ function renderAtletaRutina(a) {
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
-                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}${(()=>{ const rmV=ex.rmLift?a._personal?.oneRM?.[ex.rmLift]:null; if(!rmV) return ''; const parts=wp.pct.split('/').map(p=>p.trim()).filter(Boolean); const kg=parts.map(p=>{const n=parseDecimal(p);return isNaN(n)?'?':Math.round((n/100)*rmV);}).join('/'); return ' ≈ '+kg+'kg'; })()}</div></div>`:''}
+                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}${(()=>{ const rmV=ex.rmLift?a._personal?.oneRM?.[ex.rmLift]:null; if(!rmV) return ex.rmLift ? `<div style="font-size:11px;color:var(--amber);font-weight:700;margin-top:2px" title="Falta cargar el RM de ${RM_LIFTS.find(x=>x.id===ex.rmLift)?.label||''}">falta RM</div>` : ''; const parts=wp.pct.split('/').map(p=>p.trim()).filter(Boolean); const kg=parts.map(p=>{const n=parseDecimal(p);return isNaN(n)?'?':Math.round((n/100)*rmV);}).join('/'); return ' ≈ '+kg+'kg'; })()}</div></div>`:''}
                       <div class="field-box"><span class="field-lbl">${wp.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.rpe||'—'}</div></div>
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
@@ -12871,6 +12884,7 @@ const CMP_IC = {
   pen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
   more:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
   x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  note:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
 };
 // Vista horizontal del editor: los días en columnas y TODO editable ahí mismo
 // (mismas funciones que el editor de un día: nada se guarda distinto).
@@ -12967,13 +12981,21 @@ function renderAtletaRoutineHoriz(a, routine, previewWeek) {
           if(wp.pct) parts.push(wp.pct+'%RM');
           if(wp.rpe) parts.push((wp.intensityType||'RPE')+' '+wp.rpe);
           const d = rec?.exercises?.[e.id] || {};
-          const did = [d.load?fmtLoadTxt(d.load):'', (d.rpe!=null&&d.rpe!=='')?(wp.intensityType||'RPE')+' '+d.rpe:''].filter(Boolean).join(' · ');
           const note = a._personal?.coachNotes?.[e.id]?.text;
           const nm = q1(wp.name||e.name);
+          // Cuántos kilos tocan si el ejercicio va por %RM (uno por serie si es "70/75/80")
+          const rmV = e.rmLift ? a._personal?.oneRM?.[e.rmLift] : null;
+          const pctParts = wp.pct ? String(wp.pct).split('/').map(x=>x.trim()).filter(Boolean) : [];
+          const kg = (pctParts.length && rmV) ? pctParts.map(x=>{ const v=parseDecimal(x); return isNaN(v)?'?':Math.round(v/100*rmV); }).join('/') : '';
+          const noRm = pctParts.length && e.rmLift && !rmV;
+          const lbl = wp.intensityType||'RPE';
+          const sv = (f)=>`cmpSaveDone('${a.uid}',${previewWeek},'${sn}','${e.id}','${f}',this)`;
           return `<div class="cmp-ex cmp-exe" data-k="${esc(exerciseSeriesKey(e))}">
-            <div class="cmp-exh"><b>${esc(wp.name||e.name)}</b></div>
-            <span>${esc(parts.join(' · '))||'—'}</span>${did?`<span class="cmp-did">Hizo ${esc(did)}</span>`:''}
-            <div class="cmp-acts">${isPersonalBlock?'':`<button class="cmp-x ${override?'on':''}" onclick="openExerciseOverrideModal('${a.uid}','${routine.id}','${sn}','${e.id}',${previewWeek})">${override?'Personalizado':'Personalizar'}</button>`}<button class="cmp-x ${note?'warn':''}" onclick="openCoachNoteModal('${a.uid}','${e.id}','${nm}')">Nota</button></div>
+            <div class="cmp-exh"><b>${esc(wp.name||e.name)}</b><span class="cmp-tools">
+              ${isPersonalBlock?'':`<button class="cmp-t ${override?'on':''}" onclick="openExerciseOverrideModal('${a.uid}','${routine.id}','${sn}','${e.id}',${previewWeek})" title="${override?'Personalizado para este atleta — editar':'Personalizar para este atleta'}" aria-label="Personalizar">${CMP_IC.pen}</button>`}<button class="cmp-t ${note?'warn':''}" onclick="openCoachNoteModal('${a.uid}','${e.id}','${nm}')" title="${note?'Nota para el atleta — editar':'Dejarle una nota'}" aria-label="Nota">${CMP_IC.note}</button>
+            </span></div>
+            <span>${esc(parts.join(' · '))||'—'}</span>${kg?`<em class="cmp-kg">${esc(kg)} kg</em>`:''}${noRm?`<em class="cmp-norm" title="Falta cargar el RM de ${esc(RM_LIFTS.find(x=>x.id===e.rmLift)?.label||'')} (ficha → Perfil → RM del atleta)">falta RM</em>`:''}
+            <div class="cmp-done-in"><input class="cmp-f${d.load?' has':''}" type="text" inputmode="decimal" placeholder="kg" title="Kilos que hizo" value="${esc(d.load)}" onchange="${sv('load')}"><input class="cmp-f${(d.rpe!=null&&d.rpe!=='')?' has':''}" type="text" inputmode="decimal" placeholder="${lbl}" title="${lbl} que marcó" value="${esc(d.rpe)}" onchange="${sv('rpe')}"></div>
           </div>`;
         }).join('')||'<div class="cmp-ex"><span>Sin ejercicios</span></div>'}
       </div>`; }).join('') : '<div class="cmp-none">—</div>'}

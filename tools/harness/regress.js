@@ -19,6 +19,20 @@
   setAtletaRoutineCicloView('horiz'); await wait(500); txtBad('ficha horizontal');
   ok(document.querySelectorAll('.cmp-ath .cmp-col').length===3,'ficha horizontal: los 3 días en columnas');
   ok(document.querySelectorAll('.cmp-ath [onclick^="openExerciseOverrideModal"]').length>0&&document.querySelectorAll('.cmp-ath [onclick^="openCoachNoteModal"]').length>0,'ficha horizontal: Personalizar y Nota en cada ejercicio');
+  // íconos chicos en vez de las pastillas "Personalizar"/"Nota"
+  ok(!/Personalizar|Nota/.test(document.querySelector('.cmp-ath').innerText),'ficha horizontal: Personalizar y Nota son íconos');
+  // kilos que tocan por %RM (Sentadilla 75% de 110 = 83) y aviso si falta el RM
+  ok(/83 kg/.test(document.querySelector('.cmp-ath').innerText),'ficha horizontal: muestra los kilos que tocan por %RM');
+  // cargar kilos y RPE desde la columna → quedan en el documento de ESE atleta
+  { const before=JSON.stringify(JSON.parse(localStorage.getItem('__db')).personal.u1);
+    const ins=document.querySelectorAll('.cmp-ath .cmp-done-in')[1].querySelectorAll('input'); ok(ins.length===2,'ficha horizontal: campos de kilos y RPE en cada ejercicio');
+    ins[0].value='82,5'; ins[0].dispatchEvent(new Event('change',{bubbles:true})); ins[1].value='8'; ins[1].dispatchEvent(new Event('change',{bubbles:true})); await wait(900);
+    const h=JSON.parse(localStorage.getItem('__db')).personal.u0.history; const recs=Object.values(h).filter(v=>v&&v.exercises).flatMap(v=>Object.values(v.exercises));
+    ok(recs.some(x=>String(x.load)==='82.5'&&String(x.rpe)==='8'),'ficha horizontal: kilos y RPE guardados en u0');
+    ok(JSON.stringify(JSON.parse(localStorage.getItem('__db')).personal.u1)===before,'ficha horizontal: no tocó a otro atleta');
+    ok(ins[0].isConnected&&ins[0].classList.contains('has'),'ficha horizontal: no redibuja mientras se carga (no pierde el foco)');
+    setAtletaRoutineCicloView('micro'); await wait(300); setAtletaRoutineCicloView('horiz'); await wait(400);
+    ok([...document.querySelectorAll('.cmp-ath .cmp-done-in input')].some(i=>i.value==='82.5'),'ficha horizontal: lo cargado se vuelve a ver'); }
   document.querySelector('.cmp-ath [onclick^="openExerciseOverrideModal"]').click(); await wait(300); ok(!!document.querySelector('.video-modal.open, .modal-overlay.open, [id$="overlay"].open'),'ficha horizontal: Personalizar abre su formulario'); document.querySelectorAll('[id$="overlay"].open').forEach(o=>o.classList.remove('open'));
   setAtletaRoutineCicloView('micro'); await wait(300);
   // nota del profe

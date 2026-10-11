@@ -966,3 +966,11 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 .cmp-today{font-family:'Manrope',sans-serif;font-size:11px;font-weight:700;color:#fff;background:var(--accent);border-radius:20px;padding:2px 8px;vertical-align:middle}
 .cmp-done{font-size:13px;color:var(--green)}
 @media(max-width:899px){.cmp-f{font-size:16px;padding:7px 2px}.cmp-t{width:30px;height:30px}.cmp-t svg{width:15px;height:15px}}
+
+/* Ficha horizontal: kilos que tocan, y campos para cargar lo que hizo */
+.cmp-ex em.cmp-kg{font-style:normal;font-size:11.5px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);border-radius:20px;padding:1px 8px;margin-left:6px;white-space:nowrap}
+.cmp-ex em.cmp-norm{font-style:normal;font-size:11px;font-weight:700;color:var(--amber);margin-left:6px;white-space:nowrap}
+.cmp-done-in{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px}
+.cmp-f.has{border-color:var(--green);color:var(--green);font-weight:700}
+.cmp-f.err{border-color:var(--red)}
+.cmp-t.warn{background:var(--amber-dim);color:var(--amber)}
