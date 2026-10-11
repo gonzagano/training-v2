@@ -8,6 +8,16 @@
   // ── ADMIN ──
   switchView('dashboard'); await wait(1500); txtBad('dashboard'); ok(document.querySelectorAll('.ar-row').length===8,'dashboard: 8 filas');
   setDashTeamFilter('t2'); await wait(300); ok(document.querySelectorAll('.ar-row').length===2,'filtro t2'); setDashTeamFilter(null);
+  // Dashboard: fila completa (ACWR, UA, estado), atajos del plantel y contadores
+  await wait(300);
+  ok(document.querySelectorAll('#dash-athlete-list .ar-row.ar-full .ar-st').length===8 && document.querySelectorAll('#dash-athlete-list .ar-load').length===8,'dashboard: fila con ACWR/UA/estado');
+  ok(document.querySelectorAll('#dash-quick .chip-btn').length===4,'dashboard: 4 atajos');
+  { const n=+document.querySelectorAll('#dash-quick .chip-btn')[2].textContent.match(/\((\d+)\)/)[1]; setDashQuick('nowell'); await wait(200); ok(n>0 && document.querySelectorAll('#dash-athlete-list .ar-row').length===n,'atajo Sin wellness filtra '+n); }
+  { const n=+document.querySelectorAll('#dash-quick .chip-btn')[1].textContent.match(/\((\d+)\)/)[1]; const al=+document.querySelector('.metric-card.mc-alert .metric-card-value')?.textContent||0; setDashQuick('att'); await wait(200); ok(document.querySelectorAll('#dash-athlete-list .ar-row').length===n && n>=1 && [...document.querySelectorAll('#dash-athlete-list .ar-st')].every(e=>e.textContent==='Requiere atención'),'atajo Requieren atención: '+n+' (alertas '+al+')'); }
+  setDashQuick('all'); await wait(200); ok(document.querySelectorAll('#dash-athlete-list .ar-row').length===8,'atajo Todos vuelve a 8');
+  ok(document.querySelectorAll('.ar-act b').length>0 && !document.querySelector('#dash-athlete-list .ar-ch.ar-hi'),'actividad neutra: solo el RPE con color');
+  ok(!!document.querySelector('.att-btn') && document.querySelectorAll('.mc-bar').length===2,'recordatorio a mano y barras en contadores');
+  txtBad('dashboard con atajos');
   switchView('atletas'); await wait(1500); txtBad('atletas'); ok(document.querySelectorAll('#atletas-list .ar-row').length===3,'atletas: 3 individuales');
   openAtleta('u0'); await wait(1200); for(const v of ['rutina','wellness','stats','evals','perfil']){ setAtletaSubview(v); await wait(800); txtBad('ficha '+v); }
   setAtletaSubview('rutina'); await wait(500);

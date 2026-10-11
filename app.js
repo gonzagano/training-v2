@@ -10025,7 +10025,7 @@ function renderPerfilTab(a) {
       const chips = dayLogs.length ? dayLogs.map(l=>{
         const c = activityChipInfo(l, sport);
         const r = +l.rpe;
-        return `<span class="ar-ch ${r>=7?'ar-hi':r>=5?'ar-mid':'ar-lo'}">${c.svg||ATH_ICONS[c.ic]}${esc(c.txt)}${l.rpe?' · RPE '+esc(l.rpe):''}${l.mins?' · '+esc(l.mins)+' min':''}</span>`;
+        return `<span class="ar-ch ar-act">${c.svg||ATH_ICONS[c.ic]}${esc(c.txt)}${l.rpe?`<b class="${r>=7?'ar-hi':r>=5?'ar-mid':'ar-lo'}">RPE ${esc(l.rpe)}</b>`:''}${l.mins?`<i>${esc(l.mins)} min</i>`:''}</span>`;
       }).join('') : '<span class="wk-none">Sin actividad registrada</span>';
       return `<div class="act-row" onclick="viewWellnessDay('${uid}','${d}')">
         <div class="act-d${d===today?' act-today':''}"><small>${dow}</small><b>${dt.getDate()}/${dt.getMonth()+1}</b></div>
@@ -15169,9 +15169,12 @@ function getMonotonyStatus(m) {
 function renderDashboard() {
   if(!S.isAdmin) return renderAthleteHome();
   
-  return `<div class="page-header">
-    <div class="page-title">Dashboard</div>
-    <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+  return `<div class="page-header dash-head">
+    <div>
+      <div class="page-title">Dashboard</div>
+      <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+    </div>
+    <button class="abtn dash-refresh" onclick="loadDashboard()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>Actualizar</button>
   </div>
   <div id="dashboard-content">
     <div class="empty-state" style="padding:30px">
@@ -15438,16 +15441,32 @@ function athleteRowHtml(a, o) {
     pct = `<div class="ar-pc"><b style="color:${getWellnessState(d.last.v).color}">${d.last.v}%</b>${delta?`<small style="color:${delta>0?'var(--green)':'var(--red)'}">${delta>0?'▲ +':'▼ −'}${Math.abs(delta)}</small>`:''}</div>`;
   }
   const rpeCls = r=> r>=7 ? 'ar-hi' : r>=5 ? 'ar-mid' : 'ar-lo';
-  const chip = (c, muted)=>`<span class="ar-ch ${rpeCls(+c.rpe)}${muted?' ar-muted':''}">${c.svg||ATH_ICONS[c.ic]}${muted?'Ayer · ':''}${esc(c.txt)}${c.rpe?' · RPE '+esc(c.rpe):''}${c.mins?' · '+esc(c.mins)+' min':''}</span>`;
+  // Etiqueta de actividad neutra: solo el RPE lleva color, así el rojo queda
+  // reservado para las alertas de verdad (lesión, ACWR, caída de wellness).
+  const chip = (c, muted)=>`<span class="ar-ch ar-act${muted?' ar-muted':''}">${c.svg||ATH_ICONS[c.ic]}${muted?'Ayer · ':''}${esc(c.txt)}${c.rpe?`<b class="${rpeCls(+c.rpe)}">RPE ${esc(c.rpe)}</b>`:''}${c.mins?`<i>${esc(c.mins)} min</i>`:''}</span>`;
   let chips = d.todayChips.map(c=>chip(c,false)).join('') + d.yesterdayChips.map(c=>chip(c,true)).join('');
   chips += d.alerts.map(x=>`<span class="ar-ch ar-al">${ATH_ICONS[x.kind==='inj'?'inj':'warn']}${esc(x.txt)}</span>`).join('');
   if(d.noWellnessToday) chips += `<span class="ar-ch ar-none">${ATH_ICONS.clock}Sin wellness hoy</span>`;
   if(!chips) chips = '<span class="ar-ch ar-none">Sin actividad hoy</span>';
-  return `<div class="ar-row${d.critical?' ar-crit':''}" ${o.onclick?`onclick="${o.onclick}"`:''}>
+  // Con o.status (Dashboard): suma ACWR, UA de la semana y el estado del atleta.
+  let load = '', stat = '';
+  if(o.status) {
+    const m = d.metrics, hasAcwr = m?.acwr!=null;
+    const ac = getACWRStatus(hasAcwr?m.acwr:null, m?.daysOfHistory);
+    load = `<div class="ar-load">
+      <div class="ar-acwr" title="${esc(ac.label)}"><b>${hasAcwr?m.acwr.toFixed(2):'—'}</b><small style="color:${ac.color}">${hasAcwr?esc(ac.label.replace(/\s*[✓⚠]\s*$/,'')):'ACWR'}</small><span class="ar-zone">${hasAcwr?`<i style="left:${Math.min(100,m.acwr/2*100)}%;background:${ac.color}"></i>`:''}</span></div>
+      <div class="ar-ua"><b>${m?Math.round(m.acuteUA||0):'—'}</b><small>UA sem</small></div>
+    </div>`;
+    stat = `<div class="ar-st"><span style="color:${o.status.color};background:${o.status.bg}">${o.status.text}</span></div>`;
+  }
+  const rowCls = (o.status?' ar-full':'') + (d.critical?' ar-crit':(o.status&&o.status.tier===1?' ar-warn':''));
+  return `<div class="ar-row${rowCls}" ${o.onclick?`onclick="${o.onclick}"`:''}>
     <div class="ar-av">${avatarHtml(a.name||a.email, a.color, 38, a.photoUrl)}</div>
     <div class="ar-who"><div class="ar-nm">${esc(a.name||a.email)}</div><div class="ar-sb">${esc(sub)}</div></div>
     <div class="ar-viz"><div class="ar-bars">${bars}</div>${pct}</div>
+    ${load}
     <div class="ar-chips">${chips}</div>
+    ${stat}
     ${o.extra?`<div class="ar-extra">${o.extra}</div>`:''}
   </div>`;
 }
@@ -15510,7 +15529,7 @@ function renderDashboardContent() {
       <div class="att-main"><div class="att-nm">${esc(r.a.name||r.a.email)}</div><div class="ar-chips">${r.items.map(it=>`<span class="ar-ch ar-al">${esc(it.txt)}</span>`).join('')}${teamBadgeHtml(r.a)}</div></div>
       <span class="att-go">›</span>
     </div>`).join('')}
-    ${withoutWellness.length?`<div class="att-row" onclick="openReminderScreen()"><span class="att-ic att-ic-n">${ATH_ICONS.clock}</span><div class="att-main"><div class="att-nm">${withoutWellness.length} ${withoutWellness.length===1?'atleta sin wellness hoy':'atletas sin wellness hoy'}</div></div><span class="att-go">›</span></div>`:''}
+    ${withoutWellness.length?`<div class="att-row" onclick="openReminderScreen()"><span class="att-ic att-ic-n">${ATH_ICONS.clock}</span><div class="att-main"><div class="att-nm">${withoutWellness.length} ${withoutWellness.length===1?'atleta sin wellness hoy':'atletas sin wellness hoy'}</div><div class="att-note">${esc(withoutWellness.slice(0,4).map(a=>a.name||a.email).join(', '))}${withoutWellness.length>4?' y '+(withoutWellness.length-4)+' más':''}</div></div><button class="abtn abtn-p att-btn" onclick="event.stopPropagation();openReminderScreen()">Enviar recordatorio</button></div>`:''}
   </div>` : '';
 
   // ── Lesiones recientes (con el mismo filtro) ──
@@ -15537,32 +15556,46 @@ function renderDashboardContent() {
   if(nInd) groups.push({id:'individual', label:'Individuales', n:nInd});
   const filterHtml = groups.length>1 ? `<div id="dash-team-filters" class="dash-filters">${renderDashTeamFilters(everyone)}</div>` : '<div id="dash-team-filters"></div>';
 
+  // Datos de apoyo de los contadores: reparto del plantel, promedio de wellness
+  // de hoy y de qué son las alertas.
+  const nTeam = athletes.filter(a=>a.teamId).length;
+  const splitTxt = nTeam && nTeam<totalAthletes ? `${nTeam} de equipo · ${totalAthletes-nTeam} individuales` : nTeam ? 'de equipo' : 'individuales';
+  const todayScores = athletes.map(a=>computeHooperScore(a._personal?.wellness?.[today])).filter(v=>v!=null);
+  const avgWell = todayScores.length ? Math.round(todayScores.reduce((s,v)=>s+v,0)/todayScores.length) : null;
+  const nInjAtt = attRows.filter(r=>r.items.some(it=>it.kind==='inj')).length;
+  const attSplit = attCount ? [nInjAtt?`${nInjAtt} ${nInjAtt===1?'lesión':'lesiones'}`:'', attCount-nInjAtt?`${attCount-nInjAtt} por carga o wellness`:''].filter(Boolean).join(' · ') : '';
+  const bar = n=>`<div class="mc-bar"><i style="width:${totalAthletes?Math.round(n/totalAthletes*100):0}%"></i></div>`;
+
   let html = filterHtml;
   html += `<div class="metric-grid metric-grid4">
-    <div class="metric-card" style="border-left:3px solid var(--accent);cursor:pointer" onclick="scrollToDashAthleteList()">
+    <div class="metric-card" style="cursor:pointer" onclick="scrollToDashAthleteList()">
       <div class="metric-card-label">ATLETAS <span class="metric-card-icon">${metricIconSvg('atletas')}</span></div>
       <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
+      <div class="metric-card-sub">${splitTxt}</div>
     </div>
-    <div class="metric-card" style="border-left:3px solid var(--warm);cursor:pointer" onclick="openTrainedTodayScreen()">
+    <div class="metric-card" style="cursor:pointer" onclick="openTrainedTodayScreen()">
       <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">${metricIconSvg('entrenaron')}</span></div>
-      <div class="metric-card-value" style="color:${trainedToday>0?'var(--green)':'var(--text)'}" data-countup="${trainedToday}">${trainedToday}</div>
-      <div class="metric-card-sub">de ${totalAthletes}</div>
+      <div class="mc-row"><div class="metric-card-value" data-countup="${trainedToday}">${trainedToday}</div><span class="mc-of">de ${totalAthletes}</span></div>
+      ${bar(trainedToday)}
     </div>
-    <div class="metric-card" style="border-left:3px solid var(--green);cursor:pointer" onclick="openReminderScreen()">
+    <div class="metric-card" style="cursor:pointer" onclick="openReminderScreen()">
       <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">${metricIconSvg('wellness')}</span></div>
-      <div class="metric-card-value" style="color:${wellnessToday>0?'var(--green)':'var(--text)'}" data-countup="${wellnessToday}">${wellnessToday}</div>
-      <div class="metric-card-sub">de ${totalAthletes}</div>
+      <div class="mc-row"><div class="metric-card-value" data-countup="${wellnessToday}">${wellnessToday}</div><span class="mc-of">de ${totalAthletes}</span>${avgWell!=null?`<span class="mc-avg">promedio <b style="color:${getWellnessState(avgWell).color}">${avgWell}%</b></span>`:''}</div>
+      ${bar(wellnessToday)}
     </div>
-    <div class="metric-card" style="border-left:3px solid ${attCount?'var(--red)':'var(--green)'};cursor:pointer" onclick="scrollToDashAtt()">
+    <div class="metric-card${attCount?' mc-alert':''}" style="cursor:pointer" onclick="scrollToDashAtt()">
       <div class="metric-card-label" style="color:${attCount?'var(--red)':'var(--text2)'}">ALERTAS <span class="metric-card-icon">${craftIconSvg('alert',attCount?'var(--red)':'currentColor',14)}</span></div>
       <div class="metric-card-value" style="color:${attCount?'var(--red)':'var(--text)'}" data-countup="${attCount}">${attCount}</div>
+      ${attSplit?`<div class="metric-card-sub" style="color:var(--red)">${attSplit}</div>`:''}
     </div>
   </div>`;
   html += attPanel ? (isDesktop ? `<div class="att-grid">${attPanel}${recentPanel}</div>` : `${attPanel}${recentFeed.length?recentPanel:''}`) : (recentFeed.length ? `<div class="att-grid att-solo">${recentPanel}</div>` : '');
 
-  html += `<div class="dash-search"><input id="dash-search-inp" value="${esc(S.dashSearch||'')}" placeholder="Buscar atleta" oninput="setDashSearch(this.value)"></div>
+  html += `<div class="dash-tools">
+      <div id="dash-quick" class="dash-quick">${renderDashQuick()}</div>
+      <div class="dash-search"><input id="dash-search-inp" value="${esc(S.dashSearch||'')}" placeholder="Buscar atleta" oninput="setDashSearch(this.value)"></div>
+    </div>
     <div id="dash-athlete-list">${renderDashboardAthleteList()}</div>`;
-  html += `<div style="text-align:center;margin-top:12px"><button class="abtn" onclick="loadDashboard()" style="padding:8px 18px">Actualizar</button></div>`;
   return html;
 }
 window.renderDashboardContent=renderDashboardContent;
@@ -15594,30 +15627,64 @@ function getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled) {
   return {tier:2, color:'var(--green)', bg:'var(--green-dim)', text:'Todo en orden'};
 }
 
+// Estado (semáforo) de un atleta del Dashboard, con todo lo que hace falta para
+// calcularlo. Lo usan la lista y los atajos de arriba de la lista.
+function getDashAthleteStatus(a) {
+  const today = todayLocal();
+  const logs = a._personal?.history?._sessionLogs||[];
+  const metrics = calcLoadMetrics(logs);
+  const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(a._personal?.wellness?.[today]);
+  const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
+  const status = getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled);
+  // Mismas reglas que el panel de atención de arriba: una caída fuerte de
+  // wellness (o un wellness muy bajo) también es "requiere atención", así el
+  // contador de alertas, el panel y el estado de la fila dicen lo mismo.
+  if(status.tier>0) {
+    const dates = getWeeklyComplianceDates(0);
+    const sT = computeHooperScore(a._personal?.wellness?.[dates[6]]), sY = computeHooperScore(a._personal?.wellness?.[dates[5]]);
+    if(sT!=null && ((sY!=null && sT-sY<=-20) || sT<50)) return {tier:0, color:'var(--red)', bg:'var(--red-dim)', text:'Requiere atención'};
+  }
+  return status;
+}
+
+// Atajos sobre el plantel (respetan el filtro de equipo de arriba).
+const DASH_QUICK = [
+  {id:'all',     label:'Todos',              test:()=>true},
+  {id:'att',     label:'Requieren atención', test:a=>getDashAthleteStatus(a).tier===0},
+  {id:'nowell',  label:'Sin wellness',       test:a=>computeHooperScore(a._personal?.wellness?.[todayLocal()])==null},
+  {id:'notrain', label:'No entrenaron',      test:a=>!(a._personal?.history?._sessionLogs||[]).some(l=>l.date===todayLocal())},
+];
+function renderDashQuick() {
+  const athletes = getDashAthletes();
+  const cur = S.dashQuick||'all';
+  return DASH_QUICK.map(q=>`<button class="chip-btn ${cur===q.id?'on':''}" onclick="setDashQuick('${q.id}')">${q.label} (${athletes.filter(q.test).length})</button>`).join('');
+}
+window.renderDashQuick = renderDashQuick;
+function setDashQuick(v) {
+  S.dashQuick = v;
+  const el = document.getElementById('dash-quick');
+  if(el) el.innerHTML = renderDashQuick();
+  updateDashboardAthleteList();
+}
+window.setDashQuick = setDashQuick;
+
 function renderDashboardAthleteList() {
   const search = (S.dashSearch||'').toLowerCase();
-  const today = todayLocal();
 
   let filtered = getDashAthletes();
+  const quick = DASH_QUICK.find(q=>q.id===(S.dashQuick||'all')) || DASH_QUICK[0];
+  filtered = filtered.filter(quick.test);
   if(search) filtered = filtered.filter(a=>txtMatches(a.name||a.email||'', search));
 
-  if(!filtered.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan con la búsqueda.</div>`;
+  if(!filtered.length) return `<div class="empty-state" style="padding:24px">Sin atletas que coincidan.</div>`;
 
   // Precalculamos todo lo que hace falta para ordenar ANTES de armar el HTML
   // — los que necesitan atención van primero, no hay que escanear toda la
   // lista buscándolos.
-  const withStatus = filtered.map(a=>{
-    const logs = a._personal?.history?._sessionLogs||[];
-    const metrics = calcLoadMetrics(logs);
-    const wToday = a._personal?.wellness?.[today];
-    const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(wToday);
-    const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
-    const status = getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled);
-    return {a, logs, metrics, wPct, wAllFilled, acwrStatus, status};
-  });
+  const withStatus = filtered.map(a=>({a, status:getDashAthleteStatus(a)}));
   withStatus.sort((x,y)=> x.status.tier-y.status.tier || (x.a.name||'').localeCompare(y.a.name||''));
 
-  return `<div class="ar-list">${withStatus.map(({a})=>athleteRowHtml(a,{onclick:"adminOpenAthleteDash('"+a.uid+"')"})).join('')}</div>`;
+  return `<div class="ar-list">${withStatus.map(({a,status})=>athleteRowHtml(a,{onclick:"adminOpenAthleteDash('"+a.uid+"')", status})).join('')}</div>`;
 }
 window.renderDashboardAthleteList=renderDashboardAthleteList;
 
