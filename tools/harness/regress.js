@@ -15,6 +15,12 @@
   setAtletaRoutineDay(0); await wait(300); document.querySelectorAll('[onclick^="toggleAtletaRoutineBlock"]').forEach(b=>b.click()); await wait(300);
   txtBad('rutina día abierto');
   openAdminProgressionModal('u0','x1','Sentadilla libre','Día 1'); await wait(400); ok(!!document.querySelector('#lc-wrap')||true,'modal progresión'); closeProgressionModal();
+  // ── ficha: vista horizontal con sus botones para modificar ──
+  setAtletaRoutineCicloView('horiz'); await wait(500); txtBad('ficha horizontal');
+  ok(document.querySelectorAll('.cmp-ath .cmp-col').length===3,'ficha horizontal: los 3 días en columnas');
+  ok(document.querySelectorAll('.cmp-ath [onclick^="openExerciseOverrideModal"]').length>0&&document.querySelectorAll('.cmp-ath [onclick^="openCoachNoteModal"]').length>0,'ficha horizontal: Personalizar y Nota en cada ejercicio');
+  document.querySelector('.cmp-ath [onclick^="openExerciseOverrideModal"]').click(); await wait(300); ok(!!document.querySelector('.video-modal.open, .modal-overlay.open, [id$="overlay"].open'),'ficha horizontal: Personalizar abre su formulario'); document.querySelectorAll('[id$="overlay"].open').forEach(o=>o.classList.remove('open'));
+  setAtletaRoutineCicloView('micro'); await wait(300);
   // nota del profe
   openCoachNoteModal('u0','x1','Sentadilla'); document.getElementById('coachnote-textarea').value='Nota de prueba'; await saveCoachNote(false); await wait(500);
   ok(JSON.parse(localStorage.getItem('__db')).personal.u0.coachNotes?.x1?.text==='Nota de prueba','nota guardada en u0');
@@ -44,7 +50,27 @@
     addRoutineBlock('Día 3'); await wait(200); bnpPickMain('SPRINT'); await wait(250); addRoutineBlock('Día 3'); await wait(200); bnpPickMain('COD'); await wait(250);
     ok(titles().includes('SPRINT')&&titles().includes('COD'),'SPRINT y COD creados');
     addRoutineBlock('Día 3'); await wait(200); const av2=[...document.querySelectorAll('#blockname-body .bnp-opt')].map(b=>b.innerText.replace(/\s+/g,' ').trim().replace(/ ›$/,'')); ok(!av2.includes('SPRINT')&&!av2.includes('COD')&&av2.includes('ACC')&&av2.includes('HIIT'),'selector: SPRINT/COD usados no aparecen; ACC y HIIT sí'); closeBlockNamePicker(); }
-  setRoutineCompare(true); await wait(500); txtBad('comparar'); cmpSet('main','PRINC'); await wait(200); ok(document.querySelectorAll('.cmp-blk').length>=2,'comparar: principales'); cmpSet('main',null);
+  setRoutineCompare(true); await wait(500); txtBad('comparar');
+  // ── vista horizontal: se PLANIFICA ahí mismo ──
+  { const R1=()=>S.editingRoutine.sessions; const d2=Object.keys(R1()).find(k=>R1()[k].some(b=>b.title==='FUERZA B // MMII'))||'Día 2';
+    const blk=R1()[d2].find(b=>b.title==='FUERZA B // MMII'); const ex0=blk.categories[0].exercises[0];
+    const row=document.getElementById('cmpex-'+ex0.id); ok(!!row,'horizontal: cada ejercicio tiene su fila editable');
+    const f=row.querySelectorAll('.cmp-f'); ok(f.length===4,'horizontal: 4 campos (series, reps, %RM, intensidad)');
+    f[0].value='5'; f[0].dispatchEvent(new Event('change',{bubbles:true})); f[1].value='3'; f[1].dispatchEvent(new Event('change',{bubbles:true})); f[2].value='85'; f[2].dispatchEvent(new Event('change',{bubbles:true}));
+    const p1=getExPrescriptionForWeek(ex0,1); ok(p1.series==='5'&&p1.reps==='3'&&p1.pct==='85','horizontal: series/reps/%RM quedan en la semana 1');
+    if(getRoutineDurationWeeks(S.editingRoutine)>1){ cmpSet('week',2); await wait(200); const f2=document.getElementById('cmpex-'+ex0.id).querySelectorAll('.cmp-f'); f2[0].value='6'; f2[0].dispatchEvent(new Event('change',{bubbles:true}));
+      ok(getExPrescriptionForWeek(ex0,2).series==='6'&&getExPrescriptionForWeek(ex0,1).series==='5','horizontal: cada semana guarda lo suyo'); cmpSet('week',1); await wait(200); }
+    // agregar bloque y ejercicio desde la columna
+    const nB=R1()[d2].length; document.querySelectorAll('.cmp-col')[Object.keys(R1()).length?getOrderedSessionNames(S.editingRoutine).indexOf(d2):0].querySelector('.cmp-addb').click(); await wait(250); bnpPickMain('ACC'); await wait(300);
+    ok(R1()[d2].length===nB+1&&R1()[d2].some(b=>b.title==='ACC'),'horizontal: "+ Bloque" agrega en ese día'); ok(S._routineCompare===true&&!!document.getElementById('cmp-wrap'),'horizontal: sigue en horizontal después de agregar');
+    const acc=R1()[d2].find(b=>b.title==='ACC'); openRoutineLib(acc.id,d2,0); await wait(250); document.querySelector('#lib-list .lib-item').click(); await wait(350);
+    ok(acc.categories[0].exercises.length===1,'horizontal: "+ Ejercicio" agrega al bloque'); ok(!!document.getElementById('cmpex-'+acc.categories[0].exercises[0].id),'horizontal: el ejercicio nuevo aparece en la columna');
+    // mover y quitar
+    const ids=()=>R1()[d2].map(b=>b.id).join(); const before=ids(); moveRoutineBlock(acc.id,d2,-1); await wait(250); ok(ids()!==before&&!!document.getElementById('cmp-wrap'),'horizontal: mover bloque');
+    const exN=acc.categories[0].exercises[0].id; cmpToggleEx(exN); await wait(200); ok(!!document.querySelector('#cmpex-'+exN+' .cmp-full table'),'horizontal: "⋯" abre todas las semanas'); cmpToggleEx(exN); await wait(150);
+    deleteRExercise(exN,acc.id,d2,0); await wait(250); ok(acc.categories[0].exercises.length===0,'horizontal: quitar ejercicio');
+    txtBad('horizontal editable'); }
+ cmpSet('main','PRINC'); await wait(200); ok(document.querySelectorAll('.cmp-blk').length>=2,'comparar: principales'); cmpSet('main',null);
   history.back; setRoutineCompare(false);
   // renombrar día con intercambio
   startRenameRoutineSession('Día 1'); await wait(100); const inp=document.getElementById('rsess-inp'); inp.value='Día 2'; inp.dispatchEvent(new Event('blur')); await wait(300);
@@ -64,6 +90,13 @@
     si.value='barra curl'; si.dispatchEvent(new Event('input',{bubbles:true})); await wait(300);
     ok(document.getElementById('lib-view-body').innerText.includes('Curl de bíceps'),'biblioteca: palabras en otro orden');
     si.value=''; si.dispatchEvent(new Event('input',{bubbles:true})); }
+  // ── categorías de la biblioteca: lista fija, mismo orden en Biblioteca y en el selector, sin familias ni cruces ──
+  { const want=LIB_MAIN_CATEGORIES.join("|"); const names=sel=>[...document.querySelectorAll(sel)].map(b=>(b.childNodes[0].textContent||"").trim());
+    if(!S._libViewFilterOpen) toggleLibViewFilterDropdown(); await wait(250);
+    const inView=names("#lib-view-body .lib-filter").filter(t=>LIB_MAIN_CATEGORIES.includes(t)); ok(inView.join("|")===want,"biblioteca: solo las categorías principales, en orden");
+    ok(!/Fuerza|Potencia|Auxiliares|Movilidad y estabilidad/.test(names("#lib-view-body .lib-filter").filter(t=>!LIB_MAIN_CATEGORIES.includes(t)).join("|")),"biblioteca: sin la fila de familias");
+    ok(typeof window.deleteLibraryTag==="undefined"&&!document.querySelector("#lib-view-body .lib-filter [onclick*=delete]"),"biblioteca: las categorías no se pueden borrar");
+    { const tmp=document.createElement("div"); tmp.innerHTML=renderCategoryFilterChips(new Set(),"setFilter").mainRow; const inPick=[...tmp.querySelectorAll(".lib-filter")].map(b=>(b.childNodes[0].textContent||"").trim()); ok(inPick.join("|")===want,"selector de ejercicios: mismas categorías y mismo orden"); } }
   // ── aviso de ejercicio parecido / duplicado ──
   addLibraryExercise(); await wait(300);
   { const ni=document.getElementById('exform-name-inp'); ni.value='curl de biceps'; ni.dispatchEvent(new Event('input',{bubbles:true})); await wait(200);

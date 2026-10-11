@@ -3902,16 +3902,9 @@ window.closeLibIfOutside=closeLibIfOutside;
 // onClickFn: nombre de la función global a invocar por cada chip tocado
 // (recibe el tag como único argumento) — cada llamador tiene la suya porque
 // cada una guarda su selección en un Set de estado distinto.
-// Tres niveles: FAMILIA → categoría → subcategoría, con la cantidad de
-// ejercicios en cada chip. La familia solo ordena la lista (no filtra por sí
-// sola): al elegirla se muestran únicamente sus categorías.
-const LIB_FAMILIES = [
-  {id:'Fuerza',   mains:['Empuje MMSS','Tracción MMSS','Empuje MMII','Tracción MMII','Zona Media']},
-  {id:'Potencia', mains:['DLO','Pliometría Extensiva','Pliometría Intensiva','Lanzamientos']},
-  {id:'ISO',      mains:['ISO HOLD','ISO PUSH','ISO CATCH','ISO SWITCH']},
-  {id:'Movilidad y estabilidad', mains:['Movilidad','Estabilidad','Rehabilitación']},
-  {id:'Auxiliares', mains:['Auxiliar Brazos','Auxiliar MMII']},
-];
+// Dos niveles: categoría principal → subcategoría, con la cantidad de
+// ejercicios en cada chip. Siempre las mismas, en el orden de
+// LIB_MAIN_CATEGORIES (lista fija: no se agregan ni se borran desde la app).
 function renderCategoryFilterChips(selected, onClickFn) {
   const lib = S.library||[];
   const selectedMains = LIB_MAIN_CATEGORIES.filter(c=>selected.has(c));
@@ -3921,26 +3914,12 @@ function renderCategoryFilterChips(selected, onClickFn) {
   });
   const mainCount = {};
   lib.forEach(e=>{ const m=getExerciseMainCategory(e.tags); if(m) mainCount[m]=(mainCount[m]||0)+1; });
-  // si hay una categoría elegida, su familia queda abierta
-  let fam = S._libFamily || null;
-  if(!fam && selectedMains.length) fam = (LIB_FAMILIES.find(f=>f.mains.includes(selectedMains[0]))||{}).id || null;
-  const famChips = LIB_FAMILIES.map(f=>{
-    const n = f.mains.reduce((t,m)=>t+(mainCount[m]||0),0);
-    return `<button class="lib-filter ${fam===f.id?'active':''}" onclick="setLibFamily('${f.id}')">${f.id} <small>${n}</small></button>`;
-  }).join('');
-  const visibleMains = fam ? (LIB_FAMILIES.find(f=>f.id===fam)?.mains||LIB_MAIN_CATEGORIES) : LIB_MAIN_CATEGORIES;
-  const mains = visibleMains.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t} <small>${mainCount[t]||0}</small></button>`).join('');
+  const mains = LIB_MAIN_CATEGORIES.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t} <small>${mainCount[t]||0}</small></button>`).join('');
   const subCount = o => lib.filter(e=>(e.tags||[]).includes(o) && (!selectedMains.length || selectedMains.includes(getExerciseMainCategory(e.tags)))).length;
   const subRow = subOptionsToShow.map(t=>`<button class="lib-filter ${selected.has(t)?'active':''}" style="opacity:.9" onclick="${onClickFn}('${t.replace(/'/g,"\\'")}')">${t} <small>${subCount(t)}</small></button>`).join('');
-  const mainRow = `<div style="flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;padding-bottom:8px;margin-bottom:2px;border-bottom:1px dashed var(--border)">${famChips}</div>${mains}`;
+  const mainRow = mains;
   return { mainRow, subRow, hasSubRow: subOptionsToShow.length>0 };
 }
-function setLibFamily(f) {
-  S._libFamily = (S._libFamily===f) ? null : f;
-  if(document.getElementById('lib-filters')) renderLibFilters();
-  if(document.getElementById('lib-view-body')) updateLibViewResults();
-}
-window.setLibFamily = setLibFamily;
 window.renderCategoryFilterChips = renderCategoryFilterChips;
 
 // Miniatura placeholder para una fila de ejercicio de la Biblioteca — hasta
@@ -10641,18 +10620,20 @@ function renderAtletaRutina(a) {
       </div>
       <div style="display:flex;gap:6px">
         ${routine.ownerUid===a.uid ? `<button class="abtn abtn-p" onclick="editPersonalRoutine('${routine.id}')" title="Seguir armando o cambiar esta rutina propia">✎ Editar rutina</button>` : ''}
-        <button class="abtn ${S._atletaRoutineCicloView!=='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('micro')">Vista microciclo</button>
+        <button class="abtn ${(S._atletaRoutineCicloView||'micro')==='micro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('micro')">Vista microciclo</button>
         <button class="abtn ${S._atletaRoutineCicloView==='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('macro')">Vista macrociclo</button>
+        ${sessionNames.length>1?`<button class="abtn ${S._atletaRoutineCicloView==='horiz'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('horiz')">Vista horizontal</button>`:''}
       </div>
     </div>
-    <div style="display:flex;gap:6px;overflow-x:auto;padding:10px 16px 10px;-webkit-overflow-scrolling:touch">${sessionNames.map((sn,i)=>{
+    ${S._atletaRoutineCicloView==='horiz' ? renderAtletaRoutineHoriz(a, routine, previewWeek) : ''}
+    <div style="display:${S._atletaRoutineCicloView==='horiz'?'none':'flex'};gap:6px;overflow-x:auto;padding:10px 16px 10px;-webkit-overflow-scrolling:touch">${sessionNames.map((sn,i)=>{
       const on = sn===selDay;
       const isTodayTab = sn===todaySession && isViewingReal;
       const doneTab = !!(getPhaseSessionRecord(a, a._personal?.history, previewWeek, sn)?.done);
       return `<button onclick="setAtletaRoutineDay(${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;border-radius:20px;border:1.5px solid ${on?'var(--accent)':(isTodayTab?'var(--accent)':'var(--border2)')};background:${on?'var(--accent)':'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${sn.replace(/&/g,'&amp;').replace(/</g,'&lt;')}${doneTab?' ✓':''}${isTodayTab?` <span style="font-size:11px;font-weight:800;opacity:.9">· HOY</span>`:''}</button>`;
     }).join('')}</div>
     ${sessionNames.map(sName => {
-      if(sName!==selDay) return '';
+      if(sName!==selDay || S._atletaRoutineCicloView==='horiz') return '';
       const blocks = getVisibleRoutineBlocks(routine, sName, a.teamId, a.position, a._personal?.personalExtras);
       // Si el día tiene bloques cargados en la rutina pero ninguno le queda
       // visible a ESTE atleta, es porque el filtro de puestos del equipo
@@ -12740,7 +12721,7 @@ window.createRoutine=createRoutine;
 // Editar desde la ficha una rutina PROPIA del atleta (la creada con "+ Crear
 // rutina propia"): mismo editor completo, y al volver cae de nuevo en la ficha.
 // Abre el editor desde la ficha del atleta (la 'X' de volver lo deja en su ficha, pestaña Rutina)
-function editPersonalRoutine(id) { editRoutine(id, 'athlete_detail'); }
+function editPersonalRoutine(id) { if(S._atletaRoutineCicloView==='horiz') S._routineCompare = true; editRoutine(id, 'athlete_detail'); }
 window.editPersonalRoutine = editPersonalRoutine;
 
 // Muestra el editor de rutinas SIEMPRE en la pantalla correcta: la ficha del atleta
@@ -12853,9 +12834,10 @@ window.saveRoutineEditorName = saveRoutineEditorName;
 // uno cerrado queda como una tira angosta —, se filtra por nombre de bloque
 // (los chips salen de los bloques que realmente existen) y se busca por
 // bloque o ejercicio. Al pasar el mouse por un ejercicio se marca el mismo en
-// los otros días. Solo lectura: "Editar" lleva ese día al editor de siempre.
+// los otros días. Se planifica ahí mismo: agregar/mover/quitar bloques y
+// ejercicios, y cargar series, reps, %RM e intensidad de la semana elegida.
 function getCmpState(routine) {
-  if(!S._cmp || S._cmp.rid!==routine.id) S._cmp = {rid:routine.id, closed:{}, main:null, sub:null, q:'', week:1};
+  if(!S._cmp || S._cmp.rid!==routine.id) S._cmp = {rid:routine.id, closed:{}, main:null, sub:null, q:'', week:1, openEx:null};
   return S._cmp;
 }
 function cmpExLine(ex, week) {
@@ -12879,18 +12861,33 @@ function cmpBlockMatches(b, st) {
   }
   return true;
 }
+// Íconos chicos de la vista horizontal
+const CMP_IC = {
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+  swap:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  pen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  more:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+};
+// Vista horizontal del editor: los días en columnas y TODO editable ahí mismo
+// (mismas funciones que el editor de un día: nada se guarda distinto).
 function renderDaysCompare(routine) {
   const st = getCmpState(routine);
-  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const q1 = t=>String(t).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const names = getOrderedSessionNames(routine);
   const weeks = Math.max(1, getRoutineDurationWeeks(routine));
   if(st.week>weeks) st.week = 1;
+  const W = st.week;
   // chips de filtro: solo lo que existe en esta rutina
   const mainCount = new Map(); let nNone = 0;
   names.forEach(n=>(routine.sessions[n]||[]).forEach(b=>{ const ms=getBlockMainSub(b); if(ms) mainCount.set(ms.main,(mainCount.get(ms.main)||0)+1); else nNone++; }));
   const mains = BLOCK_NAMES.map(c=>c.main).filter(m=>mainCount.has(m));
   const subsOf = st.main && mainCount.has(st.main) ? (BLOCK_NAMES.find(c=>c.main===st.main)?.subs||[]).filter(sb=>names.some(n=>(routine.sessions[n]||[]).some(b=>{const ms=getBlockMainSub(b);return ms&&ms.main===st.main&&blockSubParts(ms.sub).includes(sb);}))) : [];
   const chip = (on, fn, label)=>`<button class="chip-btn ${on?'on':''}" onclick="${fn}">${label}</button>`;
+  const tool = (ic, fn, title, off, cls)=>`<button class="cmp-t ${cls||''}" ${off?'disabled':''} onclick="${fn}" title="${title}" aria-label="${title}">${CMP_IC[ic]}</button>`;
   let h = `<div class="cmp-bar">
     ${chip(!st.main,"cmpSet('main',null)",'Todo')}
     ${mains.map(m=>chip(st.main===m,`cmpSet('main','${m}')`,`${m} <small>${mainCount.get(m)}</small>`)).join('')}
@@ -12899,20 +12896,89 @@ function renderDaysCompare(routine) {
   </div>`;
   if(subsOf.length) h += `<div class="cmp-bar">${chip(!st.sub,"cmpSet('sub',null)",'Todas')}${subsOf.map(sb=>chip(st.sub===sb,`cmpSet('sub','${sb}')`,sb)).join('')}</div>`;
   h += `<div class="cmp-bar"><input type="text" class="cmp-q" id="cmp-q" value="${esc(st.q)}" placeholder="Buscar bloque o ejercicio" oninput="cmpSearch(this.value)">
-    ${weeks>1?`<span class="cmp-wk">${Array.from({length:weeks},(_,i)=>chip(st.week===i+1,`cmpSet('week',${i+1})`,'S'+(i+1))).join('')}</span>`:''}
+    ${weeks>1?`<span class="cmp-wk">${Array.from({length:weeks},(_,i)=>chip(W===i+1,`cmpSet('week',${i+1})`,'S'+(i+1))).join('')}</span>`:''}
     <span class="cmp-days">${names.map((n,i)=>chip(!st.closed[n],`cmpToggleDay(${i})`,esc(n))).join('')}</span></div>`;
   const open = names.filter(n=>!st.closed[n]);
   const cols = names.map(n=>st.closed[n] ? '44px' : 'minmax(0,1fr)').join(' ');
   h += `<div class="cmp-cols" style="--cmp-cols:${cols}">` + names.map((n,i)=>{
     if(st.closed[n]) return `<div class="cmp-strip" onclick="cmpToggleDay(${i})" title="Abrir ${esc(n)}"><span>${esc(n)}</span><i>+</i></div>`;
-    const blocks = (routine.sessions[n]||[]).filter(b=>cmpBlockMatches(b,st));
-    return `<div class="cmp-col"><div class="cmp-dh"><span>${esc(n)}</span><button class="cmp-x" onclick="cmpEditDay(${i})">Editar</button>${open.length>1?`<button class="cmp-x" onclick="cmpToggleDay(${i})">Cerrar</button>`:''}</div>
-      ${blocks.length ? blocks.map(b=>`<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span>${esc(b.title)}</div>
-        ${(b.categories||[]).flatMap(c=>c.exercises||[]).map(e=>`<div class="cmp-ex" data-k="${esc(exerciseSeriesKey(e))}"><b>${esc(e.name)}</b><span>${esc(cmpExLine(e, st.week))}</span></div>`).join('')||'<div class="cmp-ex"><span>Sin ejercicios</span></div>'}
-      </div>`).join('') : '<div class="cmp-none">—</div>'}
+    const sn = q1(n);
+    const all = routine.sessions[n]||[];
+    const blocks = all.filter(b=>cmpBlockMatches(b,st));
+    const blocksHtml = blocks.map(b=>{
+      const bi = all.indexOf(b);
+      const cats = b.categories||[];
+      const body = cats.map((c,ci)=>{
+        const exs = c.exercises||[];
+        return `${cats.length>1?`<div class="cmp-cat">${esc(c.label||'')}</div>`:''}` + exs.map((e,ei)=>{
+          const p = getExPrescriptionForWeek(e, W);
+          const args = `'${e.id}','${b.id}','${sn}',${ci}`;
+          const fld = (k, ph, cls)=>`<input class="cmp-f ${cls||''}" type="text" inputmode="${k==='note'?'text':'decimal'}" placeholder="${ph}" title="${ph}" value="${esc(p[k])}" onchange="setRExWeekField(${args},${W},'${k}',this.value)">`;
+          const isOpen = st.openEx===e.id;
+          return `<div class="cmp-ex cmp-exe" data-k="${esc(exerciseSeriesKey(e))}" id="cmpex-${e.id}">
+            <div class="cmp-exh"><b>${esc(e.name)}</b><span class="cmp-tools">
+              ${tool('up',`moveRExercise(${args},-1)`,'Subir',ei===0)}${tool('down',`moveRExercise(${args},1)`,'Bajar',ei===exs.length-1)}${tool('swap',`replaceExercise('routine','${e.id}','${b.id}',${ci},'${sn}')`,'Reemplazar por otro ejercicio')}${tool('more',`cmpToggleEx('${e.id}')`,'Todas las semanas, RM y nota',false,isOpen?'on':'')}${tool('x',`deleteRExercise(${args})`,'Quitar ejercicio',false,'del')}
+            </span></div>
+            <div class="cmp-in">${fld('series','Series')}<i>×</i>${fld('reps','Reps')}${fld('pct','%RM')}${fld('rpe',p.intensityType||'RPE')}</div>
+            ${isOpen?`<div class="cmp-full">${renderRoutineExRow(e,b.id,n,ci,ei,exs.length)}</div>`:''}
+          </div>`;
+        }).join('') + `<button class="cmp-add" onclick="openRoutineLib('${b.id}','${sn}',${ci})">+ Ejercicio</button>`;
+      }).join('');
+      return `<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span><span class="cmp-btt" onclick="renameBlockPicker('routine','${b.id}','${sn}')" title="Cambiar el nombre del bloque">${esc(b.title)}</span><span class="cmp-tools">
+          ${tool('up',`moveRoutineBlock('${b.id}','${sn}',-1)`,'Mover arriba',bi===0)}${tool('down',`moveRoutineBlock('${b.id}','${sn}',1)`,'Mover abajo',bi===all.length-1)}${tool('copy',`copyBlockToClipboard(getRBlock('${b.id}','${sn}'))`,'Copiar bloque')}${tool('x',`deleteRBlock(event,'${b.id}','${sn}')`,'Eliminar bloque',false,'del')}
+        </span></div>${body}</div>`;
+    }).join('');
+    return `<div class="cmp-col"><div class="cmp-dh"><span>${esc(n)}</span>${open.length>1?`<button class="cmp-x" onclick="cmpToggleDay(${i})">Cerrar</button>`:''}</div>
+      ${blocksHtml || (all.length ? '<div class="cmp-none">—</div>' : '')}
+      <div class="cmp-foot"><button class="cmp-add cmp-addb" onclick="addRoutineBlock('${sn}')">+ Bloque</button>${S._blockClipboard?`<button class="cmp-add cmp-addb" onclick="pasteRoutineBlock('${sn}')">Pegar bloque</button>`:''}</div>
     </div>`; }).join('') + `</div>`;
   return `<div id="cmp-wrap">${h}</div>`;
 }
+function cmpToggleEx(id) { const st=getCmpState(S.editingRoutine); st.openEx = st.openEx===id ? null : id; cmpRefresh(); }
+window.cmpToggleEx = cmpToggleEx;
+
+// Vista horizontal en la ficha del atleta: todos sus días en columnas, con lo
+// que le toca en la semana que se está mirando (ya con sus personalizaciones),
+// lo que hizo, y los mismos botones de siempre para modificarlo: Personalizar
+// (solo para él, no toca la plantilla) y Nota. Si la rutina es propia del
+// atleta, "Editar" abre el editor completo ya en horizontal.
+function renderAtletaRoutineHoriz(a, routine, previewWeek) {
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const q1 = t=>String(t).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const names = getOrderedSessionNames(routine);
+  const own = routine.ownerUid===a.uid;
+  const today = getTodaysRoutineSession(names, a.routineAssignedDate, a.trainingWeekdays);
+  const rel = toRoutineRelativeWeek(previewWeek, a);
+  const cols = names.map(()=> 'minmax(0,1fr)').join(' ');
+  return `<div class="cmp-cols cmp-ath" style="--cmp-cols:${cols};padding:10px 12px 12px">` + names.map(n=>{
+    const sn = q1(n);
+    const blocks = getVisibleRoutineBlocks(routine, n, a.teamId, a.position, a._personal?.personalExtras);
+    const rec = getPhaseSessionRecord(a, a._personal?.history, previewWeek, n);
+    return `<div class="cmp-col"><div class="cmp-dh"><span>${esc(n)}${n===today?' <small class="cmp-today">hoy</small>':''}${rec?.done?' <small class="cmp-done">✓</small>':''}</span></div>
+      ${blocks.length ? blocks.map(b=>{
+        const isPersonalBlock = b.id==='personal-block';
+        return `<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span><span>${esc(b.title||'')}</span></div>
+        ${(b.categories||[]).flatMap(c=>c.exercises||[]).map(e=>{
+          const override = isPersonalBlock ? null : getExerciseOverride(a._personal?.routineOverrides, routine.id, n, e.id);
+          const wp = getExDisplayForWeek(e, previewWeek, rel, override);
+          const parts = [];
+          if(wp.series && wp.reps) parts.push(`${wp.series}×${wp.reps}`); else if(wp.series) parts.push(`${wp.series}×`); else if(wp.reps) parts.push(wp.reps);
+          if(wp.pct) parts.push(wp.pct+'%RM');
+          if(wp.rpe) parts.push((wp.intensityType||'RPE')+' '+wp.rpe);
+          const d = rec?.exercises?.[e.id] || {};
+          const did = [d.load?fmtLoadTxt(d.load):'', (d.rpe!=null&&d.rpe!=='')?(wp.intensityType||'RPE')+' '+d.rpe:''].filter(Boolean).join(' · ');
+          const note = a._personal?.coachNotes?.[e.id]?.text;
+          const nm = q1(wp.name||e.name);
+          return `<div class="cmp-ex cmp-exe" data-k="${esc(exerciseSeriesKey(e))}">
+            <div class="cmp-exh"><b>${esc(wp.name||e.name)}</b></div>
+            <span>${esc(parts.join(' · '))||'—'}</span>${did?`<span class="cmp-did">Hizo ${esc(did)}</span>`:''}
+            <div class="cmp-acts">${isPersonalBlock?'':`<button class="cmp-x ${override?'on':''}" onclick="openExerciseOverrideModal('${a.uid}','${routine.id}','${sn}','${e.id}',${previewWeek})">${override?'Personalizado':'Personalizar'}</button>`}<button class="cmp-x ${note?'warn':''}" onclick="openCoachNoteModal('${a.uid}','${e.id}','${nm}')">Nota</button></div>
+          </div>`;
+        }).join('')||'<div class="cmp-ex"><span>Sin ejercicios</span></div>'}
+      </div>`; }).join('') : '<div class="cmp-none">—</div>'}
+    </div>`; }).join('') + `</div>`;
+}
+window.renderAtletaRoutineHoriz = renderAtletaRoutineHoriz;
 function cmpRefresh() { const el=document.getElementById('cmp-wrap'); if(el && S.editingRoutine) el.outerHTML = renderDaysCompare(S.editingRoutine); }
 function cmpSet(k,v) { const st=getCmpState(S.editingRoutine); st[k]=v; if(k==='main') st.sub=null; cmpRefresh(); }
 function cmpSearch(v) {
@@ -12984,7 +13050,7 @@ function renderRoutineEditor() {
   <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
     ${sessionTabs}
     <button class="abtn" onclick="addRoutineSession()" style="font-size:11px">+ Sesión</button>
-    ${sessionNames.length>1?`<button class="abtn ${S._routineCompare?'abtn-p':''}" onclick="setRoutineCompare(${!S._routineCompare})" style="font-size:11px">Comparar días</button>`:''}
+    ${sessionNames.length>1?`<button class="abtn ${S._routineCompare?'abtn-p':''}" onclick="setRoutineCompare(${!S._routineCompare})" style="font-size:11px">Vista horizontal</button>`:''}
     ${curSession&&!S._routineCompare?`<button class="abtn" onclick="startRenameRoutineSession('${curSession}')" style="font-size:11px" title="Cambiar el nombre de este día">✎ Renombrar</button><button class="abtn abtn-d" onclick="deleteRoutineSession('${curSession}')" style="font-size:11px">× ${curSession}</button>`:''}
   </div>
   ${S._routineCompare&&sessionNames.length>1 ? renderDaysCompare(r) : curSession?`
@@ -14670,21 +14736,6 @@ function exerciseMatchesFilters(ex, activeFilters) {
   });
 }
 
-// Elimina una categoría de TODOS los ejercicios que la tengan — no hay
-// una lista separada de categorías "disponibles", son simplemente las que
-// usa algún ejercicio, así que borrarla es sacarla de todos lados.
-function deleteLibraryTag(tag) {
-  const count = (S.library||[]).filter(e=>(e.tags||[]).includes(tag)).length;
-  showConfirmModal({message:`¿Eliminar la categoría "${tag}"? Se va a sacar de los ${count} ejercicio${count!==1?'s':''} que la tienen. No se puede deshacer.`, danger:true, confirmLabel:'Eliminar', onConfirm: () => {
-    (S.library||[]).forEach(ex=>{ if(ex.tags) ex.tags = ex.tags.filter(t=>t!==tag); });
-    if(S._libViewFilters) S._libViewFilters.delete(tag);
-    if(S.activeFilters) S.activeFilters.delete(tag);
-    scheduleSave();
-    showToast('✓ Categoría eliminada');
-    renderMain();
-  }});
-}
-window.deleteLibraryTag = deleteLibraryTag;
 
 
 function switchCompareTest(testId) {
@@ -15664,7 +15715,7 @@ function renderLibraryView() {
   return `<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between">
     <div>
       <div class="page-title">Biblioteca de ejercicios</div>
-      <div class="page-subtitle">${S.library.length} ejercicios · ${allTags.length} categorías</div>
+      <div class="page-subtitle">${S.library.length} ejercicios · ${LIB_MAIN_CATEGORIES.length} categorías</div>
     </div>
     <button class="back-btn" data-back="admin-main" style="flex-shrink:0;margin-top:4px">‹</button>
   </div>
