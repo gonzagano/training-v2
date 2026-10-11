@@ -97,6 +97,12 @@
     ok(!/Fuerza|Potencia|Auxiliares|Movilidad y estabilidad/.test(names("#lib-view-body .lib-filter").filter(t=>!LIB_MAIN_CATEGORIES.includes(t)).join("|")),"biblioteca: sin la fila de familias");
     ok(typeof window.deleteLibraryTag==="undefined"&&!document.querySelector("#lib-view-body .lib-filter [onclick*=delete]"),"biblioteca: las categorías no se pueden borrar");
     { const tmp=document.createElement("div"); tmp.innerHTML=renderCategoryFilterChips(new Set(),"setFilter").mainRow; const inPick=[...tmp.querySelectorAll(".lib-filter")].map(b=>(b.childNodes[0].textContent||"").trim()); ok(inPick.join("|")===want,"selector de ejercicios: mismas categorías y mismo orden"); } }
+  // ── categorías nuevas al final: HIIT, SPRINTS, ACC, COD (sin subcategorías) ──
+  ok(LIB_MAIN_CATEGORIES.slice(-4).join()==="HIIT,SPRINTS,ACC,COD","biblioteca: HIIT, SPRINTS, ACC y COD al final");
+  ok(getMissingLibRules(["SPRINTS"]).length===0&&getMissingLibRules(["HIIT"]).length===0,"categorías nuevas: no exigen subcategoría");
+  { addLibraryExercise(); await wait(250); document.getElementById("exform-name-inp").value="Sprint 30 m lanzado"; selectMainCategoryChip("exform-tags-picker","_exFormTags","SPRINTS"); await wait(150); saveLibExerciseModal(); await wait(400);
+    const nx=S.library.find(e=>e.name==="Sprint 30 m lanzado"); ok(nx&&nx.tags.join()==="SPRINTS","se puede crear un ejercicio en SPRINTS");
+    setLibFilter("SPRINTS"); await wait(250); ok(document.getElementById("lib-view-body").innerText.includes("Sprint 30 m lanzado"),"filtrar por SPRINTS lo encuentra"); setLibFilter("SPRINTS"); await wait(150); }
   // ── aviso de ejercicio parecido / duplicado ──
   addLibraryExercise(); await wait(300);
   { const ni=document.getElementById('exform-name-inp'); ni.value='curl de biceps'; ni.dispatchEvent(new Event('input',{bubbles:true})); await wait(200);

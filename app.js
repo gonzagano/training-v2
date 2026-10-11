@@ -4115,6 +4115,7 @@ const LIB_MAIN_CATEGORIES = [
   'Movilidad','Empuje MMSS','Tracción MMSS','Empuje MMII','Tracción MMII','Zona Media',
   'ISO HOLD','ISO PUSH','ISO CATCH','ISO SWITCH','Pliometría Extensiva','Pliometría Intensiva','Lanzamientos','DLO',
   'Auxiliar Brazos','Auxiliar MMII','Estabilidad','Rehabilitación',
+  'HIIT','SPRINTS','ACC','COD',
 ];
 window.LIB_MAIN_CATEGORIES = LIB_MAIN_CATEGORIES;
 
