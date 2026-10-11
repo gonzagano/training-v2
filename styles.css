@@ -805,6 +805,50 @@ canvas.eval-chart{width:100%!important;display:block}
 .home-bar{height:8px;border-radius:6px;background:var(--bg3);margin-top:14px;overflow:hidden}
 .home-bar i{display:block;height:100%;background:var(--accent-text);border-radius:6px;transition:width .3s}
 .home-n{font-size:12px;color:var(--text3);margin-top:6px;font-weight:600}
+/* Inicio del atleta: tarjeta principal de la sesión, semana y wellness */
+.home-head .page-subtitle{margin:0 0 2px;font-size:13px;font-weight:600;color:var(--text3)}
+.home-head .page-subtitle::first-letter{text-transform:uppercase}
+.home-head{margin-bottom:16px}
+.home-cards{grid-template-columns:1fr!important;max-width:560px}
+.home-hero{padding:20px;border-radius:18px;box-shadow:var(--sh-float)}
+.home-hero.pending{border-left-width:1.5px}
+.home-hero.done{opacity:1}
+.home-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.home-main{min-width:0}
+.home-k{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
+.home-hero .home-t{font-size:30px;margin-top:4px;display:block}
+.home-cnt{text-align:right;flex-shrink:0;font-family:'Barlow Condensed',sans-serif;line-height:1}
+.home-cnt b{font-size:32px;color:var(--accent-text)}
+.home-cnt span{font-size:20px;font-weight:700;color:var(--text3)}
+.home-cnt small{display:block;font-family:var(--font-body);font-size:11px;font-weight:600;color:var(--text3);margin-top:3px}
+.home-hero .home-bar{margin-top:16px;box-shadow:var(--sh-field)}
+.home-cta{margin-top:16px;height:50px;border-radius:14px;background:var(--accent);color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:var(--sh-btn-p)}
+.home-cta-2{background:var(--bg3);color:var(--text);border:1px solid var(--border2);box-shadow:var(--sh-btn)}
+.home-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin:4px 0}
+.hw-d{display:flex;flex-direction:column;align-items:center;gap:6px}
+.hw-d small{font-size:11px;font-weight:700;color:var(--text3)}
+.hw-d span{width:40px;height:40px;max-width:100%;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:600;color:var(--text2);box-sizing:border-box}
+.hw-next span{background:transparent;border:1px dashed var(--border2);color:var(--text3)}
+.hw-today span{border:2px solid var(--accent-text);color:var(--text);font-weight:700}
+.hw-done span{background:var(--green-dim);color:var(--green)}
+.hw-done span svg{width:16px;height:16px}
+.home-row{display:flex;align-items:center;gap:14px;min-height:64px;box-sizing:border-box;padding:12px 16px;background:var(--bg2);border:1.5px solid var(--border2);border-radius:16px;box-shadow:var(--sh-card);cursor:pointer}
+.home-ic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--amber-dim);color:var(--amber)}
+.home-row.done .home-ic{background:var(--green-dim);color:var(--green)}
+.home-row-m{flex:1;min-width:0;display:flex;flex-direction:column}
+.home-row-m b{font-size:15px;font-weight:700}
+.home-row-m small{font-size:12px;font-weight:600;color:var(--amber)}
+.home-row.done .home-row-m small{color:var(--green)}
+.home-go{color:var(--text3);display:flex}
+/* Cierre de sesión: RPE en botones, duración con más/menos y UA en vivo */
+.sf-rpe-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.sf-rpe-b{height:46px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;cursor:pointer;box-shadow:var(--sh-field)}
+.sf-rpe-b.on{background:var(--accent);border-color:var(--accent-text);color:#fff;box-shadow:var(--sh-btn-p)}
+.sf-step{display:flex;align-items:center;gap:10px}
+.sf-step button{width:46px;height:46px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:var(--sh-btn);flex-shrink:0}
+.sf-step input{flex:1;min-width:0;height:46px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:700;outline:none}
+.sf-ua{display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border-radius:12px;padding:10px 14px;box-shadow:var(--sh-field);font-size:13px;font-weight:700;color:var(--text2)}
+.sf-ua b{font-family:'Barlow Condensed',sans-serif;font-size:26px;color:var(--accent-text);line-height:1}
 
 /* ── Tarjeta de ejercicio del atleta ── */
 .dose-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 8px;cursor:pointer}

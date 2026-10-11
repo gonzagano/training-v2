@@ -3326,7 +3326,7 @@ window.finishSession=finishSession;
 
 function openSessionFeedback() {
   const modal = document.getElementById('session-feedback-modal');
-  if(modal) { modal.classList.add('open'); }
+  if(modal) { setSfRpe(0); modal.classList.add('open'); }
 }
 window.openSessionFeedback=openSessionFeedback;
 
@@ -5392,14 +5392,30 @@ function updateUAPreview() {
   const rpe = parseInt(document.getElementById('sf-rpe')?.value||'0');
   const mins = parseInt(document.getElementById('sf-mins')?.value||'0');
   const preview = document.getElementById('sf-ua-preview');
-  if(preview && rpe && mins) {
-    preview.textContent = `UA estimadas: ${rpe * mins}`;
-    preview.style.color = 'var(--accent)';
-  } else if(preview) {
-    preview.textContent = '';
-  }
+  if(preview) preview.textContent = (rpe && mins ? rpe*mins : '—') + ' UA';
 }
 window.updateUAPreview=updateUAPreview;
+
+// RPE del cierre de sesión: botones del 1 al 10 (no hay valor por defecto — el
+// deslizador viejo guardaba un 5 aunque el atleta no lo hubiera tocado).
+const SF_RPE_LABELS = ['Muy suave','Suave','Moderado','Algo duro','Duro','Duro','Muy duro','Muy duro','Casi máximo','Máximo'];
+function setSfRpe(n) {
+  const inp = document.getElementById('sf-rpe');
+  if(inp) inp.value = n || '';
+  document.querySelectorAll('#sf-rpe-btns .sf-rpe-b').forEach((b,i)=>b.classList.toggle('on', i+1===n));
+  const val = document.getElementById('sf-rpe-val');
+  if(val) val.textContent = n ? `${n} · ${SF_RPE_LABELS[n-1]}` : 'Elegí del 1 al 10';
+  updateUAPreview();
+}
+window.setSfRpe = setSfRpe;
+function adjSfMins(delta) {
+  const inp = document.getElementById('sf-mins');
+  if(!inp) return;
+  const cur = parseInt(inp.value||'0') || 60 - delta;
+  inp.value = Math.max(5, Math.min(300, cur + delta));
+  updateUAPreview();
+}
+window.adjSfMins = adjSfMins;
 
 // Recalcula y refresca SOLO la caja de score + botón de guardar — se usa
 // en vez de un renderMain() completo cuando el cambio viene de un slider en
@@ -15754,25 +15770,51 @@ function renderAthleteHome() {
   const relWeek = toRoutineRelativeWeek(getRoutineWeek(), S.userData);
   const pct = exTotal ? Math.round(exDone/exTotal*100) : 0;
   const check = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const arrow = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>';
+  const chev = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+  const durWeeks = hasRoutineToday ? getRoutineDurationWeeks(S.assignedRoutine) : 0;
+  const weekTxt = `Semana ${relWeek}${durWeeks>=relWeek?' de '+durWeeks:''}`;
+  // Tarjeta principal: la sesión de hoy (o la carga, si no tiene rutina)
   const sessionCard = hasRoutineToday
-    ? `<div class="home-card ${trainedToday?'done':'pending'}" onclick="switchView('session')">
-        <div class="home-t">${trainedToday?'Sesión hecha':'Entrená hoy'}${trainedToday?`<span class="home-ck">${check}</span>`:''}</div>
-        <div class="home-s">${S.currentSession} · Semana ${relWeek}</div>
-        ${exTotal?`<div class="home-bar"><i style="width:${pct}%"></i></div><div class="home-n">${exDone} de ${exTotal} ejercicios</div>`:''}
+    ? `<div class="home-card home-hero ${trainedToday?'done':'pending'}" onclick="switchView('session')">
+        <div class="home-top">
+          <div class="home-main"><div class="home-k">${trainedToday?'Sesión hecha':'Sesión de hoy'}</div><div class="home-t">${esc(S.currentSession)}</div><div class="home-s">${weekTxt}</div></div>
+          ${trainedToday?`<span class="home-ck">${check}</span>`:exTotal?`<div class="home-cnt"><b>${exDone}</b><span> / ${exTotal}</span><small>ejercicios</small></div>`:''}
+        </div>
+        ${exTotal?`<div class="home-bar"><i style="width:${trainedToday?100:pct}%"></i></div>`:''}
+        <div class="home-cta${trainedToday?' home-cta-2':''}">${trainedToday?'Ver sesión':exDone?'Continuar sesión':'Empezar sesión'}${arrow}</div>
       </div>`
-    : `<div class="home-card ${trainedToday?'done':'pending'}" onclick="switchView('wellness')">
-        <div class="home-t">${trainedToday?'Carga registrada':'Cargá tu entrenamiento de hoy'}${trainedToday?`<span class="home-ck">${check}</span>`:''}</div>
-        ${trainedToday?`<div class="home-s">${todayLogs.reduce((a,l)=>a+(l.ua||0),0)} UA</div>`:''}
+    : `<div class="home-card home-hero ${trainedToday?'done':'pending'}" onclick="switchView('wellness')">
+        <div class="home-top">
+          <div class="home-main"><div class="home-k">${trainedToday?'Carga registrada':'Hoy'}</div><div class="home-t">${trainedToday?todayLogs.reduce((a,l)=>a+(l.ua||0),0)+' UA':'Cargá tu entrenamiento'}</div></div>
+          ${trainedToday?`<span class="home-ck">${check}</span>`:''}
+        </div>
+        <div class="home-cta${trainedToday?' home-cta-2':''}">${trainedToday?'Ver carga':'Cargar entrenamiento'}${arrow}</div>
       </div>`;
-  const wellnessCard = `<div class="home-card ${hasTodayWellness?'done':'pending'}" onclick="switchView('wellness')">
-      <div class="home-t">${hasTodayWellness?'Wellness hecho':'Completá tu wellness de hoy'}${hasTodayWellness?`<span class="home-ck">${check}</span>`:''}</div>
+  // Semana en curso (lunes a domingo): qué días entrenó y cuál es hoy
+  const now = new Date(); now.setHours(0,0,0,0);
+  const monday = new Date(now); monday.setDate(now.getDate()-((now.getDay()+6)%7));
+  const weekStrip = ['L','M','X','J','V','S','D'].map((lt,i)=>{
+    const d = new Date(monday); d.setDate(monday.getDate()+i);
+    const ds = toLocalDateStr(d);
+    const trained = logs.some(l=>l.date===ds);
+    const cls = ds===today ? 'hw-today' : d>now ? 'hw-next' : '';
+    return `<div class="hw-d ${cls}${trained?' hw-done':''}"><small>${lt}</small><span>${trained?check:d.getDate()}</span></div>`;
+  }).join('');
+  const wIc = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  const wScore = getWellnessScore(S.wellness[today]).pct;
+  const wellnessCard = `<div class="home-row ${hasTodayWellness?'done':'pending'}" onclick="switchView('wellness')">
+      <span class="home-ic">${wIc}</span>
+      <div class="home-row-m"><b>${hasTodayWellness?'Wellness hecho':'Completá tu wellness'}</b><small>${hasTodayWellness?wScore+'%':'Pendiente'}</small></div>
+      ${hasTodayWellness?`<span class="home-ck">${check}</span>`:`<span class="home-go">${chev}</span>`}
     </div>`;
-  return `<div class="page-header">
-    <div class="page-title">Hola${S.userData?.name?' '+S.userData.name.trim().split(/s+/).slice(-1)[0]:''}!</div>
+  return `<div class="page-header home-head">
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+    <div class="page-title">Hola${S.userData?.name?', '+esc(S.userData.name.trim().split(/\s+/).slice(-1)[0]):''}!</div>
   </div>
-  <div class="home-cards">${sessionCard}${wellnessCard}</div>
-  
+  <div class="home-cards">${sessionCard}<div class="home-week">${weekStrip}</div>${wellnessCard}</div>
+
   ${metrics?`<div class="wellness-card" style="margin-bottom:14px">
     <div class="wellness-title">Control de carga</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:14px 0">

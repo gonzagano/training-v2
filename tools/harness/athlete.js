@@ -52,6 +52,20 @@
   // ── la carga de su deporte dice "Entrenamiento de handball" (lo hereda del equipo) ──
   ok(mySport()==='Handball','deporte del atleta: lo toma de su equipo ('+mySport()+')');
   { const pel=LOAD_ACTIVITIES.find(x=>x.key==='pelota'); const h=renderLoadItemRow(pel, todayLocal(), mySport()); ok(/Entrenamiento de handball/.test(h)&&h.includes('<svg class="sp-ic"'),'carga del atleta: "Entrenamiento de handball" con dibujo'); ok(!/Pelota/.test(h),'carga del atleta: ya no dice "Pelota"'); }
+  // ── inicio: tarjeta de la sesión, semana (7 días, uno marcado como hoy) y wellness ──
+  switchView('dashboard'); await wait(700); txtBad('inicio atleta');
+  ok(/Hola, Matias!/.test(document.querySelector('.home-head .page-title').textContent),'inicio: saluda por el nombre ('+document.querySelector('.home-head .page-title').textContent+')');
+  ok(!!document.querySelector('.home-hero .home-cta') && document.querySelectorAll('.home-week .hw-d').length===7 && document.querySelectorAll('.home-week .hw-today').length===1 && !!document.querySelector('.home-row'),'inicio: sesión de hoy, semana y wellness');
+  document.querySelector('.home-row').click(); await wait(500); ok(S.currentView==='wellness','inicio: la fila de wellness abre Wellness');
+  switchView('dashboard'); await wait(500); document.querySelector('.home-hero').click(); await wait(500); ok(S.currentView==='session','inicio: la tarjeta abre la sesión');
+  // ── cierre de sesión: RPE en botones (sin valor por defecto), duración con +/− y UA en vivo ──
+  openSessionFeedback(); await wait(250);
+  ok(document.getElementById('sf-rpe').value==='' && !document.querySelector('.sf-rpe-b.on'),'RPE: arranca sin elegir');
+  document.querySelectorAll('.sf-rpe-b')[6].click(); document.getElementById('sf-mins').value=''; adjSfMins(5); adjSfMins(-5);
+  ok(document.getElementById('sf-rpe').value==='7' && document.querySelectorAll('.sf-rpe-b.on').length===1 && /7 · Muy duro/.test(document.getElementById('sf-rpe-val').textContent),'RPE: botón 7 elegido');
+  ok(document.getElementById('sf-mins').value==='55' && document.getElementById('sf-ua-preview').textContent==='385 UA','duración 55 y carga 385 UA en vivo ('+document.getElementById('sf-mins').value+' / '+document.getElementById('sf-ua-preview').textContent+')');
+  ok(document.documentElement.scrollWidth<=innerWidth+1,'cierre de sesión: sin scroll horizontal');
+  closeSessionFeedback(); openSessionFeedback(); await wait(150); ok(document.getElementById('sf-rpe').value==='','RPE: se limpia al reabrir'); closeSessionFeedback();
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();
