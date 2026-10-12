@@ -8287,7 +8287,7 @@ function renderWeeklyComplianceGrid(members) {
       const h = v==null ? 3 : Math.round(8+v/100*20);
       const col = v==null ? 'var(--border2)' : getWellnessState(v).color;
       const tr = logs.some(l=>l.date===d);
-      return `<div class="hm-c" onclick="viewWellnessDay('${a.uid}','${d}')" title="${(a.name||a.email||'').replace(/"/g,'')} · ${d}${v!=null?' · '+v+'%':' · sin wellness'}"><span class="ar-bc"><i style="height:${h}px;background:${col}"></i><u style="${tr?'':'visibility:hidden'}"></u></span></div>`;
+      return `<div class="hm-c" onclick="viewWellnessDay('${a.uid}','${d}')" title="${(a.name||a.email||'').replace(/"/g,'')} · ${d}${v!=null?' · '+v+'%':' · sin wellness'}"><span class="hm-bar"><i style="height:${v==null?4:Math.round(10+v/100*38)}px;background:${col}"></i></span><b style="color:${v==null?'var(--text3)':col}">${v==null?'—':v+'%'}</b><u style="${tr?'':'visibility:hidden'}"></u></div>`;
     }).join('');
     return `<div class="hm-row"><div class="hm-nm" onclick="adminOpenAthlete('${a.uid}')">${(a.name||a.email||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>${cells}</div>`;
   }).join('');
@@ -10053,7 +10053,7 @@ function renderAtletaDetail(a) {
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name || a.email}</span>
     </div>
     ${sibNav}
-    <button class="abtn" onclick="openProxyForm('${a.uid}')" title="Cargar wellness y carga en nombre de ${(a.name||'este atleta').replace(/"/g,'')}"><svg class="eic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="hs"> Cargar datos</span></button>
+    <button class="abtn abtn-p hd-load" onclick="openProxyForm('${a.uid}')" title="Cargar el wellness y la carga de ${(a.name||'este atleta').replace(/"/g,'')}"><svg class="eic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="hs"> Cargar wellness / carga</span></button>
     <button class="abtn" onclick="openWeeklyReport('${a.uid}')" title="Reporte semanal">📄<span class="hs"> Reporte</span></button>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
@@ -10078,7 +10078,7 @@ function renderAtletaDetail(a) {
   </div>`;
 
   if (sub === 'rutina') html += renderAtletaRutina(a);
-  else if (sub === 'wellness') html += renderGroupWellness(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId, selfUid: a.uid});
+  else if (sub === 'wellness') html += `<button class="load-cta" onclick="openProxyForm('${a.uid}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Cargar wellness y carga de ${String((a.name||'').split(' ').slice(-1)[0]||'este atleta').replace(/</g,'&lt;')}</span></button>` + renderGroupWellness(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId, selfUid: a.uid});
   else if (sub === 'stats') html += renderGroupStats(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId, selfUid: a.uid});
   else if (sub === 'evals') html += renderEvals();
   else html += renderPerfilTab(a);
@@ -10144,9 +10144,10 @@ function renderPerfilTab(a) {
   let html = `
   <!-- Franja de indicadores: wellness de hoy, ACWR y molestias activas -->
   <div class="kpi3">
-    <div class="kpi-c"${todayFilled?` style="cursor:pointer" onclick="viewWellnessDay('${uid}','${today}')"`:''}>
+    <div class="kpi-c" style="cursor:pointer" onclick="${todayFilled?`viewWellnessDay('${uid}','${today}')`:`openProxyForm('${uid}')`}">
       <b style="color:${todayFilled?wState.color:'var(--text3)'}">${todayFilled?todayPct+'%':'—'}</b>
       <span>Wellness hoy ${infoBtn('wellness')}</span>
+      ${todayFilled?'':'<em class="kpi-add">+ Cargar</em>'}
       ${todayFilled?sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 56, 16):''}
     </div>
     <div class="kpi-c">
@@ -15715,9 +15716,10 @@ function renderDashboardContent() {
   const attCount = attRows.length;
   const attIcon = k=> k==='inj' ? ATH_ICONS.inj : k==='acwr' ? ATH_ICONS.warn : ATH_ICONS.warn;
   const attPanel = (attRows.length || withoutWellness.length) ? `<div class="att-panel" id="dash-att">
-    ${attRows.map(r=>`<div class="att-row" onclick="adminOpenAthleteDash('${r.a.uid}')">
-      <span class="att-ic">${attIcon(r.items[0].kind)}</span>
-      <div class="att-main"><div class="att-nm">${esc(r.a.name||r.a.email)}</div><div class="ar-chips">${r.items.map(it=>`<span class="ar-ch ar-al">${esc(it.txt)}</span>`).join('')}${teamBadgeHtml(r.a)}</div></div>
+    <div class="att-side-t">Requieren atención${attRows.length?` (${attRows.length})`:''}</div>
+    ${attRows.map(r=>`<div class="att-row att-crit" onclick="adminOpenAthleteDash('${r.a.uid}')">
+      <span class="att-av">${avatarHtml(r.a.name||r.a.email, r.a.color, 36, r.a.photoUrl)}</span>
+      <div class="att-main"><div class="att-nm">${esc(r.a.name||r.a.email)}</div><div class="ar-chips">${r.items.map(it=>`<span class="ar-ch ar-al">${attIcon(it.kind)}${esc(it.txt)}</span>`).join('')}${teamBadgeHtml(r.a)}</div></div>
       <span class="att-go">›</span>
     </div>`).join('')}
     ${withoutWellness.length?`<div class="att-row" onclick="openReminderScreen()"><span class="att-ic att-ic-n">${ATH_ICONS.clock}</span><div class="att-main"><div class="att-nm">${withoutWellness.length} ${withoutWellness.length===1?'atleta sin wellness hoy':'atletas sin wellness hoy'}</div><div class="att-note">${esc(withoutWellness.slice(0,4).map(a=>a.name||a.email).join(', '))}${withoutWellness.length>4?' y '+(withoutWellness.length-4)+' más':''}</div></div><button class="abtn abtn-p att-btn" onclick="event.stopPropagation();openReminderScreen()">Enviar recordatorio</button></div>`:''}
@@ -15875,7 +15877,9 @@ function renderDashboardAthleteList() {
   const withStatus = filtered.map(a=>({a, status:getDashAthleteStatus(a)}));
   withStatus.sort((x,y)=> x.status.tier-y.status.tier || (x.a.name||'').localeCompare(y.a.name||''));
 
-  return `<div class="ar-list">${withStatus.map(({a,status})=>athleteRowHtml(a,{onclick:"adminOpenAthleteDash('"+a.uid+"')", status})).join('')}</div>`;
+  // Encabezado de columnas (solo en pantallas anchas, donde la fila va en una línea)
+  const head = `<div class="ar-head"><span></span><span>Atleta</span><span title="El punto debajo de cada barra marca los días que entrenó">Wellness 7 días</span><span>ACWR · UA semana</span><span>Actividad</span><span>Estado</span></div>`;
+  return `<div class="ar-list">${head}${withStatus.map(({a,status})=>athleteRowHtml(a,{onclick:"adminOpenAthleteDash('"+a.uid+"')", status})).join('')}</div>`;
 }
 window.renderDashboardAthleteList=renderDashboardAthleteList;
 

@@ -17,9 +17,19 @@
   setDashQuick('all'); await wait(200); ok(document.querySelectorAll('#dash-athlete-list .ar-row').length===8,'atajo Todos vuelve a 8');
   ok(document.querySelectorAll('.ar-act b').length>0 && !document.querySelector('#dash-athlete-list .ar-ch.ar-hi'),'actividad neutra: solo el RPE con color');
   ok(!!document.querySelector('.att-btn') && document.querySelectorAll('.mc-bar').length===2,'recordatorio a mano y barras en contadores');
+  { const hd=document.querySelector('#dash-athlete-list .ar-head'); const shown=!!hd&&getComputedStyle(hd).display!=='none'; ok(!!hd&&shown===(innerWidth>=1240),'plantel: encabezado de columnas solo en pantalla ancha ('+innerWidth+')');
+    ok(/Requieren atención \(\d+\)/.test(document.querySelector('#dash-att .att-side-t')?.textContent||'')&&!!document.querySelector('#dash-att .att-row.att-crit .att-av'),'panel de atención: título con cantidad y avatar'); }
   txtBad('dashboard con atajos');
   switchView('atletas'); await wait(1500); txtBad('atletas'); ok(document.querySelectorAll('#atletas-list .ar-row').length===3,'atletas: 3 individuales');
   openAtleta('u0'); await wait(1200); for(const v of ['rutina','wellness','stats','evals','perfil']){ setAtletaSubview(v); await wait(800); txtBad('ficha '+v); }
+  // ── wellness por día: pocos días grandes a la vista, el resto se desliza; cargar datos bien visible ──
+  setAtletaSubview('wellness'); await wait(700);
+  { const hm=document.querySelector('.hm'); const cw=document.querySelector('.hm-c').getBoundingClientRect().width; const vis=Math.round((hm.clientWidth-document.querySelector('.hm-nm').getBoundingClientRect().width)/cw);
+    ok(cw>=58,'wellness por día: celdas grandes ('+Math.round(cw)+'px)'); ok(vis>=3&&vis<=10,'wellness por día: entre 4 y 10 días a la vista ('+vis+')');
+    ok(hm.scrollWidth>hm.clientWidth+200&&Math.abs(hm.scrollLeft-(hm.scrollWidth-hm.clientWidth))<3,'wellness por día: arranca en hoy y se desliza hacia atrás');
+    ok([...document.querySelectorAll('.hm-c b')].some(b=>/^\d+%$/.test(b.textContent)),'wellness por día: muestra el porcentaje de cada día');
+    const cta=document.querySelector('.load-cta'); ok(!!cta&&cta.getBoundingClientRect().height>=44&&/Cargar wellness/.test(cta.innerText),'pestaña Wellness: botón grande para cargar');
+    cta.click(); await wait(300); ok(document.getElementById('proxy-overlay').classList.contains('open'),'el botón abre el formulario de carga'); closeProxyForm(); }
   // ── el profe hace por el atleta lo mismo que el atleta: molestias en el mapa del cuerpo ──
   setAtletaSubview('perfil'); await wait(600);
   { const P=()=>JSON.parse(localStorage.getItem('__db')).personal; const others=JSON.stringify([P().admin1,P().u1,P().u2]);

@@ -660,7 +660,15 @@ canvas.eval-chart{width:100%!important;display:block}
 .ar-act b{background:none;border:0;font-weight:800}
 .ar-act i{font-style:normal;color:var(--text3)}
 /* Fila completa del Dashboard: ACWR, UA de la semana y estado */
-.ar-row.ar-full{grid-template-columns:auto minmax(140px,1fr) auto auto minmax(180px,1.5fr) auto}
+.ar-row.ar-full,.ar-head{grid-template-columns:38px minmax(140px,1fr) 146px 178px minmax(180px,1.5fr) 132px}
+.ar-head{display:grid;gap:6px 14px;align-items:center;padding:10px 16px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+.ar-head u{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--warm);margin:0 3px 1px 6px;text-decoration:none}
+.ar-list>.ar-head+.ar-row{border-top:1px solid var(--border)}
+.ar-full .ar-st,.ar-head span:last-child{text-align:right}
+.att-panel .att-side-t{color:var(--red)}
+.att-row.att-crit{position:relative}
+.att-av{display:flex;flex-shrink:0}
+.att-panel .ar-ch svg{width:12px;height:12px}
 .ar-row.ar-warn::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}
 .ar-load{display:flex;align-items:center;gap:16px}
 .ar-acwr{display:grid;grid-template-columns:auto 1fr;column-gap:6px;align-items:baseline;min-width:108px}
@@ -681,6 +689,8 @@ canvas.eval-chart{width:100%!important;display:block}
 }
 /* La fila completa necesita más ancho: debajo de 1240px se apila como en el celular */
 @media(max-width:1239px){
+  .ar-head{display:none}
+  .ar-full .ar-st{text-align:left}
   .ar-row.ar-full{grid-template-columns:auto minmax(0,1fr) auto;padding:11px 14px}
   .ar-full .ar-viz{grid-column:2 / -1;justify-content:space-between}
   .ar-full .ar-load{grid-column:2 / -1;justify-content:space-between}
@@ -1092,3 +1102,24 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 .basic-f i{font-style:normal}
 .px-note{width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 12px;color:var(--text);font-size:16px;font-family:inherit;outline:none}
 .abm-detail .zone-detail-title{display:flex;justify-content:space-between;align-items:center}
+
+/* Wellness por día: ~9 días grandes a la vista (7 en tablet, 5 en celular); el resto se desliza */
+.hm{container-type:inline-size;--hm-n:9}
+.hm-d,.hm-c{flex:0 0 72px}
+.hm-d,.hm-c{flex:0 0 max(60px,calc((100cqw - 112px)/var(--hm-n)))}
+.hm-d{font-size:12px;padding:4px 0 8px}
+.hm-d small{font-size:12px;margin-top:2px}
+.hm-c{flex-direction:column;align-items:center;gap:4px;padding:10px 0 8px}
+.hm-c:hover{background:var(--bg3)}
+.hm-bar{display:flex;align-items:flex-end;justify-content:center;height:48px}
+.hm-bar i{display:block;width:16px;border-radius:4px}
+.hm-c b{font-size:13px;font-weight:700;line-height:1}
+.hm-c u{display:block;width:6px;height:6px;border-radius:50%;background:var(--warm);text-decoration:none}
+.hm-nm{font-size:13px}
+@media(max-width:899px){.hm{--hm-n:7}}
+@media(max-width:560px){.hm{--hm-n:4}.hm-nm{flex-basis:96px;width:96px;padding-left:12px}}
+/* Cargar datos del atleta: bien a la vista */
+.load-cta{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;box-sizing:border-box;margin-bottom:var(--sp-4);padding:14px 16px;border:0;border-radius:var(--r);background:var(--accent);color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:var(--sh-btn-p)}
+.load-cta svg{width:18px;height:18px;flex-shrink:0}
+.load-cta:hover{filter:brightness(1.08)}
+.kpi-c em.kpi-add{font-style:normal;font-size:12px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);border-radius:20px;padding:3px 10px}
