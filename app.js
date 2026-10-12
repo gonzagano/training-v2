@@ -9590,6 +9590,171 @@ function updateSimilarExercises(inputId, boxId, excludeId) {
 }
 window.similarLibExercises=similarLibExercises; window.updateSimilarExercises=updateSimilarExercises;
 
+// ── MAPA DE MOLESTIAS DEL ATLETA, CARGADO POR EL PROFE ─────────
+// Lo mismo que el atleta hace en su Wellness (tocar la zona, dolor de hoy,
+// molestia o lesión, tipo, gravedad, cuestionario, observaciones, quitar),
+// pero desde la ficha y escribiendo en personal/{uid del atleta}. Nunca usa
+// S.injuries (son las del usuario logueado). Antes de guardar relee la zona
+// del servidor para no pisar lo que el atleta haya cargado desde su celular.
+function abmAthlete() {
+  const uid = S._abm?.uid; if(!uid) return null;
+  return (S.adminAthletes||[]).find(x=>x.uid===uid) || (S.atletaView?.uid===uid ? S.atletaView : null);
+}
+function abmInjuries() { return abmAthlete()?._personal?.injuries || {}; }
+function openAdminBodyMap(uid, zid) {
+  S._abm = {uid, zone:null, draft:null, isNew:false, sevTouched:false, busy:false};
+  if(!abmAthlete()) { S._abm=null; showToast('No se encontró al atleta'); return; }
+  document.getElementById('bodymap-overlay').classList.add('open');
+  if(zid) abmSelectZone(zid); else renderAdminBodyMap();
+}
+function closeAdminBodyMap() { document.getElementById('bodymap-overlay').classList.remove('open'); S._abm=null; }
+function closeAdminBodyMapIfOutside(e) { if(e.target===document.getElementById('bodymap-overlay')) closeAdminBodyMap(); }
+function abmSelectZone(zid) {
+  const st = S._abm; if(!st) return;
+  const cur = abmInjuries()[zid];
+  st.zone = zid; st.isNew = !cur; st.sevTouched = false;
+  st.draft = cur ? JSON.parse(JSON.stringify(cur)) : {pain:0,note:'',type:'',severity:'',isInjury:false,history:[]};
+  renderAdminBodyMap();
+}
+function abmBack() { const st=S._abm; if(!st) return; st.zone=null; st.draft=null; renderAdminBodyMap(); }
+function abmSet(k, v) {
+  const st = S._abm; if(!st || !st.draft) return;
+  st.draft[k] = v;
+  if(k==='severity') st.sevTouched = true;
+  // Molestia nueva: la gravedad arranca sugerida por el dolor (se puede cambiar).
+  if(k==='pain' && st.isNew && !st.sevTouched) st.draft.severity = v>=8?'grave':v>=4?'moderada':'leve';
+  renderAdminBodyMap();
+}
+function abmSetOstrc(q, v) { const st=S._abm; if(!st||!st.draft) return; if(!st.draft.ostrc) st.draft.ostrc={}; st.draft.ostrc[q]=v; renderAdminBodyMap(); }
+function abmNote(v) { const st=S._abm; if(st&&st.draft) st.draft.note = v; }
+function abmSvg(side) {
+  const st = S._abm, inj = abmInjuries();
+  const shapes = BODY_ZONES[side].map(z=>{
+    const i = (st.zone===z.id && st.draft) ? st.draft : inj[z.id];
+    let cls = 'body-zone';
+    if(i && i.pain>0) cls += i.severity==='grave'?' sel-high':i.severity==='moderada'?' sel-med':' sel-low';
+    if(st.zone===z.id) cls += ' is-selected';
+    const at = `class="${cls}" onclick="abmSelectZone('${z.id}')"`;
+    return z.type==='circle' ? `<circle ${at} cx="${z.cx}" cy="${z.cy}" r="${z.r}"><title>${z.label}</title></circle>` : `<ellipse ${at} cx="${z.cx}" cy="${z.cy}" rx="${z.rx}" ry="${z.ry}"><title>${z.label}</title></ellipse>`;
+  }).join('');
+  return `<svg viewBox="0 0 200 335" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:300px">${shapes}</svg>`;
+}
+function renderAdminBodyMap() {
+  const st = S._abm; if(!st) return;
+  const a = abmAthlete(); if(!a) return;
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
+  document.getElementById('bodymap-title').textContent = 'Molestias de '+(a.name||a.email||'');
+  const inj = abmInjuries();
+  const active = Object.entries(inj).filter(([,v])=>v && v.pain>0);
+  let detail = '';
+  if(st.zone && st.draft) {
+    const d = st.draft, zone = allZones.find(z=>z.id===st.zone);
+    const isInjury = d.isInjury===true;
+    const tog = (on, fn, label, danger)=>`<button class="abm-opt${on?(danger?' on danger':' on'):''}" onclick="${fn}">${label}</button>`;
+    detail = `<div class="zone-detail abm-detail">
+      <div class="zone-detail-title">${esc(zone?.label||st.zone)}<span class="zone-close" onclick="abmBack()">×</span></div>
+      <div class="abm-row">${tog(!isInjury,"abmSet('isInjury',false)",'Molestia')}${tog(isInjury,"abmSet('isInjury',true)",'Lesión',true)}</div>
+      ${isInjury?`<div class="abm-lbl">Tipo de lesión</div><div class="abm-row">${Object.entries(INJURY_TYPES).map(([k,l])=>tog(d.type===k,`abmSet('type','${k}')`,l)).join('')}</div>
+      <div class="abm-lbl">Gravedad</div><div class="abm-row">${SEVERITY_LEVELS.map(s=>`<button class="abm-opt" style="${(d.severity||'')===s.id?`border-color:${s.color};background:${s.dim};color:${s.color};font-weight:700`:''}" onclick="abmSet('severity','${s.id}')">${s.label}</button>`).join('')}</div>`:''}
+      <div class="abm-lbl">Dolor de hoy 0–10</div>
+      <div class="pain-scale" style="display:flex;gap:4px;margin:6px 0 10px;flex-wrap:wrap">${Array.from({length:11},(_,i)=>`<button class="${d.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn'}" onclick="abmSet('pain',${i})">${i}</button>`).join('')}</div>
+      <div class="abm-lbl" style="border-top:1px dashed var(--border);padding-top:10px">Cuestionario rápido</div>
+      ${OSTRC_QUESTIONS.map(q=>`<div style="margin-bottom:8px"><div style="font-size:11.5px;color:var(--text3);margin-bottom:4px">${q.label}</div><div class="abm-row" style="flex-wrap:wrap;margin-bottom:0">${q.options.map(o=>tog(d.ostrc?.[q.id]===o.v,`abmSetOstrc('${q.id}',${o.v})`,o.label)).join('')}</div></div>`).join('')}
+      ${(()=>{ const sc=ostrcTotal(d); return sc!=null?`<div style="font-size:12px;font-weight:700;color:var(--accent-text);margin-bottom:8px">Puntaje: ${sc}/100</div>`:''; })()}
+      <textarea class="pain-note-inp" id="abm-note" placeholder="Observaciones..." oninput="abmNote(this.value)">${esc(d.note||'')}</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="wellness-submit" id="abm-save" style="flex:2" onclick="abmSave(false)">Guardar ${isInjury?'lesión':'molestia'}</button>
+        ${st.isNew?'':`<button class="abm-del" onclick="abmSave(true)">Quitar</button>`}
+      </div>
+    </div>`;
+  }
+  const list = active.length ? `<div class="injury-list">${active.map(([id,v])=>{
+      const zone = allZones.find(z=>z.id===id); const sev = severityInfo(v.severity)||severityInfo('leve');
+      return `<div class="injury-item" style="cursor:pointer" onclick="abmSelectZone('${id}')"><div class="injury-dot" style="background:${sev.color}"></div><div class="injury-info">
+        <div class="injury-zone">${esc(zone?.label||id)}${INJURY_TYPES[v.type]?' · '+INJURY_TYPES[v.type]:''} · <span style="color:${sev.color};font-weight:700">${sev.label}</span></div>
+        <div class="injury-pain">Dolor: ${v.pain}/10${v.note?' · '+esc(String(v.note).slice(0,40)):''}</div></div></div>`;
+    }).join('')}</div>` : `<div class="abm-empty">Sin molestias activas</div>`;
+  const box = document.getElementById('bodymap-body');
+  const keep = box.scrollTop;
+  box.innerHTML = `<div class="body-map-wrap">
+      <div class="body-svg-wrap"><div class="body-svg-label">Frente</div>${abmSvg('front')}</div>
+      <div class="body-svg-wrap"><div class="body-svg-label">Espalda</div>${abmSvg('back')}</div>
+    </div>${detail}${st.zone?'':list}`;
+  box.scrollTop = keep;
+}
+async function abmSave(remove) {
+  const st = S._abm; if(!st || !st.zone || !st.draft || st.busy) return;
+  const a = abmAthlete(); if(!a) return;
+  const uid = st.uid, zid = st.zone, d = st.draft, today = todayLocal();
+  if(!remove && st.isNew && !(d.pain>0)) { showToast('Marcá el dolor de hoy (1 a 10)'); return; }
+  st.busy = true;
+  const btn = document.getElementById('abm-save'); if(btn) btn.disabled = true;
+  try {
+    const ref = doc(db,'personal',uid);
+    const snap = await getDoc(ref);
+    const p = snap.exists() ? snap.data() : {};
+    const server = (p.injuries && typeof p.injuries[zid]==='object') ? p.injuries[zid] : null;
+    // Base: lo que hay en el servidor (historial, estudios, fase de retorno); encima, lo que se editó acá.
+    const zone = {...(server||{}), pain:d.pain||0, note:d.note||'', type:d.type||'', severity:d.severity||'leve', isInjury:d.isInjury===true};
+    if(d.ostrc) zone.ostrc = {...(server?.ostrc||{}), ...d.ostrc};
+    zone.history = Array.isArray(server?.history) ? server.history.map(h=>({...h})) : [];
+    const dot = {};
+    const gone = remove || zone.pain===0;
+    if(!gone) {
+      const last = zone.history[zone.history.length-1];
+      if(last && last.date===today) { last.pain=zone.pain; last.note=zone.note; last.type=zone.type; }
+      else zone.history.push({date:today, pain:zone.pain, note:zone.note, type:zone.type});
+      Object.keys(zone).forEach(k=>{ if(zone[k]===undefined) delete zone[k]; });
+      dot['injuries.'+zid] = zone;
+    } else {
+      // Igual que cuando la quita el atleta: pasa al historial de resueltas, no se pierde.
+      const hist = zone.history;
+      const zl = [...BODY_ZONES.front, ...BODY_ZONES.back].find(z=>z.id===zid);
+      dot.injuryArchive = [...(p.injuryArchive||[]), {zoneId:zid, zoneLabel:zl?zl.label:zid, type:zone.type||'', startDate:hist.length?hist[0].date:today, resolvedDate:today, peakPain:Math.max(0, ...hist.map(h=>+h.pain||0), +(server?.pain)||0), history:hist}];
+      dot['injuries.'+zid] = deleteField();
+    }
+    await updateDocSafe(ref, dot);
+    // Verificación: se relee ESE documento.
+    const chk = await getDoc(ref); const cd = chk.exists() ? chk.data() : {};
+    const okSaved = gone ? !cd.injuries?.[zid] : (cd.injuries?.[zid]?.pain===zone.pain);
+    if(!okSaved) throw new Error('verificación');
+    if(!a._personal) a._personal = {};
+    a._personal.injuries = cd.injuries || {}; a._personal.injuryArchive = cd.injuryArchive || [];
+    if(S.viewingAthlete?.uid===uid && S.viewingAthlete.personal && S.viewingAthlete.personal!==a._personal) { S.viewingAthlete.personal.injuries = a._personal.injuries; S.viewingAthlete.personal.injuryArchive = a._personal.injuryArchive; }
+    const d2 = (S.dashAthletes||[]).find(x=>x.uid===uid); if(d2 && d2._personal && d2._personal!==a._personal) { d2._personal.injuries = a._personal.injuries; d2._personal.injuryArchive = a._personal.injuryArchive; }
+    showToast(gone ? '✓ Quitada y guardada en el historial' : '✓ Guardado en la ficha de '+(a.name||a.email));
+    st.busy = false; st.zone = null; st.draft = null;
+    renderMain();
+    renderAdminBodyMap();
+  } catch(e) {
+    console.error('Mapa de molestias (admin)', e);
+    st.busy = false; if(btn) btn.disabled = false;
+    showToast('No se pudo guardar — revisá la conexión y probá de nuevo');
+  }
+}
+window.openAdminBodyMap=openAdminBodyMap; window.closeAdminBodyMap=closeAdminBodyMap; window.closeAdminBodyMapIfOutside=closeAdminBodyMapIfOutside; window.abmSelectZone=abmSelectZone; window.abmBack=abmBack; window.abmSet=abmSet; window.abmSetOstrc=abmSetOstrc; window.abmNote=abmNote; window.abmSave=abmSave;
+
+// Edad, altura y peso del atleta, editables por el profe desde su ficha.
+async function setAthleteBasic(uid, field, value) {
+  if(!['age','height','weight'].includes(field)) return;
+  const n = parseFloat(String(value).replace(',','.'));
+  const v = (isNaN(n) || n<=0) ? null : n;
+  const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
+  if(a && (a[field]??null)===v) return;
+  try {
+    await setDoc(doc(db,'users',uid), {[field]:v}, {merge:true});
+    if(a) a[field] = v;
+    const d = (S.dashAthletes||[]).find(x=>x.uid===uid); if(d) d[field] = v;
+    if(S.atletaView?.uid===uid) S.atletaView[field] = v;
+    if(S.viewingAthlete?.uid===uid && S.viewingAthlete.userData) S.viewingAthlete.userData[field] = v;
+    showToast('✓ Guardado');
+    renderMain();
+  } catch(e) { showToast('Error al guardar'); }
+}
+window.setAthleteBasic = setAthleteBasic;
+window.BODY_ZONES = BODY_ZONES;
+
 // ── ATLETAS (individuales, sin equipo) ─────────────────────────
 function renderAtletas() {
   if (S.atletaView) return renderAtletaDetail(S.atletaView);
@@ -9731,7 +9896,7 @@ function openProxyForm(uid, date) {
   const w = {...(p.wellness?.[d]||{})};
   delete w.submitted; delete w.date;
   const logs = {};
-  (p.history?._sessionLogs||[]).filter(l=>l.date===d).forEach(l=>{ logs[l.activity] = {mins:l.mins||'', rpe:l.rpe||0}; });
+  (p.history?._sessionLogs||[]).filter(l=>l.date===d).forEach(l=>{ logs[l.activity] = {mins:l.mins||'', rpe:l.rpe||0, note:l.note||''}; });
   S._proxy = { uid, date:d, w, logs, more:false };
   renderProxyForm();
   document.getElementById('proxy-overlay').classList.add('open');
@@ -9746,13 +9911,15 @@ function proxyDateChange(v) {
   S._proxy.date = v;
   const w = {...(p.wellness?.[v]||{})}; delete w.submitted; delete w.date;
   S._proxy.w = w;
-  const logs = {}; (p.history?._sessionLogs||[]).filter(l=>l.date===v).forEach(l=>{ logs[l.activity] = {mins:l.mins||'', rpe:l.rpe||0}; });
+  const logs = {}; (p.history?._sessionLogs||[]).filter(l=>l.date===v).forEach(l=>{ logs[l.activity] = {mins:l.mins||'', rpe:l.rpe||0, note:l.note||''}; });
   S._proxy.logs = logs;
   renderProxyForm();
 }
 function proxySetW(key, v) { if(!S._proxy) return; S._proxy.w[key] = v; renderProxyForm(); }
 function proxySleep(delta) { const st=S._proxy; if(!st) return; const cur = st.w['sueño_horas']; st.w['sueño_horas'] = Math.max(0, Math.min(14, (cur===undefined||cur===''?7:+cur)+delta)); renderProxyForm(); }
 function proxySetRpe(act, v) { const st=S._proxy; if(!st) return; if(!st.logs[act]) st.logs[act]={mins:'',rpe:0}; st.logs[act].rpe = (st.logs[act].rpe===v?0:v); renderProxyForm(); }
+function proxySetNote(act, v) { const st=S._proxy; if(!st) return; if(!st.logs[act]) st.logs[act]={mins:'',rpe:0}; st.logs[act].note = v; }
+window.proxySetNote = proxySetNote;
 function proxySetMins(act, v) { const st=S._proxy; if(!st) return; if(!st.logs[act]) st.logs[act]={mins:'',rpe:0}; st.logs[act].mins = v===''?'':Math.max(0,+v); renderProxySummary(); }
 function proxyMore() { if(S._proxy) { S._proxy.more=true; renderProxyForm(); } }
 window.proxyDateChange=proxyDateChange; window.proxySetW=proxySetW; window.proxySleep=proxySleep; window.proxySetRpe=proxySetRpe; window.proxySetMins=proxySetMins; window.proxyMore=proxyMore;
@@ -9804,6 +9971,7 @@ function renderProxyForm() {
     const d = st.logs[act.key]||{mins:'',rpe:0};
     const disp = getLoadActivityDisplay(act, sport);
     return `<div class="px-act"><div class="px-lbl"><span>${disp.emoji} ${esc(disp.label)}</span><span id="px-ua-${act.key}" class="px-ua">${(+d.mins>0&&+d.rpe>0)?(+d.mins*+d.rpe)+' UA':''}</span></div>
+      ${act.isGame?`<input type="text" maxlength="60" class="px-note" placeholder="Rival / categoría (opcional)" value="${esc(d.note||'')}" oninput="proxySetNote('${act.key}',this.value)">`:''}
       <input type="number" inputmode="numeric" min="0" max="300" placeholder="Minutos" value="${d.mins===''?'':d.mins}" oninput="proxySetMins('${act.key}',this.value);document.getElementById('px-ua-${act.key}').textContent=(+this.value>0&&(S._proxy.logs['${act.key}']||{}).rpe>0)?(+this.value*S._proxy.logs['${act.key}'].rpe)+' UA':''" class="px-mins">
       <div class="px-rpe">${Array.from({length:10},(_,i)=>i+1).map(v=>`<button class="px-r ${d.rpe===v?'on':''}" style="${d.rpe===v?`background:hsl(${Math.round((10-v)/9*120)},65%,45%);border-color:transparent;color:#fff`:''}" onclick="proxySetRpe('${act.key}',${v})">${v}</button>`).join('')}</div></div>`;
   }).join('');
@@ -9841,7 +10009,7 @@ async function saveProxyForm() {
       const keys = new Set(entries.map(e=>e.act.key));
       const kept = server.filter(l=>!(l.date===date && keys.has(l.activity)));
       const wk = computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate||p.startDate||date) || 1;
-      entries.forEach(e=>kept.push({date, activity:e.act.key, session:e.label, week:wk, rpe:+e.d.rpe, mins:+e.d.mins, note:'', ua:e.ua}));
+      entries.forEach(e=>kept.push({date, activity:e.act.key, session:e.label, week:wk, rpe:+e.d.rpe, mins:+e.d.mins, note:(e.act.isGame ? String(e.d.note||'').trim() : ''), ua:e.ua}));
       dot['history._sessionLogs'] = kept;
       dot.sessionLogs = kept;
     }
@@ -10054,7 +10222,7 @@ function renderPerfilTab(a) {
   })()}
 
   <div class="admin-section">
-    <div class="admin-section-title">Molestias activas</div>
+    <div class="admin-section-title sec-act"><span>Molestias activas</span><button class="abtn abtn-p" onclick="openAdminBodyMap('${uid}')">+ Cargar molestia</button></div>
     ${activeInj.length?`<div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px">${activeInj.map(([id,inj])=>{
       const zone=allZones.find(z=>z.id===id);
       const sev = severityInfo(inj.severity) || severityInfo('leve');
@@ -10070,6 +10238,7 @@ function renderPerfilTab(a) {
             </div>
             ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:11px;color:var(--text3)">Puntaje OSTRC: <b style="color:var(--text)">${sc}/100</b></div>`:''; })()}
           </div>
+          <button class="abtn" onclick="openAdminBodyMap('${uid}','${id}')" title="Actualizar dolor, tipo, observaciones o quitarla">Actualizar</button>
         </div>
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica</div>
         <div style="display:flex;gap:6px">
@@ -10100,6 +10269,10 @@ function renderPerfilTab(a) {
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
         <span style="font-size:11px;color:var(--text3);min-width:50px">Nombre</span>
         <input id="edit-name-${uid}" value="${a.name||''}" placeholder="Apellido y nombre" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:11px;color:var(--text3);min-width:50px">Físico</span>
+        ${[['age','Edad','años'],['height','Altura','cm'],['weight','Peso','kg']].map(([k,l,u])=>`<label class="basic-f"><span>${l}</span><input id="basic-${k}-${uid}" type="text" inputmode="decimal" value="${a[k]??''}" placeholder="—" onblur="setAthleteBasic('${uid}','${k}',this.value)" onkeydown="if(event.key==='Enter')this.blur()"><i>${u}</i></label>`).join('')}
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
         <span style="font-size:11px;color:var(--text3);min-width:50px">Posición</span>

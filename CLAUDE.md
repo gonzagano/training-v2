@@ -15,6 +15,9 @@ App PWA (HTML + `app.js` + `styles.css`, Firebase) para un preparador físico. I
 - Todo lo que se prueba es local y falso: **jamás tocar datos reales ni borrar nada de producción**. El código no debe mencionar `__db` / `__testUser`.
 - Para ver algo con los ojos: `node tools/harness/server.js` (puerto 8735, después `node tools/harness/build.js`) y abrir `http://localhost:8735/`; sembrar datos con el contenido de `seed_full.js`.
 
+## Regla de producto: el profe puede hacer todo lo del atleta
+La app se usa también cara a cara en el gimnasio: **toda acción que el atleta hace desde su usuario tiene que poder hacerla el entrenador por él desde la ficha** (wellness y cargas → "Cargar datos"; kilos y RPE → pestaña Rutina; molestias → "+ Cargar molestia" con el mapa del cuerpo; RM, tests, datos personales → Perfil). Cada función nueva del atleta nace con su equivalente para el profe, y con un caso de testing que confirme que el dato cae en `personal/{uid del atleta}` y no en el admin ni en otro atleta.
+
 ## Reglas de código
 - Estado global `S`; las pantallas son strings HTML dibujados por `renderMain()`; todo `onclick="fn()"` exige `window.fn = fn` (el `check.js` lo verifica).
 - Guardados: usar `updateDocSafe` (FieldPath para claves con `.`/`/`), nunca escribir en un documento que no sea el del atleta en pantalla. Al cargar "en nombre de" un atleta, escribir en `personal/{uid del atleta}` y releer para confirmar.

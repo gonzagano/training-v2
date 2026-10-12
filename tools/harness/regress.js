@@ -20,6 +20,31 @@
   txtBad('dashboard con atajos');
   switchView('atletas'); await wait(1500); txtBad('atletas'); ok(document.querySelectorAll('#atletas-list .ar-row').length===3,'atletas: 3 individuales');
   openAtleta('u0'); await wait(1200); for(const v of ['rutina','wellness','stats','evals','perfil']){ setAtletaSubview(v); await wait(800); txtBad('ficha '+v); }
+  // ── el profe hace por el atleta lo mismo que el atleta: molestias en el mapa del cuerpo ──
+  setAtletaSubview('perfil'); await wait(600);
+  { const P=()=>JSON.parse(localStorage.getItem('__db')).personal; const others=JSON.stringify([P().admin1,P().u1,P().u2]);
+    ok(!!document.querySelector('[onclick^="openAdminBodyMap"]'),'ficha: botón para cargar molestias');
+    document.querySelector('[onclick^="openAdminBodyMap"]').click(); await wait(300);
+    ok(document.querySelectorAll('#bodymap-body .body-zone').length===BODY_ZONES.front.length+BODY_ZONES.back.length,'mapa del profe: todas las zonas del cuerpo');
+    const z=BODY_ZONES.front[3].id; document.querySelector('#bodymap-body .body-zone[onclick*="'+z+'"]').dispatchEvent(new MouseEvent('click',{bubbles:true})); await wait(250);
+    await abmSave(false); ok(!P().u0.injuries?.[z],'mapa del profe: sin dolor marcado no guarda');
+    abmSet('pain',6); abmSet('isInjury',true); abmSet('type','muscular'); document.getElementById('abm-note').value='Tirón entrenando'; document.getElementById('abm-note').dispatchEvent(new Event('input',{bubbles:true}));
+    document.querySelector('#bodymap-body .abm-row .abm-opt'); await wait(150); await abmSave(false); await wait(500);
+    const iz=P().u0.injuries?.[z]; ok(iz&&iz.pain===6&&iz.isInjury===true&&iz.type==='muscular'&&iz.note==='Tirón entrenando'&&iz.severity==='moderada','mapa del profe: lesión guardada en u0 ('+JSON.stringify(iz||{}).slice(0,140)+')');
+    ok(iz&&iz.history.length===1&&iz.history[0].date===todayLocal()&&iz.history[0].pain===6,'mapa del profe: suma el registro de hoy al historial');
+    ok(JSON.stringify([P().admin1,P().u1,P().u2])===others,'mapa del profe: no tocó al admin ni a otros atletas');
+    ok(document.getElementById('main').innerText.includes('Tirón entrenando')||document.getElementById('main').innerText.includes('6/10'),'mapa del profe: la molestia aparece en la ficha');
+    abmSelectZone(z); await wait(200); abmSet('pain',3); await abmSave(false); await wait(400);
+    ok(P().u0.injuries[z].pain===3&&P().u0.injuries[z].history.length===1&&P().u0.injuries[z].history[0].pain===3,'mapa del profe: actualizar el mismo día corrige, no duplica');
+    abmSelectZone(z); await wait(200); await abmSave(true); await wait(400);
+    ok(!P().u0.injuries[z]&&(P().u0.injuryArchive||[]).some(x=>x.zoneId===z&&x.peakPain>=3),'mapa del profe: quitar la pasa al historial de resueltas');
+    closeAdminBodyMap(); txtBad('perfil con molestias'); }
+  // edad / altura / peso editables por el profe
+  { const i=document.querySelector('input[id^="basic-weight-"]'); ok(!!i,'ficha: edad, altura y peso editables'); i.value='78,5'; i.dispatchEvent(new Event('blur')); await wait(500);
+    ok(JSON.parse(localStorage.getItem('__db')).users.u0.weight===78.5,'ficha: el peso queda guardado en el atleta'); }
+  // carga de partido con rival, en nombre del atleta
+  { openProxyForm('u6'); await wait(300); proxySetMins('partido','70'); proxySetRpe('partido',8); await wait(150); const ni=document.querySelector('#proxy-body .px-note'); ok(!!ni,'cargar datos: campo de rival en el partido'); ni.value='vs Club X'; ni.dispatchEvent(new Event('input',{bubbles:true})); await saveProxyForm(); await wait(600);
+    ok(JSON.parse(localStorage.getItem('__db')).personal.u6.history._sessionLogs.some(l=>l.activity==='partido'&&l.mins===70&&l.rpe===8&&l.note==='vs Club X'),'cargar datos: partido con rival guardado en u6'); }
   setAtletaSubview('rutina'); await wait(500);
   ok(document.querySelectorAll('.rt-d').length===7,'círculos de días'); ok(document.querySelector('.wk-t')?.innerText.startsWith('Semana'),'tarjeta de semana');
   setAtletaRoutineDay(0); await wait(300); document.querySelectorAll('[onclick^="toggleAtletaRoutineBlock"]').forEach(b=>b.click()); await wait(300);
