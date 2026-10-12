@@ -4491,8 +4491,9 @@ async function cmpSaveDone(uid, week, sName, exId, field, inp) {
   const run = (S._doneSaveQ || Promise.resolve()).then(()=>adminSetExerciseField(uid, week, sName, exId, field, val, true));
   S._doneSaveQ = run.catch(()=>{});
   const ok = await run;
-  if(ok===false) { inp.classList.add('err'); return; }
-  inp.classList.remove('err'); inp.classList.toggle('has', String(inp.value).trim()!=='');
+  const box = inp.closest('.cmp-df') || inp;
+  if(ok===false) { box.classList.add('err'); return; }
+  box.classList.remove('err'); box.classList.toggle('has', String(inp.value).trim()!=='');
 }
 window.cmpSaveDone = cmpSaveDone;
 
@@ -10226,6 +10227,8 @@ function fmtPhaseDate(s) {
   return isNaN(d) ? s : d.toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'});
 }
 
+function toggleAtletaHist() { S._atletaHistOpen = !S._atletaHistOpen; renderMain(); }
+window.toggleAtletaHist = toggleAtletaHist;
 function renderPastRoutinePhases(a) {
   const hist = a.routineAssignmentHistory || [];
   if(hist.length < 2) return ''; // nada antes de la actual todavía
@@ -10639,9 +10642,8 @@ function renderAtletaRutina(a) {
     </div>
     <div class="wk-bar">${weekSegs}</div>
   </div>
-  ${renderPastRoutinePhases(a)}
-  ${renderAddPastPhaseForm(a)}
-  ${renderLoadsAudit(a, routine, previewWeek)}
+  ${(()=>{ const nPast = Math.max(0,(a.routineAssignmentHistory||[]).length-1); const open = !!S._atletaHistOpen;
+    return `<button class="hist-toggle${open?' open':''}" onclick="toggleAtletaHist()"><span>Historial${nPast?` · ${nPast} ${nPast===1?'planificación anterior':'planificaciones anteriores'}`:''}</span><i>›</i></button>${open ? renderPastRoutinePhases(a)+renderAddPastPhaseForm(a)+renderLoadsAudit(a, routine, previewWeek) : ''}`; })()}
   <div class="admin-section">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
       <div>
@@ -13011,7 +13013,7 @@ function renderAtletaRoutineHoriz(a, routine, previewWeek) {
               ${isPersonalBlock?'':`<button class="cmp-t ${override?'on':''}" onclick="openExerciseOverrideModal('${a.uid}','${routine.id}','${sn}','${e.id}',${previewWeek})" title="${override?'Personalizado para este atleta — editar':'Personalizar para este atleta'}" aria-label="Personalizar">${CMP_IC.pen}</button>`}<button class="cmp-t ${note?'warn':''}" onclick="openCoachNoteModal('${a.uid}','${e.id}','${nm}')" title="${note?'Nota para el atleta — editar':'Dejarle una nota'}" aria-label="Nota">${CMP_IC.note}</button>
             </span></div>
             <span>${esc(parts.join(' · '))||'—'}</span>${kg?`<em class="cmp-kg">${esc(kg)} kg</em>`:''}${noRm?`<em class="cmp-norm" title="Falta cargar el RM de ${esc(RM_LIFTS.find(x=>x.id===e.rmLift)?.label||'')} (ficha → Perfil → RM del atleta)">falta RM</em>`:''}
-            <div class="cmp-done-in"><input class="cmp-f${d.load?' has':''}" type="text" inputmode="decimal" placeholder="kg" title="Kilos que hizo" value="${esc(d.load)}" onchange="${sv('load')}"><input class="cmp-f${(d.rpe!=null&&d.rpe!=='')?' has':''}" type="text" inputmode="decimal" placeholder="${lbl}" title="${lbl} que marcó" value="${esc(d.rpe)}" onchange="${sv('rpe')}"></div>
+            <div class="cmp-done-in"><label class="cmp-df${d.load?' has':''}" title="Kilos que hizo"><input type="text" inputmode="decimal" placeholder="—" value="${esc(d.load)}" onchange="${sv('load')}"><i>${/[a-zA-Z]/.test(String(d.load||''))?'':'kg'}</i></label><label class="cmp-df${(d.rpe!=null&&d.rpe!=='')?' has':''}" title="${lbl} que marcó"><i>${lbl}</i><input type="text" inputmode="decimal" placeholder="—" value="${esc(d.rpe)}" onchange="${sv('rpe')}"></label></div>
           </div>`;
         }).join('')||'<div class="cmp-ex"><span>Sin ejercicios</span></div>'}
       </div>`; }).join('') : '<div class="cmp-none">—</div>'}

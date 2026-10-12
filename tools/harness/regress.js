@@ -40,9 +40,15 @@
     const h=JSON.parse(localStorage.getItem('__db')).personal.u0.history; const recs=Object.values(h).filter(v=>v&&v.exercises).flatMap(v=>Object.values(v.exercises));
     ok(recs.some(x=>String(x.load)==='82.5'&&String(x.rpe)==='8'),'ficha horizontal: kilos y RPE guardados en u0');
     ok(JSON.stringify(JSON.parse(localStorage.getItem('__db')).personal.u1)===before,'ficha horizontal: no tocó a otro atleta');
-    ok(ins[0].isConnected&&ins[0].classList.contains('has'),'ficha horizontal: no redibuja mientras se carga (no pierde el foco)');
+    ok(ins[0].isConnected&&ins[0].closest('.cmp-df').classList.contains('has'),'ficha horizontal: no redibuja mientras se carga (no pierde el foco)');
     setAtletaRoutineCicloView('micro'); await wait(300); setAtletaRoutineCicloView('horiz'); await wait(400);
-    ok([...document.querySelectorAll('.cmp-ath .cmp-done-in input')].some(i=>i.value==='82.5'),'ficha horizontal: lo cargado se vuelve a ver'); }
+    ok([...document.querySelectorAll('.cmp-ath .cmp-done-in input')].some(i=>i.value==='82.5'),'ficha horizontal: lo cargado se vuelve a ver');
+    const txt=[...document.querySelectorAll('.cmp-ath .cmp-done-in')].map(x=>x.querySelectorAll('.cmp-df')).find(l=>l[0].querySelector('input').value==='82.5'); ok(txt&&txt[0].innerText.trim()==='kg'&&/^(RPE|RIR)$/.test(txt[1].innerText.trim()),'ficha horizontal: se lee "82.5 kg" y "RPE 8"'); }
+  // historial (planificaciones anteriores y cargas registradas): plegado hasta que se toca
+  { const sec=()=>[...document.querySelectorAll('#main .admin-section-title')].map(e=>e.textContent.trim().toLowerCase()).join('|');
+    ok(!!document.querySelector('.hist-toggle')&&!/cargas registradas/.test(sec()),'ficha: historial plegado por defecto');
+    document.querySelector('.hist-toggle').click(); await wait(300); ok(/cargas registradas/.test(sec()),'ficha: el historial se despliega al tocarlo'); txtBad('historial abierto');
+    document.querySelector('.hist-toggle').click(); await wait(300); ok(!/cargas registradas/.test(sec()),'ficha: el historial se vuelve a plegar'); }
   document.querySelector('.cmp-ath [onclick^="openExerciseOverrideModal"]').click(); await wait(300); ok(!!document.querySelector('.video-modal.open, .modal-overlay.open, [id$="overlay"].open'),'ficha horizontal: Personalizar abre su formulario'); document.querySelectorAll('[id$="overlay"].open').forEach(o=>o.classList.remove('open'));
   setAtletaRoutineCicloView('micro'); await wait(300);
   // nota del profe
