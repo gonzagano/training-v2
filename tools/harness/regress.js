@@ -29,6 +29,24 @@
     ok(!!grid&&grid.children.length===2&&!!grid.children[0].querySelector('#athlete-trend-chart')&&!!grid.children[0].querySelector('.act-scroll')&&!!grid.children[1].querySelector('.pf-load, .admin-section')&&/Molestias activas/i.test(grid.children[1].textContent)&&/RM del atleta/i.test(grid.children[1].textContent),'perfil: evolución a la izquierda y detalle a la derecha');
     const cols=getComputedStyle(grid).gridTemplateColumns.split(' ').length; ok(cols===(innerWidth>=1180?2:1),'perfil: 2 columnas solo en pantalla ancha ('+cols+' en '+innerWidth+')');
     const form=document.querySelector('.pf-form'); ok(!!form&&!!form.querySelector('input[id^="edit-name-"]')&&form.querySelectorAll('.basic-f input').length===3&&!!form.querySelector('select[id^="reassign-sel-"]')&&grid.children[0].contains(form)&&form.getBoundingClientRect().top>grid.children[0].querySelector('.act-scroll').getBoundingClientRect().bottom-1,'perfil: datos del atleta debajo de la actividad, con todos sus campos'); }
+  // ── evaluaciones: historial con índices, resumen por test, récord, próximo nivel, período y gráficos de línea ──
+  { setAtletaSubview('evals'); await wait(700);
+    const uid=S.evalAthleteId, p2=n=>String(n).padStart(2,'0'), dAgo=n=>{ const d=new Date(); d.setDate(d.getDate()-n); return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); };
+    const mk=v=>v.map((h,i)=>({date:dAgo((4-i)*30),height:h}));
+    S._athleteEvalsCache=S._athleteEvalsCache||{}; const before=S._athleteEvalsCache[uid];
+    S._athleteEvalsCache[uid]={cmj:mk([38.2,39.5,39.1,41,42.3]),sj:mk([34,35.1,35.6,36.2,37]),abalakov:mk([44.5,45.8,46,47.9,49.1]),cmj_der:mk([21.5,22,22.8,23.1,24]),cmj_izq:mk([19,19.8,21.5,21.9,22.6])};
+    S.evalRange='all'; switchEvalView('history'); await wait(700); txtBad('evaluaciones historial');
+    const cmj=document.getElementById('eval-card-cmj'), tile=document.querySelector('.ev-tiles .ev-tile');
+    ok(document.querySelectorAll('.ev-tiles .ev-tile').length===4&&/42,3/.test(tile.textContent)&&!!tile.querySelector('.ev-gold .ev-medal')&&/Faltan 2,7 cm/.test(tile.textContent)&&!!tile.querySelector('.ev-lvl-b i'),'evaluaciones: mejor CMJ con medalla y barra al próximo nivel');
+    ok(!!cmj&&/42,3/.test(cmj.querySelector('.ev-big').textContent)&&/\+1,3 vs\. anterior/.test(cmj.textContent)&&/\+4,1 cm desde \w+ \(\+10,7 %\)/.test(cmj.textContent)&&!!cmj.querySelector('.ev-headr .ev-gold'),'evaluaciones: CMJ con cambio vs. anterior, progreso acumulado y récord ('+cmj?.querySelector('.ev-headl')?.textContent.replace(/\s+/g,' ')+')');
+    ok(/24 \/ 22,6/.test(document.getElementById('eval-card-asym').textContent)&&/5,8 % de diferencia/.test(document.getElementById('eval-card-asym').textContent),'evaluaciones: asimetría con las dos piernas y el % de diferencia');
+    if(typeof Chart!=='undefined'){ const c=S.evalChartInstances['chart-hist-cmj'], as=S.evalChartInstances['chart-hist-asym'];
+      ok(!!c&&c.config.type==='line'&&c.data.labels.length===5&&/^\d+ [a-z]{3}$/.test(c.data.labels[0]),'evaluaciones: gráfico de línea con fechas cortas ('+c?.data.labels[0]+')');
+      ok(!!as&&as.config.type==='bar'&&as.data.datasets.length===2,'evaluaciones: asimetría con barras de las dos piernas');
+      setEvalRange('3m'); await wait(600); ok(S.evalChartInstances['chart-hist-cmj'].data.labels.length===4&&/desde/.test(document.getElementById('eval-card-cmj').textContent),'evaluaciones: el período de 3 meses recorta el gráfico a 4 tests');
+      setEvalRange('all'); await wait(400); }
+    ok(document.documentElement.scrollWidth<=innerWidth+1,'evaluaciones: sin scroll horizontal');
+    if(before) S._athleteEvalsCache[uid]=before; else delete S._athleteEvalsCache[uid]; switchEvalView('entry'); await wait(300); }
   // ── wellness por día: pocos días grandes a la vista, el resto se desliza; cargar datos bien visible ──
   setAtletaSubview('wellness'); await wait(700);
   { const hm=document.querySelector('.hm'); const cw=document.querySelector('.hm-c').getBoundingClientRect().width; const vis=Math.round((hm.clientWidth-document.querySelector('.hm-nm').getBoundingClientRect().width)/cw);

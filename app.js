@@ -14254,74 +14254,165 @@ function metricCardHtml(label, icon, value, color, sub, infoKey) {
     + (sub?'<div class="metric-card-sub">'+sub+'</div>':'')+'</div>';
 }
 
+// ── Historial de evaluaciones: período, textos y piezas compartidas ──
+const EVAL_RANGES = [
+  {id:'3m',  label:'3 meses', days:92},
+  {id:'6m',  label:'6 meses', days:183},
+  {id:'1y',  label:'1 año',   days:366},
+  {id:'all', label:'Todo',    days:0},
+];
+// Registros dentro del período elegido arriba del historial (por defecto, todos).
+function evalRangeFilter(recs) {
+  const r = EVAL_RANGES.find(x=>x.id===(S.evalRange||'all'));
+  if(!r || !r.days) return recs;
+  const d = new Date(); d.setDate(d.getDate()-r.days);
+  const min = toLocalDateStr(d);
+  return recs.filter(x=>(x.date||'')>=min);
+}
+function setEvalRange(v) { S.evalRange = v; renderMain(); setTimeout(drawEvalCharts, 80); }
+window.setEvalRange = setEvalRange;
+
+const EVAL_MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+// "2026-10-07" → "7 oct" (en los ejes) / "octubre" (en los textos)
+function evalShortDate(d) { const m = String(d||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[3])+' '+EVAL_MONTHS[+m[2]-1].slice(0,3) : String(d||''); }
+function evalMonthName(d) { const m = String(d||'').match(/^(\d{4})-(\d{2})/); return m ? EVAL_MONTHS[+m[2]-1] : ''; }
+function evalNum(v) { return String(Math.round(v*10)/10).replace('.', ','); }
+const evalSigned = v => (v>0?'+':v<0?'−':'')+evalNum(Math.abs(v));
+
+// Asimetría por fecha: solo los días con las dos piernas medidas.
+function evalAsymSeries(edata) {
+  const der = edata['cmj_der']||[], izq = edata['cmj_izq']||[];
+  const dates = [...new Set([...der.map(r=>r.date), ...izq.map(r=>r.date)])].sort();
+  return dates.map(date=>{
+    const d = der.find(r=>r.date===date), i = izq.find(r=>r.date===date);
+    if(!d||!i) return null;
+    const a = Math.abs(d.height-i.height)/Math.max(d.height,i.height)*100;
+    return {date, height: parseFloat(a.toFixed(1)), der: d.height, izq: i.height};
+  }).filter(Boolean);
+}
+const evalAsymColor = v => v>10 ? 'var(--red)' : v>5 ? 'var(--amber)' : 'var(--green)';
+const evalAsymDim   = v => v>10 ? 'var(--red-dim)' : v>5 ? 'var(--amber-dim)' : 'var(--green-dim)';
+
+// Próximo nivel de la tabla de saltos (para la línea punteada del gráfico y la
+// barra "faltan X cm"); null si el test no tiene tabla o ya está en el más alto.
+function nextJumpLevel(testId, value) {
+  const def = JUMP_BENCHMARKS[testId];
+  if(!def || value==null || isNaN(value)) return null;
+  const r = Math.round(value);
+  const i = def.bands.findIndex(b=>r>=b.min && r<=b.max);
+  if(i<0 || i>=def.bands.length-1) return null;
+  const cur = def.bands[i], nx = def.bands[i+1];
+  return {level:nx.level, min:nx.min, from:cur.min, curLevel:cur.level, estimated:!!def.estimated,
+    color:JUMP_LEVEL_COLORS[nx.level].c, curColor:JUMP_LEVEL_COLORS[cur.level].c};
+}
+window.nextJumpLevel = nextJumpLevel;
+
+const EVAL_MEDAL_SVG = '<svg class="ev-medal" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 1.5h4.2l2.6 6.4-4 1.6z" fill="#C99A2E"/><path d="M18 1.5h-4.2l-2.6 6.4 4 1.6z" fill="#E0B040"/><circle cx="12" cy="15.2" r="7.3" fill="#F2C14E"/><path d="M12 10.9l1.35 2.75 3.05.45-2.2 2.15.5 3.05L12 17.85 9.3 19.3l.5-3.05-2.2-2.15 3.05-.45z" fill="#7A560C"/></svg>';
+
+// Mini evolución de un índice (hasta los últimos 6 valores), con el último resaltado.
+function evalSparkSvg(vals) {
+  const v = vals.slice(-6);
+  if(v.length<2) return '';
+  const mn = Math.min(...v), mx = Math.max(...v), rg = (mx-mn)||1;
+  const pts = v.map((x,i)=>[4+i*(102/(v.length-1)), 30-(x-mn)/rg*24]);
+  const l = pts[pts.length-1];
+  return `<svg class="ev-spark" viewBox="0 0 110 36" aria-hidden="true"><polyline points="${pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" fill="none" stroke="var(--accent-text)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${l[0].toFixed(1)}" cy="${l[1].toFixed(1)}" r="4" fill="var(--text)"/></svg>`;
+}
+
+// Los cuatro índices de arriba del historial de saltos.
+function renderEvalIndexTiles(edata) {
+  const sorted = id => sortEvalRecsByDate([...(edata[id]||[])]);
+  const cmj = sorted('cmj'), sj = sorted('sj'), abal = sorted('abalakov');
+  const lastOf = a => a.length ? a[a.length-1] : null;
+  // Serie de un índice: los días en que están los dos tests que necesita
+  const pair = (a, b, fn) => a.map(x=>{ const y = b.find(r=>r.date===x.date); return y ? fn(x.height, y.height) : null; }).filter(v=>v!=null && isFinite(v));
+  const iceS = pair(cmj, sj, (c,s)=>(c-s)/s*100), coordS = pair(abal, cmj, (a,c)=>(a-c)/c*100);
+  const lCMJ = lastOf(cmj), lSJ = lastOf(sj), lAbal = lastOf(abal);
+  const ice   = (lCMJ&&lSJ)   ? (lCMJ.height-lSJ.height)/lSJ.height*100 : null;
+  const coord = (lCMJ&&lAbal) ? (lAbal.height-lCMJ.height)/lCMJ.height*100 : null;
+  const asymS = evalAsymSeries(edata), asym = asymS.length ? asymS[asymS.length-1].height : null;
+  const best = cmj.length ? cmj.reduce((b,r)=>r.height>b.height?r:b, cmj[0]) : null;
+
+  const indexTile = (label, key, val, series) => {
+    const d = series.length>=2 ? series[series.length-1]-series[series.length-2] : null;
+    return `<div class="ev-tile">
+      <div class="ev-k">${label} ${infoBtn(key)}</div>
+      <div class="ev-row"><b class="ev-big">${val!=null?evalNum(val):'--'}<i> %</i></b>${evalSparkSvg(series)}</div>
+      ${val==null ? '<div class="ev-sub">Sin datos</div>' : d!=null ? `<div class="ev-sub"><em class="${d>0?'up':d<0?'down':''}">${d>0?'▲':d<0?'▼':'='} ${evalSigned(d)} pts</em> vs. test anterior</div>` : ''}
+    </div>`;
+  };
+  const nx = best ? nextJumpLevel('cmj', best.height) : null;
+  const bestTile = `<div class="ev-tile">
+      <div class="ev-k">Mejor CMJ</div>
+      <div class="ev-row"><b class="ev-big">${best?evalNum(best.height):'--'}<i> cm</i></b>${best?`<span class="ev-pill ev-gold">${EVAL_MEDAL_SVG}Récord · ${evalShortDate(best.date)}</span>`:''}</div>
+      ${!best ? '<div class="ev-sub">Sin datos</div>' : nx ? `<div class="ev-lvl">
+        <div class="ev-lvl-l"><span style="color:${nx.curColor}">${nx.curLevel}</span><span style="color:${nx.color}">${nx.level} · ${nx.min} cm</span></div>
+        <div class="ev-lvl-b"><i style="width:${Math.max(4,Math.min(100,(best.height-nx.from)/(nx.min-nx.from)*100)).toFixed(0)}%;background:${nx.curColor}"></i></div>
+        <div class="ev-sub"><em>Faltan ${evalNum(nx.min-best.height)} cm</em> para subir de nivel</div>
+      </div>` : `<div class="ev-sub">${jumpLevelTagHtml('cmj', best.height)}</div>`}
+    </div>`;
+  const asymTile = `<div class="ev-tile">
+      <div class="ev-k">Asimetría unilateral ${infoBtn('asym')}</div>
+      <div class="ev-row" style="justify-content:flex-start"><b class="ev-big" style="${asym!=null?'color:'+evalAsymColor(asym):''}">${asym!=null?evalNum(asym):'--'}<i> %</i></b>${asym!=null?`<span class="ev-sub" style="color:${evalAsymColor(asym)};font-weight:700">${asym>10?'Alta':asym>5?'A seguir':'Pareja'}</span>`:''}</div>
+      ${asym==null ? '<div class="ev-sub">Sin datos</div>' : `<div class="ev-zone"><div class="ev-zone-b"><span style="background:var(--green)"></span><span style="background:var(--amber)"></span><span style="background:var(--red)"></span></div><u style="left:${(Math.min(15,asym)/15*100).toFixed(1)}%"></u><div class="ev-zone-l"><span>0</span><span>5 %</span><span>10 %</span><span>15</span></div></div>`}
+    </div>`;
+  return `<div class="ev-tiles">${bestTile}${indexTile('Índice elástico','ice',ice,iceS)}${indexTile('Coord. de brazos','coord',coord,coordS)}${asymTile}</div>`;
+}
+
 function renderEvalHistory(edata, isDesktop, testList) {
   if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
 
   const includeAsym = !testList; // la asimetría solo aplica a los tests de salto
   const histTests = testList
     ? testList
-    : EVAL_TESTS.concat([{id:'asym', label:'Asimetría Unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda'}]);
+    : EVAL_TESTS.concat([{id:'asym', label:'Asimetría unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda'}]);
+  const rangeId = S.evalRange||'all';
 
-  let html = isDesktop ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">' : '';
-
-  // Los mismos índices calculados que aparecen en "Registrar test" — también
-  // acá, para no tener que ir y volver entre pestañas para verlos.
-  if(includeAsym) {
-    const lastOfH = id => { const r=sortEvalRecsByDate([...(edata[id]||[])]); return r.length ? r[r.length-1] : null; };
-    const lCMJ=lastOfH('cmj'), lSJ=lastOfH('sj'), lAbal=lastOfH('abalakov');
-    const lDer=lastOfH('cmj_der'), lIzq=lastOfH('cmj_izq');
-    const ice   = (lCMJ&&lSJ)   ? ((lCMJ.height-lSJ.height)/lSJ.height*100).toFixed(1) : null;
-    const coord = (lCMJ&&lAbal) ? ((lAbal.height-lCMJ.height)/lCMJ.height*100).toFixed(1) : null;
-    const asymH = (lDer&&lIzq)  ? (Math.abs(lDer.height-lIzq.height)/Math.max(lDer.height,lIzq.height)*100).toFixed(1) : null;
-    const cmjRecsH = edata['cmj']||[];
-    const bestCMJH = cmjRecsH.length ? cmjRecsH.reduce((best,r)=>r.height>best.height?r:best, cmjRecsH[0]) : null;
-    html += `<div style="grid-column:${isDesktop?'1/-1':'auto'};display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px">`
-      + metricCardHtml('ÍNDICE ELÁSTICO', metricIconSvg('ice'), ice!==null?ice+'%':'-- %', ice?'var(--accent-text)':'var(--text3)', (lCMJ&&lSJ?'':'Sin datos'), 'ice')
-      + metricCardHtml('COORD. DE BRAZOS', metricIconSvg('coord'), coord!==null?coord+'%':'-- %', coord?'var(--blue)':'var(--text3)', (lCMJ&&lAbal?'':'Sin datos'), 'coord')
-      + metricCardHtml('ASIMETRÍA UNILAT.', metricIconSvg('asym'), asymH!==null?asymH+'%':'-- %', asymH?(parseFloat(asymH)>10?'var(--red)':'var(--green)'):'var(--text3)', (lDer&&lIzq?'':'Sin datos'), 'asym')
-      + metricCardHtml('MEJOR CMJ', metricIconSvg('bestcmj'), bestCMJH?bestCMJH.height+' cm':'--', 'var(--text)', bestCMJH?'Récord personal · '+bestCMJH.date+' '+jumpLevelTagHtml('cmj',bestCMJH.height):'Sin datos')
-      + '</div>';
-  }
+  let html = `<div class="ev-range" role="group" aria-label="Período">${EVAL_RANGES.map(r=>`<button class="chip-btn ${rangeId===r.id?'on':''}" onclick="setEvalRange('${r.id}')">${r.label}</button>`).join('')}</div>`;
+  if(includeAsym) html += renderEvalIndexTiles(edata);
+  html += '<div class="ev-grid">';
 
   histTests.forEach(t=>{
     const isHidden = S.evalHidden.has(t.id);
-    let recsFwd, recs, last, isAsym = (t.id==='asym');
+    const isAsym = (t.id==='asym');
+    // recsFwd = TODOS los registros (la lista de intentos y el botón de borrar
+    // usan su posición); inRange = los del período elegido (gráfico y resumen).
+    const recsFwd = isAsym ? evalAsymSeries(edata) : sortEvalRecsByDate([...(edata[t.id]||[])]);
+    const recs = recsFwd.slice().reverse();
+    const inRange = evalRangeFilter(recsFwd);
+    const last = inRange[inRange.length-1]||null, prev = inRange[inRange.length-2]||null, first = inRange[0]||null;
+    const maxHeight = (!isAsym && recsFwd.length) ? Math.max(...recsFwd.map(r=>r.height)) : null;
 
-    if(isAsym) {
-      const der = edata['cmj_der']||[], izq = edata['cmj_izq']||[];
-      const dates = [...new Set([...der.map(r=>r.date), ...izq.map(r=>r.date)])].sort();
-      recsFwd = dates.map(date=>{
-        const d = der.find(r=>r.date===date), i = izq.find(r=>r.date===date);
-        if(!d||!i) return null;
-        const a = Math.abs(d.height-i.height)/Math.max(d.height,i.height)*100;
-        return {date, height: parseFloat(a.toFixed(1)), der: d.height, izq: i.height};
-      }).filter(Boolean);
-      recs = recsFwd.slice().reverse();
+    let summary;
+    if(!last) {
+      summary = `<div class="ev-sub">${recsFwd.length?'Sin registros en este período':'Sin registros'}</div>`;
+    } else if(isAsym) {
+      summary = `<div class="ev-val"><b class="ev-big">${evalNum(last.der)} <i>/</i> ${evalNum(last.izq)}<i> cm</i></b>
+        <span class="ev-pill" style="color:${evalAsymColor(last.height)};background:${evalAsymDim(last.height)}">${evalNum(last.height)} % de diferencia</span>
+        ${first && first!==last ? `<span class="ev-pill ev-blue">era ${evalNum(first.height)} % en ${evalMonthName(first.date)}</span>` : ''}</div>`;
     } else {
-      recsFwd = sortEvalRecsByDate([...(edata[t.id]||[])]);
-      recs = recsFwd.slice().reverse();
+      const d = prev ? last.height-prev.height : null;
+      const since = first && first!==last ? last.height-first.height : null;
+      summary = `<div class="ev-val"><b class="ev-big">${evalNum(last.height)}<i> ${t.unit}</i></b>
+        ${d!=null ? `<span class="ev-pill ${d>0?'ev-up':d<0?'ev-down':'ev-eq'}">${d>0?'▲':d<0?'▼':'='} ${evalSigned(d)} vs. anterior</span>` : ''}
+        ${since!=null ? `<span class="ev-pill ev-blue">${evalSigned(since)} ${t.unit} desde ${evalMonthName(first.date)}${first.height>0?` (${evalSigned(since/first.height*100)} %)`:''}</span>` : ''}
+        ${jumpLevelTagHtml(t.id,last.height)}</div>`;
     }
-    last = recs[0]||null;
+    const isRecord = !isAsym && last && recsFwd.length>1 && last.height===maxHeight;
 
-    html += '<div id="eval-card-'+t.id+'" style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);margin-bottom:'+(isDesktop?'0':'12px')+';overflow:hidden">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">';
-    html += '<div><div style="font-size:14px;font-weight:600">'+t.label+'</div>';
-    if(last) {
-      const lcolor = isAsym ? (last.height>10?'var(--red)':last.height>5?'var(--amber)':'var(--green)') : 'var(--accent-text)';
-      html += '<div style="font-size:13px;font-weight:700;color:'+lcolor+';margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-        + '<span>'+last.height+t.unit+(isAsym?' · Der:'+last.der+' / Izq:'+last.izq:'')+'</span>'
-        + jumpLevelTagHtml(t.id,last.height) + '</div>';
-    } else {
-      html += '<div style="font-size:12px;color:var(--text3);margin-top:2px">Sin registros</div>';
-    }
-    html += '</div>';
-    html += '<button class="eval-toggle-btn" onclick="toggleEvalChart(\''+t.id+'\')" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap">'
-      + (isHidden?'▼ Ver':'▲ Ocultar') + '</button>';
-    html += '</div>';
+    html += `<div class="ev-card" id="eval-card-${t.id}">
+      <div class="ev-head">
+        <div class="ev-headl"><div class="ev-name">${t.label}</div>${summary}</div>
+        <div class="ev-headr">
+          ${isRecord?`<span class="ev-pill ev-gold">${EVAL_MEDAL_SVG}Récord personal</span>`:''}
+          ${isAsym && last ? '<span class="ev-legend"><i class="d"></i>Derecha<i class="z"></i>Izquierda</span>' : ''}
+          <button class="eval-toggle-btn ev-btn" onclick="toggleEvalChart('${t.id}')">${isHidden?'▼ Ver':'▲ Ocultar'}</button>
+        </div>
+      </div>`;
 
-    html += '<div class="eval-hist-body" style="display:'+(isHidden?'none':'block')+';padding:0 16px 14px;border-top:1px solid var(--border)">';
-    if(recsFwd.length>=1) {
-      html += '<div style="margin:12px 0 10px;position:relative"><canvas id="chart-hist-'+t.id+'"></canvas></div>';
+    html += '<div class="eval-hist-body" style="display:'+(isHidden?'none':'block')+'">';
+    if(inRange.length>=1) {
+      html += '<div class="ev-chart"><canvas id="chart-hist-'+t.id+'"></canvas></div>';
     }
     if(recs.length) {
       // Lista de intentos: oculta por default — con varios tests juntos en
@@ -14330,15 +14421,15 @@ function renderEvalHistory(edata, isDesktop, testList) {
       // historia; la lista queda como un desplegable para cuando de verdad
       // hace falta el detalle número a número.
       const recordsShown = S.evalRecordsShown instanceof Set && S.evalRecordsShown.has(t.id);
-      html += '<button class="eval-toggle-btn" onclick="toggleEvalRecords(\''+t.id+'\')" id="eval-records-btn-'+t.id+'" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;margin-bottom:8px">'
-        + (recordsShown?'▲ Ocultar intentos':'▼ Ver intentos ('+recs.length+')') + '</button>';
+      html += '<button class="eval-toggle-btn ev-btn" onclick="toggleEvalRecords(\''+t.id+'\')" id="eval-records-btn-'+t.id+'" style="margin-bottom:8px">'
+        + (recordsShown?'▲ Ocultar intentos':'▼ Ver intentos ('+Math.min(5,recs.length)+')') + '</button>';
       html += '<div id="eval-records-list-'+t.id+'" style="display:'+(recordsShown?'block':'none')+'">';
-      const maxHeight = (!isAsym && recsFwd.length) ? Math.max(...recsFwd.map(r=>r.height)) : null;
       recs.slice(0,5).forEach((r,i)=>{
         const isPR = maxHeight!==null && r.height===maxHeight;
         html += '<div class="eval-record"><div>'
           + '<div class="eval-record-main" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-          + '<span>'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+(isPR?' <span style="color:var(--warm);font-size:11px;font-weight:700">🏆 PR</span>':'')+'</span>'
+          + '<span>'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+'</span>'
+          + (isPR?'<span class="ev-pill ev-gold" style="padding:2px 9px 2px 5px">'+EVAL_MEDAL_SVG+'Récord</span>':'')
           + jumpLevelTagHtml(t.id,r.height) + '</div>'
           + '<div class="eval-record-date">'+r.date+(r.tof?' · '+r.tof+'ms':'')+'</div></div>';
         // Solo el admin puede borrar un test ya cargado — un jugador lo podía
@@ -14354,7 +14445,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
     html += '</div></div>';
   });
 
-  if(isDesktop) html += '</div>';
+  html += '</div>';
   return html;
 }
 
@@ -14689,74 +14780,95 @@ function drawEvalCharts() {
   if(chartView==='history') {
     if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
 
-    // Datalabels plugin for bar charts (value above bar)
-    const barLabelsPlugin = {
-      id:'barlabels',
+    // Un solo color para todos los tests (el del acento, según el tema): el
+    // color queda para lo que significa algo — el nivel y la asimetría. Línea
+    // con área en vez de barras: la escala va ajustada a los valores del
+    // atleta para que el avance se note, y una barra con el eje recortado
+    // exagera (parece el doble lo que subió un 10 %).
+    const cAccent = cssVar('--accent-text','#8FA8EA'), cText = cssVar('--text','#e9e9ed'), cText2 = cssVar('--text2','#b7b9c6'),
+          cText3 = cssVar('--text3','#969ab0'), cGrid = cssVar('--border','rgba(128,128,128,0.15)'), cWarm = cssVar('--warm','#ff9e5c');
+    const fBody = 'Manrope, sans-serif', fNum = "'Barlow Condensed', sans-serif";
+    const withAlpha = (hex, a) => { const m = /^#([0-9a-f]{6})$/i.exec(String(hex).trim()); if(!m) return 'rgba(143,168,234,'+a+')'; const n = parseInt(m[1],16); return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`; };
+    const axisTicks = {color:cText3, font:{family:fBody, size:11, weight:'600'}};
+    const baseOptions = (yMin, yMax) => ({
+      responsive:true, maintainAspectRatio:true, aspectRatio:2.6,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      layout:{padding:{top:24, right:16}},
+      plugins:{legend:{display:false}, tooltip:{...tooltipStyle, displayColors:false}},
+      scales:{
+        x:{grid:{display:false}, border:{display:false}, ticks:{...axisTicks, maxRotation:0, autoSkip:true}},
+        y:{grid:{color:cGrid}, border:{display:false}, ticks:{...axisTicks, maxTicksLimit:4}, min:yMin, max:yMax}
+      }
+    });
+    // Valor arriba de cada punto; el último, más grande. Con muchos puntos se saltea uno de cada dos.
+    const valueLabels = {
+      id:'evlabels',
       afterDatasetsDraw(chart) {
-        const ctx = chart.ctx;
-        chart.data.datasets.forEach((ds,i)=>{
-          chart.getDatasetMeta(i).data.forEach((bar,idx)=>{
-            const val = ds.data[idx];
-            if(val===null||val===undefined) return;
-            ctx.save();
-            ctx.fillStyle = cssVar('--text','#1A1D26');
-            ctx.font = '700 12px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(val+(ds._unit||'cm'), bar.x, bar.y-4);
-            ctx.restore();
-          });
+        const ctx = chart.ctx, pts = chart.getDatasetMeta(0).data, n = pts.length;
+        // Si algún valor trae decimales, todos se muestran con uno (46 → "46,0")
+        const dec = chart.data.datasets[0].data.some(v=>v!=null && v%1!==0) ? 1 : 0;
+        const evalNum = v => Number(v).toFixed(dec).replace('.', ',');
+        pts.forEach((pt,i)=>{
+          const v = chart.data.datasets[0].data[i];
+          if(v==null) return;
+          const isLast = i===n-1;
+          if(n>8 && !isLast && (n-1-i)%2) return;
+          ctx.save();
+          ctx.font = `700 ${isLast?16:13}px ${fNum}`;
+          ctx.fillStyle = isLast ? cText : cText2;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          ctx.fillText(evalNum(v), pt.x, pt.y-(isLast?11:8));
+          ctx.restore();
         });
       }
     };
-
-    const colorMap   = {cmj:'rgba(59,125,216,0.8)', sj:'rgba(34,197,94,0.8)', abalakov:'rgba(139,92,246,0.8)', saltoH:'rgba(20,184,166,0.8)', cmj_der:'rgba(245,158,11,0.8)', cmj_izq:'rgba(239,68,68,0.8)',
-      rm_press_banca:'rgba(139,92,246,0.8)', rm_peso_muerto:'rgba(20,184,166,0.8)', rm_sentadilla:'rgba(59,125,216,0.8)', rm_cargada_potencia:'rgba(239,68,68,0.8)'};
-    const borderMap  = {cmj:'#3b7dd8', sj:'#22c55e', abalakov:'#8b5cf6', saltoH:'#14b8a6', cmj_der:'#f59e0b', cmj_izq:'#ef4444',
-      rm_press_banca:'#8b5cf6', rm_peso_muerto:'#14b8a6', rm_sentadilla:'#3b7dd8', rm_cargada_potencia:'#ef4444'};
+    // Línea punteada del próximo nivel de la tabla de saltos
+    const levelLine = nx => ({
+      id:'evlevel',
+      beforeDatasetsDraw(chart) {
+        if(!nx) return;
+        const a = chart.chartArea, y = chart.scales.y.getPixelForValue(nx.min);
+        if(y<a.top-1 || y>a.bottom) return;
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.strokeStyle = cWarm; ctx.globalAlpha = .85; ctx.lineWidth = 1.5; ctx.setLineDash([5,6]);
+        ctx.beginPath(); ctx.moveTo(a.left, y); ctx.lineTo(a.right, y); ctx.stroke();
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
+        ctx.font = `700 11px ${fBody}`; ctx.fillStyle = cWarm; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+        ctx.fillText(nx.level+' · '+nx.min+' cm'+(nx.estimated?' (estimado)':''), a.left+4, y-4);
+        ctx.restore();
+      }
+    });
 
     EVAL_TESTS.concat(STRENGTH_TESTS).forEach(t=>{
       if(S.evalHidden.has(t.id)) return;
-      const recs = sortEvalRecsByDate([...(edata[t.id]||[])]);
+      const recs = evalRangeFilter(sortEvalRecsByDate([...(edata[t.id]||[])]));
       if(!recs.length) return;
       const c = document.getElementById('chart-hist-'+t.id);
       if(!c) return;
-      const sc = computeDynamicScale(recs.map(r=>r.height));
+      const vals = recs.map(r=>r.height);
+      // El próximo nivel entra en la escala solo si está cerca (si no, aplastaría la curva)
+      const nx = nextJumpLevel(t.id, vals[vals.length-1]);
+      const spread = Math.max(...vals)-Math.min(...vals);
+      const showNx = nx && (nx.min-Math.max(...vals)) <= Math.max(6, spread*1.5);
+      const sc = computeDynamicScale(showNx ? vals.concat([nx.min]) : vals);
+      const n = vals.length;
 
       S.evalChartInstances['chart-hist-'+t.id] = new Chart(c, {
-        type:'bar',
+        type:'line',
         data:{
-          labels: recs.map(r=>r.date),
-          datasets:[
-            {
-              type:'bar', label:t.label,
-              data: recs.map(r=>r.height),
-              backgroundColor: colorMap[t.id]||'rgba(59,125,216,0.8)',
-              borderColor: borderMap[t.id]||'#3b7dd8',
-              borderWidth:1, borderRadius:4, order:2, _unit:t.unit
-            },
-            {
-              type:'line', label:t.label+' (línea)',
-              data: recs.map(r=>r.height),
-              borderColor: borderMap[t.id]||'#3b7dd8',
-              borderWidth:2, pointRadius:3, pointBackgroundColor:'#fff',
-              tension:0.3, fill:false, order:1
-            }
-          ]
+          labels: recs.map(r=>evalShortDate(r.date)),
+          datasets:[{
+            label:t.label, data: vals,
+            borderColor: cAccent, borderWidth:2.5, tension:0.25,
+            fill:true, backgroundColor: withAlpha(cAccent, 0.12),
+            pointRadius: vals.map((_,i)=>i===n-1?6:4), pointHoverRadius: 7,
+            pointBackgroundColor: vals.map((_,i)=>i===n-1?'#FFFFFF':cssVar('--bg2','#1c1f30')),
+            pointBorderColor: cAccent, pointBorderWidth: 2.5, clip:false
+          }]
         },
-        options:{
-          responsive:true, maintainAspectRatio:true, aspectRatio:2.3,
-          devicePixelRatio: window.devicePixelRatio || 1,
-          plugins:{
-            legend:{display:false},
-            tooltip:{...tooltipStyle, filter:item=>item.datasetIndex===0}
-          },
-          scales:{
-            x:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:10}, maxRotation:30}},
-            y:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:10}}, min:sc.min, max:sc.max, title:{display:true,text:t.unit||'cm',color:cssVar('--text','#1A1D26'),font:{size:10}}}
-          }
-        },
-        plugins:[barLabelsPlugin]
+        options: baseOptions(sc.min, sc.max),
+        plugins:[levelLine(showNx?nx:null), valueLabels]
       });
       // Algunos navegadores miden mal el tamaño real del canvas si el layout
       // (grid de 2 columnas en desktop, tarjetas recién insertadas) todavía no
@@ -14768,57 +14880,42 @@ function drawEvalCharts() {
       requestAnimationFrame(()=>{ try{ S.evalChartInstances['chart-hist-'+t.id]?.resize(); }catch(e){} });
     });
 
-    // Asymmetry chart (separate, always a line)
+    // Asimetría: las dos piernas lado a lado por fecha (acá sí barras, desde
+    // cero, porque se comparan dos largos) y el % de diferencia arriba de cada par.
     if(!S.evalHidden.has('asym')) {
-      const der=edata['cmj_der']||[], izq=edata['cmj_izq']||[];
-      const dates=[...new Set([...der.map(r=>r.date), ...izq.map(r=>r.date)])].sort();
-      const asymVals = dates.map(date=>{
-        const d=der.find(r=>r.date===date), i=izq.find(r=>r.date===date);
-        if(!d||!i) return null;
-        return parseFloat((Math.abs(d.height-i.height)/Math.max(d.height,i.height)*100).toFixed(1));
-      });
-      const validDates = dates.filter((_,idx)=>asymVals[idx]!==null);
-      const validVals  = asymVals.filter(v=>v!==null);
+      const series = evalRangeFilter(evalAsymSeries(edata));
       const c = document.getElementById('chart-hist-asym');
-      if(c && validDates.length) {
+      if(c && series.length) {
+        const top = Math.max(...series.map(r=>Math.max(r.der, r.izq)));
+        const zoneColor = v => cssVar(v>10?'--red':v>5?'--amber':'--green', '#f0a838');
         S.evalChartInstances['chart-hist-asym'] = new Chart(c, {
-          type:'line',
+          type:'bar',
           data:{
-            labels:validDates,
-            datasets:[{
-              label:'Asimetría %', data:validVals,
-              borderColor:'#c67c0f', backgroundColor:'rgba(198,124,15,0.08)',
-              tension:.3, pointRadius:5,
-              pointBackgroundColor:validVals.map(v=>v>10?'#ef4444':v>5?'#f59e0b':'#22c55e'),
-              fill:true
-            }]
+            labels: series.map(r=>evalShortDate(r.date)),
+            datasets:[
+              {label:'Derecha',   data: series.map(r=>r.der), backgroundColor: cAccent, borderRadius:4, categoryPercentage:0.5, barPercentage:0.9},
+              {label:'Izquierda', data: series.map(r=>r.izq), backgroundColor: withAlpha(cAccent, 0.45), borderRadius:4, categoryPercentage:0.5, barPercentage:0.9}
+            ]
           },
-          options:{
-            responsive:true, maintainAspectRatio:true, aspectRatio:2.3,
-            plugins:{legend:{display:false}, tooltip:tooltipStyle},
-            scales:{
-              x:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:9}, maxRotation:30}},
-              y:{grid:{color:gridColor}, ticks:{color:cssVar('--text','#1A1D26'), font:{size:9}}, min:0, title:{display:true,text:'% asimetría',color:cssVar('--text','#1A1D26'),font:{size:9}}}
-            }
-          },
+          options: (()=>{ const o = baseOptions(0, Math.ceil(top*1.25/5)*5); o.plugins.tooltip.displayColors = true; return o; })(),
           plugins:[{
             id:'asymlabels',
             afterDatasetsDraw(chart){
-              const ctx=chart.ctx;
-              chart.getDatasetMeta(0).data.forEach((pt,idx)=>{
-                const val=chart.data.datasets[0].data[idx];
-                if(val===null||val===undefined) return;
+              const ctx = chart.ctx, m0 = chart.getDatasetMeta(0).data, m1 = chart.getDatasetMeta(1).data, n = series.length;
+              series.forEach((r,i)=>{
+                if(!m0[i] || !m1[i]) return;
+                if(n>8 && i!==n-1 && (n-1-i)%2) return;
                 ctx.save();
-                ctx.fillStyle=cssVar('--text','#1A1D26');
-                ctx.font='600 10px Inter, sans-serif';
-                ctx.textAlign='center';
-                ctx.textBaseline='bottom';
-                ctx.fillText(val+'%', pt.x, pt.y-6);
+                ctx.font = `700 ${i===n-1?16:14}px ${fNum}`;
+                ctx.fillStyle = zoneColor(r.height);
+                ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                ctx.fillText(evalNum(r.height)+' %', (m0[i].x+m1[i].x)/2, Math.min(m0[i].y, m1[i].y)-6);
                 ctx.restore();
               });
             }
           }]
         });
+        requestAnimationFrame(()=>{ try{ S.evalChartInstances['chart-hist-asym']?.resize(); }catch(e){} });
       }
     }
 
