@@ -10335,10 +10335,9 @@ function renderPerfilTab(a) {
 
   const html = `${hero}
   <div class="pf-grid">
-    <div>${secTrend}${secAct}</div>
+    <div>${secTrend}${secAct}${secData}</div>
     <div>${secLoad}${secInj}${secRM}${secHealth}</div>
   </div>
-  ${secData}
   ${secReset}`;
 
   return html;
