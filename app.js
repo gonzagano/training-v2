@@ -10142,64 +10142,62 @@ function renderPerfilTab(a) {
   const rosterStatus = getAthleteRosterStatus(a, m, acwrSt, todayPct, todayFilled);
   const statusDetail = `ACWR ${m?.acwr!=null?m.acwr.toFixed(2):'—'} · Wellness ${todayFilled?todayPct+'%':'sin datos hoy'} · ${activeInjCount?activeInjCount+' molestia'+(activeInjCount!==1?'s':'')+' activa'+(activeInjCount!==1?'s':''):'sin molestias activas'}`;
 
-  let html = `
-  <!-- Franja de indicadores: wellness de hoy, ACWR y molestias activas -->
-  <div class="kpi3">
-    <div class="kpi-c" style="cursor:pointer" onclick="${todayFilled?`viewWellnessDay('${uid}','${today}')`:`openProxyForm('${uid}')`}">
-      <b style="color:${todayFilled?wState.color:'var(--text3)'}">${todayFilled?todayPct+'%':'—'}</b>
-      <span>Wellness hoy ${infoBtn('wellness')}</span>
-      ${todayFilled?'':'<em class="kpi-add">+ Cargar</em>'}
-      ${todayFilled?sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 56, 16):''}
+  // Arriba de todo: UN estado (el mismo semáforo del Dashboard) + los tres
+  // indicadores de hoy. Debajo, dos columnas: evolución a la izquierda y
+  // detalle (carga, molestias, RM, salud) a la derecha; los datos de la cuenta
+  // van al final porque se tocan poco.
+  const dashSt = getDashAthleteStatus(a);
+  const escP = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const lastLog = getLatestSessionLog(personal);
+  const lastTxt = (()=>{
+    if(!lastLog) return 'Sin cargas registradas';
+    const c = activityChipInfo(lastLog, athleteSportOf(a));
+    const d = lastLog.date===today ? 'hoy' : String(lastLog.date||'').split('-').reverse().slice(0,2).join('/');
+    return `Última carga: ${d} · ${c.txt}${lastLog.rpe?' · RPE '+lastLog.rpe:''}${lastLog.mins?' · '+lastLog.mins+' min':''}`;
+  })();
+  const hero = `
+  <div class="pf-hero" style="--st:${dashSt.color}">
+    <div class="pf-state"><b>${dashSt.text}</b><small>${escP(lastTxt)}</small></div>
+    <div class="kpi3">
+      <div class="kpi-c" style="cursor:pointer" onclick="${todayFilled?`viewWellnessDay('${uid}','${today}')`:`openProxyForm('${uid}')`}">
+        <b style="color:${todayFilled?wState.color:'var(--text3)'}">${todayFilled?todayPct+'%':'—'}</b>
+        <span>Wellness hoy ${infoBtn('wellness')}</span>
+        ${todayFilled?'':'<em class="kpi-add">+ Cargar</em>'}
+        ${todayFilled?sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 56, 16):''}
+      </div>
+      <div class="kpi-c">
+        <b style="color:${acwrSt.color}">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</b>
+        <span>ACWR ${infoBtn('acwr')}</span>
+        ${m?.acwr!=null?`<small style="color:${acwrSt.color}">${escP(acwrSt.label.replace(/\s*[✓⚠]\s*$/,''))}</small><i class="ar-zone"><u style="left:${Math.min(100,m.acwr/2*100)}%;background:${acwrSt.color}"></u></i>`:''}
+      </div>
+      <div class="kpi-c">
+        <b style="color:${activeInjCount?'var(--red)':'var(--green)'}">${activeInjCount}</b>
+        <span>Molestias activas</span>
+      </div>
     </div>
-    <div class="kpi-c">
-      <b style="color:${acwrSt.color}">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</b>
-      <span>ACWR ${infoBtn('acwr')}</span>
-    </div>
-    <div class="kpi-c">
-      <b style="color:${activeInjCount?'var(--red)':'var(--green)'}">${activeInjCount}</b>
-      <span>Molestias activas</span>
-    </div>
-  </div>
+  </div>`;
+  const secTrend = `
 
   <div class="admin-section">
     <div class="admin-section-title">Tendencia — últimos 30 días</div>
     <div style="padding:var(--sp-4) var(--sp-4);height:220px;position:relative">
       <canvas id="athlete-trend-chart"></canvas>
     </div>
-  </div>
-
-  <!-- Control de carga interna — detalle de apoyo, debajo del estado general -->
-  ${(()=>{
+  </div>`;
+  const secLoad = (()=>{
     if(!m) return '<div class="admin-section"><div class="admin-section-title">Control de carga interna</div><div style="padding:var(--sp-3) var(--sp-4);font-size:13px;color:var(--text3)">Sin datos.</div></div>';
     const monSt=getMonotonyStatus(m.monotony);
+    const strainCol = m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)';
     return `<div class="admin-section">
       <div class="admin-section-title">Control de carga interna</div>
-      <div class="load-grid">
-        <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
-          <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${m.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
-        </div>
-        <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
-          <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</div>
-          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
-          <div style="font-size:11px;color:${monSt.color};margin-top:1px">${monSt.label}</div>
-        </div>
-        <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
-          <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m.acuteUA}</div>
-          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">UA semana ${infoBtn('ua')}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:1px">${m.sessions} sesiones</div>
-        </div>
-        <div style="background:var(--bg2);padding:var(--sp-3) var(--sp-2);text-align:center">
-          <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round(m.strain)}</div>
-          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Strain ${infoBtn('strain')}</div>
-          <div style="font-size:11px;color:${m.strain>6000?'var(--red)':m.strain>2000?'var(--amber)':'var(--green)'};margin-top:1px">${m.strain>6000?'Alto '+craftIconSvg('alert','var(--red)',11):m.strain>2000?'Moderado':'Bajo'}</div>
-        </div>
+      <div class="pf-load">
+        <div><b>${m.acuteUA}</b><span>UA semana ${infoBtn('ua')}</span><small style="color:var(--text3)">${m.sessions} sesiones</small></div>
+        <div><b style="color:${monSt.color}">${Math.round((m.monotony||0)*10)/10}</b><span>Monotonía ${infoBtn('monotony')}</span><small style="color:${monSt.color}">${monSt.label}</small></div>
+        <div><b style="color:${strainCol}">${Math.round(m.strain)}</b><span>Strain ${infoBtn('strain')}</span><small style="color:${strainCol}">${m.strain>6000?'Alto':m.strain>2000?'Moderado':'Bajo'}</small></div>
       </div>
     </div>`;
-  })()}
-
-  <!-- Actividad diaria: un renglón por día, de hoy hacia atrás; se desliza para ver más -->
-  ${(()=>{
+  })();
+  const secAct = (()=>{
     const days = getWeeklyComplianceDates(0, 60).slice().reverse();
     const sport = athleteSportOf(a);
     const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
@@ -10221,9 +10219,8 @@ function renderPerfilTab(a) {
       </div>`;
     }).join('');
     return `<div class="admin-section"><div class="admin-section-title">Actividad diaria</div><div class="act-scroll">${rows}</div></div>`;
-  })()}
-
-  <div class="admin-section">
+  })();
+  const secInj = `<div class="admin-section">
     <div class="admin-section-title sec-act"><span>Molestias activas</span><button class="abtn abtn-p" onclick="openAdminBodyMap('${uid}')">+ Cargar molestia</button></div>
     ${activeInj.length?`<div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px">${activeInj.map(([id,inj])=>{
       const zone=allZones.find(z=>z.id===id);
@@ -10254,47 +10251,37 @@ function renderPerfilTab(a) {
         ${renderInjuryStudies(id, inj, uid)}
       </div>`;
     }).join('')}</div>`:`<div style="padding:12px 14px;font-size:13px;color:var(--text3)">Sin molestias registradas.</div>`}
-  </div>
-
-  <!-- RM del atleta: editable acá, y se actualiza solo desde Evaluaciones -->
-  <div class="admin-section">
+  </div>`;
+  const secRM = `<div class="admin-section">
     <div class="admin-section-title">RM del atleta</div>
         ${RM_LIFTS.map(rm=>`<div class="admin-item">
       <span style="font-size:13px">${rm.label}</span>
       <input type="number" step="0.5" min="0" placeholder="kg" value="${personal.oneRM?.[rm.id]||''}" style="width:90px;text-align:right;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="adminSaveOneRM('${uid}','${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
-  </div>
-
-  <div class="admin-section">
+  </div>`;
+  const secData = `<div class="admin-section">
     <div class="admin-section-title">Datos del atleta</div>
-    <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:10px">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Nombre</span>
-        <input id="edit-name-${uid}" value="${a.name||''}" placeholder="Apellido y nombre" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Físico</span>
+    <div class="pf-form">
+      <label class="pf-f pf-wide"><span>Nombre</span><input class="pf-inp" id="edit-name-${uid}" value="${a.name||''}" placeholder="Apellido y nombre" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()"></label>
+      <div class="pf-f pf-wide"><span>Físico</span><div class="pf-row">
         ${[['age','Edad','años'],['height','Altura','cm'],['weight','Peso','kg']].map(([k,l,u])=>`<label class="basic-f"><span>${l}</span><input id="basic-${k}-${uid}" type="text" inputmode="decimal" value="${a[k]??''}" placeholder="—" onblur="setAthleteBasic('${uid}','${k}',this.value)" onkeydown="if(event.key==='Enter')this.blur()"><i>${u}</i></label>`).join('')}
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Posición</span>
+      </div></div>
+      <label class="pf-f"><span>Posición</span>
         ${(()=>{
           const posOpts=getPositionOptionsForSport(myTeam?.sport);
           if(posOpts) {
-            return `<select id="pos-sel-${uid}" style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthletePosition('${uid}',this.value)">
+            return `<select class="pf-inp" id="pos-sel-${uid}" onchange="setAthletePosition('${uid}',this.value)">
               <option value="">— Sin posición —</option>
               ${posOpts.map(p=>`<option value="${p}" ${a.position===p?'selected':''}>${p}</option>`).join('')}
             </select>`;
           }
-          return `<input id="pos-inp-${uid}" value="${a.position||''}" placeholder="Ej: Base, Alero..." style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+          return `<input class="pf-inp" id="pos-inp-${uid}" value="${a.position||''}" placeholder="Ej: Base, Alero..." onblur="setAthletePosition('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
         })()}
-      </div>
-      ${!myTeam?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Deporte</span>
-        <select style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthleteSport('${uid}',onSportSelect(this))">${sportOptionsHtml(a.sport)}</select>
-      </div>`:''}
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
-        <span style="font-size:11px;color:var(--text3);min-width:50px">Equipo</span>
+      </label>
+      ${!myTeam?`<label class="pf-f"><span>Deporte</span>
+        <select class="pf-inp" onchange="setAthleteSport('${uid}',onSportSelect(this))">${sportOptionsHtml(a.sport)}</select>
+      </label>`:''}
+      <div class="pf-f${myTeam?'':' pf-wide'}"><span>Equipo</span><div class="pf-row">
         ${(()=>{
           const instMap = getInstitutionsFromTeams();
           const opts = [];
@@ -10302,33 +10289,30 @@ function renderPerfilTab(a) {
             [...instMap[inst].categories].sort().forEach(cat=>opts.push({inst,cat}));
           });
           const curVal = (a.institution && a.category) ? (a.institution+'|||'+a.category) : '';
-          return `<select id="reassign-sel-${uid}" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none">
+          return `<select class="pf-inp" id="reassign-sel-${uid}" style="flex:1;min-width:180px;width:auto">
             <option value="">— Sin equipo (individual) —</option>
             ${opts.map(o=>`<option value="${o.inst}|||${o.cat}" ${curVal===(o.inst+'|||'+o.cat)?'selected':''}>${o.inst} / ${o.cat}</option>`).join('')}
           </select>
           <button class="abtn abtn-p" onclick="saveReassignAthleteTeam('${uid}')">Guardar</button>`;
         })()}
-      </div>
-            ${!myTeam ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;padding-top:6px;border-top:1px dashed var(--border);margin-top:2px">
-        <span style="font-size:11px;color:var(--text3);min-width:110px">Comparar con equipo</span>
-        <select style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setAthleteCompareTeam('${uid}',this.value)">
+      </div></div>
+      ${!myTeam ? `<label class="pf-f pf-wide"><span>Comparar con equipo</span>
+        <select class="pf-inp" onchange="setAthleteCompareTeam('${uid}',this.value)">
           <option value="">— Ninguno —</option>
           ${S.teams.map(t=>`<option value="${t.id}" ${a.compareTeamId===t.id?'selected':''}>${t.name}${t.category?' · '+t.category:''}</option>`).join('')}
         </select>
-      </div>
-      `:''}
+      </label>`:''}
     </div>
-  </div>
-
-  ${(()=>{
+  </div>`;
+  const secHealth = (()=>{
     const activeIllness = getActiveIllness(personal.illnesses);
     const pastIllnesses = (personal.illnesses||[]).filter(x=>x.endDate && (!activeIllness||x.id!==activeIllness.id));
     return `<div class="admin-section">
-    <div class="admin-section-title">Salud general (no es lesión física)</div>
+    <div class="admin-section-title">Salud general</div>
     <div style="padding:10px 14px">
       ${activeIllness
         ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px">
-             <span>🤒 Enfermedad activa desde ${activeIllness.startDate}${activeIllness.note?' · '+activeIllness.note:''}</span>
+             <span>Enfermedad activa desde ${activeIllness.startDate}${activeIllness.note?' · '+activeIllness.note:''}</span>
              <button class="abtn" style="font-size:11px;padding:4px 8px" onclick="adminResolveIllness('${uid}','${activeIllness.id}')">Marcar recuperado</button>
            </div>`
         : (S._showAdminIllnessForm
@@ -10344,14 +10328,18 @@ function renderPerfilTab(a) {
       ${pastIllnesses.length ? `<div style="font-size:11px;color:var(--text3);margin-top:10px">Historial: ${pastIllnesses.map(x=>x.startDate+'→'+x.endDate+(x.note?' ('+x.note+')':'')).join(' · ')}</div>` : ''}
     </div>
   </div>`;
-  })()}
-
-  <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
-    <div class="admin-item" style="flex-direction:column;align-items:flex-start;gap:8px">
-      <div><div class="admin-item-lbl" style="color:var(--red)">Resetear cuenta</div></div>
-      <button class="abtn abtn-d" onclick="resetAthleteAccount('${uid}')">Resetear cuenta</button>
-    </div>
+  })();
+  const secReset = `<div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
+    <div class="pf-danger"><span>Resetear cuenta</span><button class="abtn abtn-d" onclick="resetAthleteAccount('${uid}')">Resetear cuenta</button></div>
   </div>`;
+
+  const html = `${hero}
+  <div class="pf-grid">
+    <div>${secTrend}${secAct}</div>
+    <div>${secLoad}${secInj}${secRM}${secHealth}</div>
+  </div>
+  ${secData}
+  ${secReset}`;
 
   return html;
 }

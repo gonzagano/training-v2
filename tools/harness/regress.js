@@ -23,6 +23,12 @@
   switchView('atletas'); await wait(1500); txtBad('atletas'); ok(document.querySelectorAll('#atletas-list .ar-row').length===3,'atletas: 3 individuales');
   ok(document.querySelectorAll('#atletas-list .ar-row.ar-full .ar-load').length===3 && document.querySelectorAll('#atletas-list .ar-st').length===3 && !!document.querySelector('#atletas-list .ar-head'),'atletas: misma fila que el Dashboard (ACWR, UA y estado)');
   openAtleta('u0'); await wait(1200); for(const v of ['rutina','wellness','stats','evals','perfil']){ setAtletaSubview(v); await wait(800); txtBad('ficha '+v); }
+  // ── perfil reordenado: estado + indicadores arriba, dos columnas, datos al final ──
+  { const hero=document.querySelector('.pf-hero'), grid=document.querySelector('.pf-grid');
+    ok(!!hero&&/Todo en orden|A seguir de cerca|Requiere atención/.test(hero.querySelector('.pf-state b').textContent)&&hero.querySelectorAll('.kpi-c').length===3,'perfil: estado e indicadores arriba');
+    ok(!!grid&&grid.children.length===2&&!!grid.children[0].querySelector('#athlete-trend-chart')&&!!grid.children[0].querySelector('.act-scroll')&&!!grid.children[1].querySelector('.pf-load, .admin-section')&&/Molestias activas/i.test(grid.children[1].textContent)&&/RM del atleta/i.test(grid.children[1].textContent),'perfil: evolución a la izquierda y detalle a la derecha');
+    const cols=getComputedStyle(grid).gridTemplateColumns.split(' ').length; ok(cols===(innerWidth>=1180?2:1),'perfil: 2 columnas solo en pantalla ancha ('+cols+' en '+innerWidth+')');
+    const form=document.querySelector('.pf-form'); ok(!!form&&!!form.querySelector('input[id^="edit-name-"]')&&form.querySelectorAll('.basic-f input').length===3&&!!form.querySelector('select[id^="reassign-sel-"]')&&form.getBoundingClientRect().top>grid.getBoundingClientRect().bottom-1,'perfil: datos del atleta al final, con todos sus campos'); }
   // ── wellness por día: pocos días grandes a la vista, el resto se desliza; cargar datos bien visible ──
   setAtletaSubview('wellness'); await wait(700);
   { const hm=document.querySelector('.hm'); const cw=document.querySelector('.hm-c').getBoundingClientRect().width; const vis=Math.round((hm.clientWidth-document.querySelector('.hm-nm').getBoundingClientRect().width)/cw);

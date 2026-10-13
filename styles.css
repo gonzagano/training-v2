@@ -1125,3 +1125,34 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 .load-cta svg{width:18px;height:18px;flex-shrink:0}
 .load-cta:hover{filter:brightness(1.08)}
 .kpi-c em.kpi-add{font-style:normal;font-size:12px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);border-radius:20px;padding:3px 10px}
+
+/* ── Perfil del atleta: estado arriba, evolución a la izquierda, detalle a la derecha ── */
+.pf-hero{display:grid;grid-template-columns:minmax(220px,1fr) 2fr;position:relative;background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--r);box-shadow:var(--sh-float);margin-bottom:var(--sp-4);overflow:hidden}
+.pf-hero::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--st)}
+.pf-state{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:16px 20px 16px 24px;min-width:0}
+.pf-state b{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:700;line-height:1.05;color:var(--st)}
+.pf-state small{font-size:12px;color:var(--text3)}
+.pf-hero .kpi3{border:0;border-left:1px solid var(--border);border-radius:0;box-shadow:none;margin:0;background:transparent}
+.kpi-c small{font-size:11px;font-weight:700}
+.kpi-c .ar-zone{display:block;width:120px;max-width:80%;margin-top:4px}
+.kpi-c .ar-zone u{position:absolute;top:-3px;width:4px;height:10px;margin-left:-2px;border-radius:2px;text-decoration:none}
+.pf-grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:0 var(--sp-4);align-items:start}
+.pf-grid>div{min-width:0}
+.pf-load{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--border)}
+.pf-load>div{display:flex;flex-direction:column;gap:4px;padding:14px 12px 14px 16px;min-width:0}
+.pf-load>div+div{border-left:1px solid var(--border)}
+.pf-load b{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:700;line-height:1}
+.pf-load span{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+.pf-load small{font-size:11px;font-weight:700}
+.pf-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 16px;padding:14px 16px 16px;border-top:1px solid var(--border)}
+.pf-f{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pf-f>span{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)}
+.pf-f.pf-wide{grid-column:span 2}
+.pf-inp{width:100%;box-sizing:border-box;background-color:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 12px;color:var(--text);font-size:16px;font-family:inherit;outline:none}
+.pf-inp:focus{border-color:var(--accent-text)}
+.pf-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pf-danger{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;font-size:13px;font-weight:600;color:var(--red)}
+@media(max-width:1179px){.pf-grid{grid-template-columns:1fr}}
+@media(max-width:759px){.pf-hero{grid-template-columns:1fr}.pf-hero .kpi3{border-left:0;border-top:1px solid var(--border)}}
+@media(max-width:899px){.pf-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-f.pf-wide{grid-column:1 / -1}}
+@media(max-width:599px){.pf-form{grid-template-columns:1fr}.pf-load b{font-size:22px}}
