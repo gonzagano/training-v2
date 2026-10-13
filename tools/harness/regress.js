@@ -21,6 +21,7 @@
     ok(/Requieren atención \(\d+\)/.test(document.querySelector('#dash-att .att-side-t')?.textContent||'')&&!!document.querySelector('#dash-att .att-row.att-crit .att-av'),'panel de atención: título con cantidad y avatar'); }
   txtBad('dashboard con atajos');
   switchView('atletas'); await wait(1500); txtBad('atletas'); ok(document.querySelectorAll('#atletas-list .ar-row').length===3,'atletas: 3 individuales');
+  ok(document.querySelectorAll('#atletas-list .ar-row.ar-full .ar-load').length===3 && document.querySelectorAll('#atletas-list .ar-st').length===3 && !!document.querySelector('#atletas-list .ar-head'),'atletas: misma fila que el Dashboard (ACWR, UA y estado)');
   openAtleta('u0'); await wait(1200); for(const v of ['rutina','wellness','stats','evals','perfil']){ setAtletaSubview(v); await wait(800); txtBad('ficha '+v); }
   // ── wellness por día: pocos días grandes a la vista, el resto se desliza; cargar datos bien visible ──
   setAtletaSubview('wellness'); await wait(700);

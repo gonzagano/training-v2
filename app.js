@@ -7515,6 +7515,7 @@ function renderTeamRutina(team) {
 
   html+=`<div class="admin-section" style="margin-top:16px"><div class="admin-section-title">Jugadores</div>
     <div class="ar-list" style="border:0;border-radius:0;box-shadow:none">
+    ${athleteRowsHead(true)}
     ${(team.players||[]).map((p,pi)=>{
       const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
       if(!match) {
@@ -7523,7 +7524,7 @@ function renderTeamRutina(team) {
           <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
         </div>`;
       }
-      return athleteRowHtml(match,{onclick:"adminOpenAthlete('"+match.uid+"')", sub:match.position||'Sin posición cargada', extra:`<button class="abtn abtn-d" onclick="event.stopPropagation();deletePlayer('${team.id}',${pi})" title="Quitar del roster">−</button>`});
+      return athleteRowHtml(match,{onclick:"adminOpenAthlete('"+match.uid+"')", sub:match.position||'Sin posición cargada', status:getDashAthleteStatus(match), extra:`<button class="abtn abtn-d" onclick="event.stopPropagation();deletePlayer('${team.id}',${pi})" title="Quitar del roster">−</button>`});
     }).join('')}
     </div>
     <div class="admin-item">
@@ -8242,7 +8243,7 @@ function renderGroupWellness(memberUids, opts) {
   // usamos en el Dashboard (alertas / lesiones recientes en paralelo).
   const isDesktopWellness = window.innerWidth >= 900;
   html += `<div style="margin:14px 0 12px;font-size:12px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
-    <div class="ar-list">${members.map(a=>athleteRowHtml(a,{onclick:members.length>1?"adminOpenAthlete('"+a.uid+"')":''})).join('')}</div>`;
+    <div class="ar-list">${athleteRowsHead()}${members.map(a=>athleteRowHtml(a,{onclick:members.length>1?"adminOpenAthlete('"+a.uid+"')":'', status:getDashAthleteStatus(a)})).join('')}</div>`;
   return html;
 }
 window.renderGroupWellness = renderGroupWellness;
@@ -9798,7 +9799,7 @@ function renderAtletasList(individuals) {
   if (S.atletasSport) list = list.filter(a=>canonicalSport(a.sport)===S.atletasSport);
   if (q) list = list.filter(a=>txtMatches(a.name||a.email||'', q));
   if (!list.length) return `<div class="empty-state">Sin atletas que coincidan.</div>`;
-  return `<div class="ar-list">${list.map(a=>athleteRowHtml(a,{onclick:"openAtleta('"+a.uid+"')", sub:[canonicalSport(a.sport)||'Individual', a.position].filter(Boolean).join(' · ')})).join('')}</div>`;
+  return `<div class="ar-list">${athleteRowsHead()}${list.map(a=>athleteRowHtml(a,{onclick:"openAtleta('"+a.uid+"')", sub:[canonicalSport(a.sport)||'Individual', a.position].filter(Boolean).join(' · '), status:getDashAthleteStatus(a)})).join('')}</div>`;
 }
 function setAtletasSearch(v) { S.atletasSearch=v; const el=document.getElementById('atletas-list'); if(el) el.innerHTML=renderAtletasList(); }
 function setAtletasSport(v) { S.atletasSport=v||null; renderMain(); }
@@ -15651,7 +15652,7 @@ function athleteRowHtml(a, o) {
     </div>`;
     stat = `<div class="ar-st"><span style="color:${o.status.color};background:${o.status.bg}">${o.status.text}</span></div>`;
   }
-  const rowCls = (o.status?' ar-full':'') + (d.critical?' ar-crit':(o.status&&o.status.tier===1?' ar-warn':''));
+  const rowCls = (o.status?' ar-full':'') + (o.status&&o.extra?' ar-x':'') + (d.critical?' ar-crit':(o.status&&o.status.tier===1?' ar-warn':''));
   return `<div class="ar-row${rowCls}" ${o.onclick?`onclick="${o.onclick}"`:''}>
     <div class="ar-av">${avatarHtml(a.name||a.email, a.color, 38, a.photoUrl)}</div>
     <div class="ar-who"><div class="ar-nm">${esc(a.name||a.email)}</div><div class="ar-sb">${esc(sub)}</div></div>
@@ -15663,6 +15664,12 @@ function athleteRowHtml(a, o) {
   </div>`;
 }
 window.athleteRowHtml = athleteRowHtml;
+
+// Encabezado de columnas de la fila completa (solo se ve en pantallas anchas,
+// donde la fila va en una línea). `extra`: la lista tiene un botón al final.
+function athleteRowsHead(extra) {
+  return `<div class="ar-head${extra?' ar-x':''}"><span></span><span>Atleta</span><span title="El punto debajo de cada barra marca los días que entrenó">Wellness 7 días</span><span>ACWR · UA semana</span><span>Actividad</span><span>Estado</span>${extra?'<span></span>':''}</div>`;
+}
 
 
 // Atletas del Dashboard según el ÚNICO filtro de arriba (equipo / individuales).
@@ -15878,8 +15885,7 @@ function renderDashboardAthleteList() {
   withStatus.sort((x,y)=> x.status.tier-y.status.tier || (x.a.name||'').localeCompare(y.a.name||''));
 
   // Encabezado de columnas (solo en pantallas anchas, donde la fila va en una línea)
-  const head = `<div class="ar-head"><span></span><span>Atleta</span><span title="El punto debajo de cada barra marca los días que entrenó">Wellness 7 días</span><span>ACWR · UA semana</span><span>Actividad</span><span>Estado</span></div>`;
-  return `<div class="ar-list">${head}${withStatus.map(({a,status})=>athleteRowHtml(a,{onclick:"adminOpenAthleteDash('"+a.uid+"')", status})).join('')}</div>`;
+  return `<div class="ar-list">${athleteRowsHead()}${withStatus.map(({a,status})=>athleteRowHtml(a,{onclick:"adminOpenAthleteDash('"+a.uid+"')", status})).join('')}</div>`;
 }
 window.renderDashboardAthleteList=renderDashboardAthleteList;
 

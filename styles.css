@@ -664,7 +664,8 @@ canvas.eval-chart{width:100%!important;display:block}
 .ar-head{display:grid;gap:6px 14px;align-items:center;padding:10px 16px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
 .ar-head u{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--warm);margin:0 3px 1px 6px;text-decoration:none}
 .ar-list>.ar-head+.ar-row{border-top:1px solid var(--border)}
-.ar-full .ar-st,.ar-head span:last-child{text-align:right}
+.ar-full .ar-st,.ar-head span:nth-child(6){text-align:right}
+.ar-row.ar-full.ar-x,.ar-head.ar-x{grid-template-columns:38px minmax(140px,1fr) 146px 178px minmax(180px,1.5fr) 132px 36px}
 .att-panel .att-side-t{color:var(--red)}
 .att-row.att-crit{position:relative}
 .att-av{display:flex;flex-shrink:0}
@@ -696,6 +697,7 @@ canvas.eval-chart{width:100%!important;display:block}
   .ar-full .ar-load{grid-column:2 / -1;justify-content:space-between}
   .ar-full .ar-chips{grid-column:2 / -1;padding-left:0}
   .ar-full .ar-st{grid-column:3;grid-row:1}
+  .ar-full.ar-x .ar-st{grid-column:2 / -1;grid-row:auto}
 }
 
 /* ── Dashboard: filtro único, atención primero ── */
