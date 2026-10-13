@@ -37,6 +37,22 @@
     ok([...document.querySelectorAll('.hm-c b')].some(b=>/^\d+%$/.test(b.textContent)),'wellness por día: muestra el porcentaje de cada día');
     const cta=document.querySelector('.load-cta'); ok(!!cta&&cta.getBoundingClientRect().height>=44&&/Cargar wellness/.test(cta.innerText),'pestaña Wellness: botón grande para cargar');
     cta.click(); await wait(300); ok(document.getElementById('proxy-overlay').classList.contains('open'),'el botón abre el formulario de carga'); closeProxyForm(); }
+  // ── tocar un día abre SU registro: lo que marcó en cada ítem, y se puede corregir o cargar ──
+  { const P=()=>JSON.parse(localStorage.getItem('__db')).personal; const d2=getWeeklyComplianceDates(0)[4]; const wBefore=P().u0.wellness[d2];
+    const cell=[...document.querySelectorAll('.hm-c')].find(c=>(c.getAttribute('onclick')||'').includes(d2)); ok(!!cell,'wellness por día: celda del día'); cell.click(); await wait(350);
+    ok(document.getElementById('proxy-overlay').classList.contains('open')&&S._proxy.date===d2&&S._proxy.uid==='u0','tocar un día abre el registro de ese día');
+    ok(S.currentView==='atletas','tocar un día no saca de la ficha');
+    ok(document.querySelectorAll('#proxy-body .px-face.on').length===5&&S._proxy.w.fatiga===wBefore.fatiga,'registro del día: muestra lo que marcó en cada ítem');
+    const others=JSON.stringify([P().admin1,P().u1]); proxySetW('fatiga',1); proxySetMins('pelota','45'); proxySetRpe('pelota',6); await saveProxyForm(); await wait(600);
+    ok(P().u0.wellness[d2].fatiga===1&&P().u0.wellness[d2].humor===wBefore.humor,'registro del día: corrige un ítem sin tocar los demás');
+    ok(P().u0.history._sessionLogs.some(l=>l.date===d2&&l.activity==='pelota'&&l.mins===45&&l.rpe===6),'registro del día: carga de ese día guardada');
+    ok(JSON.stringify([P().admin1,P().u1])===others,'registro del día: no tocó a nadie más');
+    // desde ahí se llega al detalle completo (mover de fecha) y se vuelve a la ficha
+    [...document.querySelectorAll('.hm-c')].find(c=>(c.getAttribute('onclick')||'').includes(d2)).click(); await wait(350); ok(!!document.querySelector('.px-more'),'registro del día: acceso a mover de fecha'); document.querySelector('.px-more').click(); await wait(500);
+    ok(S.adminView==='wellness_detail'&&!document.getElementById('proxy-overlay').classList.contains('open')&&/Carga de ese día/i.test(document.getElementById('main').innerText),'detalle del día: se abre desde la ficha'); txtBad('detalle del día');
+    document.querySelector('#main .back-btn').click(); await wait(500); ok(!!S.atletaView&&S.atletaView.uid==='u0'&&!!document.querySelector('.snav-tab'),'detalle del día: volver deja en la ficha'); setAtletaSubview('perfil'); await wait(500);
+    document.querySelector('.act-row').click(); await wait(300); ok(document.getElementById('proxy-overlay').classList.contains('open')&&S._proxy.date===todayLocal(),'actividad diaria: tocar un día abre su registro'); closeProxyForm(); }
+
   // ── el profe hace por el atleta lo mismo que el atleta: molestias en el mapa del cuerpo ──
   setAtletaSubview('perfil'); await wait(600);
   { const P=()=>JSON.parse(localStorage.getItem('__db')).personal; const others=JSON.stringify([P().admin1,P().u1,P().u2]);
@@ -212,6 +228,10 @@
     ok(lu&&lu[1].teamId==='t2'&&lu[1].athleteType==='team'&&lu[1].sport==='Handball','crear atleta de equipo: equipo y deporte');
     ok(lu&&d3.teams.t2.memberUids.includes(lu[0])&&d3.teams.t2.players.includes('Sosa Leo'),'crear atleta de equipo: sumado al plantel');
     closeConfirmModal && closeConfirmModal(); }
+  // ── las fotos de perfil se agrandan al tocarlas (y no abren la ficha por error) ──
+  { const u=S.dashAthletes?.[0]||S.adminAthletes[0]; const h=avatarHtml('X',null,38,'data:image/gif;base64,R0lGODlhAQABAAAAACw=',true); const tmp=document.createElement('div'); tmp.innerHTML=h; document.body.appendChild(tmp);
+    const before=S.currentView; tmp.querySelector('img').click(); await wait(150); ok(!!document.querySelector('#photo-zoom img')&&S.currentView===before,'foto: se abre en grande'); document.getElementById('photo-zoom').click(); await wait(100); ok(!document.getElementById('photo-zoom'),'foto: se cierra tocando afuera'); tmp.remove();
+    ok(!/onclick/.test(avatarHtml('X',null,38,null,true))&&!/openPhotoZoom/.test(avatarHtml('X',null,38,'a.png')),'foto: sin foto (o sin pedirlo) no hay zoom'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

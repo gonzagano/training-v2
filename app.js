@@ -1895,9 +1895,7 @@ function getWeekHeaderLabel() {
   // solo "Semana N" pelado, sin fecha, mientras que equipo/admin sí tenían
   // el rango de fechas (aunque sin la palabra "actual" delante). Unificado
   // acá para que diga lo mismo en los dos casos.
-  if(S.isAdmin || isTeamAthlete()) return 'Semana actual · '+getCurrentWeekRangeLabel();
-  const range = getProgramWeekRangeLabel(S.currentWeek);
-  return 'Semana actual'+(range?' · '+range:'');
+  return 'Semana actual · '+getCurrentWeekRangeLabel();
 }
 window.getWeekHeaderLabel = getWeekHeaderLabel;
 
@@ -2714,13 +2712,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function renderAll() { renderSubnav(); renderMain(); }
+window.renderAll = renderAll;
 
 function renderSubnav() {
   const nav=document.getElementById('subnav');
   // Esto es lo que se ve arriba de todo en el celular — el atleta individual
   // veía acá "Sem 1" pelado (sin fecha); ahora usa el mismo texto unificado
   // "Semana actual · [fechas]" que ya tiene el resto de la app.
-  const wp=document.getElementById('week-pill'); if(wp) wp.textContent = S.isAdmin ? getCurrentWeekRangeLabel() : getWeekHeaderLabel();
+  const wp=document.getElementById('week-pill'); if(wp) wp.textContent = getCurrentWeekRangeLabel();
   const dwr=document.getElementById('desktop-week-range'); if(dwr) dwr.textContent = getWeekHeaderLabel();
   if(S.currentView!=='session') { nav.innerHTML=''; return; }
   // Sessions: for admin use A/B/C/D; for athlete with routine use routine session names
@@ -7555,13 +7554,28 @@ function getInitials(name) {
 }
 window.getInitials=getInitials;
 
-function avatarHtml(name, color, size, photoUrl) {
+function avatarHtml(name, color, size, photoUrl, zoom) {
   size = size||28;
-  if(photoUrl) return `<img src="${photoUrl}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;display:block" alt="">`;
+  if(photoUrl) return `<img src="${photoUrl}" ${zoom?'class="av-zoom" onclick="event.stopPropagation();openPhotoZoom(this.src)" title="Ver foto"':''} style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;display:block" alt="">`;
   const fs = Math.round(size*0.36);
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color||'var(--accent)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:${fs}px;font-weight:700;letter-spacing:-.02em">${getInitials(name)}</div>`;
 }
 window.avatarHtml=avatarHtml;
+// Foto en grande (se cierra tocando afuera, la cruz o con Escape).
+function openPhotoZoom(src) {
+  if(!src) return;
+  closePhotoZoom();
+  const o = document.createElement('div');
+  o.id = 'photo-zoom'; o.className = 'photo-zoom';
+  o.onclick = closePhotoZoom;
+  const img = document.createElement('img'); img.src = src; img.alt = '';
+  const x = document.createElement('button'); x.className = 'photo-zoom-x'; x.setAttribute('aria-label','Cerrar'); x.textContent = '×';
+  o.appendChild(img); o.appendChild(x);
+  document.body.appendChild(o);
+}
+function closePhotoZoom() { const o=document.getElementById('photo-zoom'); if(o) o.remove(); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closePhotoZoom(); });
+window.openPhotoZoom=openPhotoZoom; window.closePhotoZoom=closePhotoZoom;
 
 // Actualiza el avatar circular del topbar/sidebar (mi propia foto o iniciales)
 // — separado del render de #main porque el topbar no se vuelve a pintar en
@@ -8288,7 +8302,7 @@ function renderWeeklyComplianceGrid(members) {
       const h = v==null ? 3 : Math.round(8+v/100*20);
       const col = v==null ? 'var(--border2)' : getWellnessState(v).color;
       const tr = logs.some(l=>l.date===d);
-      return `<div class="hm-c" onclick="viewWellnessDay('${a.uid}','${d}')" title="${(a.name||a.email||'').replace(/"/g,'')} · ${d}${v!=null?' · '+v+'%':' · sin wellness'}"><span class="hm-bar"><i style="height:${v==null?4:Math.round(10+v/100*38)}px;background:${col}"></i></span><b style="color:${v==null?'var(--text3)':col}">${v==null?'—':v+'%'}</b><u style="${tr?'':'visibility:hidden'}"></u></div>`;
+      return `<div class="hm-c" onclick="openProxyForm('${a.uid}','${d}')" title="${(a.name||a.email||'').replace(/"/g,'')} · ${d}${v!=null?' · '+v+'%':' · sin wellness'}"><span class="hm-bar"><i style="height:${v==null?4:Math.round(10+v/100*38)}px;background:${col}"></i></span><b style="color:${v==null?'var(--text3)':col}">${v==null?'—':v+'%'}</b><u style="${tr?'':'visibility:hidden'}"></u></div>`;
     }).join('');
     return `<div class="hm-row"><div class="hm-nm" onclick="adminOpenAthlete('${a.uid}')">${(a.name||a.email||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>${cells}</div>`;
   }).join('');
@@ -9922,6 +9936,8 @@ function proxySetRpe(act, v) { const st=S._proxy; if(!st) return; if(!st.logs[ac
 function proxySetNote(act, v) { const st=S._proxy; if(!st) return; if(!st.logs[act]) st.logs[act]={mins:'',rpe:0}; st.logs[act].note = v; }
 window.proxySetNote = proxySetNote;
 function proxySetMins(act, v) { const st=S._proxy; if(!st) return; if(!st.logs[act]) st.logs[act]={mins:'',rpe:0}; st.logs[act].mins = v===''?'':Math.max(0,+v); renderProxySummary(); }
+function proxyOpenDetail() { const st=S._proxy; if(!st) return; const u=st.uid, d=st.date; closeProxyForm(); viewWellnessDay(u, d); }
+window.proxyOpenDetail = proxyOpenDetail;
 function proxyMore() { if(S._proxy) { S._proxy.more=true; renderProxyForm(); } }
 window.proxyDateChange=proxyDateChange; window.proxySetW=proxySetW; window.proxySleep=proxySleep; window.proxySetRpe=proxySetRpe; window.proxySetMins=proxySetMins; window.proxyMore=proxyMore;
 
@@ -9958,6 +9974,7 @@ function renderProxyForm() {
   const keepScroll = box ? box.scrollTop : 0;
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const sport = a ? athleteSportOf(a) : '';
+  const p0 = a?._personal || {};
   const sleep = st.w['sueño_horas'];
   const wHtml = WELLNESS_ITEMS.map(it=>{
     const cur = st.w[it.key];
@@ -9976,12 +9993,13 @@ function renderProxyForm() {
       <input type="number" inputmode="numeric" min="0" max="300" placeholder="Minutos" value="${d.mins===''?'':d.mins}" oninput="proxySetMins('${act.key}',this.value);document.getElementById('px-ua-${act.key}').textContent=(+this.value>0&&(S._proxy.logs['${act.key}']||{}).rpe>0)?(+this.value*S._proxy.logs['${act.key}'].rpe)+' UA':''" class="px-mins">
       <div class="px-rpe">${Array.from({length:10},(_,i)=>i+1).map(v=>`<button class="px-r ${d.rpe===v?'on':''}" style="${d.rpe===v?`background:hsl(${Math.round((10-v)/9*120)},65%,45%);border-color:transparent;color:#fff`:''}" onclick="proxySetRpe('${act.key}',${v})">${v}</button>`).join('')}</div></div>`;
   }).join('');
-  document.getElementById('proxy-title').textContent = 'Cargar en nombre de '+name;
+  document.getElementById('proxy-title').textContent = name + (st.date===todayLocal() ? ' · hoy' : ' · '+new Date(st.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'numeric'}));
   box.innerHTML = `<div class="px-date"><input type="date" value="${st.date}" max="${todayLocal()}" onchange="proxyDateChange(this.value)"><span>${new Date(st.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</span></div>
     <div class="px-sec">Wellness</div>${wHtml}${sleepHtml}
     <div class="px-sec">Carga</div>${lHtml}
     ${st.more?'':'<button class="abtn" style="margin:4px 0 8px" onclick="proxyMore()">Más actividades</button>'}
-    <div id="proxy-summary" class="px-sum"></div>`;
+    <div id="proxy-summary" class="px-sum"></div>
+    ${(p0.wellness?.[st.date] || (p0.history?._sessionLogs||[]).some(l=>l.date===st.date)) ? `<button class="px-more" onclick="proxyOpenDetail()">Mover este día a otra fecha</button>` : ''}`;
   box.scrollTop = keepScroll;
   renderProxySummary();
 }
@@ -10050,7 +10068,7 @@ function renderAtletaDetail(a) {
   let html = `<div class="team-detail-header">
     <button class="back-btn" onclick="goBackFromAthleteDetail()">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
-      ${avatarHtml(a.name||a.email, a.color, 30, a.photoUrl)}
+      ${avatarHtml(a.name||a.email, a.color, 36, a.photoUrl, true)}
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name || a.email}</span>
     </div>
     ${sibNav}
@@ -10159,7 +10177,7 @@ function renderPerfilTab(a) {
   <div class="pf-hero" style="--st:${dashSt.color}">
     <div class="pf-state"><b>${dashSt.text}</b><small>${escP(lastTxt)}</small></div>
     <div class="kpi3">
-      <div class="kpi-c" style="cursor:pointer" onclick="${todayFilled?`viewWellnessDay('${uid}','${today}')`:`openProxyForm('${uid}')`}">
+      <div class="kpi-c" style="cursor:pointer" onclick="openProxyForm('${uid}')">
         <b style="color:${todayFilled?wState.color:'var(--text3)'}">${todayFilled?todayPct+'%':'—'}</b>
         <span>Wellness hoy ${infoBtn('wellness')}</span>
         ${todayFilled?'':'<em class="kpi-add">+ Cargar</em>'}
@@ -10212,7 +10230,7 @@ function renderPerfilTab(a) {
         const r = +l.rpe;
         return `<span class="ar-ch ar-act">${c.svg||ATH_ICONS[c.ic]}${esc(c.txt)}${l.rpe?`<b class="${r>=7?'ar-hi':r>=5?'ar-mid':'ar-lo'}">RPE ${esc(l.rpe)}</b>`:''}${l.mins?`<i>${esc(l.mins)} min</i>`:''}</span>`;
       }).join('') : '<span class="wk-none">Sin actividad registrada</span>';
-      return `<div class="act-row" onclick="viewWellnessDay('${uid}','${d}')">
+      return `<div class="act-row" onclick="openProxyForm('${uid}','${d}')">
         <div class="act-d${d===today?' act-today':''}"><small>${dow}</small><b>${dt.getDate()}/${dt.getMonth()+1}</b></div>
         <div class="act-w"><i style="background:${col}"></i><span style="color:${col}">${sc!=null?sc+'%':'—'}</span></div>
         <div class="act-c">${chips}</div>
@@ -11502,9 +11520,13 @@ window.exportData=exportData;
 function viewWellnessDay(uid, date) {
   S.wellnessDetailUid = uid;
   S.wellnessDetailDate = date;
-  S._wellnessDetailReturnView = S.adminView;
+  // Solo cambiar adminView no hacía nada si la ficha estaba abierta desde Atletas/Dashboard/Equipos.
+  S._wellnessDetailReturnView = (S.currentView==='admin' && S.adminView!=='wellness_detail') ? S.adminView : 'athlete_detail';
+  S.currentView = 'admin';
   S.adminView = 'wellness_detail';
+  renderBottomBar();
   renderMain();
+  window.scrollTo(0,0);
 }
 window.viewWellnessDay=viewWellnessDay;
 
@@ -15641,7 +15663,7 @@ function athleteRowHtml(a, o) {
   }
   const rowCls = (o.status?' ar-full':'') + (o.status&&o.extra?' ar-x':'') + (d.critical?' ar-crit':(o.status&&o.status.tier===1?' ar-warn':''));
   return `<div class="ar-row${rowCls}" ${o.onclick?`onclick="${o.onclick}"`:''}>
-    <div class="ar-av">${avatarHtml(a.name||a.email, a.color, 38, a.photoUrl)}</div>
+    <div class="ar-av">${avatarHtml(a.name||a.email, a.color, 38, a.photoUrl, true)}</div>
     <div class="ar-who"><div class="ar-nm">${esc(a.name||a.email)}</div><div class="ar-sb">${esc(sub)}</div></div>
     <div class="ar-viz"><div class="ar-bars">${bars}</div>${pct}</div>
     ${load}

@@ -1155,3 +1155,17 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 @media(max-width:1179px){.pf-grid{grid-template-columns:1fr}}
 @media(max-width:759px){.pf-hero{grid-template-columns:1fr}.pf-hero .kpi3{border-left:0;border-top:1px solid var(--border)}}
 @media(max-width:599px){.pf-form{grid-template-columns:1fr}.pf-load b{font-size:22px}}
+
+.px-more{display:block;width:100%;margin-top:10px;background:transparent;border:0;color:var(--text3);font-family:inherit;font-size:12px;font-weight:600;text-decoration:underline;cursor:pointer;padding:6px}
+.px-more:hover{color:var(--text)}
+
+/* Semana actual en la barra de arriba: corta y con peso */
+.week-pill{font-weight:700;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+#topbar .topbar-logo span,#topbar .logo-wordmark{white-space:nowrap}
+/* Foto de perfil en grande */
+.av-zoom{cursor:zoom-in}
+.photo-zoom{position:fixed;inset:0;z-index:100000;background:rgba(8,10,18,.86);display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;animation:pz-in .15s ease-out}
+.photo-zoom img{max-width:min(92vw,560px);max-height:86vh;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);object-fit:contain;background:#111}
+.photo-zoom-x{position:absolute;top:14px;right:14px;width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;font-size:26px;line-height:1;cursor:pointer}
+@keyframes pz-in{from{opacity:0}to{opacity:1}}
+.app-logo>span{white-space:nowrap}

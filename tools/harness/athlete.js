@@ -66,6 +66,13 @@
   ok(document.getElementById('sf-mins').value==='55' && document.getElementById('sf-ua-preview').textContent==='385 UA','duración 55 y carga 385 UA en vivo ('+document.getElementById('sf-mins').value+' / '+document.getElementById('sf-ua-preview').textContent+')');
   ok(document.documentElement.scrollWidth<=innerWidth+1,'cierre de sesión: sin scroll horizontal');
   closeSessionFeedback(); openSessionFeedback(); await wait(150); ok(document.getElementById('sf-rpe').value==='','RPE: se limpia al reabrir'); closeSessionFeedback();
+  // ── "Semana actual" es la del calendario, aunque el programa haya empezado hace meses ──
+  { const keep=S.startDate, keepW=S.currentWeek; S.startDate='2026-06-07'; S.currentWeek=2; if(typeof renderAll==='function') renderAll(); else renderMain(); await wait(400);
+    const now=new Date(); const mon=new Date(now); mon.setDate(now.getDate()-((now.getDay()+6)%7)); const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+    const f=d=>d.toLocaleDateString('es-AR',{day:'numeric',month:'short'}); const want=f(mon)+' – '+f(sun);
+    ok(getWeekHeaderLabel()==='Semana actual · '+want,'semana actual: es la del calendario ('+getWeekHeaderLabel()+')');
+    ok(document.getElementById('week-pill').textContent===want,'semana actual: la barra de arriba muestra esta semana ('+document.getElementById('week-pill').textContent+')');
+    S.startDate=keep; S.currentWeek=keepW; }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();
