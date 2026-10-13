@@ -15663,7 +15663,7 @@ function athleteRowHtml(a, o) {
   }
   const rowCls = (o.status?' ar-full':'') + (o.status&&o.extra?' ar-x':'') + (d.critical?' ar-crit':(o.status&&o.status.tier===1?' ar-warn':''));
   return `<div class="ar-row${rowCls}" ${o.onclick?`onclick="${o.onclick}"`:''}>
-    <div class="ar-av">${avatarHtml(a.name||a.email, a.color, 38, a.photoUrl, true)}</div>
+    <div class="ar-av">${avatarHtml(a.name||a.email, a.color, 38, a.photoUrl)}</div>
     <div class="ar-who"><div class="ar-nm">${esc(a.name||a.email)}</div><div class="ar-sb">${esc(sub)}</div></div>
     <div class="ar-viz"><div class="ar-bars">${bars}</div>${pct}</div>
     ${load}

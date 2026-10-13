@@ -232,6 +232,12 @@
   { const u=S.dashAthletes?.[0]||S.adminAthletes[0]; const h=avatarHtml('X',null,38,'data:image/gif;base64,R0lGODlhAQABAAAAACw=',true); const tmp=document.createElement('div'); tmp.innerHTML=h; document.body.appendChild(tmp);
     const before=S.currentView; tmp.querySelector('img').click(); await wait(150); ok(!!document.querySelector('#photo-zoom img')&&S.currentView===before,'foto: se abre en grande'); document.getElementById('photo-zoom').click(); await wait(100); ok(!document.getElementById('photo-zoom'),'foto: se cierra tocando afuera'); tmp.remove();
     ok(!/onclick/.test(avatarHtml('X',null,38,null,true))&&!/openPhotoZoom/.test(avatarHtml('X',null,38,'a.png')),'foto: sin foto (o sin pedirlo) no hay zoom'); }
+  // ── en las listas la foto abre la FICHA; recién dentro de la ficha, tocarla la agranda ──
+  { const px="data:image/gif;base64,R0lGODlhAQABAAAAACw="; const dbx=JSON.parse(localStorage.getItem("__db")); dbx.users.u1.photoUrl=px; localStorage.setItem("__db",JSON.stringify(dbx)); const am=(S.adminAthletes||[]).find(x=>x.uid==="u1"); if(am) am.photoUrl=px; const row0={uid:"u1"};
+    S.atletaView=null; S.dashAthletes=null; switchView("dashboard"); await wait(2200); const im=document.querySelector("#dash-athlete-list .ar-av img"); ok(!!im,"lista: se ve la foto del atleta"); ok(!!im&&!im.classList.contains("av-zoom"),"lista: la foto no tiene zoom");
+    if(im){ im.click(); await wait(1500); ok(!document.getElementById("photo-zoom")&&!!S.atletaView&&S.atletaView.uid===row0.uid,"lista: tocar la foto abre la ficha de ese atleta");
+      const hd=document.querySelector(".team-detail-header img.av-zoom"); ok(!!hd,"ficha: la foto del encabezado se puede agrandar"); if(hd){ hd.click(); await wait(150); ok(!!document.querySelector("#photo-zoom img")&&!!S.atletaView,"ficha: tocar la foto la agranda (sin salir de la ficha)"); closePhotoZoom(); }
+      goBackFromAthleteDetail(); await wait(500); } }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
