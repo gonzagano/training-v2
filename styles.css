@@ -398,12 +398,18 @@ body{background:var(--bg);color:var(--text);font-size:16px}
 
 .body-zone-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;display:flex;gap:12px}
 .body-zone-svg{flex:1}
-.body-zone{cursor:pointer;transition:all .2s;fill:var(--bg3);stroke:var(--border2);stroke-width:1}
-.body-zone:hover{fill:rgba(30,42,82,0.12);stroke:var(--accent)}
-.body-zone.sel-low{fill:rgba(52,201,122,0.2);stroke:var(--green)}
-.body-zone.sel-med{fill:rgba(240,160,48,0.25);stroke:var(--amber)}
-.body-zone.sel-high{fill:rgba(195,58,44,0.28);stroke:var(--red)}
-.body-zone.is-selected{stroke-width:3;stroke:var(--accent);filter:drop-shadow(0 0 0 transparent)}
+/* Mapa de molestias: un músculo por zona, con la dirección de las fibras */
+:root{--bz-fib:rgba(18,21,28,.12);--bz-fill:#D3D9E6}
+[data-theme="dark"]{--bz-fib:rgba(255,255,255,.09);--bz-fill:#2c3149}
+.body-zone{cursor:pointer;transition:fill .15s;fill:var(--bz-fill);stroke:var(--bg2);stroke-width:1.4;stroke-linejoin:round}
+.body-zone:not(.sel-low):not(.sel-med):not(.sel-high):hover{fill:var(--accent-text);fill-opacity:.45}
+.body-zone.sel-low{fill:var(--green)}
+.body-zone.sel-med{fill:var(--amber)}
+.body-zone.sel-high{fill:var(--red)}
+.body-zone.is-selected{stroke:var(--text);stroke-width:1.8}
+.bz-fib,.bz-det,.bz-side{pointer-events:none}
+.bz-det{stroke:var(--bg2);stroke-width:1;opacity:.7}
+.bz-side text{font-family:var(--font-body);font-size:7px;font-weight:800;fill:var(--text3);text-anchor:middle}
 
 /* Cronómetro de descanso flotante */
 #rest-timer-fab{position:fixed;right:18px;bottom:86px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.25);cursor:pointer;z-index:150}

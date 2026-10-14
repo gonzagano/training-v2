@@ -77,6 +77,12 @@
     ok(!!document.querySelector('[onclick^="openAdminBodyMap"]'),'ficha: botón para cargar molestias');
     document.querySelector('[onclick^="openAdminBodyMap"]').click(); await wait(300);
     ok(document.querySelectorAll('#bodymap-body .body-zone').length===BODY_ZONES.front.length+BODY_ZONES.back.length,'mapa del profe: todas las zonas del cuerpo');
+    { const ids=[...BODY_ZONES.front,...BODY_ZONES.back].map(z=>z.id), need=['cuad_der','aductor_der','aductor_izq','oblicuo_der','muneca_izq','mano_izq','dorsal_izq','isq_der','gemelo_izq','pecho','abdomen','cadera','hombro_izq_b'];
+      ok(need.every(i=>ids.includes(i)) && new Set(ids).size===ids.length,'mapa de músculos: zonas nuevas y viejas, sin repetidos');
+      const box=id=>document.querySelector('#bodymap-body .body-zone[onclick="abmSelectZone(\''+id+'\')"]').getBoundingClientRect();
+      ok(box('cuad_der').left<box('cuad_izq').left && box('aductor_der').left<box('aductor_izq').left,'mapa de frente: la derecha del atleta a la izquierda de la pantalla');
+      ok(box('isq_izq').left<box('isq_der').left,'mapa de espalda: la izquierda del atleta a la izquierda de la pantalla');
+      ok(box('cuad_der').right<=box('aductor_der').left+2 && box('muneca_izq').bottom<=box('mano_izq').top+1,'mapa: cuádriceps y aductor separados; muñeca y mano separadas'); }
     const z=BODY_ZONES.front[3].id; document.querySelector('#bodymap-body .body-zone[onclick*="'+z+'"]').dispatchEvent(new MouseEvent('click',{bubbles:true})); await wait(250);
     await abmSave(false); ok(!P().u0.injuries?.[z],'mapa del profe: sin dolor marcado no guarda');
     abmSet('pain',6); abmSet('isInjury',true); abmSet('type','muscular'); document.getElementById('abm-note').value='Tirón entrenando'; document.getElementById('abm-note').dispatchEvent(new Event('input',{bubbles:true}));

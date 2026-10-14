@@ -613,93 +613,121 @@ function getWellnessState(pct) {
 }
 window.getWellnessState=getWellnessState;
 
-// BODY_ZONES: type 'ellipse' → cx,cy,rx,ry | type 'circle' → cx,cy,r
-// Joints = circle, segments = ellipse. viewBox 0 0 200 400
+// BODY_ZONES: mapa de molestias con la forma de cada músculo (frente y espalda).
+// Cada zona tiene una o más formas (s): {d} = path, {r:[x,y,w,h,rx]} = rect,
+// {e:[cx,cy,rx,ry]} = elipse; m:true = la misma forma espejada al otro lado
+// (x → 200-x). Coordenadas en un cuerpo de 200 de ancho.
+// Lados: los ids conservan el lado del ATLETA (por eso las molestias ya
+// cargadas siguen apuntando al mismo lugar). De frente, su derecha queda a la
+// izquierda de la pantalla; de espalda, su izquierda queda a la izquierda.
+// Los ids viejos se mantienen; los nuevos (aductor, oblicuo, dorsal, muñeca y
+// mano de espalda) se suman.
+const BZ = {
+  delt:  'M69 61Q55 63 52 79Q51 91 55 99Q60 92 63 86Q66 73 76 65Z',
+  pec:   'M76 65Q88 62 99 66L99 93Q90 98 80 94Q70 90 66 80Q66 72 76 65Z',
+  arm:   'M55 101Q51 116 53 131Q57 134 61 131Q65 115 64 92Q60 96 55 101Z',
+  fore:  'M53 135Q46 152 43 170Q47 172 51 171Q57 154 62 136Q58 138 53 135Z',
+  hand:  'M42 180Q37 193 40 205Q45 209 49 205Q52 193 51.5 180ZM41.5 184Q37 189 38.5 196L40.5 195.5Q40 190 43 186.5Z',
+  stern: 'M91 44Q95 52 99 62L96 63Q90 54 88 46Z',
+  trapF: 'M89 49Q81 57 69 61Q80 64 90 61Q94 58 95 56Z',
+  obl:   'M79 97Q74 118 79 142Q83 150 88 156V98Q84 96 79 97Z',
+  pelv:  'M89.5 140H99V162Q93 159 90.5 150Z',
+  quad:  'M77 160Q70 185 73 214Q76 228 84 234Q89 232 90 226Q91 200 89.5 178Q87 163 81 157Z',
+  add:   'M89.5 163Q97 165 99.5 169V188Q96 204 91 218Q91.5 198 89.5 178Z',
+  tib:   'M78 252Q74 276 79 306Q82 309 85 306Q86 278 85 252Q81 250 78 252Z',
+  calfF: 'M86 253Q95 266 93 290Q90 302 86 306Q88 280 86 253Z',
+  foot:  'M77 321Q71 333 79 338H93Q95 330 89 321Z',
+  upB:   'M77 66Q71 77 73 90H89V72Q84 68 77 66Z',
+  lat:   'M73 92Q70 108 78 126Q84 132 89 130L88.5 92Z',
+  lumb:  'M90.5 116L99 120V150H90.5Q89 134 90.5 116Z',
+  glut:  'M75 152Q70 170 80 182Q91 186 99 178V152Q88 148 75 152Z',
+  ham:   'M75 186Q71 210 77 234Q84 238 90 236Q95 212 95 188Q86 190 75 186Z',
+  gasL:  'M77 252Q70 270 77 290Q82 296 86 292Q88 270 86 252Q81 249 77 252Z',
+  gasM:  'M87 252Q95 268 92 288Q89 294 86.5 292Q88 270 87 252Z',
+  achil: 'M79 294Q80 306 82 314H88Q90 304 91 294Q85 298 79 294Z',
+};
+const BZ_ELBOW = [57.5,133,4.5,3.4], BZ_WRIST = [42.5,173,9.5,5,2.5];
+// Una zona por lado: `m` dice si la forma de ese lado va espejada.
+const bzPair = (idA, labelA, idB, labelB, shapes, mirrorB) => [
+  {id:idA, label:labelA, s:shapes.map(s=>({...s, m:!!s.m !== !!(!mirrorB)}))},
+  {id:idB, label:labelB, s:shapes.map(s=>({...s, m:!!s.m !==  !!mirrorB}))},
+];
+// De frente: derecha del atleta sin espejar (izquierda de la pantalla), izquierda espejada.
+const bzFront = (base, labelD, labelI, shapes) => bzPair(base+'_der', labelD, base+'_izq', labelI, shapes, true);
+// De espalda: izquierda del atleta sin espejar, derecha espejada.
+const bzBack = (idI, labelI, idD, labelD, shapes) => bzPair(idI, labelI, idD, labelD, shapes, true);
 const BODY_ZONES = {
   front: [
-    // HEAD & NECK
-    {id:'cabeza',      label:'Cabeza',           type:'ellipse', cx:100, cy:22,  rx:18, ry:20},
-    {id:'cuello',      label:'Cuello',            type:'ellipse', cx:100, cy:50,  rx:8,  ry:10},
-    // SHOULDERS (joints)
-    {id:'hombro_izq',  label:'Hombro izq.',       type:'circle',  cx:72,  cy:68,  r:10},
-    {id:'hombro_der',  label:'Hombro der.',        type:'circle',  cx:128, cy:68,  r:10},
-    // CHEST & ABDOMEN
-    {id:'pecho',       label:'Pecho',             type:'ellipse', cx:100, cy:85,  rx:22, ry:18},
-    {id:'abdomen',     label:'Abdomen',           type:'ellipse', cx:100, cy:120, rx:18, ry:16},
-    // ARMS
-    {id:'brazo_izq',   label:'Brazo izq.',        type:'ellipse', cx:62,  cy:95,  rx:8,  ry:22},
-    {id:'brazo_der',   label:'Brazo der.',         type:'ellipse', cx:138, cy:95,  rx:8,  ry:22},
-    // ELBOWS (joints)
-    {id:'codo_izq',    label:'Codo izq.',          type:'circle',  cx:56,  cy:120, r:8},
-    {id:'codo_der',    label:'Codo der.',           type:'circle',  cx:144, cy:120, r:8},
-    // FOREARMS
-    {id:'antebrazo_izq', label:'Antebrazo izq.',  type:'ellipse', cx:50,  cy:145, rx:7,  ry:18},
-    {id:'antebrazo_der', label:'Antebrazo der.',   type:'ellipse', cx:150, cy:145, rx:7,  ry:18},
-    // WRISTS (joints)
-    {id:'muneca_izq',  label:'Muñeca izq.',        type:'circle',  cx:46,  cy:167, r:6},
-    {id:'muneca_der',  label:'Muñeca der.',         type:'circle',  cx:154, cy:167, r:6},
-    // HANDS
-    {id:'mano_izq',    label:'Mano izq.',          type:'ellipse', cx:43,  cy:183, rx:7,  ry:12},
-    {id:'mano_der',    label:'Mano der.',           type:'ellipse', cx:157, cy:183, rx:7,  ry:12},
-    // HIPS (joint area)
-    {id:'cadera',      label:'Cadera',            type:'ellipse', cx:100, cy:145, rx:20, ry:12},
-    // QUADRICEPS
-    {id:'cuad_izq',    label:'Cuádriceps izq.',   type:'ellipse', cx:87,  cy:192, rx:11, ry:30},
-    {id:'cuad_der',    label:'Cuádriceps der.',    type:'ellipse', cx:113, cy:192, rx:11, ry:30},
-    // KNEES (joints)
-    {id:'rodilla_izq', label:'Rodilla izq.',       type:'circle',  cx:87,  cy:228, r:10},
-    {id:'rodilla_der', label:'Rodilla der.',        type:'circle',  cx:113, cy:228, r:10},
-    // TIBIAS
-    {id:'tibia_izq',   label:'Tibia / Pantorrilla izq.', type:'ellipse', cx:86,  cy:268, rx:9,  ry:28},
-    {id:'tibia_der',   label:'Tibia / Pantorrilla der.',  type:'ellipse', cx:114, cy:268, rx:9,  ry:28},
-    // ANKLES (joints)
-    {id:'tobillo_izq', label:'Tobillo izq.',       type:'circle',  cx:86,  cy:300, r:7},
-    {id:'tobillo_der', label:'Tobillo der.',        type:'circle',  cx:114, cy:300, r:7},
-    // FEET
-    {id:'pie_izq',     label:'Pie izq.',           type:'ellipse', cx:82,  cy:316, rx:12, ry:8},
-    {id:'pie_der',     label:'Pie der.',            type:'ellipse', cx:118, cy:316, rx:12, ry:8},
+    {id:'cabeza',  label:'Cabeza', s:[{e:[100,24,14,18]}]},
+    {id:'cuello',  label:'Cuello', s:[{d:'M92 38H108L109 60Q100 64 91 60Z'},{d:BZ.stern},{d:BZ.stern,m:true},{d:BZ.trapF},{d:BZ.trapF,m:true}]},
+    ...bzFront('hombro','Hombro der.','Hombro izq.',[{d:BZ.delt}]),
+    {id:'pecho',   label:'Pectorales', s:[{d:BZ.pec},{d:BZ.pec,m:true}]},
+    ...bzFront('brazo','Bíceps der.','Bíceps izq.',[{d:BZ.arm}]),
+    ...bzFront('antebrazo','Antebrazo der.','Antebrazo izq.',[{d:BZ.fore}]),
+    ...bzFront('codo','Codo der.','Codo izq.',[{e:BZ_ELBOW}]),
+    ...bzFront('muneca','Muñeca der.','Muñeca izq.',[{r:BZ_WRIST}]),
+    ...bzFront('mano','Mano der.','Mano izq.',[{d:BZ.hand}]),
+    {id:'abdomen', label:'Abdominales', s:[[97,12],[111,12],[125,13]].flatMap(([y,h])=>[{r:[89.5,y,9.5,h,2.5]},{r:[89.5,y,9.5,h,2.5],m:true}])},
+    ...bzFront('oblicuo','Oblicuo der.','Oblicuo izq.',[{d:BZ.obl}]),
+    {id:'cadera',  label:'Cadera / pelvis', s:[{d:BZ.pelv},{d:BZ.pelv,m:true}]},
+    {id:'cuad_der', label:'Cuádriceps der.', s:[{d:BZ.quad}]},
+    {id:'cuad_izq', label:'Cuádriceps izq.', s:[{d:BZ.quad,m:true}]},
+    ...bzFront('aductor','Aductor der.','Aductor izq.',[{d:BZ.add}]),
+    ...bzFront('rodilla','Rodilla der.','Rodilla izq.',[{e:[85,241,7.5,8]}]),
+    ...bzFront('tibia','Tibial / pantorrilla der.','Tibial / pantorrilla izq.',[{d:BZ.tib},{d:BZ.calfF}]),
+    ...bzFront('tobillo','Tobillo der.','Tobillo izq.',[{e:[84,314,5,5]}]),
+    ...bzFront('pie','Pie der.','Pie izq.',[{d:BZ.foot}]),
   ],
   back: [
-    // HEAD & NECK
-    {id:'cabeza_b',    label:'Cabeza (post.)',     type:'ellipse', cx:100, cy:22,  rx:18, ry:20},
-    {id:'cuello_b',    label:'Cuello (post.)',     type:'ellipse', cx:100, cy:50,  rx:8,  ry:10},
-    // SHOULDER JOINTS
-    {id:'hombro_izq_b',label:'Hombro izq. (post.)',type:'circle', cx:72,  cy:68,  r:10},
-    {id:'hombro_der_b',label:'Hombro der. (post.)',type:'circle', cx:128, cy:68,  r:10},
-    // UPPER BACK
-    {id:'trapecio',    label:'Trapecio',           type:'ellipse', cx:100, cy:75,  rx:22, ry:14},
-    {id:'espalda_alta',label:'Espalda alta',       type:'ellipse', cx:100, cy:103, rx:20, ry:16},
-    // ARMS (back)
-    {id:'brazo_izq_b', label:'Brazo izq. (post.)',type:'ellipse', cx:62,  cy:95,  rx:8,  ry:22},
-    {id:'brazo_der_b', label:'Brazo der. (post.)', type:'ellipse', cx:138, cy:95,  rx:8,  ry:22},
-    // ELBOWS
-    {id:'codo_izq_b',  label:'Codo izq. (post.)', type:'circle',  cx:56,  cy:120, r:8},
-    {id:'codo_der_b',  label:'Codo der. (post.)',  type:'circle',  cx:144, cy:120, r:8},
-    // FOREARMS (back)
-    {id:'antebrazo_izq_b',label:'Antebrazo izq. (post.)',type:'ellipse',cx:50,cy:145,rx:7,ry:18},
-    {id:'antebrazo_der_b',label:'Antebrazo der. (post.)',type:'ellipse',cx:150,cy:145,rx:7,ry:18},
-    // LOWER BACK
-    {id:'espalda_baja', label:'Espalda baja / Lumbares', type:'ellipse', cx:100, cy:132, rx:18, ry:14},
-    // GLUTES
-    {id:'gluteo_izq',  label:'Glúteo izq.',        type:'ellipse', cx:87,  cy:158, rx:13, ry:16},
-    {id:'gluteo_der',  label:'Glúteo der.',         type:'ellipse', cx:113, cy:158, rx:13, ry:16},
-    // HAMSTRINGS
-    {id:'isq_izq',     label:'Isquiotibial izq.',  type:'ellipse', cx:87,  cy:200, rx:11, ry:28},
-    {id:'isq_der',     label:'Isquiotibial der.',   type:'ellipse', cx:113, cy:200, rx:11, ry:28},
-    // KNEES (back)
-    {id:'rodilla_izq_b',label:'Rodilla izq. (post.)',type:'circle',cx:87, cy:228, r:10},
-    {id:'rodilla_der_b',label:'Rodilla der. (post.)',type:'circle',cx:113,cy:228, r:10},
-    // CALVES
-    {id:'gemelo_izq',  label:'Gemelo izq.',         type:'ellipse', cx:86,  cy:263, rx:10, ry:26},
-    {id:'gemelo_der',  label:'Gemelo der.',          type:'ellipse', cx:114, cy:263, rx:10, ry:26},
-    // ANKLES (back)
-    {id:'tobillo_izq_b',label:'Tobillo izq. (post.)',type:'circle',cx:86, cy:300, r:7},
-    {id:'tobillo_der_b',label:'Tobillo der. (post.)',type:'circle',cx:114,cy:300, r:7},
-    // FEET (back)
-    {id:'pie_izq_b',   label:'Pie izq. (post.)',    type:'ellipse', cx:82,  cy:316, rx:12, ry:8},
-    {id:'pie_der_b',   label:'Pie der. (post.)',     type:'ellipse', cx:118, cy:316, rx:12, ry:8},
+    {id:'cabeza_b', label:'Cabeza (post.)', s:[{e:[100,24,14,18]}]},
+    {id:'cuello_b', label:'Cuello (post.)', s:[{d:'M92 38H108L109 56Q100 58 91 56Z'}]},
+    {id:'trapecio', label:'Trapecio', s:[{d:'M100 44L91 52Q80 58 68 62Q82 66 90 72L100 116L110 72Q118 66 132 62Q120 58 109 52Z'}]},
+    ...bzBack('hombro_izq_b','Hombro izq. (post.)','hombro_der_b','Hombro der. (post.)',[{d:BZ.delt}]),
+    {id:'espalda_alta', label:'Espalda alta', s:[{d:BZ.upB},{d:BZ.upB,m:true}]},
+    ...bzBack('dorsal_izq','Dorsal izq.','dorsal_der','Dorsal der.',[{d:BZ.lat}]),
+    ...bzBack('brazo_izq_b','Tríceps izq.','brazo_der_b','Tríceps der.',[{d:BZ.arm}]),
+    ...bzBack('antebrazo_izq_b','Antebrazo izq. (post.)','antebrazo_der_b','Antebrazo der. (post.)',[{d:BZ.fore}]),
+    ...bzBack('codo_izq_b','Codo izq. (post.)','codo_der_b','Codo der. (post.)',[{e:BZ_ELBOW}]),
+    ...bzBack('muneca_izq_b','Muñeca izq. (post.)','muneca_der_b','Muñeca der. (post.)',[{r:BZ_WRIST}]),
+    ...bzBack('mano_izq_b','Mano izq. (dorso)','mano_der_b','Mano der. (dorso)',[{d:BZ.hand}]),
+    {id:'espalda_baja', label:'Espalda baja / Lumbares', s:[{d:BZ.lumb},{d:BZ.lumb,m:true}]},
+    ...bzBack('gluteo_izq','Glúteo izq.','gluteo_der','Glúteo der.',[{d:BZ.glut}]),
+    ...bzBack('isq_izq','Isquiotibial izq.','isq_der','Isquiotibial der.',[{d:BZ.ham}]),
+    ...bzBack('rodilla_izq_b','Rodilla izq. (post.)','rodilla_der_b','Rodilla der. (post.)',[{e:[85,243,7,5.5]}]),
+    ...bzBack('gemelo_izq','Gemelo izq.','gemelo_der','Gemelo der.',[{d:BZ.gasL},{d:BZ.gasM}]),
+    ...bzBack('tobillo_izq_b','Tobillo / Aquiles izq.','tobillo_der_b','Tobillo / Aquiles der.',[{d:BZ.achil}]),
+    ...bzBack('pie_izq_b','Talón izq.','pie_der_b','Talón der.',[{e:[85,322,7,6]}]),
   ]
 };
+// Líneas de detalle (no se tocan): porciones del cuádriceps y del isquiotibial.
+const BODY_DETAIL = {
+  front: ['M80 163Q77 196 83 231','M89 204Q92 220 86 232'],
+  back:  ['M84 188Q83 212 84 236'],
+};
+// Las formas de una zona, listas para meter en un <svg>.
+function bodyZoneShapesSvg(z) {
+  return z.s.map(sh=>{
+    const t = sh.m ? ' transform="translate(200 0) scale(-1 1)"' : '';
+    if(sh.e) return `<ellipse cx="${sh.e[0]}" cy="${sh.e[1]}" rx="${sh.e[2]}" ry="${sh.e[3]}"${t}/>`;
+    if(sh.r) return `<rect x="${sh.r[0]}" y="${sh.r[1]}" width="${sh.r[2]}" height="${sh.r[3]}" rx="${sh.r[4]}"${t}/>`;
+    return `<path d="${sh.d}"${t}/>`;
+  }).join('');
+}
+// Mapa completo de un lado (frente/espalda). clsOf(z) = clases de la zona;
+// clickFn = nombre de la función global que recibe el id de la zona.
+function bodyMapSvg(side, clsOf, clickFn, maxH) {
+  const zones = BODY_ZONES[side] || [];
+  const zonesSvg = zones.map(z=>`<g class="${clsOf(z)}" onclick="${clickFn}('${z.id}')"><title>${z.label}</title>${bodyZoneShapesSvg(z)}</g>`).join('');
+  const fibers = `<g class="bz-fib" fill="url(#bzFib)">${zones.map(bodyZoneShapesSvg).join('')}</g>`;
+  const det = (BODY_DETAIL[side]||[]).map(d=>`<path d="${d}"/><path d="${d}" transform="translate(200 0) scale(-1 1)"/>`).join('');
+  const sides = side==='front' ? ['DER','IZQ'] : ['IZQ','DER'];
+  return `<svg class="bz-svg" viewBox="32 2 136 350" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:${maxH||340}px">
+    <defs><pattern id="bzFib" width="3.2" height="3.2" patternUnits="userSpaceOnUse" patternTransform="rotate(28)"><path d="M0 .6H3.2" stroke-width=".7" style="stroke:var(--bz-fib)"/></pattern></defs>
+    ${zonesSvg}${fibers}<g class="bz-det" fill="none">${det}</g>
+    <g class="bz-side"><text x="62" y="350">${sides[0]}</text><text x="138" y="350">${sides[1]}</text></g>
+  </svg>`;
+}
+const bodyZoneSevCls = i => (i && i.pain>0) ? (i.severity==='grave'?' sel-high':i.severity==='moderada'?' sel-med':' sel-low') : '';
 
 // ── REFERENCIA / LEYENDAS DE MÉTRICAS ───────────────────────────
 // Texto corto para el botón "?" que acompaña a cada número de carga o de
@@ -5134,21 +5162,7 @@ function renderWellness() {
 }
 
 function renderBodySVG(side) {
-  const zones=BODY_ZONES[side];
-  const shapes=zones.map(z=>{
-    const inj=S.injuries[z.id];
-    let cls='body-zone';
-    if(inj && inj.pain>0) { cls+= inj.severity==='grave'?' sel-high':inj.severity==='moderada'?' sel-med':' sel-low'; }
-    if(S.selectedZone===z.id) cls+=' is-selected';
-    const click=`onclick="selectZone('${z.id}')"`;
-    const tip=`<title>${z.label}</title>`;
-    if(z.type==='circle') {
-      return `<circle class="${cls}" cx="${z.cx}" cy="${z.cy}" r="${z.r}" ${click}>${tip}</circle>`;
-    } else {
-      return `<ellipse class="${cls}" cx="${z.cx}" cy="${z.cy}" rx="${z.rx}" ry="${z.ry}" ${click}>${tip}</ellipse>`;
-    }
-  }).join('');
-  return `<svg viewBox="0 0 200 335" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:320px">${shapes}</svg>`;
+  return bodyMapSvg(side, z=>'body-zone'+bodyZoneSevCls(S.injuries[z.id])+(S.selectedZone===z.id?' is-selected':''), 'selectZone', 420);
 }
 
 function renderZoneDetail() {
@@ -9644,15 +9658,7 @@ function abmSetOstrc(q, v) { const st=S._abm; if(!st||!st.draft) return; if(!st.
 function abmNote(v) { const st=S._abm; if(st&&st.draft) st.draft.note = v; }
 function abmSvg(side) {
   const st = S._abm, inj = abmInjuries();
-  const shapes = BODY_ZONES[side].map(z=>{
-    const i = (st.zone===z.id && st.draft) ? st.draft : inj[z.id];
-    let cls = 'body-zone';
-    if(i && i.pain>0) cls += i.severity==='grave'?' sel-high':i.severity==='moderada'?' sel-med':' sel-low';
-    if(st.zone===z.id) cls += ' is-selected';
-    const at = `class="${cls}" onclick="abmSelectZone('${z.id}')"`;
-    return z.type==='circle' ? `<circle ${at} cx="${z.cx}" cy="${z.cy}" r="${z.r}"><title>${z.label}</title></circle>` : `<ellipse ${at} cx="${z.cx}" cy="${z.cy}" rx="${z.rx}" ry="${z.ry}"><title>${z.label}</title></ellipse>`;
-  }).join('');
-  return `<svg viewBox="0 0 200 335" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:300px">${shapes}</svg>`;
+  return bodyMapSvg(side, z=>'body-zone'+bodyZoneSevCls((st.zone===z.id && st.draft) ? st.draft : inj[z.id])+(st.zone===z.id?' is-selected':''), 'abmSelectZone', 400);
 }
 function renderAdminBodyMap() {
   const st = S._abm; if(!st) return;
