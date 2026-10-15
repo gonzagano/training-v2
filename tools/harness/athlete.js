@@ -43,11 +43,11 @@
       txtBad('sesión con carga');
     }
   }
-  // ── "Hoy toca X kg" (Día 1: sentadilla al 75% con RM 110 → 83) ──
+  // ── "Hoy toca X kg" (Día 1: sentadilla al 75% con RM 110 → 82,5, redondeado al disco) ──
   if(sessions.includes('Día 1')){
     S.currentSession='Día 1'; renderMain(); await wait(600);
     // los bloques arrancan plegados: se mira el contenido del DOM, no solo lo visible
-    ok(/hoy toca 83/i.test(document.getElementById('main').textContent),'aparece "Hoy toca 83 kg" en el ejercicio con %RM');
+    ok(/hoy toca 82,5 kg/i.test(document.getElementById('main').textContent),'aparece "Hoy toca 82,5 kg" (redondeado al disco) en el ejercicio con %RM');
   }
   // ── la carga de su deporte dice "Entrenamiento de handball" (lo hereda del equipo) ──
   ok(mySport()==='Handball','deporte del atleta: lo toma de su equipo ('+mySport()+')');
@@ -73,6 +73,14 @@
     ok(getWeekHeaderLabel()==='Semana actual · '+want,'semana actual: es la del calendario ('+getWeekHeaderLabel()+')');
     ok(document.getElementById('week-pill').textContent===want,'semana actual: la barra de arriba muestra esta semana ('+document.getElementById('week-pill').textContent+')');
     S.startDate=keep; S.currentWeek=keepW; }
+  // ── calculadora: método "Reps + RPE" ──
+  { switchView('session'); await wait(600); openRMCalcTab(); await wait(500);
+    const lift=document.querySelector('[onclick^="setRMCalcMode"][onclick*="rpe"]'); ok(!!lift,'calculadora: está el método Reps + RPE'); lift.click(); await wait(300);
+    const kg=[...document.querySelectorAll('#main input.field-inp')].find(i=>/rpeKg/.test(i.getAttribute('onchange')||'')); kg.value='140'; kg.dispatchEvent(new Event('change',{bubbles:true})); await wait(200);
+    const sels=()=>[...document.querySelectorAll('#main select.field-inp')]; const rs=sels().find(x=>/rpeReps/.test(x.getAttribute('onchange'))); rs.value='2'; rs.dispatchEvent(new Event('change',{bubbles:true})); await wait(200);
+    const rp=sels().find(x=>/rpeRpe/.test(x.getAttribute('onchange'))); rp.value='8.5'; rp.dispatchEvent(new Event('change',{bubbles:true})); await wait(300);
+    const txt=document.getElementById('main').innerText.replace(/\s+/g,' '); ok(txt.includes('157 kg · 1RM estimado'),'calculadora: 140 × 2 a RPE 8,5 → 1RM 157 kg');
+    const cells=[...document.querySelectorAll('.rmc-reps > div b')].map(b=>b.textContent); ok(cells.length===12&&cells[0]==='157,5'&&cells[1]==='150','calculadora: carga para 1 a 12 reps, redondeada al disco ('+cells.slice(0,3).join(' / ')+')'); txtBad('calculadora RPE'); }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();

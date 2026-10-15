@@ -113,8 +113,8 @@
   ok(document.querySelectorAll('.cmp-ath [onclick^="openExerciseOverrideModal"]').length>0&&document.querySelectorAll('.cmp-ath [onclick^="openCoachNoteModal"]').length>0,'ficha horizontal: Personalizar y Nota en cada ejercicio');
   // íconos chicos en vez de las pastillas "Personalizar"/"Nota"
   ok(!/Personalizar|Nota/.test(document.querySelector('.cmp-ath').innerText),'ficha horizontal: Personalizar y Nota son íconos');
-  // kilos que tocan por %RM (Sentadilla 75% de 110 = 83) y aviso si falta el RM
-  ok(/83 kg/.test(document.querySelector('.cmp-ath').innerText),'ficha horizontal: muestra los kilos que tocan por %RM');
+  // kilos que tocan por %RM (Sentadilla 75% de 110 = 82,5, redondeado al disco de 2,5)
+  ok(/82,5 kg/.test(document.querySelector('.cmp-ath').innerText),'ficha horizontal: kilos que tocan por %RM, redondeados al disco (82,5)');
   // cargar kilos y RPE desde la columna → quedan en el documento de ESE atleta
   { const before=JSON.stringify(JSON.parse(localStorage.getItem('__db')).personal.u1);
     const ins=document.querySelectorAll('.cmp-ath .cmp-done-in')[1].querySelectorAll('input'); ok(ins.length===2,'ficha horizontal: campos de kilos y RPE en cada ejercicio');
@@ -271,6 +271,21 @@
     ok(localStorage.getItem('gm-sidebar')==='collapsed','panel: recuerda la elección');
     document.getElementById('sb-toggle').click(); await wait(400); ok(Math.abs(tb.getBoundingClientRect().width-w0)<2,'panel: se vuelve a abrir'); }
   else ok(getComputedStyle(document.getElementById('sb-toggle')).display==='none','celular/tablet angosta: no hay botón de panel');
+  // ── 1RM por RPE: misma tabla que la planilla ──
+  { const near=(a,b)=>Math.abs(a-b)<0.01;
+    ok(near(rmFromRpe(140,2,8.5),156.9507)&&near(rmFromRpe(65,2,10),68.0628)&&near(rmFromRpe(90,8,7),135.0338)&&rmFromRpe(175,1,10)===175,'1RM por RPE: da igual que la planilla (140×2@8,5 = 156,95)');
+    ok(rpePct(13,9)===null&&rpePct(3,4)===null&&rpePct(3,9.2)===0.892,'1RM por RPE: fuera de tabla no inventa; RPE se redondea al medio punto');
+    ok(roundPlate(83)===82.5&&roundPlate(83.8)===85&&fmtKg(82.5)==='82,5','redondeo al disco de 2,5 kg'); }
+  // ── RM estimado con lo que el atleta registró, y "Usar como RM" ──
+  { S.atletaView=null; switchView('atletas'); await wait(1200); openAtleta('u0'); await wait(1800);
+    const a0=S.adminAthletes.find(x=>x.uid==='u0'); const dbx=JSON.parse(localStorage.getItem('__db'));
+    const rec={date:todayLocal(), exercises:{x1:{load:100, rpe:8, checked:true}}}; dbx.personal.u0.history['w1-Día 1']=rec; localStorage.setItem('__db',JSON.stringify(dbx));
+    a0._personal.history=a0._personal.history||{}; a0._personal.history['w1-Día 1']=rec; a0._personal.oneRM.sentadilla_barra=110;
+    setAtletaSubview('perfil'); await wait(600);
+    const est=estimateRMsFromHistory(a0).sentadilla_barra; ok(est&&Math.abs(est.rm-100/0.762)<0.01&&est.reps===6&&est.rpe===8,'RM estimado: 100 kg × 6 @8 → 131,2 kg');
+    const btn=document.querySelector('.rm-use[onclick*="sentadilla_barra"]'); ok(!!btn&&/131/.test(btn.closest('.rm-est').innerText),'ficha: muestra el estimado y el botón para usarlo');
+    if(btn){ btn.click(); await wait(600); ok(JSON.parse(localStorage.getItem('__db')).personal.u0.oneRM.sentadilla_barra===131,'Usar como RM: queda guardado (131) en el atleta'); ok(!document.querySelector('.rm-use[onclick*="sentadilla_barra"]'),'después de usarlo ya no lo vuelve a ofrecer'); }
+    txtBad('perfil con RM estimado'); goBackFromAthleteDetail(); await wait(400); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

@@ -2874,6 +2874,75 @@ const RM_CALC_LIFTS = [
 ];
 window.RM_CALC_LIFTS = RM_CALC_LIFTS;
 
+// ── 1RM POR RPE (repeticiones + qué tan cerca del fallo) ─────────────────
+// Tabla reps × RPE → % del 1RM que representa esa serie. Filas: RPE 10 a 4,5
+// (de a medio punto); columnas: 1 a 12 repeticiones. Es la escala tipo RTS de
+// uso común: cada punto menos de RPE ≈ una repetición más "en reserva".
+const RPE_LEVELS = [10,9.5,9,8.5,8,7.5,7,6.5,6,5.5,5,4.5];
+const RPE_PCT_TABLE = [
+  [1,0.955,0.922,0.892,0.863,0.837,0.811,0.786,0.762,0.739,0.707,0.68],
+  [0.9775,0.9385,0.907,0.8775,0.85,0.824,0.7985,0.774,0.7505,0.723,0.6935,0.6665],
+  [0.955,0.922,0.892,0.863,0.837,0.811,0.786,0.762,0.739,0.707,0.68,0.653],
+  [0.922,0.892,0.863,0.837,0.811,0.786,0.762,0.739,0.707,0.68,0.653,0.626],
+  [0.892,0.863,0.837,0.811,0.786,0.762,0.739,0.707,0.68,0.653,0.626,0.599],
+  [0.8775,0.85,0.824,0.7985,0.774,0.7505,0.723,0.6935,0.6665,0.6395,0.6125,0.5855],
+  [0.85,0.824,0.7985,0.774,0.7505,0.723,0.6935,0.6665,0.6395,0.6125,0.5855,0.5585],
+  [0.824,0.7985,0.774,0.7505,0.723,0.6935,0.6665,0.6395,0.6125,0.5855,0.5585,0.5315],
+  [0.7985,0.774,0.7505,0.723,0.6935,0.6665,0.6395,0.6125,0.5855,0.5585,0.5315,0.5045],
+  [0.774,0.7505,0.723,0.6935,0.6665,0.6395,0.6125,0.5855,0.5585,0.5315,0.5045,0.4775],
+  [0.7505,0.723,0.6935,0.6665,0.6395,0.6125,0.5855,0.5585,0.5315,0.5045,0.4775,0.4505],
+  [0.707,0.68,0.653,0.626,0.599,0.572,0.545,0.518,0.491,0.464,0.437,0.41],
+];
+// % del 1RM de una serie (reps 1–12, RPE 4,5–10 redondeado al medio punto). null si no aplica.
+function rpePct(reps, rpe) {
+  reps = Math.round(+reps); rpe = Math.round((+rpe)*2)/2;
+  if(!(reps>=1 && reps<=12)) return null;
+  const i = RPE_LEVELS.indexOf(rpe); if(i<0) return null;
+  return RPE_PCT_TABLE[i][reps-1];
+}
+function rmFromRpe(kg, reps, rpe) { const p = rpePct(reps, rpe); return (p && kg>0) ? kg/p : null; }
+// Redondeo al disco: lo que se puede armar en la barra (2,5 kg).
+function roundPlate(kg, step) { step = step||2.5; return Math.round(kg/step)*step; }
+function fmtKg(kg) { if(kg==null || !isFinite(kg)) return '?'; const r = Math.round(kg*10)/10; return String(r).replace('.',','); }
+window.rpePct=rpePct; window.rmFromRpe=rmFromRpe; window.roundPlate=roundPlate; window.fmtKg=fmtKg; window.RPE_LEVELS=RPE_LEVELS;
+
+// ── 1RM ESTIMADO A PARTIR DE LO QUE EL ATLETA REGISTRÓ ───────────────────
+// Para cada levantamiento con RM (sentadilla, banca, etc.): de los ejercicios de
+// su rutina vinculados a ese RM, toma cada registro con kilos + RPE (o RIR) y
+// las repeticiones prescriptas (si son un número fijo), y estima el 1RM con la
+// tabla. Devuelve el mejor por levantamiento, con de dónde salió.
+function estimateRMsFromHistory(a) {
+  const p = a?._personal || {};
+  const routine = (S.routines||[]).find(r=>r.id===a?.assignedRoutine);
+  const hist = p.history || {};
+  if(!routine) return {};
+  const best = {};
+  Object.entries(hist).forEach(([key, rec])=>{
+    const m = /^w(\d+)-(.+)$/.exec(key); if(!m || !rec || !rec.exercises) return;
+    const week = +m[1], sName = m[2];
+    const blocks = (routine.sessions||{})[sName] || [];
+    blocks.forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(ex=>{
+      if(!ex.rmLift) return;
+      const d = rec.exercises[ex.id]; if(!d) return;
+      const kg = parseLoadKg(d.load); if(!(kg>0)) return;
+      const ov = getExerciseOverride(p.routineOverrides, routine.id, sName, ex.id);
+      const wp = getExDisplayForWeek(ex, week, toRoutineRelativeWeek(week, a), ov);
+      const reps = /^\s*\d+\s*$/.test(String(wp.reps||'')) ? +wp.reps : null; if(!reps) return;
+      const raw = parseFloat(String(d.rpe??'').replace(',','.')); if(!isFinite(raw)) return;
+      const rpe = (wp.intensityType||ex.intensityType||'RPE')==='RIR' ? 10-raw : raw;
+      const e1 = rmFromRpe(kg, reps, rpe); if(!e1) return;
+      if(!best[ex.rmLift] || e1>best[ex.rmLift].rm) best[ex.rmLift] = {rm:e1, kg, reps, rpe, week, sName, exName:wp.name||ex.name, date:rec.date||null};
+    })));
+  });
+  return best;
+}
+window.estimateRMsFromHistory = estimateRMsFromHistory;
+async function useEstimatedRM(uid, liftId, value) {
+  await adminSaveOneRM(uid, liftId, String(value));
+  renderMain();
+}
+window.useEstimatedRM = useEstimatedRM;
+
 const RM_CALC_PCTS = [100,95,90,85,80,75,70,65,60,55,50,45];
 function rmCalcRepHint(pct) {
   if(pct>=100) return '1';
@@ -2913,7 +2982,7 @@ function rmCalcFromVelocity(lift, kg, v) {
 function getRMCalcState(liftId) {
   if(!S._rmCalc) S._rmCalc = {};
   if(!S._rmCalc[liftId]) {
-    S._rmCalc[liftId] = { mode: S.oneRM?.[liftId] ? 'loaded' : 'epley', epleyWeight:null, epleyReps:null, velKg:null, velV:null };
+    S._rmCalc[liftId] = { mode: S.oneRM?.[liftId] ? 'loaded' : 'rpe', epleyWeight:null, epleyReps:null, velKg:null, velV:null, rpeKg:null, rpeReps:null, rpeRpe:null };
   }
   return S._rmCalc[liftId];
 }
@@ -2932,6 +3001,7 @@ window.setRMCalcField = setRMCalcField;
 
 function currentRMCalcValue(lift) {
   const s = getRMCalcState(lift.liftId);
+  if(s.mode==='rpe') return rmFromRpe(s.rpeKg, s.rpeReps, s.rpeRpe);
   if(s.mode==='epley') return rmCalcEpley(s.epleyWeight, s.epleyReps);
   if(s.mode==='velocity') return rmCalcFromVelocity(lift, s.velKg, s.velV);
   return S.oneRM?.[lift.liftId] || null;
@@ -2947,6 +3017,10 @@ function rmCalcInputsHtml(lift, s) {
       <label style="display:block;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">${label}</label>
       <input class="field-inp" style="width:100%" type="number" inputmode="decimal" ${step?`step="${step}"`:''} value="${val??''}" placeholder="${placeholder}" onchange="setRMCalcField('${lift.liftId}','${f}',this.value)">
     </div>`;
+  if(s.mode==='rpe') {
+    const sel = (label,f,val,opts) => `<div style="flex:1"><label style="display:block;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">${label}</label><select class="field-inp" style="width:100%" onchange="setRMCalcField('${lift.liftId}','${f}',this.value)"><option value="">—</option>${opts.map(o=>`<option value="${o}" ${val==o?'selected':''}>${String(o).replace('.',',')}</option>`).join('')}</select></div>`;
+    return `<div style="display:flex;gap:8px">${fld('Peso (kg)','rpeKg',s.rpeKg,'ej. 140')}${sel('Repeticiones','rpeReps',s.rpeReps,[1,2,3,4,5,6,7,8,9,10,11,12])}${sel('RPE','rpeRpe',s.rpeRpe,RPE_LEVELS)}</div>`;
+  }
   if(s.mode==='epley') {
     return `<div style="display:flex;gap:8px">${fld('Peso (kg)','epleyWeight',s.epleyWeight,'ej. 60')}${fld('Repeticiones','epleyReps',s.epleyReps,'ej. 6')}</div>
     `;
@@ -2955,9 +3029,13 @@ function rmCalcInputsHtml(lift, s) {
   `;
 }
 
+function rmCalcRepsTableHtml(rm) {
+  if(rm==null) return '';
+  return `<div class="rmc-reps">${RPE_PCT_TABLE[0].map((p,i)=>`<div><small>${i+1} rep${i?'s':''}</small><b>${fmtKg(roundPlate(rm*p))}</b><i>${String(Math.round(p*1000)/10).replace(".",",")}%</i></div>`).join('')}</div>`;
+}
 function rmCalcTableHtml(rm) {
   if(rm==null) return ``;
-  const rows = RM_CALC_PCTS.map(p=>({ pct:p, kg: Math.round(rm*p/100*10)/10 }));
+  const rows = RM_CALC_PCTS.map(p=>({ pct:p, kg: fmtKg(roundPlate(rm*p/100)) }));
   return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">
     <thead><tr>
       <th style="text-align:left;font-size:11px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">%RM</th>
@@ -2992,6 +3070,7 @@ function renderRMCalcSection(standalone) {
     </div>
     <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
       <button class="lib-filter ${s.mode==='loaded'?'active':''}" onclick="setRMCalcMode('${lift.liftId}','loaded')">Mi RM cargado</button>
+      <button class="lib-filter ${s.mode==='rpe'?'active':''}" onclick="setRMCalcMode('${lift.liftId}','rpe')">Reps + RPE</button>
       <button class="lib-filter ${s.mode==='epley'?'active':''}" onclick="setRMCalcMode('${lift.liftId}','epley')">Repeticiones</button>
       <button class="lib-filter ${s.mode==='velocity'?'active':''}" ${!lift.hasVelocity?'disabled style="opacity:.4;cursor:not-allowed"':''} onclick="setRMCalcMode('${lift.liftId}','velocity')">Velocidad</button>
     </div>
@@ -3000,7 +3079,7 @@ function renderRMCalcSection(standalone) {
       <span style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--accent-text)">${rm!=null?Math.round(rm*10)/10:'—'}</span>
       <span style="font-size:12px;color:var(--text2);font-weight:600">kg · 1RM estimado</span>
     </div>
-    ${rmCalcTableHtml(rm)}`;
+    ${s.mode==='rpe' ? rmCalcRepsTableHtml(rm) : rmCalcTableHtml(rm)}`;
 
   if(standalone) {
     return `<div class="wellness-card">${body}</div>`;
@@ -3169,7 +3248,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   const rmValue = ex.rmLift ? S.oneRM?.[ex.rmLift] : null;
   const pctParts = prescPct ? prescPct.split('/').map(p=>p.trim()).filter(Boolean) : [];
   const suggestedKg = (pctParts.length && rmValue)
-    ? pctParts.map(p=>{ const n=parseDecimal(p); return isNaN(n)?'?':Math.round((n/100)*rmValue); }).join('/')
+    ? pctParts.map(p=>{ const n=parseDecimal(p); return isNaN(n)?'?':fmtKg(roundPlate((n/100)*rmValue)); }).join('/')
     : null;
   // Dosis del atleta en UNA línea grande: "4 × 8", con rango "4 × 6–8", o
   // solo las repeticiones si no hay series ("5 · 3 · 2 · 1" queda tal cual);
@@ -10283,8 +10362,8 @@ function renderPerfilTab(a) {
   </div>`;
   const secRM = `<div class="admin-section">
     <div class="admin-section-title">RM del atleta</div>
-        ${RM_LIFTS.map(rm=>`<div class="admin-item">
-      <span style="font-size:13px">${rm.label}</span>
+        ${(()=>{ S._estRM = estimateRMsFromHistory(a); return ''; })()}${RM_LIFTS.map(rm=>`<div class="admin-item rm-item">
+      <span style="font-size:13px">${rm.label}${(()=>{ const e=S._estRM?.[rm.id]; if(!e) return ''; const cur=+(personal.oneRM?.[rm.id])||0; const est=Math.round(e.rm*2)/2; const up=est>cur+0.4; return `<small class="rm-est${up?' up':''}" title="${(e.exName||'').replace(/"/g,'')}: ${fmtKg(e.kg)} kg × ${e.reps} a RPE ${fmtKg(e.rpe)} (semana ${e.week}, ${String(e.sName).replace(/"/g,'')})">Estimado por lo que registró: <b>${fmtKg(est)} kg</b> · ${fmtKg(e.kg)}×${e.reps} @${fmtKg(e.rpe)}${up?` <button class="rm-use" onclick="useEstimatedRM('${uid}','${rm.id}',${est})">Usar como RM</button>`:''}</small>`; })()}</span>
       <input type="number" step="0.5" min="0" placeholder="kg" value="${personal.oneRM?.[rm.id]||''}" style="width:90px;text-align:right;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="adminSaveOneRM('${uid}','${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
   </div>`;
@@ -10916,7 +10995,7 @@ function renderAtletaRutina(a) {
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
-                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}${(()=>{ const rmV=ex.rmLift?a._personal?.oneRM?.[ex.rmLift]:null; if(!rmV) return ex.rmLift ? `<div style="font-size:11px;color:var(--amber);font-weight:700;margin-top:2px" title="Falta cargar el RM de ${RM_LIFTS.find(x=>x.id===ex.rmLift)?.label||''}">falta RM</div>` : ''; const parts=wp.pct.split('/').map(p=>p.trim()).filter(Boolean); const kg=parts.map(p=>{const n=parseDecimal(p);return isNaN(n)?'?':Math.round((n/100)*rmV);}).join('/'); return ' ≈ '+kg+'kg'; })()}</div></div>`:''}
+                      ${wp.pct?`<div class="field-box"><span class="field-lbl">%RM</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.pct}${(()=>{ const rmV=ex.rmLift?a._personal?.oneRM?.[ex.rmLift]:null; if(!rmV) return ex.rmLift ? `<div style="font-size:11px;color:var(--amber);font-weight:700;margin-top:2px" title="Falta cargar el RM de ${RM_LIFTS.find(x=>x.id===ex.rmLift)?.label||''}">falta RM</div>` : ''; const parts=wp.pct.split('/').map(p=>p.trim()).filter(Boolean); const kg=parts.map(p=>{const n=parseDecimal(p);return isNaN(n)?'?':fmtKg(roundPlate((n/100)*rmV));}).join('/'); return ' ≈ '+kg+' kg'; })()}</div></div>`:''}
                       <div class="field-box"><span class="field-lbl">${wp.intensityType||'RPE'}</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.rpe||'—'}</div></div>
                       ${wp.note?`<div class="field-box" style="flex:1;min-width:120px"><span class="field-lbl">Nota</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px">${wp.note}</div></div>`:''}
                     </div>
@@ -13199,7 +13278,7 @@ function renderAtletaRoutineHoriz(a, routine, previewWeek) {
           // Cuántos kilos tocan si el ejercicio va por %RM (uno por serie si es "70/75/80")
           const rmV = e.rmLift ? a._personal?.oneRM?.[e.rmLift] : null;
           const pctParts = wp.pct ? String(wp.pct).split('/').map(x=>x.trim()).filter(Boolean) : [];
-          const kg = (pctParts.length && rmV) ? pctParts.map(x=>{ const v=parseDecimal(x); return isNaN(v)?'?':Math.round(v/100*rmV); }).join('/') : '';
+          const kg = (pctParts.length && rmV) ? pctParts.map(x=>{ const v=parseDecimal(x); return isNaN(v)?'?':fmtKg(roundPlate(v/100*rmV)); }).join('/') : '';
           const noRm = pctParts.length && e.rmLift && !rmV;
           const lbl = wp.intensityType||'RPE';
           const sv = (f)=>`cmpSaveDone('${a.uid}',${previewWeek},'${sn}','${e.id}','${f}',this)`;

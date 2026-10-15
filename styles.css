@@ -1241,3 +1241,17 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
   html.sb-collapsed .sidebar-item svg{width:20px;height:20px}
   html.sb-collapsed .sidebar-footer .notif-bell-btn,html.sb-collapsed .sidebar-user{justify-content:center;padding-left:0;padding-right:0}
 }
+
+/* Calculadora: cuánto levantar para 1 a 12 reps al fallo */
+.rmc-reps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.rmc-reps>div{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 6px;text-align:center;display:flex;flex-direction:column;gap:2px}
+.rmc-reps small{font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase}
+.rmc-reps b{font-family:'Barlow Condensed',sans-serif;font-size:20px;color:var(--text)}
+.rmc-reps i{font-style:normal;font-size:11px;color:var(--text3)}
+@media(min-width:700px){.rmc-reps{grid-template-columns:repeat(6,1fr)}}
+/* RM del atleta: estimado a partir de lo registrado */
+.rm-item>span:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rm-est{font-size:11px;color:var(--text3);font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rm-est b{color:var(--text2)}
+.rm-est.up b{color:var(--green)}
+.rm-use{font-family:inherit;font-size:11px;font-weight:700;border:0;border-radius:20px;padding:3px 10px;background:var(--green-dim);color:var(--green);cursor:pointer}
