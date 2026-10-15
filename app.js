@@ -168,6 +168,11 @@ window.setFontScale = setFontScale;
 // ya lo evita el script inline de index.html, que hace lo mismo más rápido.
 applyAccentColor(getAccentColor());
 applyFontFamily(getFontFamily());
+// Panel lateral (compu/tablet ancha): se puede achicar a una franja con solo los íconos.
+function applySidebarCollapsed(on) { document.documentElement.classList.toggle('sb-collapsed', !!on); const b=document.getElementById('sb-toggle'); if(b){ b.title = on?'Mostrar el panel':'Ocultar el panel'; b.setAttribute('aria-label', b.title); } }
+function toggleSidebar() { const on = !document.documentElement.classList.contains('sb-collapsed'); applySidebarCollapsed(on); try { localStorage.setItem('gm-sidebar', on?'collapsed':'open'); } catch(e) {} window.dispatchEvent(new Event('resize')); }
+window.toggleSidebar = toggleSidebar;
+try { applySidebarCollapsed(localStorage.getItem('gm-sidebar')==='collapsed'); } catch(e) {}
 applyFontScale(getFontScale());
 
 const firebaseConfig = {
@@ -2651,9 +2656,9 @@ function renderBottomBar() {
         navHtml += `<div class="sidebar-section">${t.section}</div>`;
         lastSection = t.section;
       }
-      navHtml += `<button class="sidebar-item ${S.currentView===t.id?'active':''}" onclick="switchView('${t.id}')">
+      navHtml += `<button class="sidebar-item ${S.currentView===t.id?'active':''}" onclick="switchView('${t.id}')" title="${t.label}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${t.svg}</svg>
-        ${t.label}
+        <span class="sb-lbl">${t.label}</span>
       </button>`;
     });
     sn.innerHTML = navHtml;

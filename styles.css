@@ -1223,3 +1223,21 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 @media(max-width:1179px){.ev-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:899px){.ev-grid{grid-template-columns:1fr}}
 @media(max-width:519px){.ev-tiles{grid-template-columns:1fr}.ev-big{font-size:32px}}
+
+/* Panel lateral plegable (solo compu / tablet ancha) */
+.sb-toggle{display:none}
+@media(min-width:900px){
+  #topbar{position:fixed}
+  .sb-toggle{display:flex;align-items:center;justify-content:center;position:absolute;top:26px;right:12px;width:30px;height:30px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);color:var(--text3);cursor:pointer;padding:0;transition:transform .15s,color .15s}
+  .sb-toggle svg{width:16px;height:16px}
+  .sb-toggle:hover{color:var(--text);background:var(--bg3)}
+  #topbar,#main{transition:width .18s ease,margin-left .18s ease,padding .18s ease}
+  html.sb-collapsed{--sidebar-w:72px}
+  html.sb-collapsed #topbar{padding:24px 10px;align-items:center}
+  html.sb-collapsed .sb-toggle{position:static;margin:0 auto 18px;transform:rotate(180deg)}
+  html.sb-collapsed .app-logo{margin-bottom:14px;justify-content:center}
+  html.sb-collapsed .app-logo>span,html.sb-collapsed .sb-lbl,html.sb-collapsed .sidebar-section,html.sb-collapsed .desktop-week,html.sb-collapsed .sidebar-user-info{display:none!important}
+  html.sb-collapsed .sidebar-item{justify-content:center;padding:11px 0}
+  html.sb-collapsed .sidebar-item svg{width:20px;height:20px}
+  html.sb-collapsed .sidebar-footer .notif-bell-btn,html.sb-collapsed .sidebar-user{justify-content:center;padding-left:0;padding-right:0}
+}

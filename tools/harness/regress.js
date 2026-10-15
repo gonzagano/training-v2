@@ -262,6 +262,15 @@
     if(im){ im.click(); await wait(1500); ok(!document.getElementById("photo-zoom")&&!!S.atletaView&&S.atletaView.uid===row0.uid,"lista: tocar la foto abre la ficha de ese atleta");
       const hd=document.querySelector(".team-detail-header img.av-zoom"); ok(!!hd,"ficha: la foto del encabezado se puede agrandar"); if(hd){ hd.click(); await wait(150); ok(!!document.querySelector("#photo-zoom img")&&!!S.atletaView,"ficha: tocar la foto la agranda (sin salir de la ficha)"); closePhotoZoom(); }
       goBackFromAthleteDetail(); await wait(500); } }
+  // ── panel lateral: se achica a íconos y se vuelve a abrir (solo pantallas anchas) ──
+  if(innerWidth>=900){ const tb=document.getElementById('topbar'); const w0=tb.getBoundingClientRect().width; const m0=document.getElementById('main').getBoundingClientRect().left;
+    document.getElementById('sb-toggle').click(); await wait(400); const w1=tb.getBoundingClientRect().width;
+    ok(w1<100&&w1<w0,'panel: se achica ('+Math.round(w0)+' → '+Math.round(w1)+' px)'); ok(document.getElementById('main').getBoundingClientRect().left<m0-100,'panel: el contenido gana el espacio');
+    ok([...document.querySelectorAll('.sidebar-item .sb-lbl')].every(x=>getComputedStyle(x).display==='none')&&document.querySelectorAll('.sidebar-item svg').length>3,'panel achicado: quedan solo los íconos');
+    document.querySelectorAll('.sidebar-item')[1].click(); await wait(500); ok(document.documentElement.classList.contains('sb-collapsed'),'panel achicado: se sigue navegando con los íconos');
+    ok(localStorage.getItem('gm-sidebar')==='collapsed','panel: recuerda la elección');
+    document.getElementById('sb-toggle').click(); await wait(400); ok(Math.abs(tb.getBoundingClientRect().width-w0)<2,'panel: se vuelve a abrir'); }
+  else ok(getComputedStyle(document.getElementById('sb-toggle')).display==='none','celular/tablet angosta: no hay botón de panel');
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
