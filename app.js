@@ -100,6 +100,67 @@ function cssVar(name, fallback) {
 }
 window.cssVar = cssVar;
 
+// ── ESTILO ÚNICO DE GRÁFICOS ─────────────────────────────────────
+// Todos los gráficos comparten colores, letra, grilla y recuadro de detalle
+// (tooltip), resueltos para el tema vigente. Cada atleta comparado lleva un
+// color fijo según el orden en que se eligió (nunca verde/ámbar/rojo, que
+// quedan para alertas). Las dos tandas se probaron para que se distingan
+// también con daltonismo; en claro, tres de ellos tienen poco contraste con
+// el fondo blanco, por eso los gráficos que los usan escriben siempre el
+// nombre al lado.
+const CHART_SERIES = {
+  light:['#3E5FC4','#eb6834','#1baf7a','#eda100','#e87ba4','#6250d6'],
+  dark: ['#6F8FEA','#d95926','#199e70','#c98500','#d55181','#9085e9'],
+};
+function chartSeriesColor(i) {
+  const p = CHART_SERIES[getTheme()==='dark' ? 'dark' : 'light'];
+  return p[i % p.length];
+}
+window.chartSeriesColor = chartSeriesColor;
+function chartColors() {
+  const dark = getTheme()==='dark';
+  return {
+    text: cssVar('--text','#12151C'), text2: cssVar('--text2','#4B5160'), text3: cssVar('--text3','#626B7E'),
+    card: cssVar('--bg2','#FFFFFF'), raised: cssVar('--bg3','#F2F3F5'),
+    border: cssVar('--border2','rgba(18,21,28,0.14)'),
+    grid: dark ? 'rgba(233,233,237,0.07)' : 'rgba(18,21,28,0.06)',
+    axis: dark ? 'rgba(233,233,237,0.16)' : 'rgba(18,21,28,0.18)',
+    accent: cssVar('--accent-text','#3E5FC4'),
+    avg: cssVar('--text2','#4B5160'),
+    green: cssVar('--green','#1F7A4D'), amber: cssVar('--amber','#C67C0F'), red: cssVar('--red','#C33A2C'),
+  };
+}
+window.chartColors = chartColors;
+// Color con transparencia (acepta #rrggbb o rgb()).
+function chartAlpha(col, a) {
+  const h = /^#([0-9a-f]{6})$/i.exec(String(col).trim());
+  if(h) { const n = parseInt(h[1],16); return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`; }
+  const m = /rgba?\(([^,]+),([^,]+),([^,)]+)/.exec(String(col));
+  return m ? `rgba(${m[1]},${m[2]},${m[3]},${a})` : col;
+}
+window.chartAlpha = chartAlpha;
+// Lo que no define cada gráfico sale de acá. Se llama en cada renderMain(),
+// así un cambio de tema llega también a los gráficos que se dibujan después.
+function applyChartTheme() {
+  if(typeof Chart==='undefined') return;
+  const c = chartColors(), d = Chart.defaults;
+  d.font.family = "'Manrope',-apple-system,'Segoe UI',sans-serif";
+  d.font.size = 11;
+  d.color = c.text3;
+  d.borderColor = c.grid;
+  if(d.scale && d.scale.grid) d.scale.grid.color = c.grid;
+  try { d.scales.radialLinear.ticks.backdropColor = 'transparent'; d.scales.radialLinear.pointLabels.color = c.text2; } catch(e){}
+  const tt = d.plugins.tooltip;
+  Object.assign(tt, { backgroundColor:c.raised, titleColor:c.text, bodyColor:c.text2, footerColor:c.text3,
+    borderColor:c.border, borderWidth:1, padding:10, cornerRadius:10, boxPadding:4, usePointStyle:true });
+  tt.titleFont = {weight:'700', size:12}; tt.bodyFont = {size:12};
+  Object.assign(d.plugins.legend.labels, { color:c.text2, usePointStyle:true, boxWidth:8, boxHeight:8, padding:14 });
+  d.elements.line.borderWidth = 2;
+  d.elements.point.radius = 3;
+  d.elements.point.hoverRadius = 5;
+}
+window.applyChartTheme = applyChartTheme;
+
 function hexToRgba(hex, alpha) {
   const h = hex.replace('#','');
   const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
@@ -372,14 +433,14 @@ function drawPainTrendChart(points) {
     type:'line',
     data:{
       labels: points.map(p=>p.date.slice(5)),
-      datasets:[{ label:'Dolor', data:points.map(p=>p.pain), borderColor:'#C33A2C', backgroundColor:'rgba(195,58,44,0.08)', tension:.3, pointRadius:3, fill:true }]
+      datasets:[{ label:'Dolor', data:points.map(p=>p.pain), borderColor:chartColors().red, backgroundColor:chartAlpha(chartColors().red,0.10), tension:.3, pointRadius:3, fill:true }]
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>'Dolor: '+ctx.parsed.y+'/10'}} },
+      plugins:{ legend:{display:false}, tooltip:{displayColors:false, callbacks:{label:(ctx)=>'Dolor: '+ctx.parsed.y+'/10'}} },
       scales:{
-        y:{min:0,max:10,ticks:{stepSize:2,color:cssVar('--text3','#7A8394'),font:{size:10}},grid:{color:'rgba(18,21,28,0.08)'}},
-        x:{ticks:{color:cssVar('--text3','#7A8394'),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{display:false}}
+        y:{min:0,max:10,ticks:{stepSize:2}},
+        x:{ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{display:false}}
       }
     }
   });
@@ -2805,6 +2866,7 @@ window.openRMCalcTab = openRMCalcTab;
 
 function renderMain() {
   const m=document.getElementById('main');
+  applyChartTheme();
   switch(S.currentView) {
     case 'dashboard': m.innerHTML=renderDashboard(); setTimeout(loadDashboard,50); break;
     case 'session':  m.innerHTML=renderSession(); break;
@@ -6209,6 +6271,7 @@ function renderTeamDetail(team) {
       ${team.name}${team.category?` / ${team.category}`:''}
     </div>
     ${team.sport?`<span class="team-sport-badge">${sportIconHtml(team.sport,13)}${canonicalSport(team.sport)}</span>`:''}
+    <button class="abtn" style="margin-left:auto" onclick="adminGoCompare('${team.id}')">Comparar atletas</button>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Rutina</button>
@@ -8499,14 +8562,14 @@ function drawTeamInjuryChart(members) {
       labels:['Graves','Moderadas','Leves'],
       datasets:[{
         data:[sum.grave, sum.moderada, sum.leve],
-        backgroundColor:['#C33A2C','#C67C0F','#1F7A4D'],
-        borderColor:'#F5F6F8', borderWidth:2,
+        backgroundColor:[chartColors().red,chartColors().amber,chartColors().green],
+        borderColor:chartColors().card, borderWidth:2,
         hoverOffset:4,
       }]
     },
     options:{
       responsive:true, maintainAspectRatio:false, cutout:'62%',
-      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#12151C',titleColor:'#fff',bodyColor:'#C7CDD6'} }
+      plugins:{ legend:{display:false} }
     },
     plugins:[shadowPlugin]
   });
@@ -8654,7 +8717,7 @@ function drawTeamRadarChart(members, lockedAthleteId) {
 
   const teamMax = {};
   RADAR_METRICS.forEach(m=>{ teamMax[m.id] = Math.max(0.01, ...members.map(a=>bestOf(a,m.id)||0)); });
-  const pct = (raw,id) => raw!=null ? Math.round((raw/teamMax[id])*100) : 0;
+  const pct = (raw,id) => raw!=null ? Math.round((raw/teamMax[id])*100) : null;
 
   let rawA, rawB, labelA, labelB;
   if(mode==='self') {
@@ -8681,27 +8744,27 @@ function drawTeamRadarChart(members, lockedAthleteId) {
   const sameData = mode==='self' && rawA.every((v,i)=>v===rawB[i]);
 
   const datasets = [
-    { label:labelA, data:valuesA, backgroundColor:'rgba(36,59,107,0.15)', borderColor:'#243B6B', borderWidth:2, pointBackgroundColor:'#243B6B', pointRadius:3, _raw:rawA },
+    { label:labelA, data:valuesA, backgroundColor:chartAlpha(chartColors().accent,0.16), borderColor:chartColors().accent, borderWidth:2, pointBackgroundColor:chartColors().accent, pointBorderColor:chartColors().card, pointRadius:3.5, spanGaps:true, _raw:rawA },
   ];
-  if(!sameData) datasets.push({ label:labelB, data:valuesB, backgroundColor:'rgba(122,131,148,0.06)', borderColor:cssVar('--text3','#7A8394'), borderWidth:2, borderDash:[5,4], pointBackgroundColor:cssVar('--text3','#7A8394'), pointRadius:3, _raw:rawB });
+  if(!sameData) datasets.push({ label:labelB, data:valuesB, backgroundColor:'transparent', borderColor:chartColors().avg, borderWidth:1.6, borderDash:[5,4], pointRadius:0, pointHoverRadius:4, pointBackgroundColor:chartColors().avg, spanGaps:true, _raw:rawB });
 
   try{ S.radarChartInstance?.destroy(); }catch(e){}
   S.radarChartInstance = new Chart(canvas, {
     type:'radar',
-    data:{ labels: RADAR_METRICS.map(m=>m.label), datasets },
+    data:{ labels: RADAR_METRICS.map((m,i)=>rawA[i]==null ? [m.label,'sin test'] : m.label), datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{ display:true, labels:{color:cssVar('--text2','#4B5160'), font:{size:10}, boxWidth:10} },
+        legend:{ display:true },
         tooltip:{ callbacks:{ label:(ctx)=>{
           const raw = ctx.dataset._raw?.[ctx.dataIndex];
           const unit = unitOf(RADAR_METRICS[ctx.dataIndex].id);
           return `${ctx.dataset.label}: ${raw!=null?raw+unit:'sin datos'} (${ctx.formattedValue}%)`;
         } } }
       },
-      scales:{ r:{ min:0, max:100, ticks:{color:cssVar('--text2','#4B5160'), backdropColor:'transparent', font:{size:9}, stepSize:25},
-        grid:{color:cssVar('--border2','rgba(18,21,28,0.14)')}, angleLines:{color:cssVar('--border2','rgba(18,21,28,0.14)')},
-        pointLabels:{color:cssVar('--text','#1A1D26'), font:{size:11,weight:600}} } }
+      scales:{ r:{ min:0, max:100, ticks:{display:false, stepSize:25},
+        grid:{color:chartColors().grid}, angleLines:{color:chartColors().grid},
+        pointLabels:{color:chartColors().text2, font:{size:12,weight:600}} } }
     }
   });
 }
@@ -8806,7 +8869,7 @@ function drawTeamQuadrantChart(members, canvasId, instanceKey, overrideX, overri
       const {ctx, chartArea, scales} = chart;
       const xPix = scales.x.getPixelForValue(xMid), yPix = scales.y.getPixelForValue(yMid);
       ctx.save();
-      ctx.strokeStyle='rgba(18,21,28,0.15)'; ctx.setLineDash([4,4]);
+      ctx.strokeStyle=chartColors().axis; ctx.setLineDash([4,4]);
       ctx.beginPath(); ctx.moveTo(xPix, chartArea.top); ctx.lineTo(xPix, chartArea.bottom); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(chartArea.left, yPix); ctx.lineTo(chartArea.right, yPix); ctx.stroke();
       ctx.restore();
@@ -8818,7 +8881,7 @@ function drawTeamQuadrantChart(members, canvasId, instanceKey, overrideX, overri
       const ctx = chart.ctx;
       chart.getDatasetMeta(0).data.forEach((pt,i)=>{
         ctx.save();
-        ctx.fillStyle=cssVar('--text','#1A1D26'); ctx.font='600 10px Inter, sans-serif'; ctx.textAlign='center';
+        ctx.fillStyle=chartColors().text; ctx.font="600 11px 'Manrope',sans-serif"; ctx.textAlign='center';
         ctx.fillText(points[i].name.split(' ')[0], pt.x, pt.y-8);
         ctx.restore();
       });
@@ -8827,13 +8890,13 @@ function drawTeamQuadrantChart(members, canvasId, instanceKey, overrideX, overri
 
   S[instanceKey] = new Chart(canvas, {
     type:'scatter',
-    data:{ datasets:[{ data:points, backgroundColor:'#243B6B', pointRadius:5, pointHoverRadius:7 }] },
+    data:{ datasets:[{ data:points, backgroundColor:chartColors().accent, borderColor:chartColors().card, borderWidth:1.5, pointRadius:5.5, pointHoverRadius:7 }] },
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>points[ctx.dataIndex].name+': '+ctx.parsed.x+xDef.unit+', '+ctx.parsed.y+yDef.unit}} },
       scales:{
-        x:{ title:{display:true,text:xDef.label+' ('+xDef.unit+')',color:cssVar('--text','#1A1D26'),font:{size:10}}, ticks:{color:cssVar('--text','#1A1D26'),font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
-        y:{ title:{display:true,text:yDef.label+' ('+yDef.unit+')',color:cssVar('--text','#1A1D26'),font:{size:10}}, ticks:{color:cssVar('--text','#1A1D26'),font:{size:9}}, grid:{color:'rgba(18,21,28,0.08)'} },
+        x:{ title:{display:true,text:xDef.label+' ('+xDef.unit+')',color:chartColors().text2,font:{weight:600}} },
+        y:{ title:{display:true,text:yDef.label+' ('+yDef.unit+')',color:chartColors().text2,font:{weight:600}} },
       }
     },
     plugins:[quadrantLinesPlugin, pointLabelsPlugin]
@@ -9867,7 +9930,7 @@ window.BODY_ZONES = BODY_ZONES;
 function renderAtletas() {
   if (S.atletaView) return renderAtletaDetail(S.atletaView);
 
-  let html = `<div class="pg-head"><div class="pg-head-t">Atletas</div><button class="abtn abtn-p" onclick="openNewAthleteModal()">Crear nuevo atleta +</button></div>`;
+  let html = `<div class="pg-head"><div class="pg-head-t">Atletas</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="abtn" onclick="adminGoCompare('ind')">Comparar atletas</button><button class="abtn abtn-p" onclick="openNewAthleteModal()">Crear nuevo atleta +</button></div></div>`;
 
   if (!S.adminAthletesLoaded) {
     ensureAdminAthletes().then(renderMain);
@@ -12126,84 +12189,298 @@ function setAthletesSearch(v) {
 window.setAthletesSearch=setAthletesSearch;
 
 // ── COMPARAR ATLETAS ────────────────────────────────────────
-async function adminGoCompare() {
+// De 2 a 6 atletas a la vez. Cada uno lleva un color fijo según el orden en
+// que se eligió (chartSeriesColor). La "referencia" es el grupo de donde se
+// eligen (un equipo, los individuales o todos): su promedio es la línea
+// punteada de cada gráfico y de ahí salen los atajos por puesto.
+const CMP_MAX = 6;
+const CMP_JUMPS = ['cmj','sj','abalakov','saltoH','saltoAprox'];
+
+async function adminGoCompare(scope) {
+  // Volver lleva a donde se estaba (Atletas, un equipo o Panel Admin).
+  S._compareReturn = {currentView:S.currentView, adminView:S.adminView, teamId:S.teamView?.id||null, teamSubview:S.teamSubview||null};
+  if(typeof scope==='string') S.compareScope = scope;
   S.adminView='compare_athletes';
   S.currentView='admin';
+  S.teamView=null;
   document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando atletas…</div>`;
   await ensureAdminAthletes();
+  if(!Array.isArray(S.compareUids)) S.compareUids = [S.compareA, S.compareB].filter(Boolean);
+  // Entrando desde un equipo o desde Atletas, quedan solo los elegidos de ese grupo.
+  if(typeof scope==='string') { const inScope = compareScopeUids(); S.compareUids = S.compareUids.filter(u=>inScope.includes(u)); }
+  try { await ensureGroupPersonalData(compareScopeUids().concat(S.compareUids)); } catch(e) {}
   renderBottomBar();
   renderMain();
 }
 window.adminGoCompare=adminGoCompare;
 
-async function setCompareAthlete(slot,uid) {
-  if(slot==='A') S.compareA = uid||null; else S.compareB = uid||null;
-  if(uid) await ensureGroupPersonalData([uid]);
+function compareGoBack() {
+  const r = S._compareReturn || {};
+  S._compareReturn = null;
+  if(r.currentView==='teams' && r.teamId) {
+    S.teamView = (S.teams||[]).find(t=>t.id===r.teamId) || null;
+    S.teamSubview = r.teamSubview || S.teamSubview;
+    S.currentView = 'teams';
+  } else if(r.currentView==='atletas') {
+    S.currentView = 'atletas';
+  } else {
+    S.currentView = 'admin'; S.adminView = (r.currentView==='admin' && r.adminView && r.adminView!=='compare_athletes') ? r.adminView : 'main';
+  }
+  renderBottomBar(); renderMain();
+}
+window.compareGoBack = compareGoBack;
+
+// Grupo de referencia: 'all' | 'ind' (individuales) | id de un equipo.
+function compareScopeUids() {
+  const all = S.adminAthletes||[];
+  const sc = S.compareScope || 'all';
+  if(sc==='all') return all.map(a=>a.uid);
+  if(sc==='ind') return all.filter(a=>a.athleteType==='individual').map(a=>a.uid);
+  const team = (S.teams||[]).find(t=>t.id===sc);
+  return team ? getTeamStatsMemberUids(team) : all.map(a=>a.uid);
+}
+function compareScopeLabel() {
+  const sc = S.compareScope || 'all';
+  if(sc==='all') return 'general';
+  if(sc==='ind') return 'individuales';
+  return 'equipo';
+}
+function compareAthletes() {
+  const all = S.adminAthletes||[];
+  return (S.compareUids||[]).map(uid=>all.find(a=>a.uid===uid)).filter(Boolean);
+}
+
+async function addCompareAthlete(uid) {
+  if(!uid) return;
+  if(!Array.isArray(S.compareUids)) S.compareUids = [];
+  if(S.compareUids.includes(uid)) return;
+  if(S.compareUids.length>=CMP_MAX) { showToast('Hasta '+CMP_MAX+' atletas a la vez'); return; }
+  S.compareUids = S.compareUids.concat([uid]);
+  try { await ensureGroupPersonalData([uid]); } catch(e) {}
   renderMain();
 }
-window.setCompareAthlete=setCompareAthlete;
+window.addCompareAthlete = addCompareAthlete;
+function removeCompareAthlete(uid) {
+  S.compareUids = (S.compareUids||[]).filter(x=>x!==uid);
+  renderMain();
+}
+window.removeCompareAthlete = removeCompareAthlete;
+function clearCompareAthletes() { S.compareUids = []; renderMain(); }
+window.clearCompareAthletes = clearCompareAthletes;
+async function setCompareScope(v) {
+  S.compareScope = v || 'all';
+  try { await ensureGroupPersonalData(compareScopeUids()); } catch(e) {}
+  renderMain();
+}
+window.setCompareScope = setCompareScope;
+function setCompareGroup(pos) {
+  const all = S.adminAthletes||[];
+  const scope = compareScopeUids();
+  S.compareUids = all.filter(a=>scope.includes(a.uid) && (a.position||'')===pos).slice(0,CMP_MAX).map(a=>a.uid);
+  renderMain();
+}
+window.setCompareGroup = setCompareGroup;
+function setCompareMode(m) { S.compareMode = m; renderMain(); }
+window.setCompareMode = setCompareMode;
+function setCompareStrengthRel(on) { S.compareStrengthRel = !!on; renderMain(); }
+window.setCompareStrengthRel = setCompareStrengthRel;
+function setCompareEvolMetric(id) { S.compareEvolMetric = id; renderMain(); }
+window.setCompareEvolMetric = setCompareEvolMetric;
+
+// Valor de un test para un atleta: el último o la mejor marca. Los 1RM sin
+// test cargado salen del RM anotado en su Perfil (sin fecha).
+function compareTestValue(a, testId, mode) {
+  const recs = (a._personal?.evals?.[testId]||[]).filter(r=>r && r.height!=null && !isNaN(r.height));
+  if(recs.length) {
+    const sorted = sortEvalRecsByDate([...recs]);
+    const r = mode==='best' ? sorted.reduce((b,x)=>x.height>b.height?x:b) : sorted[sorted.length-1];
+    return {v:+r.height, date:r.date||null};
+  }
+  const lift = EVAL_TO_ONERM_LIFT[testId];
+  const rm = lift ? parseFloat(a._personal?.oneRM?.[lift]) : NaN;
+  if(!isNaN(rm) && rm>0) return {v:rm, date:null, perfil:true};
+  return null;
+}
+function compareNiceMax(v) {
+  const steps = [5,10,20,25,50,100];
+  const raw = v*1.12;
+  const step = steps.find(s=>raw/s<=8) || 100;
+  return Math.ceil(raw/step)*step;
+}
+const cmpFmt = (v, dec) => (dec===0 ? String(Math.round(v)) : (+v).toFixed(dec)).replace('.', ',');
+
+// Un test: una barra por atleta (desde cero), con el valor y la fecha al
+// lado, "Mejor" para el primero y cuánto le falta a cada uno de los demás.
+function compareBarsHtml(test, athletes, mode, rel) {
+  const dec = rel ? 2 : (test.unit==='kg' ? 0 : 1);
+  const unit = rel ? 'kg/kg' : test.unit;
+  const valOf = a => {
+    const r = compareTestValue(a, test.id, mode);
+    if(!r) return null;
+    if(!rel) return r;
+    const w = parseFloat(a.weight);
+    return (w>0) ? {...r, v:r.v/w} : {...r, v:null, noWeight:true};
+  };
+  const rows = athletes.map((a,i)=>({a, color:chartSeriesColor(i), r:valOf(a)}));
+  if(!rows.some(x=>x.r && x.r.v!=null)) return '';
+  const scope = (S.adminAthletes||[]).filter(a=>compareScopeUids().includes(a.uid));
+  const scopeVals = scope.map(valOf).filter(r=>r && r.v!=null).map(r=>r.v);
+  const avg = scopeVals.length>=2 ? scopeVals.reduce((s,v)=>s+v,0)/scopeVals.length : null;
+  const vals = rows.filter(x=>x.r && x.r.v!=null).map(x=>x.r.v);
+  const best = Math.max(...vals);
+  const max = rel ? Math.ceil(Math.max(best, avg||0)*1.12*4)/4 : compareNiceMax(Math.max(best, avg||0));
+  const pct = v => Math.max(0, Math.min(100, v/max*100));
+  const name = a => (a.name||a.email||'').replace(/</g,'&lt;');
+  return `<div class="ca-test">
+    <div class="ca-test-h"><b>${test.label}</b><span>${unit}${test.desc&&!rel?' · '+test.desc:''}</span></div>
+    <div class="ca-bars">
+      ${avg!=null?`<div class="ca-avg" style="--x:${(pct(avg)/100).toFixed(4)}"><span>prom. ${compareScopeLabel()} ${cmpFmt(avg,dec)}</span></div>`:''}
+      ${rows.map(x=>{
+        const has = x.r && x.r.v!=null;
+        const date = has ? (x.r.perfil ? 'perfil' : (x.r.date ? evalShortDate(x.r.date) : '')) : '';
+        const pill = !has ? '' : (x.r.v===best
+          ? `<span class="ev-pill ev-gold">${EVAL_MEDAL_SVG}Mejor</span>`
+          : `<span class="ca-diff">−${cmpFmt(best-x.r.v,dec)}${rel?'':' '+unit}</span>`);
+        return `<div class="ca-row">
+          <div class="ca-nm"><i style="background:${x.color}"></i><span>${name(x.a)}</span></div>
+          <div class="ca-trk">${has
+            ? `<span class="ca-bar" style="width:${pct(x.r.v)}%;background:${x.color}"></span><span class="ca-val"><b>${cmpFmt(x.r.v,dec)}</b>${date?`<small>${date}</small>`:''}</span>`
+            : `<span class="ca-none">${x.r&&x.r.noWeight?'sin peso cargado':'sin test'}</span>`}</div>
+          <div class="ca-pill">${pill}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+// Serie para el gráfico de evolución: un punto por mes (tests) o por semana
+// (wellness y carga), últimos 6 meses / 8 semanas.
+function compareEvolBuckets(metric) {
+  const today = new Date(todayLocal()+'T12:00:00');
+  if(metric==='wellness' || metric==='ua') {
+    const out = [];
+    for(let w=7; w>=0; w--) {
+      const end = new Date(today); end.setDate(end.getDate()-w*7);
+      const days = [];
+      for(let d=6; d>=0; d--) { const x = new Date(end); x.setDate(x.getDate()-d); days.push(toLocalDateStr(x)); }
+      out.push({label:evalShortDate(days[0]), days});
+    }
+    return out;
+  }
+  const out = [];
+  for(let m=5; m>=0; m--) {
+    const d = new Date(today.getFullYear(), today.getMonth()-m, 1);
+    const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    out.push({label:EVAL_MONTHS[d.getMonth()].slice(0,3).toLowerCase(), key});
+  }
+  return out;
+}
+function compareEvolValue(a, metric, b) {
+  if(metric==='wellness') {
+    const v = b.days.map(d=>getWellnessScore(a._personal?.wellness?.[d])).filter(x=>x.allFilled).map(x=>x.pct);
+    return v.length ? Math.round(v.reduce((s,x)=>s+x,0)/v.length) : null;
+  }
+  if(metric==='ua') {
+    const logs = (a._personal?.history?._sessionLogs)||[];
+    const sum = logs.filter(l=>b.days.includes(l.date)).reduce((s,l)=>s+(l.ua||0),0);
+    return sum>0 ? sum : null;
+  }
+  const recs = (a._personal?.evals?.[metric]||[]).filter(r=>r && r.height!=null && String(r.date||'').startsWith(b.key));
+  if(!recs.length) return null;
+  return S.compareMode==='best' ? Math.max(...recs.map(r=>+r.height)) : +sortEvalRecsByDate([...recs]).slice(-1)[0].height;
+}
+function compareEvolMetrics(athletes) {
+  const tests = EVAL_TESTS.concat(STRENGTH_TESTS).filter(t=>!/_der$|_izq$/.test(t.id) && athletes.some(a=>(a._personal?.evals?.[t.id]||[]).length));
+  return tests.map(t=>({id:t.id, label:t.label, unit:t.unit}))
+    .concat([{id:'wellness', label:'Wellness', unit:'%'}, {id:'ua', label:'Carga (UA)', unit:'UA'}]);
+}
 
 function renderCompareAthletes() {
-  const athletes = S.adminAthletes||[];
-  const optsHtml = sel => `<option value="">— Elegir atleta —</option>` + athletes.map(a=>`<option value="${a.uid}" ${sel===a.uid?'selected':''}>${a.name||a.email}</option>`).join('');
+  const all = S.adminAthletes||[];
+  if(!Array.isArray(S.compareUids)) S.compareUids = [S.compareA, S.compareB].filter(Boolean);
+  const athletes = compareAthletes();
+  const mode = S.compareMode==='best' ? 'best' : 'last';
+  const scopeUids = compareScopeUids();
+  const scopeAthletes = all.filter(a=>scopeUids.includes(a.uid));
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const teams = (S.teams||[]).slice().sort((x,y)=>(x.name||'').localeCompare(y.name||''));
+  const sc = S.compareScope||'all';
 
-  let html = `<div class="team-detail-header">
-    <button class="back-btn" data-back="admin-main">‹</button>
-    <div class="team-detail-title">Comparar atletas</div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-    <select class="eval-inp" onchange="setCompareAthlete('A',this.value)">${optsHtml(S.compareA)}</select>
-    <select class="eval-inp" onchange="setCompareAthlete('B',this.value)">${optsHtml(S.compareB)}</select>
-  </div>`;
-
-  if(!S.compareA || !S.compareB) return html+`<div class="empty-state">Elegí dos atletas para ver sus números lado a lado.</div>`;
-  if(S.compareA===S.compareB) return html+`<div class="empty-state">Elegí dos atletas distintos.</div>`;
-
-  const a=athletes.find(x=>x.uid===S.compareA), b=athletes.find(x=>x.uid===S.compareB);
-  if(!a||!b) return html;
-
-  const sumA=computeAthleteLoadSummary(a), sumB=computeAthleteLoadSummary(b);
-  const wA=getWellnessState(sumA.avgWellness), wB=getWellnessState(sumB.avgWellness);
-  const acwrA=getACWRStatus(sumA.acwr), acwrB=getACWRStatus(sumB.acwr);
-  const monA=getMonotonyStatus(sumA.monotony), monB=getMonotonyStatus(sumB.monotony);
-  const evalsA=a._personal?.evals||{}, evalsB=b._personal?.evals||{};
-  const bestOf=(edata,id)=>{ const r=edata?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
-
-  const rows=[
-    {label:'Wellness semanal', va:sumA.avgWellness!=null?sumA.avgWellness+'%':'—', vb:sumB.avgWellness!=null?sumB.avgWellness+'%':'—', ca:wA.color, cb:wB.color},
-    {label:'ACWR', va:sumA.acwr!=null?sumA.acwr.toFixed(2):'—', vb:sumB.acwr!=null?sumB.acwr.toFixed(2):'—', ca:acwrA.color, cb:acwrB.color},
-    {label:'Monotonía', va:sumA.monotony!=null?sumA.monotony.toFixed(1):'—', vb:sumB.monotony!=null?sumB.monotony.toFixed(1):'—', ca:monA.color, cb:monB.color},
-    {label:'Carga semana (UA)', va:sumA.acuteUA!=null?Math.round(sumA.acuteUA):'—', vb:sumB.acuteUA!=null?Math.round(sumB.acuteUA):'—'},
-    {label:'Mejor CMJ (cm)', va:bestOf(evalsA,'cmj')??'—', vb:bestOf(evalsB,'cmj')??'—'},
-    {label:'Press de banca (kg)', va:bestOf(evalsA,'rm_press_banca')??'—', vb:bestOf(evalsB,'rm_press_banca')??'—'},
-    {label:'Peso muerto (kg)', va:bestOf(evalsA,'rm_peso_muerto')??'—', vb:bestOf(evalsB,'rm_peso_muerto')??'—'},
-    {label:'Sentadilla (kg)', va:bestOf(evalsA,'rm_sentadilla')??'—', vb:bestOf(evalsB,'rm_sentadilla')??'—'},
-    {label:'Cargada de potencia (kg)', va:bestOf(evalsA,'rm_cargada_potencia')??'—', vb:bestOf(evalsB,'rm_cargada_potencia')??'—'},
-  ];
-
-  html += `<div class="admin-section">
-    <div style="display:grid;grid-template-columns:1fr 1fr;padding:12px 16px;border-bottom:1px solid var(--border);gap:8px">
-      <div style="text-align:center;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
-      <div style="text-align:center;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name||b.email}</div>
+  let html = `<div class="ca-top">
+    <div class="team-detail-header" style="margin-bottom:0">
+      <button class="back-btn" onclick="compareGoBack()">‹</button>
+      <div class="team-detail-title">Comparar atletas</div>
     </div>
-    ${rows.map(r=>`
-      <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:4px">${r.label}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr">
-          <div style="text-align:center;font-size:16px;font-weight:700;color:${r.ca||'var(--text)'}">${r.va}</div>
-          <div style="text-align:center;font-size:16px;font-weight:700;color:${r.cb||'var(--text)'}">${r.vb}</div>
-        </div>
-      </div>`).join('')}
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Wellness semanal — en gráfico</div>
-    <div style="padding:14px 16px;height:180px;position:relative"><canvas id="compare-chart-wellness"></canvas></div>
-  </div>
-  <div class="admin-section">
-    <div class="admin-section-title">Marcas de salto y fuerza — en gráfico</div>
-    <div style="padding:14px 16px;height:220px;position:relative"><canvas id="compare-chart-strength"></canvas></div>
+    <div class="ca-seg">
+      <button class="chip-btn ${mode==='last'?'on':''}" onclick="setCompareMode('last')">Último test</button>
+      <button class="chip-btn ${mode==='best'?'on':''}" onclick="setCompareMode('best')">Mejor marca</button>
+    </div>
   </div>`;
+
+  // Elegidos + agregar + atajos por puesto
+  const positions = [...new Set(scopeAthletes.map(a=>a.position).filter(Boolean))].sort((x,y)=>x.localeCompare(y));
+  const addable = scopeAthletes.filter(a=>!S.compareUids.includes(a.uid)).sort((x,y)=>(x.name||x.email||'').localeCompare(y.name||y.email||''));
+  html += `<div class="ca-pick">
+    <div class="ca-chips">
+      ${athletes.map((a,i)=>`<span class="ca-chip"><i style="background:${chartSeriesColor(i)}"></i><b>${esc(a.name||a.email)}</b>${a.position?`<small>${esc(a.position)}</small>`:''}<button onclick="removeCompareAthlete('${a.uid}')" aria-label="Sacar">×</button></span>`).join('')}
+      ${athletes.length<CMP_MAX ? `<select class="ca-add" onchange="addCompareAthlete(this.value)"><option value="">+ Agregar atleta${athletes.length?'':' (hasta '+CMP_MAX+')'}</option>${addable.map(a=>`<option value="${a.uid}">${esc(a.name||a.email)}${a.position?' · '+esc(a.position):''}</option>`).join('')}</select>` : ''}
+    </div>
+    <div class="ca-quick">
+      <select class="ca-scope" onchange="setCompareScope(this.value)">
+        <option value="all" ${sc==='all'?'selected':''}>Todos los atletas</option>
+        <option value="ind" ${sc==='ind'?'selected':''}>Individuales</option>
+        ${teams.map(t=>`<option value="${t.id}" ${sc===t.id?'selected':''}>${esc(t.name)}${t.category?' / '+esc(t.category):''}</option>`).join('')}
+      </select>
+      ${positions.map(p=>{ const n = scopeAthletes.filter(a=>a.position===p).length; return `<button class="chip-btn" onclick="setCompareGroup('${p.replace(/'/g,"\\'")}')">${esc(p)} (${n})</button>`; }).join('')}
+      ${athletes.length?`<button class="chip-btn" onclick="clearCompareAthletes()">Limpiar</button>`:''}
+    </div>
+  </div>`;
+
+  if(athletes.length<2) return html + `<div class="empty-state">Elegí al menos dos atletas para compararlos.</div>`;
+
+  // Saltos y fuerza
+  const jumpTests = EVAL_TESTS.filter(t=>CMP_JUMPS.includes(t.id));
+  const jumps = jumpTests.map(t=>compareBarsHtml(t, athletes, mode, false)).join('');
+  const rel = !!S.compareStrengthRel;
+  const strength = STRENGTH_TESTS.map(t=>compareBarsHtml({...t, desc:''}, athletes, mode, rel)).join('');
+  html += `<div class="ca-grid">
+    <section class="ca-card">
+      <div class="ca-card-h"><div><div class="ca-k">Saltos</div><div class="ca-ks">centímetros</div></div></div>
+      ${jumps || '<div class="ca-empty">Sin tests de salto cargados.</div>'}
+    </section>
+    <section class="ca-card">
+      <div class="ca-card-h"><div><div class="ca-k">Fuerza</div><div class="ca-ks">${rel?'kilos levantados por kilo de peso':'kilos · 1RM'}</div></div>
+        <div class="ca-seg"><button class="chip-btn ${!rel?'on':''}" onclick="setCompareStrengthRel(false)">Absoluto</button><button class="chip-btn ${rel?'on':''}" onclick="setCompareStrengthRel(true)">Por kilo de peso</button></div></div>
+      ${strength || '<div class="ca-empty">Sin 1RM cargados.</div>'}
+    </section>
+  </div>`;
+
+  // Carga y bienestar: la misma fila del Dashboard, con el color de cada atleta
+  html += `<section class="ca-card ca-load">
+    <div class="ca-card-h"><div><div class="ca-k">Carga y bienestar</div><div class="ca-ks">esta semana</div></div></div>
+    <div class="ar-list">${athleteRowsHead()}${athletes.map((a,i)=>`<div class="ca-lrow" style="--ca-c:${chartSeriesColor(i)}">${athleteRowHtml(a,{onclick:"adminOpenAthlete('"+a.uid+"')", status:getDashAthleteStatus(a)})}</div>`).join('')}</div>
+  </section>`;
+
+  // Evolución
+  const metrics = compareEvolMetrics(athletes);
+  if(!metrics.some(m=>m.id===S.compareEvolMetric)) S.compareEvolMetric = metrics[0].id;
+  const met = metrics.find(m=>m.id===S.compareEvolMetric);
+  const buckets = compareEvolBuckets(met.id);
+  const gains = athletes.map((a,i)=>{
+    const vals = buckets.map(b=>compareEvolValue(a, met.id, b));
+    const fi = vals.findIndex(v=>v!=null), li = vals.length-1-[...vals].reverse().findIndex(v=>v!=null);
+    if(fi<0 || li<=fi) return '';
+    const d = vals[li]-vals[fi];
+    const dec = met.unit==='cm' ? 1 : 0;
+    const txt = (d>0?'↑ +':d<0?'↓ −':'= ')+cmpFmt(Math.abs(d),dec)+(met.unit==='%'?' pts':' '+met.unit);
+    return `<span class="ca-gain"><i style="background:${chartSeriesColor(i)}"></i><b>${esc((a.name||a.email||'').split(/\s+/)[0])}</b><em>${txt}</em><span>desde ${buckets[fi].label}</span></span>`;
+  }).join('');
+  html += `<section class="ca-card">
+    <div class="ca-card-h"><div><div class="ca-k">Evolución</div><div class="ca-ks">${esc(met.label)} · ${met.unit} · ${(met.id==='wellness'||met.id==='ua')?'últimas 8 semanas':'últimos 6 meses'}</div></div>
+      <div class="ca-metrics">${metrics.map(m=>`<button class="chip-btn ${m.id===met.id?'on':''}" onclick="setCompareEvolMetric('${m.id}')">${esc(m.label)}</button>`).join('')}</div></div>
+    <div class="ca-evol"><canvas id="compare-chart-evol"></canvas></div>
+    ${gains?`<div class="ca-gains">${gains}</div>`:''}
+  </section>`;
   return html;
 }
 window.renderCompareAthletes=renderCompareAthletes;
@@ -12215,40 +12492,62 @@ function drawCompareCharts() {
     try{S.compareChartInstances[k].destroy();}catch(e){}
     delete S.compareChartInstances[k];
   });
-  if(!S.compareA || !S.compareB || S.compareA===S.compareB) return;
-  const athletes=S.adminAthletes||[];
-  const a=athletes.find(x=>x.uid===S.compareA), b=athletes.find(x=>x.uid===S.compareB);
-  if(!a||!b) return;
-
-  const sumA=computeAthleteLoadSummary(a), sumB=computeAthleteLoadSummary(b);
-  const evalsA=a._personal?.evals||{}, evalsB=b._personal?.evals||{};
-  const bestOf=(edata,id)=>{ const r=edata?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):0; };
-  const gridColor='rgba(18,21,28,0.08)';
-  const nameA=a.name||a.email, nameB=b.name||b.email;
-
-  const c1=document.getElementById('compare-chart-wellness');
-  if(c1) {
-    S.compareChartInstances['wellness']=new Chart(c1,{
-      type:'bar',
-      data:{ labels:[nameA,nameB], datasets:[{ data:[sumA.avgWellness||0, sumB.avgWellness||0], backgroundColor:['#3b7dd8','#22c55e'], borderRadius:6 }] },
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
-        scales:{ y:{min:0,max:100,ticks:{color:cssVar('--text','#1A1D26'),font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:cssVar('--text','#1A1D26'),font:{size:11}},grid:{display:false}} } }
+  const canvas = document.getElementById('compare-chart-evol');
+  const athletes = compareAthletes();
+  if(!canvas || athletes.length<2) return;
+  const metrics = compareEvolMetrics(athletes);
+  const met = metrics.find(m=>m.id===S.compareEvolMetric) || metrics[0];
+  const buckets = compareEvolBuckets(met.id);
+  const c = chartColors();
+  const dec = met.unit==='cm' ? 1 : 0;
+  const scope = (S.adminAthletes||[]).filter(a=>compareScopeUids().includes(a.uid));
+  const avgData = buckets.map(b=>{
+    const v = scope.map(a=>compareEvolValue(a, met.id, b)).filter(x=>x!=null);
+    return v.length>=2 ? v.reduce((s,x)=>s+x,0)/v.length : null;
+  });
+  const datasets = athletes.map((a,i)=>({
+    label:a.name||a.email, _short:(a.name||a.email||'').split(/\s+/)[0],
+    data:buckets.map(b=>compareEvolValue(a, met.id, b)),
+    borderColor:chartSeriesColor(i), backgroundColor:chartSeriesColor(i),
+    pointBorderColor:c.card, pointBorderWidth:1.5, pointRadius:3.5, spanGaps:true, tension:.25,
+  }));
+  if(avgData.some(v=>v!=null)) datasets.push({label:'Promedio '+compareScopeLabel(), _short:'prom.', _avg:true, data:avgData,
+    borderColor:c.avg, borderDash:[5,4], borderWidth:1.6, pointRadius:0, pointHoverRadius:3, spanGaps:true, tension:.25});
+  // Nombre y último valor al final de cada línea, sin pisarse entre sí.
+  const endLabels = { id:'cmpEnd', afterDatasetsDraw(chart){
+    const ctx = chart.ctx, items = [];
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta = chart.getDatasetMeta(di); if(meta.hidden) return;
+      let li = ds.data.length-1; while(li>=0 && ds.data[li]==null) li--;
+      if(li<0) return;
+      items.push({y:meta.data[li].y, v:ds.data[li], name:ds._short});
     });
-  }
-  const c2=document.getElementById('compare-chart-strength');
-  if(c2) {
-    const labels=['CMJ (cm)','Banca (kg)','Muerto (kg)','Sentadilla (kg)','Cargada (kg)'];
-    const ids=['cmj','rm_press_banca','rm_peso_muerto','rm_sentadilla','rm_cargada_potencia'];
-    S.compareChartInstances['strength']=new Chart(c2,{
-      type:'bar',
-      data:{ labels, datasets:[
-        {label:nameA, data:ids.map(id=>bestOf(evalsA,id)), backgroundColor:'#3b7dd8', borderRadius:4},
-        {label:nameB, data:ids.map(id=>bestOf(evalsB,id)), backgroundColor:'#22c55e', borderRadius:4},
-      ]},
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:cssVar('--text','#1A1D26'),font:{size:11}}}},
-        scales:{ y:{ticks:{color:cssVar('--text','#1A1D26'),font:{size:10}},grid:{color:gridColor}}, x:{ticks:{color:cssVar('--text','#1A1D26'),font:{size:9}},grid:{display:false}} } }
+    items.sort((p,q)=>p.y-q.y);
+    for(let i=1;i<items.length;i++) if(items[i].y-items[i-1].y<15) items[i].y = items[i-1].y+15;
+    const x = chart.chartArea.right+10, narrow = chart.width<600;
+    items.forEach(it=>{
+      ctx.save(); ctx.textBaseline='middle'; ctx.textAlign='left';
+      ctx.font = "800 12px 'Manrope',sans-serif"; ctx.fillStyle = c.text;
+      const vt = cmpFmt(it.v,dec); ctx.fillText(vt, x, it.y);
+      const w = ctx.measureText(vt+' ').width;
+      if(!narrow) { ctx.font = "500 12px 'Manrope',sans-serif"; ctx.fillStyle = c.text2; ctx.fillText(it.name, x+w, it.y); }
+      ctx.restore();
     });
-  }
+  }};
+  S.compareChartInstances['evol'] = new Chart(canvas, {
+    type:'line',
+    data:{ labels:buckets.map(b=>b.label), datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{right:canvas.parentElement.clientWidth<600?44:110, top:6}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{ legend:{display:false},
+        tooltip:{ itemSort:(p,q)=>(q.parsed.y??-1e9)-(p.parsed.y??-1e9), filter:i=>i.parsed.y!=null,
+          callbacks:{ label:ctx=>' '+ctx.dataset._short+'  '+cmpFmt(ctx.parsed.y,dec)+' '+met.unit } } },
+      scales:{ x:{grid:{display:false}}, y:{grace:'8%', ticks:{maxTicksLimit:6}} }
+    },
+    plugins:[endLabels]
+  });
 }
 window.drawCompareCharts=drawCompareCharts;
 
@@ -14750,7 +15049,7 @@ function drawPlayerTeamRadar(myData, team, myPosition) {
   const avgLabel = posAvgs ? 'Promedio de tu puesto' : 'Promedio del equipo';
 
   const bestOf = (id) => { const r=myData[id]||[]; return r.length ? Math.max(...r.map(x=>x.height)) : null; };
-  const pct = (raw,id) => { const max=teamMax[id]; return (raw!=null && max) ? Math.min(100, Math.round((raw/max)*100)) : 0; };
+  const pct = (raw,id) => { const max=teamMax[id]; return (raw!=null && max) ? Math.min(100, Math.round((raw/max)*100)) : null; };
 
   const rawA = RADAR_METRICS.map(m=>bestOf(m.id));
   const rawB = RADAR_METRICS.map(m=>avgs[m.id]!=null ? avgs[m.id] : null);
@@ -14758,27 +15057,27 @@ function drawPlayerTeamRadar(myData, team, myPosition) {
   const valuesB = RADAR_METRICS.map((m,i)=>pct(rawB[i],m.id));
 
   const datasets = [
-    { label:'Vos', data:valuesA, backgroundColor:'rgba(36,59,107,0.15)', borderColor:'#243B6B', borderWidth:2, pointBackgroundColor:'#243B6B', pointRadius:3, _raw:rawA },
-    { label:avgLabel, data:valuesB, backgroundColor:'rgba(122,131,148,0.06)', borderColor:cssVar('--text3','#7A8394'), borderWidth:2, borderDash:[5,4], pointBackgroundColor:cssVar('--text3','#7A8394'), pointRadius:3, _raw:rawB },
+    { label:'Vos', data:valuesA, backgroundColor:chartAlpha(chartColors().accent,0.16), borderColor:chartColors().accent, borderWidth:2, pointBackgroundColor:chartColors().accent, pointBorderColor:chartColors().card, pointRadius:3.5, spanGaps:true, _raw:rawA },
+    { label:avgLabel, data:valuesB, backgroundColor:'transparent', borderColor:chartColors().avg, borderWidth:1.6, borderDash:[5,4], pointRadius:0, pointHoverRadius:4, pointBackgroundColor:chartColors().avg, spanGaps:true, _raw:rawB },
   ];
 
   try{ S.playerRadarChartInstance?.destroy(); }catch(e){}
   S.playerRadarChartInstance = new Chart(canvas, {
     type:'radar',
-    data:{ labels: RADAR_METRICS.map(m=>m.label), datasets },
+    data:{ labels: RADAR_METRICS.map((m,i)=>rawA[i]==null ? [m.label,'sin test'] : m.label), datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{ display:true, labels:{color:cssVar('--text2','#4B5160'), font:{size:10}, boxWidth:10} },
+        legend:{ display:true },
         tooltip:{ callbacks:{ label:(ctx)=>{
           const raw = ctx.dataset._raw?.[ctx.dataIndex];
           const unit = RADAR_METRICS[ctx.dataIndex].id.startsWith('rm_') ? 'kg' : 'cm';
           return `${ctx.dataset.label}: ${raw!=null?raw+unit:'sin datos'}`;
         } } }
       },
-      scales:{ r:{ min:0, max:100, ticks:{color:cssVar('--text2','#4B5160'), backdropColor:'transparent', font:{size:9}, stepSize:25},
-        grid:{color:cssVar('--border2','rgba(18,21,28,0.14)')}, angleLines:{color:cssVar('--border2','rgba(18,21,28,0.14)')},
-        pointLabels:{color:cssVar('--text','#1A1D26'), font:{size:11,weight:600}} } }
+      scales:{ r:{ min:0, max:100, ticks:{display:false, stepSize:25},
+        grid:{color:chartColors().grid}, angleLines:{color:chartColors().grid},
+        pointLabels:{color:chartColors().text2, font:{size:12,weight:600}} } }
     }
   });
 }
@@ -14851,7 +15150,6 @@ function drawEvalCharts() {
     if(myTeam) drawPlayerTeamRadar(edata, myTeam, S.userData?.position||null);
     return;
   }
-  const gridColor = 'rgba(18,21,28,0.08)';
   const chartView = view;
   // Escala dinámica: en vez de un rango fijo igual para todos los atletas
   // (ej. 10-80cm), se calcula en base a los valores REALES registrados —
@@ -14871,7 +15169,7 @@ function drawEvalCharts() {
   }
   window.computeDynamicScale=computeDynamicScale;
 
-  const tooltipStyle = {backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1};
+  // El recuadro de detalle (tooltip) sale del estilo común de gráficos.
 
   if(chartView==='history') {
     if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
@@ -14890,7 +15188,7 @@ function drawEvalCharts() {
       responsive:true, maintainAspectRatio:true, aspectRatio:2.6,
       devicePixelRatio: window.devicePixelRatio || 1,
       layout:{padding:{top:24, right:16}},
-      plugins:{legend:{display:false}, tooltip:{...tooltipStyle, displayColors:false}},
+      plugins:{legend:{display:false}, tooltip:{displayColors:false}},
       scales:{
         x:{grid:{display:false}, border:{display:false}, ticks:{...axisTicks, maxRotation:0, autoSkip:true}},
         y:{grid:{color:cGrid}, border:{display:false}, ticks:{...axisTicks, maxTicksLimit:4}, min:yMin, max:yMax}
@@ -15527,29 +15825,38 @@ function drawAthleteTrendChart() {
 
   if(acwrData.every(v=>v===null) && wellnessData.every(v=>v===null)) return; // nada que graficar
 
-  const gridColor='rgba(18,21,28,0.08)';
+  // Wellness (%) arriba y ACWR abajo, cada uno con su escala y el mismo eje
+  // de fechas — nunca dos unidades sobre el mismo eje. La franja verde del
+  // ACWR es la zona óptima (0,8–1,3).
+  const c=chartColors();
+  const acwrZone={ id:'acwrZone', beforeDatasetsDraw(chart){
+    const y=chart.scales.y1, x=chart.scales.x; if(!y||!x) return;
+    const ctx=chart.ctx, top=y.getPixelForValue(1.3), bot=y.getPixelForValue(0.8);
+    ctx.save(); ctx.fillStyle=chartAlpha(c.green,0.10); ctx.fillRect(x.left, top, x.right-x.left, bot-top); ctx.restore();
+  }};
   S.athleteChartInstances['trend']=new Chart(canvas,{
     type:'line',
     data:{
       labels,
       datasets:[
-        {label:'Wellness %',data:wellnessData,borderColor:'#1f7a4d',backgroundColor:'rgba(31,122,77,0.08)',yAxisID:'y',spanGaps:true,tension:.3,pointRadius:2,fill:true},
-        {label:'ACWR',data:acwrData,borderColor:'#2f5fd8',backgroundColor:'rgba(47,95,216,0.08)',yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:2,fill:false},
+        {label:'Wellness',data:wellnessData,borderColor:c.accent,backgroundColor:chartAlpha(c.accent,0.10),yAxisID:'y',spanGaps:true,tension:.3,pointRadius:0,pointHoverRadius:4,fill:true},
+        {label:'ACWR',data:acwrData,borderColor:c.text,yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:0,pointHoverRadius:4,fill:false},
       ]
     },
     options:{
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{labels:{color:cssVar('--text','#1A1D26'),font:{size:11},boxWidth:12}},
-        tooltip:{backgroundColor:'#111827',titleColor:'#e8edf8',bodyColor:'#7a90b8',borderColor:'rgba(255,255,255,0.1)',borderWidth:1}
+        legend:{display:false},
+        tooltip:{callbacks:{label:(ctx)=>ctx.parsed.y==null?null:(ctx.dataset.label+': '+(ctx.datasetIndex===0?ctx.parsed.y+' %':String(ctx.parsed.y).replace('.',',')))}}
       },
       scales:{
-        x:{ ticks:{color:cssVar('--text','#1A1D26'),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8}, grid:{color:gridColor} },
-        y:{ position:'left', min:0, max:100, ticks:{color:'#1f7a4d',font:{size:10},stepSize:25}, grid:{color:gridColor} },
-        y1:{ position:'right', min:0, suggestedMax:2, ticks:{color:'#2f5fd8',font:{size:10}}, grid:{drawOnChartArea:false} },
+        x:{ ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:8}, grid:{display:false} },
+        y1:{ stack:'trend', stackWeight:1, offset:true, min:0, suggestedMax:2, ticks:{stepSize:1}, title:{display:true,text:'ACWR',color:c.text2} },
+        y:{ stack:'trend', stackWeight:1, offset:true, min:0, max:100, ticks:{stepSize:50}, title:{display:true,text:'Wellness %',color:c.text2} },
       }
-    }
+    },
+    plugins:[acwrZone]
   });
 }
 window.drawAthleteTrendChart=drawAthleteTrendChart;

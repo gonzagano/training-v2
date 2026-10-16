@@ -307,6 +307,40 @@
     const saved=JSON.parse(localStorage.getItem('__db')).routines.r1.sessions[sess][0].categories[0].exercises[0]; const pw=getExPrescriptionForWeek(saved,4);
     ok(pw.series==='5'&&pw.reps==='3'&&pw.rpe==='8','guardada: la semana 4 tiene 5 × 3 a RPE 8 sin haberla completado');
     closeConfirmModal && closeConfirmModal(); document.querySelectorAll('[id$="overlay"].open').forEach(o=>o.classList.remove('open')); txtBad('editor semanas heredadas'); }
+
+  // ── estilo único de gráficos ──
+  { applyChartTheme(); ok(Chart.defaults.color===chartColors().text3&&Chart.defaults.font.size>=11,'gráficos: color y letra (≥11 px) del tema');
+    const cs=[0,1,2,3,4,5].map(chartSeriesColor); ok(new Set(cs).size===6&&!cs.some(c=>[chartColors().green,chartColors().red].includes(c)),'gráficos: 6 colores de atleta distintos, sin verde/rojo de alerta');
+    ok(chartSeriesColor(6)===chartSeriesColor(0),'gráficos: el color sigue el orden, no se inventan nuevos'); }
+  // ── perfil: wellness y ACWR en dos franjas (nunca dos unidades en un mismo eje) ──
+  { S.atletaView=null; switchView('atletas'); await wait(1000); openAtleta('u0'); await wait(1500); setAtletaSubview('perfil'); await wait(700);
+    const tr=S.athleteChartInstances?.trend; if(tr){ ok(tr.options.scales.y.stack==='trend'&&tr.options.scales.y1.stack==='trend','perfil: tendencia en dos franjas (wellness arriba, ACWR abajo)'); }
+    goBackFromAthleteDetail(); await wait(400); }
+  // ── comparar atletas: de 2 a 6, saltos y fuerza separados, promedio, evolución ──
+  { await ensureAdminAthletes(); await ensureGroupPersonalData(S.adminAthletes.map(a=>a.uid));
+    const mk=(b,st)=>['2026-05-12','2026-06-15','2026-08-10','2026-09-12'].map((d,i)=>({date:d,height:+(b+st*i).toFixed(1)}));
+    [['u0',38,0.7,110,71],['u1',35,0.6,85,92],['u2',37,0.5,120,84],['u3',34,0.3,95,78]].forEach(([uid,c,st,sq,w],k)=>{ const a=S.adminAthletes.find(x=>x.uid===uid); if(!a) return; a.weight=w; a._personal=a._personal||{}; a._personal.evals={cmj:mk(c,st), sj:k===1?[]:mk(c-3,st), rm_sentadilla:[{date:'2026-08-20',height:sq}]}; });
+    S.compareUids=[]; S.compareScope='all'; S.compareStrengthRel=false; S.compareMode='last';
+    switchView('atletas'); await wait(800); const cb=document.querySelector('#main button[onclick="adminGoCompare(\'ind\')"]'); ok(!!cb,'Atletas: botón Comparar atletas');
+    await adminGoCompare('all'); await wait(500);
+    ok(/al menos dos/.test(document.getElementById('main').innerText),'comparar: pide al menos dos');
+    for(const u of ['u0','u1','u2']) await addCompareAthlete(u); await wait(400);
+    ok(document.querySelectorAll('.ca-chip').length===3,'comparar: 3 atletas elegidos');
+    const dots=[...document.querySelectorAll('.ca-chip i')].map(i=>getComputedStyle(i).backgroundColor); ok(new Set(dots).size===3,'comparar: un color por atleta');
+    const cmj=[...document.querySelectorAll('.ca-test')].find(t=>/^CMJ/.test(t.querySelector('.ca-test-h b').textContent));
+    ok(!!cmj&&cmj.querySelectorAll('.ca-bar').length===3,'comparar: CMJ con una barra por atleta');
+    ok(!!cmj&&/Mejor/.test(cmj.querySelector('.ca-row .ca-pill').innerText)&&/40,1/.test(cmj.innerText),'comparar: el mejor (Espamer 40,1) lleva "Mejor"');
+    ok(!!cmj&&!!cmj.querySelector('.ca-avg')&&/prom\. general/.test(cmj.innerText),'comparar: línea del promedio');
+    const sj=[...document.querySelectorAll('.ca-test')].find(t=>/^SJ/.test(t.querySelector('.ca-test-h b').textContent)); ok(!!sj&&/sin test/.test(sj.innerText),'comparar: "sin test" en vez de cero');
+    const cards=[...document.querySelectorAll('.ca-card')]; ok(/Saltos/i.test(cards[0].innerText)&&/Fuerza/i.test(cards[1].innerText)&&!/kg/.test(cards[0].querySelector('.ca-test-h').innerText),'comparar: saltos (cm) y fuerza (kg) en gráficos separados');
+    setCompareStrengthRel(true); await wait(300); ok(/kg\/kg/.test(document.querySelectorAll('.ca-card')[1].innerText)&&/1,55/.test(document.querySelectorAll('.ca-card')[1].innerText),'comparar: fuerza por kilo de peso (110/71 = 1,55)'); setCompareStrengthRel(false); await wait(200);
+    ok(document.querySelectorAll('.ca-lrow .ar-row').length===3,'comparar: carga y bienestar de cada uno');
+    await wait(300); const ev=S.compareChartInstances?.evol; ok(!!ev&&ev.data.datasets.filter(d=>!d._avg).length===3&&ev.data.datasets.some(d=>d._avg),'comparar: evolución con 3 líneas + promedio');
+    ok(/↑ \+2,1 cm/.test(document.querySelector('.ca-gains')?.innerText||''),'comparar: cuánto mejoró cada uno (+2,1 cm)');
+    for(const u of ['u3','u4','u5','u6']) await addCompareAthlete(u); await wait(300); ok(document.querySelectorAll('.ca-chip').length===6&&!document.querySelector('.ca-add'),'comparar: máximo 6');
+    removeCompareAthlete('u1'); await wait(200); ok(document.querySelectorAll('.ca-chip').length===5,'comparar: se saca un atleta');
+    txtBad('comparar atletas'); ok(document.documentElement.scrollWidth<=innerWidth+1,'comparar: sin scroll horizontal');
+    compareGoBack(); await wait(300); ok(S.currentView==='atletas','comparar: volver regresa a Atletas'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
