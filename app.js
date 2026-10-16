@@ -2212,10 +2212,11 @@ function rpeDesc(v) {
   if(v<=8.5) return 'moderado–alto';
   return 'alto';
 }
-function showToast(msg) {
+function showToast(msg, ms) {
   const t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2200);
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>t.classList.remove('show'), ms||2200);
 }
 function countChecked(w) {
   let n=0;
@@ -4268,6 +4269,8 @@ function addFromLib(libId) {
     const newEx={id:genId(),libId:libEx.id,name:libEx.name,series:'',reps:'',pct:'',rpe:'',note:''};
     didReplace = placeLibExercise(b.categories[catIdx].exercises, newEx);
     closeLib(); renderMain();
+    const dupPl = routineExOtherPlaces(S.editingRoutine, newEx);
+    if(dupPl.length) { showToast(`⚠ ${libEx.name} ya está en ${routineDupLabel(dupPl)}`, 4500); return; }
   } else {
     // Adding to admin's personal session
     const b=S.blocks.find(x=>x.id===blockId); if(!b) return;
@@ -4792,6 +4795,26 @@ function exerciseSeriesKey(ex) {
   const l = findLibExercise(ex);
   return l ? 'lib:'+l.id : 'name:'+(ex.name||'').trim().toLowerCase();
 }
+// ── EJERCICIO REPETIDO EN LA RUTINA ──────────────────────────
+// Mismo ejercicio = mismo ejercicio de la biblioteca, o (si se escribió a mano)
+// mismo nombre sin importar tildes ni mayúsculas.
+function routineExKey(ex) { const l = findLibExercise(ex) || (S.library||[]).find(x=>normTxt(x.name)===normTxt(ex?.name)); return l ? 'lib:'+l.id : 'name:'+normTxt(ex?.name); }
+// Dónde más aparece este ejercicio en la rutina (otro día, u otro bloque del mismo día).
+function routineExOtherPlaces(routine, ex) {
+  if(!routine || !ex) return [];
+  const k = routineExKey(ex), out = [];
+  getOrderedSessionNames(routine).forEach(sn=>(routine.sessions[sn]||[]).forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(e=>{
+    if(e.id!==ex.id && routineExKey(e)===k) out.push({sName:sn, block:b.title||b.label||''});
+  }))));
+  return out;
+}
+function routineDupLabel(places) { return places.map(p=>p.sName+' · '+p.block).join(' / '); }
+function routineDupTag(routine, ex) {
+  const pl = routineExOtherPlaces(routine, ex); if(!pl.length) return '';
+  const t = routineDupLabel(pl).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+  return `<span class="dup-tag" title="También en: ${t}">También en ${t}</span>`;
+}
+window.routineExOtherPlaces = routineExOtherPlaces; window.routineDupLabel = routineDupLabel;
 function getLibMainCategory(ex) {
   const l = findLibExercise(ex);
   return (l?.tags||[]).find(t=>LIB_MAIN_CATEGORIES.includes(t)) || null;
@@ -13526,7 +13549,7 @@ function renderDaysCompare(routine) {
           const fld = (k, ph, cls)=>{ const ov = own[k]; const has = ov!=null && String(ov).trim()!==''; const hv = (!has && W>1) ? p[k] : ''; return `<input class="cmp-f ${cls||''}" type="text" inputmode="${k==='note'?'text':'decimal'}" placeholder="${esc(hv||ph)}" ${hv?'data-inh="1"':''} title="${ph}" value="${has?esc(ov):''}" onchange="setRExWeekField(${args},${W},'${k}',this.value)">`; };
           const isOpen = st.openEx===e.id;
           return `<div class="cmp-ex cmp-exe" data-k="${esc(exerciseSeriesKey(e))}" id="cmpex-${e.id}">
-            <div class="cmp-exh"><b>${esc(e.name)}</b><span class="cmp-tools">
+            <div class="cmp-exh"><b>${esc(e.name)}${routineDupTag(routine, e)}</b><span class="cmp-tools">
               ${tool('up',`moveRExercise(${args},-1)`,'Subir',ei===0)}${tool('down',`moveRExercise(${args},1)`,'Bajar',ei===exs.length-1)}${tool('swap',`replaceExercise('routine','${e.id}','${b.id}',${ci},'${sn}')`,'Reemplazar por otro ejercicio')}${tool('more',`cmpToggleEx('${e.id}')`,'Todas las semanas, RM y nota',false,isOpen?'on':'')}${tool('x',`deleteRExercise(${args})`,'Quitar ejercicio',false,'del')}
             </span></div>
             <div class="cmp-in">${fld('series','Series')}<i>×</i>${fld('reps','Reps')}${fld('pct','%RM')}${fld('rpe',p.intensityType||'RPE')}</div>
@@ -13751,7 +13774,7 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
         </div>
-        <span class="ex-name" ondblclick="editRExName(this,'${ex.id}','${blockId}','${sessionName}',${catIdx})">${ex.name}</span>
+        <span class="ex-name" ondblclick="editRExName(this,'${ex.id}','${blockId}','${sessionName}',${catIdx})">${ex.name}${routineDupTag(S.editingRoutine, ex)}</span>
         <input class="ex-name-inp" id="rexinp-${ex.id}" onblur="saveRExName('${ex.id}','${blockId}','${sessionName}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()">
         <div class="ex-actions">
           <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',true)" title="Video">

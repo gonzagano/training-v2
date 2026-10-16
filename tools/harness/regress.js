@@ -264,12 +264,12 @@
       goBackFromAthleteDetail(); await wait(500); } }
   // ── panel lateral: se achica a íconos y se vuelve a abrir (solo pantallas anchas) ──
   if(innerWidth>=900){ const tb=document.getElementById('topbar'); const w0=tb.getBoundingClientRect().width; const m0=document.getElementById('main').getBoundingClientRect().left;
-    document.getElementById('sb-toggle').click(); await wait(400); const w1=tb.getBoundingClientRect().width;
-    ok(w1<100&&w1<w0,'panel: se achica ('+Math.round(w0)+' → '+Math.round(w1)+' px)'); ok(document.getElementById('main').getBoundingClientRect().left<m0-100,'panel: el contenido gana el espacio');
+    document.getElementById('sb-toggle').click(); let w1=0; for(let i=0;i<20;i++){ await wait(100); w1=tb.getBoundingClientRect().width; if(w1<100) break; }
+    ok(w1<100&&w1<w0,'panel: se achica ('+Math.round(w0)+' → '+Math.round(w1)+' px)'); for(let i=0;i<20 && document.getElementById('main').getBoundingClientRect().left>=m0-100;i++) await wait(100); ok(document.getElementById('main').getBoundingClientRect().left<m0-100,'panel: el contenido gana el espacio');
     ok([...document.querySelectorAll('.sidebar-item .sb-lbl')].every(x=>getComputedStyle(x).display==='none')&&document.querySelectorAll('.sidebar-item svg').length>3,'panel achicado: quedan solo los íconos');
     document.querySelectorAll('.sidebar-item')[1].click(); await wait(500); ok(document.documentElement.classList.contains('sb-collapsed'),'panel achicado: se sigue navegando con los íconos');
     ok(localStorage.getItem('gm-sidebar')==='collapsed','panel: recuerda la elección');
-    document.getElementById('sb-toggle').click(); await wait(400); ok(Math.abs(tb.getBoundingClientRect().width-w0)<2,'panel: se vuelve a abrir'); }
+    document.getElementById('sb-toggle').click(); for(let i=0;i<20;i++){ await wait(100); if(Math.abs(tb.getBoundingClientRect().width-w0)<2) break; } ok(Math.abs(tb.getBoundingClientRect().width-w0)<2,'panel: se vuelve a abrir'); }
   else ok(getComputedStyle(document.getElementById('sb-toggle')).display==='none','celular/tablet angosta: no hay botón de panel');
   // ── 1RM por RPE: misma tabla que la planilla ──
   { const near=(a,b)=>Math.abs(a-b)<0.01;
@@ -341,6 +341,22 @@
     removeCompareAthlete('u1'); await wait(200); ok(document.querySelectorAll('.ca-chip').length===5,'comparar: se saca un atleta');
     txtBad('comparar atletas'); ok(document.documentElement.scrollWidth<=innerWidth+1,'comparar: sin scroll horizontal');
     compareGoBack(); await wait(300); ok(S.currentView==='atletas','comparar: volver regresa a Atletas'); }
+  // ── ejercicio repetido: al ponerlo avisa dónde ya estaba, y queda marcado ──
+  { switchView('admin'); adminGoRoutines(); await wait(600); editRoutine('r1'); await wait(500); S._routineCompare=false;
+    const days=getOrderedSessionNames(S.editingRoutine); const d3=days[days.length-1]; S._routineEditSession=d3; renderMain(); await wait(300);
+    const blk=S.editingRoutine.sessions[d3][0];
+    // "Press banca" (lpb) ya está en otros días
+    const before=routineExOtherPlaces(S.editingRoutine,{id:'zz',libId:'lpb',name:'Press banca'}); ok(before.length>=1,'detecta dónde ya está Press banca ('+routineDupLabel(before)+')');
+    openRoutineLib(blk.id,d3,0); await wait(250); addFromLib('lpb'); await wait(400);
+    const toast=document.getElementById('toast').textContent; ok(/ya está en/.test(toast)&&before.some(p=>toast.includes(p.sName)),'al ponerlo avisa en qué día y bloque ya estaba ('+toast+')');
+    const added=blk.categories[0].exercises.find(e=>e.libId==='lpb'); const row=added&&document.getElementById('rexrow-'+added.id);
+    ok(!!row&&!!row.querySelector('.dup-tag')&&row.querySelector('.dup-tag').textContent.includes(before[0].sName),'el ejercicio repetido queda marcado con dónde más está');
+    // uno que no está repetido no se marca y avisa normal
+    openRoutineLib(blk.id,d3,0); await wait(250); addFromLib('lbi'); await wait(400);
+    const nb=blk.categories[0].exercises.find(e=>e.libId==='lbi'); ok(!document.getElementById('rexrow-'+nb.id).querySelector('.dup-tag')&&/agregado/.test(document.getElementById('toast').textContent),'un ejercicio no repetido no se marca');
+    ok(routineExOtherPlaces(S.editingRoutine,{id:'q',name:'PRESS  BANCA'}).length>=2,'reconoce el mismo ejercicio escrito con mayúsculas o espacios distintos');
+    setRoutineCompare(true); await wait(500); ok(!!document.querySelector('#cmpex-'+added.id+' .dup-tag'),'vista horizontal: también lo marca'); setRoutineCompare(false);
+    txtBad('editor con repetidos'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

@@ -1319,3 +1319,7 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
   .ca-pill .ev-pill{font-size:11px;padding:2px 8px 2px 4px}
   .ca-evol{height:240px}
 }
+
+/* Ejercicio repetido en otro día/bloque de la rutina */
+.dup-tag{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:20px;background:var(--amber-dim);color:var(--amber);font-size:11px;font-weight:700;vertical-align:middle;white-space:normal;line-height:1.5}
+.cmp-exh b .dup-tag{display:block;margin:3px 0 0;width:max-content;max-width:100%}
