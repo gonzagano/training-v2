@@ -286,6 +286,27 @@
     const btn=document.querySelector('.rm-use[onclick*="sentadilla_barra"]'); ok(!!btn&&/131/.test(btn.closest('.rm-est').innerText),'ficha: muestra el estimado y el botón para usarlo');
     if(btn){ btn.click(); await wait(600); ok(JSON.parse(localStorage.getItem('__db')).personal.u0.oneRM.sentadilla_barra===131,'Usar como RM: queda guardado (131) en el atleta'); ok(!document.querySelector('.rm-use[onclick*="sentadilla_barra"]'),'después de usarlo ya no lo vuelve a ofrecer'); }
     txtBad('perfil con RM estimado'); goBackFromAthleteDetail(); await wait(400); }
+  // ── prescribir solo la semana 1: las demás semanas repiten lo mismo ──
+  { const ex1={id:'t1',name:'Prueba',progression:[{series:'4',reps:'6',pct:'75',rpe:'8',note:'Controlado'},{series:'',reps:'',pct:'',rpe:'',note:''},{},{}]};
+    const p3=getExPrescriptionForWeek(ex1,3); ok(p3.series==='4'&&p3.reps==='6'&&p3.pct==='75'&&p3.rpe==='8'&&p3.note==='Controlado','semanas vacías repiten la semana 1 ('+JSON.stringify(p3)+')');
+    ex1.progression[2].reps='5'; const p4=getExPrescriptionForWeek(ex1,4); ok(p4.reps==='5'&&p4.series==='4','una semana cambiada arrastra a las siguientes vacías, y lo demás sigue igual');
+    ok(getExPrescriptionForWeek(ex1,2).reps==='6','la semana anterior al cambio no se toca');
+    ok(getExPrescriptionForWeek({series:'3',reps:'10'},4).reps==='10','ejercicio sin tabla por semanas: igual en todas'); }
+  // en el editor: completar solo la semana 1, guardar, y el atleta ve lo mismo en la semana 4
+  { switchView('admin'); adminGoRoutines(); await wait(600); editRoutine('r1'); await wait(500);
+    setRoutineDuration('4'); await wait(300);
+    const sess=getOrderedSessionNames(S.editingRoutine)[0]; S._routineEditSession=sess; S._routineCompare=false; renderMain(); await wait(400);
+    const b0=S.editingRoutine.sessions[sess][0]; const e0=b0.categories[0].exercises[0]; delete e0.progression; e0.series=''; e0.reps=''; e0.pct=''; e0.rpe='';
+    b0._open=true; renderMain(); await wait(400);
+    const row=document.getElementById('rexrow-'+e0.id); const cells=f=>[...row.querySelectorAll('input.field-inp')].filter(i=>(i.getAttribute('onchange')||'').includes("'"+f+"'"));
+    const s1=cells('series')[0]; s1.value='5'; s1.dispatchEvent(new Event('change',{bubbles:true})); const r1=cells('reps')[0]; r1.value='3'; r1.dispatchEvent(new Event('change',{bubbles:true})); const q1=cells('rpe')[0]; q1.value='8'; q1.dispatchEvent(new Event('change',{bubbles:true}));
+    renderMain(); await wait(400);
+    const row2=document.getElementById('rexrow-'+e0.id); const reps4=[...row2.querySelectorAll('input.field-inp')].filter(i=>(i.getAttribute('onchange')||'').includes("'reps'"))[3];
+    ok(reps4&&reps4.value===''&&reps4.placeholder==='3'&&reps4.dataset.inh==='1','editor: la semana 4 muestra en gris lo de la semana 1');
+    await saveRoutineToFirestore(); await wait(700);
+    const saved=JSON.parse(localStorage.getItem('__db')).routines.r1.sessions[sess][0].categories[0].exercises[0]; const pw=getExPrescriptionForWeek(saved,4);
+    ok(pw.series==='5'&&pw.reps==='3'&&pw.rpe==='8','guardada: la semana 4 tiene 5 × 3 a RPE 8 sin haberla completado');
+    closeConfirmModal && closeConfirmModal(); document.querySelectorAll('[id$="overlay"].open').forEach(o=>o.classList.remove('open')); txtBad('editor semanas heredadas'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

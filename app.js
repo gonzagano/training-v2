@@ -2084,11 +2084,14 @@ function getExPrescriptionForWeek(ex, week) {
   // ex.progression, que puede quedar vieja si se tocó el botón después de
   // crear la progresión. ex.intensityType es siempre la fuente de verdad.
   if(ex.progression && ex.progression.length) {
+    // Si una semana quedó en blanco (o no existe todavía), cada dato repite el
+    // de la última semana que sí se completó — prescribir solo la semana 1 vale
+    // para toda la planificación, y cambiar la semana 1 arrastra a las que siguen vacías.
     const idx = Math.min(week, ex.progression.length) - 1;
-    const wk = ex.progression[idx] || {};
+    const pick = f => { for(let i=idx;i>=0;i--){ const v=ex.progression[i]?.[f]; if(v!=null && String(v).trim()!=='') return v; } return ex[f]||''; };
     return {
-      series: wk.series||'', reps: wk.reps||'', pct: wk.pct||'',
-      rpe: wk.rpe||'', intensityType: ex.intensityType||'RPE', note: wk.note||''
+      series: pick('series'), reps: pick('reps'), pct: pick('pct'),
+      rpe: pick('rpe'), intensityType: ex.intensityType||'RPE', note: pick('note')
     };
   }
   return {
@@ -13220,7 +13223,8 @@ function renderDaysCompare(routine) {
         return `${cats.length>1?`<div class="cmp-cat">${esc(c.label||'')}</div>`:''}` + exs.map((e,ei)=>{
           const p = getExPrescriptionForWeek(e, W);
           const args = `'${e.id}','${b.id}','${sn}',${ci}`;
-          const fld = (k, ph, cls)=>`<input class="cmp-f ${cls||''}" type="text" inputmode="${k==='note'?'text':'decimal'}" placeholder="${ph}" title="${ph}" value="${esc(p[k])}" onchange="setRExWeekField(${args},${W},'${k}',this.value)">`;
+          const own = (e.progression && e.progression[W-1]) ? e.progression[W-1] : (W===1 ? e : {});
+          const fld = (k, ph, cls)=>{ const ov = own[k]; const has = ov!=null && String(ov).trim()!==''; const hv = (!has && W>1) ? p[k] : ''; return `<input class="cmp-f ${cls||''}" type="text" inputmode="${k==='note'?'text':'decimal'}" placeholder="${esc(hv||ph)}" ${hv?'data-inh="1"':''} title="${ph}" value="${has?esc(ov):''}" onchange="setRExWeekField(${args},${W},'${k}',this.value)">`; };
           const isOpen = st.openEx===e.id;
           return `<div class="cmp-ex cmp-exe" data-k="${esc(exerciseSeriesKey(e))}" id="cmpex-${e.id}">
             <div class="cmp-exh"><b>${esc(e.name)}</b><span class="cmp-tools">
@@ -13434,7 +13438,9 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
   const isFirst = exIdx===0, isLast = exIdx===(totalEx-1);
   const durationWeeks = getRoutineDurationWeeks(S.editingRoutine);
   const weeksArr = Array.from({length:durationWeeks}, (_,i)=>i+1);
-  const getWP = (w) => (ex.progression && ex.progression[w-1]) ? ex.progression[w-1] : {series:ex.series||'',reps:ex.reps||'',pct:ex.pct||'',rpe:ex.rpe||'',intensityType:ex.intensityType||'RPE',note:ex.note||''};
+  const getWP = (w) => (ex.progression && ex.progression[w-1]) ? ex.progression[w-1] : (w===1 ? {series:ex.series||'',reps:ex.reps||'',pct:ex.pct||'',rpe:ex.rpe||'',intensityType:ex.intensityType||'RPE',note:ex.note||''} : {});
+  // lo que esa semana hereda de la anterior (se muestra en gris si el casillero está vacío)
+  const inh = (w, f, ph) => { const own=getWP(w)[f]; if(own!=null && String(own).trim()!=='') return `placeholder="${ph}"`; const v = w>1 ? getExPrescriptionForWeek(ex, w)[f] : ''; return v ? `placeholder="${String(v).replace(/"/g,'&quot;')}" data-inh="1"` : `placeholder="${ph}"`; };
   return `<div class="ex-row" id="rexrow-${ex.id}">
     <div class="ex-main">
       <div class="ex-name-row">
@@ -13479,23 +13485,23 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
           <tbody>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Series</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="3x" value="${getWP(w).series||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'series',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'series','3x')} value="${getWP(w).series||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'series',this.value)"></td>`).join('')}
             </tr>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Reps</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="6–8" value="${getWP(w).reps||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'reps',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'reps','6–8')} value="${getWP(w).reps||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'reps',this.value)"></td>`).join('')}
             </tr>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">%RM</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="—" value="${getWP(w).pct||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'pct',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'pct','—')} value="${getWP(w).pct||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'pct',this.value)"></td>`).join('')}
             </tr>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">${ex.intensityType||'RPE'}</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" placeholder="—" value="${getWP(w).rpe||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'rpe',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'rpe','—')} value="${getWP(w).rpe||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'rpe',this.value)"></td>`).join('')}
             </tr>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Nota</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:90px" type="text" placeholder="—" value="${getWP(w).note||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'note',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:90px" type="text" ${inh(w,'note','—')} value="${getWP(w).note||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'note',this.value)"></td>`).join('')}
             </tr>
           </tbody>
         </table>
