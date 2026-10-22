@@ -16076,6 +16076,16 @@ window.renderDashInjuryCategoryFilters = renderDashInjuryCategoryFilters;
 // Solo ACTIVAS a propósito — las dadas de alta no hacen bulto acá, quedan
 // como historial dentro del informe de cada equipo (injuryArchive sigue
 // completo, esto es nomás lo que se muestra en el Dashboard).
+// ── DASHBOARD: SOLO MOLESTIAS Y LESIONES DE LOS ÚLTIMOS 10 DÍAS ──────────
+// Pasados 10 días desde la última vez que se cargó o actualizó, una molestia o
+// lesión deja de aparecer en el Dashboard (panel de atención, "Lesiones
+// recientes", alertas y estado de cada fila), siga activa o no. Si se vuelve a
+// registrar, aparece otros 10 días. En la ficha del atleta sigue siempre.
+const DASH_INJURY_DAYS = 10;
+function injuryLastDate(inj) { return inj?.history?.length ? inj.history[inj.history.length-1].date : (inj?.date || null); }
+function injuryDaysAgo(inj) { const d = injuryLastDate(inj); if(!d) return null; return Math.round((new Date(todayLocal()+'T00:00:00') - new Date(d+'T00:00:00'))/86400000); }
+function injuryIsRecent(inj) { const n = injuryDaysAgo(inj); return n!=null && n<=DASH_INJURY_DAYS; }
+window.injuryIsRecent = injuryIsRecent; window.DASH_INJURY_DAYS = DASH_INJURY_DAYS;
 function getRecentInjuryFeed(athletes, limit) {
   const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
   const feed = [];
@@ -16083,8 +16093,8 @@ function getRecentInjuryFeed(athletes, limit) {
     const injuries = a._personal?.injuries||{};
     const dismissed = a._personal?.dashboardInjuryDismissed||[];
     Object.entries(injuries).forEach(([zoneId,inj])=>{
-      if(!inj.pain||inj.pain<=0||!isRealInjury(inj)) return;
-      const lastDate = inj.history?.length ? inj.history[inj.history.length-1].date : null;
+      if(!inj.pain||inj.pain<=0||!injuryIsRecent(inj)) return;
+      const lastDate = injuryLastDate(inj);
       // Ocultada del panel del Dashboard a propósito (dismissDashboardInjury)
       // — atada a zoneId+fecha, no solo a zoneId: si esta lesión se actualiza
       // más adelante (nuevo dolor, nueva entrada de seguimiento) la fecha
@@ -16093,7 +16103,7 @@ function getRecentInjuryFeed(athletes, limit) {
       // equipo — esto es solo qué se MUESTRA en este panel puntual.
       if(dismissed.includes(zoneId+'|'+(lastDate||''))) return;
       const zoneLabel = allBodyZones.find(z=>z.id===zoneId)?.label || zoneId;
-      feed.push({athlete:a, zoneId, zoneLabel, type:inj.type, severity:inj.severity||'leve', pain:inj.pain, note:inj.note||'', date:lastDate||'', status:'active'});
+      feed.push({athlete:a, zoneId, zoneLabel, type:inj.type, severity:inj.severity||'leve', pain:inj.pain, note:inj.note||'', date:lastDate||'', status:'active', isInjury:isRealInjury(inj)});
     });
   });
   feed.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
@@ -16238,7 +16248,7 @@ function getAthleteRowData(a) {
   const yesterdayChips = todayChips.length ? [] : logs.filter(l=>l.date===yesterday).map(mk);
   const metrics = calcLoadMetrics(logs);
   const alerts = [];
-  const injuries = Object.entries(p.injuries||{}).filter(([,inj])=>inj.pain>0 && isRealInjury(inj));
+  const injuries = Object.entries(p.injuries||{}).filter(([,inj])=>inj.pain>0 && injuryIsRecent(inj));
   const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
   injuries.forEach(([zid,inj])=>{
     alerts.push({kind:'inj', txt:(allZones.find(z=>z.id===zid)?.label||zid)+' · '+(severityInfo(inj.severity||'leve')?.label||'Leve').toLowerCase()});
@@ -16344,9 +16354,9 @@ function renderDashboardContent() {
   athletes.forEach(a=>{
     const p = a._personal||{};
     Object.entries(p.injuries||{}).forEach(([zid,inj])=>{
-      if(!inj.pain || inj.pain<=0 || !isRealInjury(inj)) return;
+      if(!inj.pain || inj.pain<=0 || !injuryIsRecent(inj)) return;
       const sev = inj.severity||'leve';
-      add(a,'inj',(allZones.find(z=>z.id===zid)?.label||zid)+' · '+(severityInfo(sev)?.label||'Leve').toLowerCase()+' · dolor '+inj.pain+'/10', sev==='grave'?0:sev==='moderada'?1:2);
+      add(a,'inj',(isRealInjury(inj)?'Lesión':'Molestia')+' · '+(allZones.find(z=>z.id===zid)?.label||zid)+' · '+(severityInfo(sev)?.label||'Leve').toLowerCase()+' · dolor '+inj.pain+'/10', sev==='grave'?0:sev==='moderada'?1:2);
     });
     const m = calcLoadMetrics(p.history?._sessionLogs||[]);
     if(m?.acwr!=null && m.acwr>1.5) add(a,'acwr','ACWR '+m.acwr.toFixed(2), 3);
@@ -16371,17 +16381,17 @@ function renderDashboardContent() {
   // ── Lesiones recientes (con el mismo filtro) ──
   const recentFeed = getRecentInjuryFeed(athletes).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const recentPanel = `<div class="att-side">
-    <div class="att-side-t">Lesiones recientes (${recentFeed.length})</div>
+    <div class="att-side-t">Molestias y lesiones recientes (${recentFeed.length})</div>
     ${recentFeed.length?recentFeed.map(r=>{
       const daysAgo = r.date ? Math.round((new Date(todayLocal()+'T00:00:00') - new Date(r.date+'T00:00:00'))/86400000) : null;
       const whenLabel = daysAgo==null ? 'sin fecha' : daysAgo<=0 ? 'hoy' : daysAgo===1 ? 'ayer' : `hace ${daysAgo} días`;
       return `<div class="att-row" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
-        <div class="att-main"><div class="att-nm">${esc(r.athlete.name||r.athlete.email)}</div>
+        <div class="att-main"><div class="att-nm">${esc(r.athlete.name||r.athlete.email)} <span class="inj-kind${r.isInjury?' les':''}">${r.isInjury?'Lesión':'Molestia'}</span></div>
           ${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain, athlete:r.athlete})}
           ${r.note?`<div class="att-note">"${esc(r.note)}"</div>`:''}
           <div class="att-when">${whenLabel}</div></div>
         <button class="att-x" onclick="event.stopPropagation();dismissDashboardInjury('${r.athlete.uid}','${r.zoneId}','${r.date}')" title="Sacar de este panel">×</button>
-      </div>`; }).join(''):`<div class="att-empty">Sin lesiones activas.</div>`}
+      </div>`; }).join(''):`<div class="att-empty">Nada en los últimos ${DASH_INJURY_DAYS} días.</div>`}
   </div>`;
 
   // ── Filtro único: equipos reales con su cantidad ──
@@ -16448,9 +16458,9 @@ window.scrollToDashAtt = scrollToDashAtt;
 // (ACWR en zona de precaución, subcarga, o wellness de hoy bajo) — para no
 // inventar un tercer criterio de "quién necesita atención" que no coincida
 // con el que ya se usa arriba en la misma pantalla.
-function getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled) {
+function getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled, recentOnly) {
   const injuries = a._personal?.injuries || {};
-  const hasRealInjury = Object.values(injuries).some(inj=>inj.pain>0 && isRealInjury(inj));
+  const hasRealInjury = Object.values(injuries).some(inj=>inj.pain>0 && (recentOnly ? injuryIsRecent(inj) : isRealInjury(inj)));
   const acwr = metrics?.acwr;
   if (hasRealInjury || (acwr!=null && acwr>1.5)) {
     return {tier:0, color:'var(--red)', bg:'var(--red-dim)', text:'Requiere atención'};
@@ -16471,7 +16481,7 @@ function getDashAthleteStatus(a) {
   const metrics = calcLoadMetrics(logs);
   const {pct:wPct, allFilled:wAllFilled} = getWellnessScore(a._personal?.wellness?.[today]);
   const acwrStatus = getACWRStatus(metrics?.acwr??null, metrics?.daysOfHistory);
-  const status = getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled);
+  const status = getAthleteRosterStatus(a, metrics, acwrStatus, wPct, wAllFilled, true);
   // Mismas reglas que el panel de atención de arriba: una caída fuerte de
   // wellness (o un wellness muy bajo) también es "requiere atención", así el
   // contador de alertas, el panel y el estado de la fila dicen lo mismo.

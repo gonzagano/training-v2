@@ -398,6 +398,23 @@
     setLeaderboardTest('rm_sentadilla'); await wait(400); ok(/120/.test(document.querySelector('.ca-row').innerText),'equipo: ranking de sentadilla (120 kg primero)');
     txtBad('estadísticas del equipo'); ok(document.documentElement.scrollWidth<=innerWidth+1,'estadísticas del equipo: sin scroll horizontal');
     S.radarMode='equipo'; S.leaderboardTest='cmj'; }
+  // ── Dashboard: solo molestias/lesiones de los últimos 10 días; la ficha las sigue mostrando ──
+  { const ds=o=>{const d=new Date(); d.setDate(d.getDate()-o); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());};
+    const dbx=JSON.parse(localStorage.getItem('__db'));
+    dbx.personal.u4.injuries={hombro_der_b:{pain:5,severity:'moderada',isInjury:true,type:'muscular',history:[{date:ds(3),pain:5}]}, tobillo_izq_b:{pain:3,severity:'leve',isInjury:false,history:[{date:ds(20),pain:3}]}};
+    dbx.personal.u5.injuries={rodilla_der_b:{pain:4,severity:'leve',isInjury:false,history:[{date:ds(1),pain:4}]}};
+    localStorage.setItem('__db',JSON.stringify(dbx)); S.dashAthletes=null; S.adminAthletes=null; S.adminAthletesLoaded=false;
+    S.atletaView=null; switchView('dashboard'); await wait(2500);
+    const side=[...document.querySelectorAll('.att-side')].find(x=>/recientes/i.test(x.innerText)); const tx=side?side.innerText:'';
+    ok(/Molestias y lesiones recientes/.test(tx),'panel: se llama "Molestias y lesiones recientes"');
+    ok(/Gomez Pedro/.test(tx)&&/Lesión/.test(tx),'panel: la lesión de hace 3 días aparece, marcada como Lesión');
+    ok(/Diaz Ana/.test(tx)&&/Molestia/.test(tx),'panel: también aparece una molestia reciente (hace 1 día)');
+    ok(!/hace 20 días/.test(tx),'panel: la de hace 20 días ya no aparece');
+    const att=document.getElementById('dash-att')?.innerText||''; ok(!/Tobillo/i.test(att),'atención: la molestia de hace 20 días no aparece');
+    ok(injuryIsRecent({history:[{date:ds(10)}]})&&!injuryIsRecent({history:[{date:ds(11)}]})&&!injuryIsRecent({}),'regla: hasta 10 días sí, 11 no, sin fecha no');
+    // en la ficha sigue la de hace 20 días
+    await adminOpenAthleteDash('u4'); await wait(2000); setAtletaSubview('perfil'); await wait(600);
+    { const mt=document.getElementById('main').innerText.replace(/\s+/g,' '); const k=mt.search(/Molestias/i); const inj=Object.keys((S.atletaView&&S.atletaView._personal&&S.atletaView._personal.injuries)||{}); ok(/Tobillo/i.test(mt),'ficha: la molestia vieja sigue en su perfil ['+S.currentView+'/'+S.atletaSubview+'/'+(S.atletaView&&S.atletaView.uid)+' inj='+inj.join(',')+' :: '+mt.slice(Math.max(0,k),k+200)+']'); } goBackFromAthleteDetail(); await wait(400); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
