@@ -2876,7 +2876,7 @@ function renderMain() {
     case 'wellness': m.innerHTML=renderWellness(); setTimeout(()=>runCountUps(),30); break;
     case 'stats':    m.innerHTML=renderStats(); break;
     case 'teams':    m.innerHTML=renderTeams();
-      if(S.teamView && S.teamSubview==='stats') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamInjuryChart(mem);drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); }
+      if(S.teamView && S.teamSubview==='stats') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); }
       if(S.teamView && S.teamSubview==='reporte' && (S.teamReportSubview||'resumen')==='resumen') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamReportTrendChart(mem);drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');},80); }
       if(S.teamView && S.teamSubview==='reporte' && S.teamReportSubview==='medico') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>drawMedicalReportCharts(mem),80); }
       break;
@@ -6294,7 +6294,7 @@ function renderTeamDetail(team) {
       ${team.name}${team.category?` / ${team.category}`:''}
     </div>
     ${team.sport?`<span class="team-sport-badge">${sportIconHtml(team.sport,13)}${canonicalSport(team.sport)}</span>`:''}
-    <button class="abtn" style="margin-left:auto" onclick="adminGoCompare('${team.id}')">Comparar atletas</button>
+    <button class="abtn tdh-cmp" onclick="adminGoCompare('${team.id}')">Comparar atletas</button>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Rutina</button>
@@ -8525,79 +8525,49 @@ function getTeamInjurySummary(members) {
 }
 window.getTeamInjurySummary=getTeamInjurySummary;
 
+// Molestias activas del plantel: una fila por molestia (atleta, zona,
+// desde cuándo, gravedad y dolor), las más serias primero.
+function injurySinceDate(inj) {
+  const h = (inj?.history||[]).filter(e=>e && e.date).sort((x,y)=>x.date.localeCompare(y.date));
+  let since = null;
+  h.forEach(e=>{ if((e.pain||0)>0) { if(!since) since = e.date; } else since = null; });
+  return since;
+}
+function bodyZoneLabel(id) {
+  const z = [...BODY_ZONES.front, ...BODY_ZONES.back].find(x=>x.id===id);
+  return z ? z.label : String(id||'').replace(/_/g,' ');
+}
+window.bodyZoneLabel = bodyZoneLabel;
+const TS_ICONS = {
+  grave:'<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 3.4v3M6 8.4v.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  moderada:'<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5 11 10.5H1Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6 5v2.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  leve:'<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.3 4.8 9 10 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
 function renderTeamInjuryChart(members) {
   const sum = getTeamInjurySummary(members);
-  if(!sum.total) {
-    return `<div class="admin-section">
-      <div class="admin-section-title">Lesiones activas del plantel</div>
-      <div style="padding:20px;text-align:center;font-size:13px;color:var(--green)">✓ Sin molestias activas registradas</div>
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const withInj = new Set(sum.details.map(d=>d.uid)).size;
+  let html = `<section class="ts-card ts-inj">
+    <div class="ts-h"><div><div class="ts-k">Molestias activas</div><div class="ts-ks">${sum.total ? withInj+' de ' : ''}${members.length} atleta${members.length!==1?'s':''}</div></div></div>`;
+  if(!sum.total) return html + `<div class="ts-empty">Sin molestias activas.</div></section>`;
+  const rank = {grave:3, moderada:2, leve:1};
+  const today = todayLocal();
+  html += sum.details.sort((a,b)=>(rank[b.sev]||1)-(rank[a.sev]||1) || b.pain-a.pain).map(d=>{
+    const a = members.find(x=>x.uid===d.uid) || {};
+    const since = injurySinceDate(a._personal?.injuries?.[d.zoneId]);
+    const days = since ? Math.round((new Date(today+'T12:00:00')-new Date(since+'T12:00:00'))/86400000) : null;
+    const when = days==null ? '' : days<=0 ? ' · desde hoy' : days===1 ? ' · hace 1 día' : ' · hace '+days+' días';
+    const sev = rank[d.sev] ? d.sev : 'leve';
+    return `<div class="ts-inj-r" onclick="adminOpenAthlete('${d.uid}')">
+      ${avatarHtml(a.name||a.email||d.athlete, a.color, 34, a.photoUrl)}
+      <div class="ts-inj-w"><b>${esc(d.athlete)}</b><span>${esc(bodyZoneLabel(d.zoneId))}${when}</span></div>
+      <div class="ts-inj-s"><span class="ts-sev ts-sev-${sev}">${TS_ICONS[sev]}${severityInfo(sev)?.label||'Leve'}</span><small>dolor <b>${d.pain}/10</b></small></div>
     </div>`;
-  }
-  return `<div class="admin-section">
-    <div class="admin-section-title">Lesiones activas del plantel · ${sum.total}</div>
-    <div style="display:flex;align-items:center;gap:20px;padding:16px;flex-wrap:wrap">
-      <div style="width:160px;height:160px;position:relative;flex-shrink:0"><canvas id="team-injury-chart"></canvas></div>
-      <div style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:8px">
-        <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:var(--red)"></div><span style="font-size:13px">Graves</span><span style="margin-left:auto;font-weight:700">${sum.grave}</span></div>
-        <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:var(--amber)"></div><span style="font-size:13px">Moderadas</span><span style="margin-left:auto;font-weight:700">${sum.moderada}</span></div>
-        <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:var(--green)"></div><span style="font-size:13px">Leves</span><span style="margin-left:auto;font-weight:700">${sum.leve}</span></div>
-      </div>
-    </div>
-    <div style="padding:2px 16px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text2);font-size:12px;font-weight:600" onclick="toggleSection('team-injury-detail-open')">
-      <span>${S.collapsedSections?.has('team-injury-detail-open')?'Ocultar':'Mostrar'} detalle por jugador</span>
-      <span style="transition:transform .15s;display:inline-block;transform:rotate(${S.collapsedSections?.has('team-injury-detail-open')?'0':'-90'}deg)">›</span>
-    </div>
-    ${S.collapsedSections?.has('team-injury-detail-open')?`<div style="padding:0 16px 14px">
-      ${sum.details.sort((a,b)=>{const r={grave:3,moderada:2,leve:1}; return (r[b.sev]||1)-(r[a.sev]||1) || b.pain-a.pain;}).map(d=>{
-        const col = d.sev==='grave'?'var(--red)':d.sev==='moderada'?'var(--amber)':'var(--green)';
-        const sevLabel = severityInfo(d.sev)?.label||'Leve';
-        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);font-size:12px;cursor:pointer" onclick="adminOpenAthlete('${d.uid}')">
-          <span>${d.athlete} <span style="color:var(--text3)">— ${d.zoneId}</span></span>
-          <span style="color:${col};font-weight:600">${sevLabel} · dolor ${d.pain}/10</span>
-        </div>`;
-      }).join('')}</div>`:''}
-  </div>`;
+  }).join('');
+  html += `<div class="ts-inj-f"><span><b style="color:var(--red)">${sum.grave}</b> grave${sum.grave!==1?'s':''}</span><span><b style="color:var(--amber)">${sum.moderada}</b> moderada${sum.moderada!==1?'s':''}</span><span><b style="color:var(--green)">${sum.leve}</b> leve${sum.leve!==1?'s':''}</span></div>`;
+  return html + `</section>`;
 }
 window.renderTeamInjuryChart=renderTeamInjuryChart;
-
-function drawTeamInjuryChart(members) {
-  if(typeof Chart==='undefined') return;
-  const canvas=document.getElementById('team-injury-chart');
-  if(!canvas) return;
-  const sum=getTeamInjurySummary(members);
-  if(!sum.total) return;
-  if(!S.injuryChartInstance) S.injuryChartInstance=null;
-  try{ if(S.injuryChartInstance) S.injuryChartInstance.destroy(); }catch(e){}
-
-  // Sombra sutil para dar sensación de profundidad — mucho más suave que
-  // antes, porque una sombra pensada para fondo oscuro se ve como una mancha
-  // sucia sobre un fondo claro. Acá el objetivo es un efecto de "tarjeta
-  // apenas levantada", no un halo marcado.
-  const shadowPlugin = {
-    id:'donutShadow',
-    beforeDatasetsDraw(chart){ const ctx=chart.ctx; ctx.save(); ctx.shadowColor='rgba(18,21,28,0.18)'; ctx.shadowBlur=10; ctx.shadowOffsetY=4; },
-    afterDatasetsDraw(chart){ chart.ctx.restore(); }
-  };
-
-  S.injuryChartInstance = new Chart(canvas, {
-    type:'doughnut',
-    data:{
-      labels:['Graves','Moderadas','Leves'],
-      datasets:[{
-        data:[sum.grave, sum.moderada, sum.leve],
-        backgroundColor:[chartColors().red,chartColors().amber,chartColors().green],
-        borderColor:chartColors().card, borderWidth:2,
-        hoverOffset:4,
-      }]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false, cutout:'62%',
-      plugins:{ legend:{display:false} }
-    },
-    plugins:[shadowPlugin]
-  });
-}
-window.drawTeamInjuryChart=drawTeamInjuryChart;
 
 // ══════════════════════════════════════════════════════════════
 // ── RANKING, RADAR Y CUADRANTE DEL EQUIPO (inspirado en Hawkin
@@ -8621,48 +8591,31 @@ function collapsibleHeader(key, title) {
 }
 window.collapsibleHeader = collapsibleHeader;
 
+// Ranking: una barra por atleta (desde cero), con el número de puesto, el
+// nivel del salto, la línea del promedio y cuánto le falta a cada uno para
+// el primero. Tocar una fila abre la ficha.
 function renderTeamLeaderboard(members) {
-  const key = 'team-leaderboard';
-  const collapsed = S.collapsedSections?.has(key);
   const testId = S.leaderboardTest || 'cmj';
-  // Por defecto siempre PR histórico (mejor marca alguna vez registrada) —
-  // es lo que se ve la primera vez que se abre este gráfico. "Último test"
-  // es una vista alternativa que el propio prep puede elegir, no al revés.
   const mode = S.leaderboardMode || 'pr';
-  const testDef = LEADERBOARD_TESTS.find(t=>t.id===testId);
-  let html = `<div class="admin-section">${collapsibleHeader(key,craftIconSvg('match','var(--accent-text)',14)+' Ranking del equipo')}`;
-  if(!collapsed) {
-    const rows = members.map(a=>{
-      const recs = a._personal?.evals?.[testId]||[];
-      if(!recs.length) return {name:a.name||a.email, uid:a.uid, best:null};
-      const best = mode==='ultimo'
-        ? sortEvalRecsByDate([...recs]).slice(-1)[0].height
-        : Math.max(...recs.map(r=>r.height));
-      return {name:a.name||a.email, uid:a.uid, best};
-    }).filter(r=>r.best!=null).sort((a,b)=>b.best-a.best);
-
-    html += `<div style="padding:0 16px 12px;display:flex;gap:6px;flex-wrap:wrap">
-      ${LEADERBOARD_TESTS.map(t=>`<button class="lib-filter ${testId===t.id?'active':''}" onclick="setLeaderboardTest('${t.id}')">${t.label}</button>`).join('')}
-    </div>
-    <div style="padding:0 16px 12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Ordenar por</span>
-      <button class="lib-filter ${mode==='pr'?'active':''}" onclick="setLeaderboardMode('pr')">PR histórico</button>
-      <button class="lib-filter ${mode==='ultimo'?'active':''}" onclick="setLeaderboardMode('ultimo')">Último test</button>
-    </div>`;
-    html += rows.length ? rows.map((r,i)=>`
-      <div class="admin-item" style="cursor:pointer" onclick="adminOpenAthlete('${r.uid}')">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:20px;text-align:center;font-size:13px;font-weight:700;color:${i===0?'var(--warm)':'var(--text3)'}">${i+1}</div>
-          <div style="font-size:13px;font-weight:600">${r.name}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${jumpLevelTagHtml(testId,r.best)}
-          <div style="font-size:14px;font-weight:700;color:var(--accent-text)">${r.best}${testDef.unit}</div>
-        </div>
-      </div>`).join('') : `<div style="padding:4px 16px 14px;font-size:13px;color:var(--text3)">Sin registros de ${testDef.label} todavía.</div>`;
-  }
-  html += `</div>`;
-  return html;
+  const testDef = LEADERBOARD_TESTS.find(t=>t.id===testId) || LEADERBOARD_TESTS[0];
+  const dec = testDef.unit==='kg' ? 0 : 1;
+  const vals = members.map(a=>{
+    const r = compareTestValue(a, testDef.id, mode==='ultimo' ? 'last' : 'best');
+    return {a, v:r?r.v:null, date:r?(r.perfil?'perfil':(r.date?evalShortDate(r.date):'')):''};
+  });
+  const ranked = vals.filter(x=>x.v!=null).sort((p,q)=>q.v-p.v);
+  const missing = vals.filter(x=>x.v==null);
+  const avg = ranked.length>=2 ? ranked.reduce((s,x)=>s+x.v,0)/ranked.length : null;
+  const c = chartColors();
+  const rows = ranked.map((x,i)=>({rank:i+1, name:x.a.name||x.a.email, color:c.accent, v:x.v, date:x.date,
+      extra:testDef.unit==='cm' ? '<span class="ca-lvl">'+jumpLevelTagHtml(testDef.id, x.v)+'</span>' : '', onclick:`adminOpenAthlete('${x.a.uid}')`}))
+    .concat(missing.map(x=>({name:x.a.name||x.a.email, color:c.accent, v:null, onclick:`adminOpenAthlete('${x.a.uid}')`})));
+  return `<section class="ts-card">
+    <div class="ts-h"><div><div class="ts-k">Ranking del equipo</div><div class="ts-ks">${testDef.label} · ${testDef.unit}</div></div>
+      <div class="ca-seg"><button class="chip-btn ${mode==='pr'?'on':''}" onclick="setLeaderboardMode('pr')">Mejor marca</button><button class="chip-btn ${mode==='ultimo'?'on':''}" onclick="setLeaderboardMode('ultimo')">Último test</button></div></div>
+    <div class="ts-chips">${LEADERBOARD_TESTS.map(t=>`<button class="chip-btn ${testId===t.id?'on':''}" onclick="setLeaderboardTest('${t.id}')">${t.label}</button>`).join('')}</div>
+    ${ranked.length ? statBarsHtml(rows, {unit:testDef.unit, dec, avg, avgLabel:'prom. equipo', wide:testDef.unit==='cm'}) : `<div class="ts-empty">Sin registros de ${testDef.label} todavía.</div>`}
+  </section>`;
 }
 window.renderTeamLeaderboard = renderTeamLeaderboard;
 
@@ -8674,45 +8627,80 @@ window.setLeaderboardMode = setLeaderboardMode;
 
 const RADAR_METRICS = [
   {id:'cmj', label:'CMJ'}, {id:'sj', label:'SJ'}, {id:'abalakov', label:'Abalakov'},
-  {id:'rm_press_banca', label:'Banca'}, {id:'rm_peso_muerto', label:'Muerto'}, {id:'rm_sentadilla', label:'Sentadilla'},
+  {id:'rm_sentadilla', label:'Sentadilla'}, {id:'rm_press_banca', label:'Press banca'}, {id:'rm_peso_muerto', label:'Peso muerto'},
 ];
 
-function renderTeamRadarSection(members, lockedAthleteId) {
-  const key = 'team-radar';
-  const collapsed = S.collapsedSections?.has(key);
-  let html = `<div class="admin-section">${collapsibleHeader(key,'📡 Perfil de atleta (radar)')}`;
-  if(!collapsed) {
-    if (!members.length) {
-      html += `<div style="padding:14px 16px;font-size:12px;color:var(--text3)">Sin atletas para mostrar.</div>`;
-    } else {
-      // Con un solo atleta (individual sin equipo, sin comparación elegida)
-      // no hay con quién comparar en un mismo momento — pero SÍ tiene
-      // sentido comparar al atleta contra sí mismo en el tiempo, así que
-      // forzamos ese modo en vez de no mostrar nada.
-      const soloAthlete = members.length === 1;
-      const mode = soloAthlete ? 'self' : (S.radarMode || 'equipo');
-      // lockedAthleteId (ficha individual comparándose con un equipo): el
-      // radar siempre muestra a ESE atleta, sin selector — mostrar el
-      // selector acá dejaría elegir y ver el radar de cualquier compañero
-      // del equipo de comparación, la misma fuga que ya se evita en el resto
-      // de esta vista.
-      const athleteId = lockedAthleteId || (S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||''));
-      const scaleLabel = soloAthlete ? 'su propio mejor valor registrado' : 'el mejor valor del equipo';
-      html += soloAthlete ? '' : `<div style="padding:0 16px 10px;display:flex;gap:6px">
-        <button class="lib-filter ${mode==='equipo'?'active':''}" onclick="setRadarMode('equipo')">vs. equipo</button>
-        <button class="lib-filter ${mode==='self'?'active':''}" onclick="setRadarMode('self')">vs. uno mismo</button>
-      </div>`;
-      html += (members.length>1 && !lockedAthleteId) ? `<div style="padding:0 16px 12px">
-        <select class="abtn" style="width:100%;text-align:left" onchange="setRadarAthlete(this.value)">
-          ${members.map(a=>`<option value="${a.uid}" ${athleteId===a.uid?'selected':''}>${a.name||a.email}</option>`).join('')}
-        </select>
-      </div>` : '';
-      html += `<div style="padding:0 16px 8px;height:270px;position:relative"><canvas id="team-radar-chart"></canvas></div>
-      `;
-    }
+// Datos del radar: el atleta (su último test) contra el promedio del
+// equipo o de su puesto (mejor marca de cada compañero), o contra su primer
+// test. Los porcentajes son contra la mejor marca del equipo en cada test.
+function teamRadarData(members, athleteId, mode) {
+  const athlete = members.find(a=>a.uid===athleteId);
+  if(!athlete) return null;
+  const recs = (a,id) => sortEvalRecsByDate([...(a._personal?.evals?.[id]||[])].filter(r=>r && r.height!=null));
+  const bestOf = (a,id) => { const r=recs(a,id); return r.length?Math.max(...r.map(x=>+x.height)):null; };
+  const latestOf = (a,id) => { const r=recs(a,id); return r.length?+r[r.length-1].height:null; };
+  const earliestOf = (a,id) => { const r=recs(a,id); return r.length?+r[0].height:null; };
+  const teamMax = {};
+  RADAR_METRICS.forEach(m=>{ teamMax[m.id] = Math.max(0.01, ...members.map(a=>bestOf(a,m.id)||0)); });
+  const rawA = RADAR_METRICS.map(m=>latestOf(athlete,m.id));
+  let rawB, labelB;
+  if(mode==='self') {
+    rawB = RADAR_METRICS.map(m=>earliestOf(athlete,m.id)); labelB = 'Primer test';
+  } else {
+    const pool = members.filter(a=>a.uid!==athlete.uid && (mode!=='puesto' || (a.position && a.position===athlete.position)));
+    rawB = RADAR_METRICS.map(m=>{
+      const v = pool.map(a=>bestOf(a,m.id)).filter(x=>x!=null);
+      return v.length ? Math.round(v.reduce((s,x)=>s+x,0)/v.length*10)/10 : null;
+    });
+    labelB = mode==='puesto' ? 'Promedio '+(athlete.position||'del puesto').toLowerCase() : 'Promedio del equipo';
   }
-  html += `</div>`;
-  return html;
+  const pct = (raw,id) => raw!=null ? Math.round(raw/teamMax[id]*100) : null;
+  return {athlete, rawA, rawB, labelA:athlete.name||athlete.email, labelB,
+    valuesA:RADAR_METRICS.map((m,i)=>pct(rawA[i],m.id)), valuesB:RADAR_METRICS.map((m,i)=>pct(rawB[i],m.id))};
+}
+
+function teamRadarState(members, lockedAthleteId) {
+  const solo = members.length===1;
+  let mode = solo ? 'self' : (S.radarMode || 'equipo');
+  const athleteId = lockedAthleteId || (S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||''));
+  const athlete = members.find(a=>a.uid===athleteId);
+  const canPos = !solo && !!athlete?.position && members.some(a=>a.uid!==athleteId && a.position===athlete.position);
+  if(mode==='puesto' && !canPos) mode = 'equipo';
+  return {solo, mode, athleteId, canPos};
+}
+
+function renderTeamRadarSection(members, lockedAthleteId) {
+  if(!members.length) return '';
+  const st = teamRadarState(members, lockedAthleteId);
+  const d = teamRadarData(members, st.athleteId, st.mode);
+  if(!d) return '';
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const sub = st.mode==='self' ? 'contra su primer test' : st.mode==='puesto' ? 'contra el promedio de su puesto' : 'contra el promedio del equipo';
+  const modes = st.solo ? '' : `<div class="ca-seg">
+      <button class="chip-btn ${st.mode==='equipo'?'on':''}" onclick="setRadarMode('equipo')">vs. equipo</button>
+      ${st.canPos?`<button class="chip-btn ${st.mode==='puesto'?'on':''}" onclick="setRadarMode('puesto')">vs. su puesto</button>`:''}
+      <button class="chip-btn ${st.mode==='self'?'on':''}" onclick="setRadarMode('self')">vs. su primer test</button></div>`;
+  const pick = (members.length>1 && !lockedAthleteId) ? `<select class="ca-scope ts-pick" onchange="setRadarAthlete(this.value)">${members.map(a=>`<option value="${a.uid}" ${st.athleteId===a.uid?'selected':''}>${esc(a.name||a.email)}</option>`).join('')}</select>` : '';
+  const shortA = esc((d.labelA||'').split(/\s+/)[0]);
+  const refHead = st.mode==='self' ? 'Primer test' : st.mode==='puesto' ? 'Puesto' : 'Equipo';
+  const rows = RADAR_METRICS.map((m,i)=>{
+    const unit = m.id.startsWith('rm_') ? 'kg' : 'cm', dec = unit==='kg' ? 0 : 1;
+    const a = d.rawA[i], b = d.rawB[i];
+    let diff = '<span class="ts-none">sin test</span>';
+    if(a!=null && b!=null) {
+      const x = a-b;
+      diff = Math.abs(x) < (unit==='kg'?0.5:0.05) ? '<span class="ts-diff">= igual</span>' : `<span class="ts-diff">${x>0?'↑ +':'↓ −'}${cmpFmt(Math.abs(x),dec)} ${unit}</span>`;
+    } else if(a!=null) diff = '<span class="ts-none">sin referencia</span>';
+    return `<div class="ts-rt-r"><span>${m.label}</span><b>${a!=null?cmpFmt(a,dec):'—'}</b><em>${b!=null?cmpFmt(b,dec):'—'}</em><div>${diff}</div></div>`;
+  }).join('');
+  return `<section class="ts-card">
+    <div class="ts-h"><div><div class="ts-k">Perfil del atleta</div><div class="ts-ks">${sub}</div></div><div class="ts-ctl">${pick}${modes}</div></div>
+    <div class="ts-radar">
+      <div class="ts-radar-c"><div class="ts-radar-cv"><canvas id="team-radar-chart"></canvas></div>
+        <div class="ts-leg"><span><i style="background:${chartColors().accent}"></i>${esc(d.labelA)}</span><span><u></u>${esc(d.labelB)}</span></div></div>
+      <div class="ts-rt"><div class="ts-rt-r ts-rt-h"><span>Test</span><span>${shortA}</span><span>${refHead}</span><span>Diferencia</span></div>${rows}</div>
+    </div>
+  </section>`;
 }
 window.renderTeamRadarSection = renderTeamRadarSection;
 
@@ -8723,71 +8711,37 @@ function setRadarMode(mode) { S.radarMode = mode; renderMain(); }
 window.setRadarMode = setRadarMode;
 
 function drawTeamRadarChart(members, lockedAthleteId) {
-  if(typeof Chart==='undefined') return;
-  if(!members.length) return;
+  if(typeof Chart==='undefined' || !members.length) return;
   const canvas = document.getElementById('team-radar-chart');
   if(!canvas) return;
-  const soloAthlete = members.length === 1;
-  const mode = soloAthlete ? 'self' : (S.radarMode || 'equipo');
-  const athleteId = lockedAthleteId || (S.radarAthleteId && members.find(a=>a.uid===S.radarAthleteId) ? S.radarAthleteId : (members[0]?.uid||''));
-  const athlete = members.find(a=>a.uid===athleteId);
-  if(!athlete) return;
-
-  const bestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; return r.length?Math.max(...r.map(x=>x.height)):null; };
-  const latestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; if(!r.length) return null; return sortEvalRecsByDate([...r]).slice(-1)[0].height; };
-  const earliestOf = (a,id) => { const r=a._personal?.evals?.[id]||[]; if(!r.length) return null; return sortEvalRecsByDate([...r])[0].height; };
-  const unitOf = (id) => id.startsWith('rm_') ? 'kg' : 'cm';
-
-  const teamMax = {};
-  RADAR_METRICS.forEach(m=>{ teamMax[m.id] = Math.max(0.01, ...members.map(a=>bestOf(a,m.id)||0)); });
-  const pct = (raw,id) => raw!=null ? Math.round((raw/teamMax[id])*100) : null;
-
-  let rawA, rawB, labelA, labelB;
-  if(mode==='self') {
-    rawA = RADAR_METRICS.map(m=>latestOf(athlete,m.id));
-    rawB = RADAR_METRICS.map(m=>earliestOf(athlete,m.id));
-    labelA = 'Ahora'; labelB = 'Primer registro';
-  } else {
-    // El atleta individual se compara con su ÚLTIMO test (dónde está parado
-    // ahora), mientras que el promedio del equipo sigue usando la MEJOR
-    // marca histórica de cada compañero — mismo criterio que "Promedio del
-    // equipo" en el resto de la app. Son dos preguntas distintas: "¿cómo
-    // está este jugador hoy?" vs "¿cuál es el techo del plantel?".
-    rawA = RADAR_METRICS.map(m=>latestOf(athlete,m.id));
-    rawB = RADAR_METRICS.map(m=>{
-      const vals = members.filter(a=>a.uid!==athlete.uid).map(a=>bestOf(a,m.id)).filter(v=>v!=null);
-      return vals.length ? Math.round((vals.reduce((s,v)=>s+v,0)/vals.length)*10)/10 : null;
-    });
-    labelA = athlete.name||athlete.email; labelB = 'Promedio del equipo';
-  }
-  const valuesA = RADAR_METRICS.map((m,i)=>pct(rawA[i],m.id));
-  const valuesB = RADAR_METRICS.map((m,i)=>pct(rawB[i],m.id));
-  // Si "primer registro" y "ahora" son el mismo único test cargado, dibujar
-  // dos líneas idénticas superpuestas no aporta nada — mostramos solo una.
-  const sameData = mode==='self' && rawA.every((v,i)=>v===rawB[i]);
-
+  const st = teamRadarState(members, lockedAthleteId);
+  const d = teamRadarData(members, st.athleteId, st.mode);
+  if(!d) return;
+  const c = chartColors();
+  const sameData = st.mode==='self' && d.rawA.every((v,i)=>v===d.rawB[i]);
   const datasets = [
-    { label:labelA, data:valuesA, backgroundColor:chartAlpha(chartColors().accent,0.16), borderColor:chartColors().accent, borderWidth:2, pointBackgroundColor:chartColors().accent, pointBorderColor:chartColors().card, pointRadius:3.5, spanGaps:true, _raw:rawA },
+    { label:d.labelA, data:d.valuesA, backgroundColor:chartAlpha(c.accent,0.16), borderColor:c.accent, borderWidth:2, pointBackgroundColor:c.accent, pointBorderColor:c.card, pointRadius:3.5, spanGaps:true, _raw:d.rawA },
   ];
-  if(!sameData) datasets.push({ label:labelB, data:valuesB, backgroundColor:'transparent', borderColor:chartColors().avg, borderWidth:1.6, borderDash:[5,4], pointRadius:0, pointHoverRadius:4, pointBackgroundColor:chartColors().avg, spanGaps:true, _raw:rawB });
-
+  if(!sameData) datasets.push({ label:d.labelB, data:d.valuesB, backgroundColor:'transparent', borderColor:c.avg, borderWidth:1.6, borderDash:[5,4], pointRadius:0, pointHoverRadius:4, pointBackgroundColor:c.avg, spanGaps:true, _raw:d.rawB });
+  const lows = d.valuesA.concat(sameData?[]:d.valuesB).filter(v=>v!=null);
+  const rMin = lows.length ? Math.max(0, Math.min(60, Math.floor((Math.min(...lows)-15)/10)*10)) : 0;
   try{ S.radarChartInstance?.destroy(); }catch(e){}
   S.radarChartInstance = new Chart(canvas, {
     type:'radar',
-    data:{ labels: RADAR_METRICS.map((m,i)=>rawA[i]==null ? [m.label,'sin test'] : m.label), datasets },
+    data:{ labels: RADAR_METRICS.map((m,i)=>d.rawA[i]==null ? [m.label,'sin test'] : m.label), datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{ display:true },
+        legend:{ display:false },
         tooltip:{ callbacks:{ label:(ctx)=>{
           const raw = ctx.dataset._raw?.[ctx.dataIndex];
-          const unit = unitOf(RADAR_METRICS[ctx.dataIndex].id);
-          return `${ctx.dataset.label}: ${raw!=null?raw+unit:'sin datos'} (${ctx.formattedValue}%)`;
+          const unit = RADAR_METRICS[ctx.dataIndex].id.startsWith('rm_') ? ' kg' : ' cm';
+          return ' '+ctx.dataset.label+': '+(raw!=null ? String(raw).replace('.',',')+unit : 'sin test');
         } } }
       },
-      scales:{ r:{ min:0, max:100, ticks:{display:false, stepSize:25},
-        grid:{color:chartColors().grid}, angleLines:{color:chartColors().grid},
-        pointLabels:{color:chartColors().text2, font:{size:12,weight:600}} } }
+      scales:{ r:{ min:rMin, max:100, ticks:{display:false, stepSize:10},
+        grid:{color:c.grid}, angleLines:{color:c.grid},
+        pointLabels:{color:c.text2, font:{size:12,weight:600}} } }
     }
   });
 }
@@ -8835,95 +8789,111 @@ function setQuadrantAxis(axis, id) {
 }
 window.setQuadrantAxis = setQuadrantAxis;
 
+function quadrantPoints(members, xId, yId) {
+  return members.map(a=>{
+    const x = quadrantMetricValue(a, xId), y = quadrantMetricValue(a, yId);
+    return (x==null || y==null) ? null : {x, y, name:a.name||a.email, uid:a.uid};
+  }).filter(Boolean);
+}
 function renderTeamQuadrantSection(members) {
-  const key = 'team-quadrant';
-  const collapsed = S.collapsedSections?.has(key);
-  let html = `<div class="admin-section">${collapsibleHeader(key,'🎯 Cuadrante de entrenamiento')}`;
-  if(!collapsed) {
-    const xId = S.quadrantX || 'cmj';
-    const yId = S.quadrantY || 'ice';
-    const xDef = QUADRANT_METRICS.find(m=>m.id===xId) || QUADRANT_METRICS[0];
-    const yDef = QUADRANT_METRICS.find(m=>m.id===yId) || QUADRANT_METRICS[6];
-    html += `<div style="padding:0 16px 10px;display:flex;gap:8px;flex-wrap:wrap">
-      <select class="abtn" style="flex:1;min-width:140px;text-align:left" onchange="setQuadrantAxis('x',this.value)">
-        ${QUADRANT_METRICS.map(m=>`<option value="${m.id}" ${xId===m.id?'selected':''}>Eje X: ${m.label}</option>`).join('')}
-      </select>
-      <select class="abtn" style="flex:1;min-width:140px;text-align:left" onchange="setQuadrantAxis('y',this.value)">
-        ${QUADRANT_METRICS.map(m=>`<option value="${m.id}" ${yId===m.id?'selected':''}>Eje Y: ${m.label}</option>`).join('')}
-      </select>
-    </div>
-    <div style="padding:0 16px 8px;font-size:12px;color:var(--text3)">${xDef.label} vs. ${yDef.label} — agrupa a tus atletas por lo que más necesitan entrenar.</div>
-    <div style="padding:0 16px 16px;height:280px;position:relative"><canvas id="team-quadrant-chart"></canvas></div>`;
-  }
-  html += `</div>`;
-  return html;
+  const xId = S.quadrantX || 'cmj', yId = S.quadrantY || 'ice';
+  const xDef = QUADRANT_METRICS.find(m=>m.id===xId) || QUADRANT_METRICS[0];
+  const yDef = QUADRANT_METRICS.find(m=>m.id===yId) || QUADRANT_METRICS[6];
+  const n = quadrantPoints(members, xDef.id, yDef.id).length;
+  return `<section class="ts-card">
+    <div class="ts-h"><div><div class="ts-k">Cuadrante</div><div class="ts-ks">${xDef.label} vs. ${yDef.label} · último test</div></div>
+      <div class="ts-ctl">
+        <select class="ca-scope" onchange="setQuadrantAxis('x',this.value)">${QUADRANT_METRICS.map(m=>`<option value="${m.id}" ${xDef.id===m.id?'selected':''}>Eje X: ${m.label}</option>`).join('')}</select>
+        <select class="ca-scope" onchange="setQuadrantAxis('y',this.value)">${QUADRANT_METRICS.map(m=>`<option value="${m.id}" ${yDef.id===m.id?'selected':''}>Eje Y: ${m.label}</option>`).join('')}</select>
+      </div></div>
+    ${n>=2 ? `<div class="ts-quad"><canvas id="team-quadrant-chart"></canvas></div>` : `<div class="ts-empty">Faltan tests: hacen falta al menos dos atletas con ${xDef.label} y ${yDef.label}.</div>`}
+  </section>`;
 }
 window.renderTeamQuadrantSection = renderTeamQuadrantSection;
 
+// Cada punto es un atleta. Las líneas punteadas cruzan en el PROMEDIO del
+// grupo y cada zona lleva su nombre ("Alto en los dos", "Le falta X"...).
 function drawTeamQuadrantChart(members, canvasId, instanceKey, overrideX, overrideY) {
   if(typeof Chart==='undefined') return;
   canvasId = canvasId || 'team-quadrant-chart';
   instanceKey = instanceKey || 'quadrantChartInstance';
   const canvas = document.getElementById(canvasId);
   if(!canvas) return;
-
   const xId = overrideX || S.quadrantX || 'cmj';
   const yId = overrideY || S.quadrantY || 'ice';
   const xDef = QUADRANT_METRICS.find(m=>m.id===xId) || QUADRANT_METRICS[0];
   const yDef = QUADRANT_METRICS.find(m=>m.id===yId) || QUADRANT_METRICS[6];
-
-  const points = members.map(a=>{
-    const x = quadrantMetricValue(a, xId);
-    const y = quadrantMetricValue(a, yId);
-    if(x==null || y==null) return null;
-    return {x, y, name:a.name||a.email};
-  }).filter(Boolean);
-
+  const points = quadrantPoints(members, xDef.id, yDef.id);
   try{ S[instanceKey]?.destroy(); }catch(e){}
   if(!points.length) return;
-
-  const xs = points.map(p=>p.x), ys = points.map(p=>p.y);
-  const xMid = (Math.min(...xs)+Math.max(...xs))/2;
-  const yMid = (Math.min(...ys)+Math.max(...ys))/2;
-
-  const quadrantLinesPlugin = {
-    id:'quadrantLines',
-    afterDraw(chart) {
-      const {ctx, chartArea, scales} = chart;
-      const xPix = scales.x.getPixelForValue(xMid), yPix = scales.y.getPixelForValue(yMid);
+  const c = chartColors();
+  const xAvg = points.reduce((s,p)=>s+p.x,0)/points.length;
+  const yAvg = points.reduce((s,p)=>s+p.y,0)/points.length;
+  const f1 = v => String(Math.round(v*10)/10).replace('.',',');
+  const zones = {
+    id:'quadZones',
+    beforeDatasetsDraw(chart) {
+      const {ctx, chartArea:a, scales} = chart;
+      const xp = scales.x.getPixelForValue(xAvg), yp = scales.y.getPixelForValue(yAvg);
       ctx.save();
-      ctx.strokeStyle=chartColors().axis; ctx.setLineDash([4,4]);
-      ctx.beginPath(); ctx.moveTo(xPix, chartArea.top); ctx.lineTo(xPix, chartArea.bottom); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(chartArea.left, yPix); ctx.lineTo(chartArea.right, yPix); ctx.stroke();
+      ctx.fillStyle = chartAlpha(c.accent, 0.08); ctx.fillRect(xp, a.top, a.right-xp, yp-a.top);
+      ctx.fillStyle = chartAlpha(chartSeriesColor(1), 0.08); ctx.fillRect(a.left, yp, xp-a.left, a.bottom-yp);
+      ctx.strokeStyle = c.text2; ctx.lineWidth = 1.5; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(xp, a.top); ctx.lineTo(xp, a.bottom); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a.left, yp); ctx.lineTo(a.right, yp); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "600 11px 'Manrope',sans-serif"; ctx.fillStyle = c.text2;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText('prom. '+f1(xAvg)+' '+xDef.unit, xp+6, a.bottom-4);
+      ctx.fillText('prom. '+f1(yAvg)+' '+yDef.unit, a.left+6, yp-4);
+      const corner = (x, y, align, t1, base) => {
+        ctx.textAlign = align; ctx.textBaseline = base;
+        ctx.font = "800 12px 'Manrope',sans-serif"; ctx.fillStyle = c.text;
+        ctx.fillText(t1, x, y);
+      };
+      // Si en pantallas angostas los dos nombres de una misma fila no entran,
+      // el de la derecha sube un renglón en vez de pisarse.
+      const pad = 8, tl = 'Le falta '+xDef.label, br = 'Le falta '+yDef.label;
+      ctx.font = "800 12px 'Manrope',sans-serif";
+      const fits = (l, r) => ctx.measureText(l).width + ctx.measureText(r).width + 8*pad < a.right-a.left;
+      corner(a.left+pad, a.top+pad, 'left', tl, 'top');
+      corner(a.right-pad, a.top+pad+(fits(tl,'Alto en los dos')?0:16), 'right', 'Alto en los dos', 'top');
+      corner(a.left+pad, a.bottom-pad-14, 'left', 'Bajo en los dos', 'bottom');
+      corner(a.right-pad, a.bottom-pad-14-(fits('Bajo en los dos',br)?0:16), 'right', br, 'bottom');
       ctx.restore();
     }
   };
-  const pointLabelsPlugin = {
+  const labels = {
     id:'quadrantLabels',
     afterDatasetsDraw(chart) {
       const ctx = chart.ctx;
       chart.getDatasetMeta(0).data.forEach((pt,i)=>{
         ctx.save();
-        ctx.fillStyle=chartColors().text; ctx.font="600 11px 'Manrope',sans-serif"; ctx.textAlign='center';
-        ctx.fillText(points[i].name.split(' ')[0], pt.x, pt.y-8);
+        ctx.font = "700 12px 'Manrope',sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.lineWidth = 4; ctx.strokeStyle = c.card; ctx.lineJoin = 'round';
+        const nm = points[i].name.split(/\s+/)[0];
+        ctx.strokeText(nm, pt.x, pt.y-9); ctx.fillStyle = c.text; ctx.fillText(nm, pt.x, pt.y-9);
         ctx.restore();
       });
     }
   };
-
+  const xs = points.map(p=>p.x), ys = points.map(p=>p.y);
+  const padX = Math.max((Math.max(...xs)-Math.min(...xs))*0.12, 1), padY = Math.max((Math.max(...ys)-Math.min(...ys))*0.15, 1);
   S[instanceKey] = new Chart(canvas, {
     type:'scatter',
-    data:{ datasets:[{ data:points, backgroundColor:chartColors().accent, borderColor:chartColors().card, borderWidth:1.5, pointRadius:5.5, pointHoverRadius:7 }] },
+    data:{ datasets:[{ data:points, backgroundColor:c.accent, borderColor:c.card, borderWidth:2, pointRadius:6, pointHoverRadius:8 }] },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>points[ctx.dataIndex].name+': '+ctx.parsed.x+xDef.unit+', '+ctx.parsed.y+yDef.unit}} },
+      layout:{padding:{top:6, right:6}},
+      plugins:{ legend:{display:false}, tooltip:{displayColors:false, callbacks:{label:(ctx)=>points[ctx.dataIndex].name+': '+f1(ctx.parsed.x)+' '+xDef.unit+' · '+f1(ctx.parsed.y)+' '+yDef.unit}} },
       scales:{
-        x:{ title:{display:true,text:xDef.label+' ('+xDef.unit+')',color:chartColors().text2,font:{weight:600}} },
-        y:{ title:{display:true,text:yDef.label+' ('+yDef.unit+')',color:chartColors().text2,font:{weight:600}} },
+        x:{ suggestedMin:Math.floor(Math.min(...xs)-padX), suggestedMax:Math.ceil(Math.max(...xs)+padX), ticks:{maxTicksLimit:7, callback:v=>f1(v)}, title:{display:true,text:xDef.label+' ('+xDef.unit+')',color:c.text2,font:{weight:600}} },
+        y:{ suggestedMin:Math.floor(Math.min(...ys)-padY), suggestedMax:Math.ceil(Math.max(...ys)+padY), ticks:{maxTicksLimit:6, callback:v=>f1(v)}, title:{display:true,text:yDef.label+' ('+yDef.unit+')',color:c.text2,font:{weight:600}} },
       }
     },
-    plugins:[quadrantLinesPlugin, pointLabelsPlugin]
+    plugins:[zones, labels]
   });
+  if(S.isAdmin && canvasId==='team-quadrant-chart') canvas.onclick = (e)=>{ const hit = S[instanceKey]?.getElementsAtEventForMode(e,'nearest',{intersect:true},false); if(hit && hit.length) adminOpenAthlete(points[hit[0].index].uid); };
 }
 window.drawTeamQuadrantChart = drawTeamQuadrantChart;
 
@@ -9086,43 +9056,102 @@ function renderGroupStats(memberUids, opts) {
     return cHtml;
   }
 
-  // 0) Semáforo del plantel — lo primero que se ve, para escanear en
-  // segundos quién necesita atención hoy (ACWR alto, wellness bajo, dolor
-  // reportado) sin tener que entrar atleta por atleta.
-  let html = members.length > 1 ? renderTriageTable(members) : '';
-
-  // 1) Promedio general del equipo — no tiene sentido para un solo atleta
-  // (sería literalmente la misma tarjeta repetida dos veces)
-  html += members.length > 1 ? renderTeamMetricsCard('Promedio del equipo', members, false) : '';
-
-  // 1b) Lesiones activas del plantel, por gravedad
-  html += renderTeamInjuryChart(members);
-
-  // 1c) Ranking del equipo, perfil de radar y cuadrante de entrenamiento —
-  // las tres colapsables, para que no molesten si todavía no hay datos.
-  html += renderTeamLeaderboard(members);
+  // Arriba, cuatro números del plantel; después ranking y molestias lado a
+  // lado, el perfil (radar + tabla), el cuadrante y la tabla por puesto.
+  if (members.length === 1) {
+    let one = renderTeamInjuryChart(members);
+    one += renderTeamLeaderboard(members);
+    one += renderTeamRadarSection(members);
+    one += renderTeamQuadrantSection(members);
+    return one + renderTeamMetricsCard(members[0].name||members[0].email, members, false);
+  }
+  let html = renderTeamKpis(members);
+  html += `<div class="ts-row">${renderTeamLeaderboard(members)}${renderTeamInjuryChart(members)}</div>`;
   html += renderTeamRadarSection(members);
   html += renderTeamQuadrantSection(members);
-
-  // 2) Desglose por posición (solo si al menos alguien tiene posición cargada)
-  const withPos = members.filter(a=>a.position);
-  if (withPos.length) {
-    const positions = [...new Set(members.map(a=>a.position||'Sin posición'))].sort((a,b)=>{
-      if(a==='Sin posición') return 1;
-      if(b==='Sin posición') return -1;
-      return a.localeCompare(b);
-    });
-    html += positions.map(pos=>{
-      const group = members.filter(a=>(a.position||'Sin posición')===pos);
-      return renderTeamMetricsCard(pos, group, false);
-    }).join('');
-  } else if (members.length === 1) {
-    html += renderTeamMetricsCard(members[0].name||members[0].email, members, false);
-  }
-
+  html += renderTeamPositionTable(members);
   return html;
 }
 window.renderGroupStats = renderGroupStats;
+
+// Los cuatro números del plantel: wellness de la semana (con su curva día a
+// día), ACWR promedio (con la barra de zonas), carga semanal promedio
+// (contra la semana anterior) y cuántos están sin molestias.
+function renderTeamKpis(members) {
+  const summaries = members.map(computeAthleteLoadSummary);
+  const avgW = avgMetric(summaries,'avgWellness');
+  const avgAcwr = avgMetric(summaries,'acwr');
+  const today = new Date(todayLocal()+'T12:00:00');
+  const dayStr = k => { const d=new Date(today); d.setDate(d.getDate()-k); return toLocalDateStr(d); };
+  const wDays = [6,5,4,3,2,1,0].map(k=>{
+    const v = members.map(a=>getWellnessScore(a._personal?.wellness?.[dayStr(k)])).filter(x=>x.allFilled).map(x=>x.pct);
+    return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null;
+  });
+  const uaSum = (a, from, to) => ((a._personal?.history?._sessionLogs)||[]).filter(l=>l.date>=dayStr(to) && l.date<=dayStr(from)).reduce((s,l)=>s+(l.ua||0),0);
+  const withLogs = members.filter(a=>((a._personal?.history?._sessionLogs)||[]).length);
+  const uaNow = withLogs.length ? withLogs.reduce((s,a)=>s+uaSum(a,0,6),0)/withLogs.length : null;
+  const uaPrev = withLogs.length ? withLogs.reduce((s,a)=>s+uaSum(a,7,13),0)/withLogs.length : null;
+  const inj = getTeamInjurySummary(members);
+  const hurt = new Set(inj.details.map(d=>d.uid)).size;
+  const c = chartColors();
+  const pts = wDays.map((v,i)=>v==null?null:[3+114*i/6, 31-25*(Math.max(40,Math.min(100,v))-40)/60]);
+  const line = pts.filter(Boolean);
+  const spark = line.length>=2 ? `<svg class="ts-spark" viewBox="0 0 120 34" aria-hidden="true"><polyline points="${line.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${line[line.length-1][0].toFixed(1)}" cy="${line[line.length-1][1].toFixed(1)}" r="3.2" fill="${c.accent}"/></svg>` : '';
+  const acwrSt = getACWRStatus(avgAcwr);
+  const zone = avgAcwr!=null ? `<div class="ts-acwr"><small style="color:${acwrSt.color}">${acwrSt.label.replace(/\s*[✓⚠]\s*$/,'')}</small><span class="ar-zone"><i style="left:${Math.min(100,avgAcwr/2*100)}%;background:${acwrSt.color}"></i></span></div>` : '';
+  const dUA = (uaNow!=null && uaPrev) ? Math.round((uaNow-uaPrev)/uaPrev*100) : null;
+  const tile = (k, v, extra) => `<div class="ts-kpi"><div class="ts-k">${k}</div><div class="ts-kpi-b">${v}${extra||''}</div></div>`;
+  const big = (v, u) => `<span class="ts-big">${v}${u?`<i>${u}</i>`:''}</span>`;
+  return `<div class="ts-kpis">
+    ${tile('Wellness · 7 días ' + infoBtn('wellness'), big(avgW!=null?Math.round(avgW):'—', avgW!=null?'%':''), spark)}
+    ${tile('ACWR promedio ' + infoBtn('acwr'), big(avgAcwr!=null?avgAcwr.toFixed(2).replace('.',','):'—'), zone)}
+    ${tile('Carga semanal promedio', big(uaNow!=null?Math.round(uaNow).toLocaleString('es-AR'):'—', uaNow!=null?'UA':''), dUA!=null?`<div class="ts-kpi-s"><b>${dUA>0?'↑ +':dUA<0?'↓ −':'= '}${Math.abs(dUA)} %</b><span>vs. semana anterior</span></div>`:'')}
+    ${tile('Sin molestias', big(members.length-hurt, '/'+members.length), inj.total?`<div class="ts-kpi-s"><span><b style="color:var(--red)">${inj.grave}</b> grave${inj.grave!==1?'s':''} · <b style="color:var(--amber)">${inj.moderada}</b> moderada${inj.moderada!==1?'s':''}</span><span>${hurt} con molestias</span></div>`:'')}
+  </div>`;
+}
+
+// Por puesto: el promedio de cada puesto en cada test (mejor marca) y en
+// wellness, pintado en azul si está arriba del equipo y en naranja si está abajo.
+const TS_POS_COLS = [
+  {id:'cmj', label:'CMJ', unit:'cm'}, {id:'sj', label:'SJ', unit:'cm'}, {id:'abalakov', label:'Abalakov', unit:'cm'},
+  {id:'rm_sentadilla', label:'Sentadilla', unit:'kg'}, {id:'rm_press_banca', label:'Press banca', unit:'kg'}, {id:'wellness', label:'Wellness', unit:'pts'},
+];
+function renderTeamPositionTable(members) {
+  if(!members.some(a=>a.position)) return '';
+  const valOf = (a, id) => {
+    if(id==='wellness') return computeAthleteLoadSummary(a).avgWellness;
+    const r = compareTestValue(a, id, 'best'); return r ? r.v : null;
+  };
+  const avgOf = (group, id) => { const v = group.map(a=>valOf(a,id)).filter(x=>x!=null); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null; };
+  const cols = TS_POS_COLS.filter(col=>members.some(a=>valOf(a,col.id)!=null));
+  if(!cols.length) return '';
+  const positions = [...new Set(members.map(a=>a.position||'Sin puesto'))].sort((p,q)=> p==='Sin puesto' ? 1 : q==='Sin puesto' ? -1 : p.localeCompare(q));
+  if(positions.length<2) return '';
+  const teamAvg = cols.map(col=>avgOf(members, col.id));
+  const up = chartSeriesColor(0), down = chartSeriesColor(1);
+  const fmtV = (v, col) => col.id==='wellness' ? Math.round(v)+'%' : cmpFmt(v, col.unit==='kg'?0:1);
+  const cell = (v, i) => {
+    const col = cols[i], ref = teamAvg[i];
+    if(v==null) return `<td><div class="ts-pc"><span class="ts-none">sin datos</span></div></td>`;
+    const d = v-ref, rel = ref ? d/ref : 0, near = Math.abs(rel) < 0.015;
+    const bg = near ? 'transparent' : chartAlpha(d>0?up:down, 0.12+Math.min(1,Math.abs(rel)/0.08)*0.22);
+    const dt = near ? '≈ equipo' : (d>0?'↑ +':'↓ −')+(col.id==='wellness'?Math.round(Math.abs(d)):cmpFmt(Math.abs(d), col.unit==='kg'?0:1))+' '+col.unit;
+    return `<td><div class="ts-pc" style="background:${bg}"><b>${fmtV(v,col)}</b><small>${dt}</small></div></td>`;
+  };
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  return `<section class="ts-card">
+    <div class="ts-h"><div><div class="ts-k">Por puesto</div><div class="ts-ks">promedio de cada puesto · mejor marca</div></div>
+      <div class="ts-pleg"><span><i style="background:${chartAlpha(up,0.34)}"></i>arriba del equipo</span><span><i style="background:${chartAlpha(down,0.34)}"></i>abajo del equipo</span></div></div>
+    <div class="ts-ptw"><table class="ts-pt">
+      <thead><tr><th></th>${cols.map(col=>`<th>${col.label}</th>`).join('')}</tr></thead>
+      <tbody>
+        <tr class="ts-pt-team"><td>Equipo <small>· ${members.length}</small></td>${teamAvg.map((v,i)=>`<td><div class="ts-pc">${v!=null?`<b>${fmtV(v,cols[i])}</b>`:'<span class="ts-none">—</span>'}</div></td>`).join('')}</tr>
+        ${positions.map(p=>{ const g = members.filter(a=>(a.position||'Sin puesto')===p);
+          return `<tr><td>${esc(p)} <small>· ${g.length}</small></td>${cols.map(col=>avgOf(g,col.id)).map(cell).join('')}</tr>`; }).join('')}
+      </tbody>
+    </table></div>
+  </section>`;
+}
 
 // ── TEAM DAY EDITOR ───────────────────────────────────────────
 function openTeamDayEditor(teamId,dayIdx){S.teamDayEdit={teamId,dayIdx};renderMain();}
@@ -10301,7 +10330,7 @@ function drawAtletaTabCharts() {
       // cuadrante, que no se renderizan en este modo (ver renderGroupStats).
       drawTeamRadarChart(mem, a.uid);
     } else {
-      drawTeamInjuryChart(mem); drawTeamRadarChart(mem); drawTeamQuadrantChart(mem);
+       drawTeamRadarChart(mem); drawTeamQuadrantChart(mem);
     }
   }
 }
@@ -12332,6 +12361,34 @@ function compareNiceMax(v) {
 }
 const cmpFmt = (v, dec) => (dec===0 ? String(Math.round(v)) : (+v).toFixed(dec)).replace('.', ',');
 
+// Barras horizontales por atleta, desde cero (Comparar atletas, Ranking).
+// rows: {name, color, v, date, extra, onclick, rank, none}; o: {unit, dec, avg, avgLabel, max}
+function statBarsHtml(rows, o) {
+  const dec = o.dec, unit = o.unit;
+  const vals = rows.filter(r=>r.v!=null).map(r=>r.v);
+  if(!vals.length) return '';
+  const best = Math.max(...vals);
+  const max = o.max || compareNiceMax(Math.max(best, o.avg||0));
+  const pct = v => Math.max(0, Math.min(100, v/max*100));
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  return `<div class="ca-bars${o.wide?' ca-wide':''}">
+    ${o.avg!=null?`<div class="ca-avg" style="--x:${(pct(o.avg)/100).toFixed(4)}"><span>${o.avgLabel||'prom.'} ${cmpFmt(o.avg,dec)}</span></div>`:''}
+    ${rows.map(r=>{
+      const has = r.v!=null;
+      const pill = !has ? '' : (r.v===best
+        ? `<span class="ev-pill ev-gold">${EVAL_MEDAL_SVG}Mejor</span>`
+        : `<span class="ca-diff">−${cmpFmt(best-r.v,dec)}${unit?' '+unit:''}</span>`);
+      return `<div class="ca-row${r.onclick?' ca-click':''}"${r.onclick?` onclick="${r.onclick}"`:''}>
+        <div class="ca-nm">${r.rank?`<em class="ca-rk">${r.rank}</em>`:`<i style="background:${r.color}"></i>`}<span>${esc(r.name)}</span></div>
+        <div class="ca-trk">${has
+          ? `<span class="ca-bar" style="width:${pct(r.v)}%;background:${r.color}"></span><span class="ca-val"><b>${cmpFmt(r.v,dec)}</b>${r.date?`<small>${r.date}</small>`:''}${o.wide?'':(r.extra||'')}</span>`
+          : `<span class="ca-none">${r.none||'sin test'}</span>`}</div>
+        <div class="ca-pill">${o.wide&&has?(r.extra||''):''}${pill}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 // Un test: una barra por atleta (desde cero), con el valor y la fecha al
 // lado, "Mejor" para el primero y cuánto le falta a cada uno de los demás.
 function compareBarsHtml(test, athletes, mode, rel) {
@@ -12349,30 +12406,17 @@ function compareBarsHtml(test, athletes, mode, rel) {
   const scope = (S.adminAthletes||[]).filter(a=>compareScopeUids().includes(a.uid));
   const scopeVals = scope.map(valOf).filter(r=>r && r.v!=null).map(r=>r.v);
   const avg = scopeVals.length>=2 ? scopeVals.reduce((s,v)=>s+v,0)/scopeVals.length : null;
-  const vals = rows.filter(x=>x.r && x.r.v!=null).map(x=>x.r.v);
-  const best = Math.max(...vals);
-  const max = rel ? Math.ceil(Math.max(best, avg||0)*1.12*4)/4 : compareNiceMax(Math.max(best, avg||0));
-  const pct = v => Math.max(0, Math.min(100, v/max*100));
-  const name = a => (a.name||a.email||'').replace(/</g,'&lt;');
+  const best = Math.max(...rows.filter(x=>x.r && x.r.v!=null).map(x=>x.r.v));
+  const max = rel ? Math.ceil(Math.max(best, avg||0)*1.12*4)/4 : null;
+  const bars = statBarsHtml(rows.map(x=>{
+    const has = x.r && x.r.v!=null;
+    return {name:x.a.name||x.a.email, color:x.color, v:has?x.r.v:null,
+      date: has ? (x.r.perfil ? 'perfil' : (x.r.date ? evalShortDate(x.r.date) : '')) : '',
+      none: x.r&&x.r.noWeight ? 'sin peso cargado' : 'sin test'};
+  }), {unit:rel?'':unit, dec, avg, avgLabel:'prom. '+compareScopeLabel(), max});
   return `<div class="ca-test">
     <div class="ca-test-h"><b>${test.label}</b><span>${unit}${test.desc&&!rel?' · '+test.desc:''}</span></div>
-    <div class="ca-bars">
-      ${avg!=null?`<div class="ca-avg" style="--x:${(pct(avg)/100).toFixed(4)}"><span>prom. ${compareScopeLabel()} ${cmpFmt(avg,dec)}</span></div>`:''}
-      ${rows.map(x=>{
-        const has = x.r && x.r.v!=null;
-        const date = has ? (x.r.perfil ? 'perfil' : (x.r.date ? evalShortDate(x.r.date) : '')) : '';
-        const pill = !has ? '' : (x.r.v===best
-          ? `<span class="ev-pill ev-gold">${EVAL_MEDAL_SVG}Mejor</span>`
-          : `<span class="ca-diff">−${cmpFmt(best-x.r.v,dec)}${rel?'':' '+unit}</span>`);
-        return `<div class="ca-row">
-          <div class="ca-nm"><i style="background:${x.color}"></i><span>${name(x.a)}</span></div>
-          <div class="ca-trk">${has
-            ? `<span class="ca-bar" style="width:${pct(x.r.v)}%;background:${x.color}"></span><span class="ca-val"><b>${cmpFmt(x.r.v,dec)}</b>${date?`<small>${date}</small>`:''}</span>`
-            : `<span class="ca-none">${x.r&&x.r.noWeight?'sin peso cargado':'sin test'}</span>`}</div>
-          <div class="ca-pill">${pill}</div>
-        </div>`;
-      }).join('')}
-    </div>
+    ${bars}
   </div>`;
 }
 

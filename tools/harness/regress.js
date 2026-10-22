@@ -357,6 +357,28 @@
     ok(routineExOtherPlaces(S.editingRoutine,{id:'q',name:'PRESS  BANCA'}).length>=2,'reconoce el mismo ejercicio escrito con mayúsculas o espacios distintos');
     setRoutineCompare(true); await wait(500); ok(!!document.querySelector('#cmpex-'+added.id+' .dup-tag'),'vista horizontal: también lo marca'); setRoutineCompare(false);
     txtBad('editor con repetidos'); }
+  // ── estadísticas del equipo: números del plantel, ranking en barras, molestias en lista, radar con tabla, cuadrante y tabla por puesto ──
+  { const dbx=JSON.parse(localStorage.getItem('__db')); const mk=(b,st)=>['2026-05-12','2026-07-15','2026-09-12'].map((d,i)=>({date:d,height:+(b+st*i).toFixed(1)}));
+    const P={u1:[37,0.8,32,90,70],u2:[40,0.6,35.5,120,80],u3:[34,0.4,null,95,65]};
+    Object.entries(P).forEach(([u,[c,st,sj,sq,bp]])=>{ dbx.personal[u]=dbx.personal[u]||{}; dbx.personal[u].evals={cmj:mk(c,st), abalakov:mk(c+6,st), ...(sj?{sj:mk(sj,st)}:{}), rm_sentadilla:[{date:'2026-08-20',height:sq}], rm_press_banca:[{date:'2026-08-20',height:bp}]}; const a=S.adminAthletes.find(x=>x.uid===u); if(a&&a._personal) a._personal.evals=dbx.personal[u].evals; });
+    localStorage.setItem('__db',JSON.stringify(dbx));
+    S.atletaView=null; S._inAthleteDetail=false; S.leaderboardTest='cmj'; S.leaderboardMode='pr'; S.radarMode='equipo'; S.radarAthleteId='u1';
+    switchView('teams'); await wait(600); openTeam('t1'); await wait(1600); setTeamSubview('stats'); await wait(1800);
+    const main=document.getElementById('main'); const tx=main.innerText;
+    ok(!/Semáforo/i.test(tx),'equipo: sin el semáforo repetido');
+    ok(document.querySelectorAll('.ts-kpis .ts-kpi').length===4,'equipo: 4 números del plantel arriba');
+    const rk=[...document.querySelectorAll('.ts-card')].find(c=>/Ranking del equipo/i.test(c.innerText));
+    const rrows=rk?[...rk.querySelectorAll('.ca-row')]:[]; ok(rrows.length===3&&/Rossi/.test(rrows[0].innerText)&&/41,2/.test(rrows[0].innerText)&&!!rrows[0].querySelector('.ev-gold'),'equipo: ranking en barras, el primero con "Mejor" (Rossi 41,2)');
+    ok(!!rk&&!!rk.querySelector('.ca-avg'),'equipo: ranking con la línea del promedio');
+    const ij=document.querySelectorAll('.ts-inj-r'); ok(ij.length>=1&&![...ij].some(r=>/_der|_izq/.test(r.innerText))&&!document.getElementById('team-injury-chart'),'equipo: molestias en lista con el nombre de la zona (sin torta)');
+    const rc=S.radarChartInstance; ok(!!rc&&rc.data.datasets.length===2&&rc.data.datasets[0].data.every(v=>v===null||v>0),'equipo: radar del atleta contra el promedio (sin ceros inventados)');
+    ok(document.querySelectorAll('.ts-rt .ts-rt-r').length===7&&/Meier/i.test(document.querySelector('.ts-rt-h').innerText),'equipo: tabla del radar con los 6 tests');
+    ok(!!S.quadrantChartInstance&&S.quadrantChartInstance.data.datasets[0].data.length===2,'equipo: cuadrante con los atletas que tienen CMJ y SJ');
+    const pt=document.querySelector('.ts-pt'); ok(!!pt&&pt.querySelectorAll('tbody tr').length===4,'equipo: una sola tabla por puesto (equipo + 3 puestos)');
+    setRadarMode('self'); await wait(500); ok(/primer test/i.test(document.querySelector('.ts-rt-h').innerText),'equipo: radar contra su primer test');
+    setLeaderboardTest('rm_sentadilla'); await wait(400); ok(/120/.test(document.querySelector('.ca-row').innerText),'equipo: ranking de sentadilla (120 kg primero)');
+    txtBad('estadísticas del equipo'); ok(document.documentElement.scrollWidth<=innerWidth+1,'estadísticas del equipo: sin scroll horizontal');
+    S.radarMode='equipo'; S.leaderboardTest='cmj'; }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
