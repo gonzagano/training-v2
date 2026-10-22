@@ -398,6 +398,20 @@
     setLeaderboardTest('rm_sentadilla'); await wait(400); ok(/120/.test(document.querySelector('.ca-row').innerText),'equipo: ranking de sentadilla (120 kg primero)');
     txtBad('estadísticas del equipo'); ok(document.documentElement.scrollWidth<=innerWidth+1,'estadísticas del equipo: sin scroll horizontal');
     S.radarMode='equipo'; S.leaderboardTest='cmj'; }
+  // ── ficha → Estadísticas: el atleta dentro de su equipo ──
+  { S.astScope='team'; S.astMode='best'; adminOpenAthlete('u1'); await wait(1500); setAtletaSubview('stats'); await wait(1800);
+    const tx=document.getElementById('main').innerText;
+    ok(!/Ranking del equipo/i.test(tx)&&/Dónde está en su equipo/i.test(tx),'ficha: muestra dónde está en su equipo (no un "ranking" de uno)');
+    const cmj=[...document.querySelectorAll('.ast-tile')].find(x=>/^CMJ/.test(x.querySelector('.ast-th b').textContent));
+    ok(!!cmj&&/de 3/.test(cmj.innerText)&&cmj.querySelectorAll('.ast-dot').length===2&&!!cmj.querySelector('.ast-me')&&!!cmj.querySelector('.ast-avg'),'ficha: CMJ con su puesto (de 3), los 2 compañeros y el promedio');
+    ok(!!cmj&&!/Rossi|Perez/.test(cmj.innerText),'ficha: la franja no muestra nombres de compañeros');
+    ok([...document.querySelectorAll('.ast-tile')].some(x=>/Sin test/.test(x.innerText)&&/Peso muerto/.test(x.innerText)),'ficha: los tests que faltan, juntos en una tarjeta');
+    ok(!!S.radarChartInstance&&!!S.astCharts?.['ast-evol-chart']&&S.astCharts['ast-evol-chart'].data.datasets.length===2,'ficha: radar y evolución contra el promedio del equipo');
+    txtBad('ficha estadísticas'); ok(document.documentElement.scrollWidth<=innerWidth+1,'ficha estadísticas: sin scroll horizontal');
+    goBackFromAthleteDetail(); await wait(500);
+    S.atletaView=null; S._inAthleteDetail=false; switchView('atletas'); await wait(900); openAtleta('u0'); await wait(1300); setAtletaSubview('stats'); await wait(1500);
+    ok(/sus marcas/i.test(document.getElementById('main').innerText)&&!document.querySelector('.ast-ctx'),'ficha de individual sin equipo: sus marcas, sin "comparado con"');
+    txtBad('ficha individual estadísticas'); goBackFromAthleteDetail(); await wait(400); }
   // ── Dashboard: solo molestias/lesiones de los últimos 10 días; la ficha las sigue mostrando ──
   { const ds=o=>{const d=new Date(); d.setDate(d.getDate()-o); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());};
     const dbx=JSON.parse(localStorage.getItem('__db'));

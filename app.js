@@ -9095,25 +9095,9 @@ function renderTriageTable(members) {
 }
 window.renderTriageTable = renderTriageTable;
 
-function renderGroupStats(memberUids, opts) {
+function renderGroupStats(memberUids) {
   const members = (S.adminAthletes || []).filter(a => memberUids.includes(a.uid));
   if (!members.length) return `<div class="empty-state">No hay atletas en este grupo todavía.</div>`;
-
-  // Vista de comparación pura (atleta individual comparándose con un
-  // equipo elegido en su Perfil): promedio agregado + su propio radar —
-  // nada de molestias, ranking clickeable ni detalle semanal de otros
-  // jugadores, que son cosas exclusivas de la ficha real del equipo.
-  // El radar se BLOQUEA en el propio atleta (sin el selector de compañeros)
-  // y el cuadrante queda afuera directamente: a diferencia del radar (una
-  // sola línea punteada de promedio, sin identificar a nadie), el cuadrante
-  // grafica un punto con nombre por cada integrante del equipo — mostrarlo
-  // acá era exactamente la fuga de datos de compañeros que este modo existe
-  // para evitar.
-  if (opts && opts.compareOnly) {
-    let cHtml = members.length > 1 ? renderTeamMetricsCard('Promedio del equipo con el que se compara', members, false) : '';
-    cHtml += renderTeamRadarSection(members, opts.selfUid);
-    return cHtml;
-  }
 
   // Arriba, cuatro números del plantel; después ranking y molestias lado a
   // lado, el perfil (radar + tabla), el cuadrante y la tabla por puesto.
@@ -10366,7 +10350,7 @@ function renderAtletaDetail(a) {
 
   if (sub === 'rutina') html += renderAtletaRutina(a);
   else if (sub === 'wellness') html += `<button class="load-cta" onclick="openProxyForm('${a.uid}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Cargar wellness y carga de ${String((a.name||'').split(' ').slice(-1)[0]||'este atleta').replace(/</g,'&lt;')}</span></button>` + renderGroupWellness(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId, selfUid: a.uid});
-  else if (sub === 'stats') html += renderGroupStats(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId, selfUid: a.uid});
+  else if (sub === 'stats') html += renderAthleteStatsTab(a);
   else if (sub === 'evals') html += renderEvals();
   else html += renderPerfilTab(a);
   return html;
@@ -10376,22 +10360,232 @@ window.renderAtletaDetail = renderAtletaDetail;
 // Dibuja los gráficos que correspondan según qué pestaña de la ficha esté
 // activa — se llama igual sin importar si se entró por "Atletas" o por
 // Panel Admin, ya que ambas rutas ahora comparten la misma vista.
+// ── ESTADÍSTICAS EN LA FICHA DEL ATLETA ──────────────────────
+// Dónde está parado el atleta dentro de su equipo (o del equipo con el que
+// se compara, si es individual): su puesto en cada test con una franja de
+// puntos de los compañeros (sin nombres), el radar con la tabla de
+// diferencias, su evolución contra la del equipo, y su carga y wellness
+// contra el promedio. Sin equipo, se compara contra sí mismo.
+const AST_TESTS = [
+  {id:'cmj', label:'CMJ', unit:'cm'}, {id:'sj', label:'SJ', unit:'cm'}, {id:'abalakov', label:'Abalakov', unit:'cm'},
+  {id:'rm_sentadilla', label:'Sentadilla', unit:'kg'}, {id:'rm_press_banca', label:'Press banca', unit:'kg'}, {id:'rm_peso_muerto', label:'Peso muerto', unit:'kg'},
+];
+function athleteStatsPool(a) {
+  const team = (a.compareTeamId && (S.teams||[]).find(t=>t.id===a.compareTeamId)) || getAthleteTeam(a);
+  if(!team) return {team:null, uids:[a.uid]};
+  return {team, uids:[...new Set([a.uid, ...getTeamStatsMemberUids(team)])]};
+}
+function setAstScope(v) { S.astScope = v; renderMain(); }
+window.setAstScope = setAstScope;
+function setAstMode(v) { S.astMode = v; renderMain(); }
+window.setAstMode = setAstMode;
+function setAstEvolMetric(v) { S.astEvolMetric = v; renderMain(); }
+window.setAstEvolMetric = setAstEvolMetric;
+
+// Compañeros contra los que se compara (sin el propio atleta), según
+// "Su equipo" / "Su puesto".
+function athleteStatsMates(a) {
+  const pool = athleteStatsPool(a);
+  const all = (S.adminAthletes||[]).filter(x=>pool.uids.includes(x.uid) && x.uid!==a.uid);
+  const samePos = a.position ? all.filter(x=>x.position===a.position) : [];
+  const scope = (S.astScope==='pos' && samePos.length) ? 'pos' : 'team';
+  return {pool, all, samePos, scope, mates: scope==='pos' ? samePos : all};
+}
+
+function renderAthleteStatsTab(a) {
+  const st = athleteStatsMates(a);
+  const need = st.all.filter(x=>!x._personal);
+  if(need.length) {
+    if(!S._astLoading) S._astLoading = {};
+    if(!S._astLoading[a.uid]) { S._astLoading[a.uid] = true; ensureGroupPersonalData(need.map(x=>x.uid)).catch(()=>{}).finally(()=>{ S._astLoading[a.uid] = false; renderMain(); }); }
+    return `<div class="empty-state">Cargando…</div>`;
+  }
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const mode = S.astMode==='last' ? 'last' : 'best';
+  const hasGroup = st.all.length>0;
+  const first = (a.name||a.email||'').split(/\s+/)[0];
+  let html = '';
+  if(hasGroup) {
+    html += `<div class="ast-ctx">
+      <span class="ast-ctx-l">Comparado con</span>
+      <div class="ca-seg"><button class="chip-btn ${st.scope==='team'?'on':''}" onclick="setAstScope('team')">${esc(st.pool.team.name)} · ${st.all.length+1}</button>
+        ${st.samePos.length?`<button class="chip-btn ${st.scope==='pos'?'on':''}" onclick="setAstScope('pos')">Su puesto · ${esc(a.position)} ${st.samePos.length+1}</button>`:''}</div>
+      <span style="flex:1"></span>
+      <div class="ca-seg"><button class="chip-btn ${mode==='best'?'on':''}" onclick="setAstMode('best')">Mejor marca</button><button class="chip-btn ${mode==='last'?'on':''}" onclick="setAstMode('last')">Último test</button></div>
+    </div>`;
+  }
+  // Una tarjeta por test (los que le faltan, juntos en una sola)
+  const missing = [];
+  let tiles = AST_TESTS.map(t=>{
+    const dec = t.unit==='kg' ? 0 : 1;
+    const me = compareTestValue(a, t.id, mode);
+    const vals = st.mates.map(x=>compareTestValue(x, t.id, mode)).filter(Boolean).map(r=>r.v);
+    const avg = vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
+    const head = `<div class="ast-th"><b>${t.label}</b><span>${t.unit}</span></div>`;
+    if(!me) { missing.push(t.label); return ''; }
+    const date = me.perfil ? 'perfil' : (me.date ? evalShortDate(me.date) : '');
+    let right = '', strip = '', foot = '';
+    if(vals.length) {
+      const all = vals.concat([me.v]).sort((p,q)=>q-p);
+      const rank = all.indexOf(me.v)+1, of = all.length;
+      const third = rank/of<=1/3 ? 'tercio de arriba' : rank/of<=2/3 ? 'tercio del medio' : 'tercio de abajo';
+      right = `<div class="ast-rank"><b>${rank}.º<i> de ${of}</i></b><small>${third}</small></div>`;
+      const mn = Math.min(...all), mx = Math.max(...all), span = (mx-mn) || 1;
+      const X = v => (4 + 92*(v-mn)/span).toFixed(2);
+      strip = `<div class="ast-strip">
+        <span class="ast-line"></span>
+        ${vals.map(v=>`<i class="ast-dot" style="left:${X(v)}%"></i>`).join('')}
+        <u class="ast-avg" style="left:${X(avg)}%"><em>prom. ${cmpFmt(avg,dec)}</em></u>
+        <i class="ast-me" style="left:${X(me.v)}%"><b>${esc(first)}</b></i>
+        ${X(avg)>18?`<span class="ast-mn">${cmpFmt(mn,dec)}</span>`:''}${X(avg)<82?`<span class="ast-mx">${cmpFmt(mx,dec)}</span>`:''}
+      </div>`;
+      const d = me.v-avg;
+      foot = `<span class="ts-diff">${Math.abs(d)<(dec?0.05:0.5)?'= igual al promedio':(d>0?'↑ +':'↓ −')+cmpFmt(Math.abs(d),dec)+' '+t.unit+' vs. el promedio'}</span>`;
+    } else {
+      const recs = sortEvalRecsByDate([...(a._personal?.evals?.[t.id]||[])].filter(r=>r && r.height!=null));
+      if(recs.length>=2) { const d = +recs[recs.length-1].height - +recs[0].height; foot = `<span class="ts-diff">${d>0?'↑ +':d<0?'↓ −':'= '}${cmpFmt(Math.abs(d),dec)} ${t.unit} desde ${evalShortDate(recs[0].date)}</span>`; }
+    }
+    return `<div class="ast-tile">${head}
+      <div class="ast-v"><div><span class="ast-big">${cmpFmt(me.v,dec)}</span>${date?`<small>${date}</small>`:''}</div>${right}</div>
+      ${strip}${foot?`<div class="ast-foot">${foot}</div>`:''}</div>`;
+  }).join('');
+  if(missing.length) tiles += `<div class="ast-tile"><div class="ast-th"><b>Sin test</b></div><div class="ast-miss">${missing.join(' · ')}</div><button class="ast-load" onclick="setAtletaSubview('evals')">+ Cargar test</button></div>`;
+  html += `<div class="ts-h" style="margin-bottom:10px"><div><div class="ts-k">${hasGroup?'Dónde está en su equipo':'Sus marcas'}</div><div class="ts-ks">${mode==='best'?'mejor marca de cada uno':'último test de cada uno'}</div></div></div>
+    <div class="ast-tiles">${tiles}</div>`;
+  // Perfil: radar + tabla (contra el equipo, su puesto o su primer test)
+  const radarMembers = (S.adminAthletes||[]).filter(x=>st.pool.uids.includes(x.uid));
+  html += renderTeamRadarSection(radarMembers, a.uid).replace('<div class="ts-k">Perfil del atleta</div>', '<div class="ts-k">Perfil</div>');
+  // Evolución contra el promedio
+  const metrics = AST_TESTS.filter(t=>(a._personal?.evals?.[t.id]||[]).length);
+  if(metrics.length) {
+    if(!metrics.some(m=>m.id===S.astEvolMetric)) S.astEvolMetric = metrics[0].id;
+    const met = metrics.find(m=>m.id===S.astEvolMetric);
+    const ev = athleteEvolData(a, st.mates, met.id);
+    const dec = met.unit==='kg' ? 0 : 1;
+    const chips = [];
+    if(ev.gain!=null) chips.push(`<span class="ca-gain"><b>${ev.gain>0?'↑ +':ev.gain<0?'↓ −':'= '}${cmpFmt(Math.abs(ev.gain),dec)} ${met.unit}</b> desde ${ev.fromLabel}</span>`);
+    if(ev.teamGain!=null) chips.push(`<span class="ca-gain">el ${st.scope==='pos'?'puesto':'equipo'} ${ev.teamGain>=0?'mejoró':'bajó'} <b>${ev.teamGain>=0?'+':'−'}${cmpFmt(Math.abs(ev.teamGain),dec)} ${met.unit}</b></span>`);
+    if(ev.rankFrom && ev.rankTo && ev.rankFrom!==ev.rankTo) chips.push(`<span class="ca-gain">pasó del <b>${ev.rankFrom}.º al ${ev.rankTo}.º</b> puesto</span>`);
+    html += `<section class="ts-card">
+      <div class="ts-h"><div><div class="ts-k">Evolución</div><div class="ts-ks">${esc(met.label)} · ${met.unit} · últimos 12 meses</div></div>
+        <div class="ts-chips" style="margin:0">${metrics.map(m=>`<button class="chip-btn ${m.id===met.id?'on':''}" onclick="setAstEvolMetric('${m.id}')">${m.label}</button>`).join('')}</div></div>
+      <div class="ast-evol"><canvas id="ast-evol-chart"></canvas></div>
+      ${chips.length?`<div class="ca-gains">${chips.join('')}</div>`:''}
+    </section>`;
+  }
+  // Carga y wellness, cada uno con su gráfico
+  html += `<div class="ast-two">
+    <section class="ts-card"><div class="ts-h"><div><div class="ts-k">Carga semanal</div><div class="ts-ks">UA · últimas 8 semanas</div></div></div><div class="ast-mini"><canvas id="ast-ua-chart"></canvas></div></section>
+    <section class="ts-card"><div class="ts-h"><div><div class="ts-k">Wellness</div><div class="ts-ks">% · promedio semanal</div></div></div><div class="ast-mini"><canvas id="ast-well-chart"></canvas></div></section>
+  </div>`;
+  return html;
+}
+window.renderAthleteStatsTab = renderAthleteStatsTab;
+
+// Serie mensual (últimos 12 meses) del atleta y del promedio de los
+// compañeros, más lo que mejoró cada uno y el puesto al principio y ahora.
+function athleteEvolData(a, mates, testId) {
+  const today = new Date(todayLocal()+'T12:00:00');
+  const months = [];
+  for(let m=11; m>=0; m--) {
+    const d = new Date(today.getFullYear(), today.getMonth()-m, 1);
+    months.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), label:EVAL_MONTHS[d.getMonth()].slice(0,3).toLowerCase()});
+  }
+  const recs = x => (x._personal?.evals?.[testId]||[]).filter(r=>r && r.height!=null && r.date);
+  const inMonth = (x, key) => { const r = recs(x).filter(r=>String(r.date).startsWith(key)); return r.length ? Math.max(...r.map(z=>+z.height)) : null; };
+  const bestUpTo = (x, key) => { const r = recs(x).filter(r=>String(r.date).slice(0,7)<=key); return r.length ? Math.max(...r.map(z=>+z.height)) : null; };
+  const me = months.map(m=>inMonth(a, m.key));
+  const avg = months.map(m=>{ const v = mates.map(x=>inMonth(x, m.key)).filter(v=>v!=null); return v.length>=2 ? v.reduce((s,x)=>s+x,0)/v.length : null; });
+  const fi = me.findIndex(v=>v!=null), li = me.length-1-[...me].reverse().findIndex(v=>v!=null);
+  const gain = (fi>=0 && li>fi) ? me[li]-me[fi] : null;
+  const af = avg.findIndex(v=>v!=null), al = avg.length-1-[...avg].reverse().findIndex(v=>v!=null);
+  const teamGain = (af>=0 && al>af) ? avg[al]-avg[af] : null;
+  const rankAt = key => { const mine = bestUpTo(a, key); if(mine==null) return null; const others = mates.map(x=>bestUpTo(x, key)).filter(v=>v!=null); return others.length ? others.filter(v=>v>mine).length+1 : null; };
+  return {months, me, avg, gain, teamGain, fromLabel: fi>=0 ? months[fi].label : '',
+    rankFrom: (fi>=0 && li>fi) ? rankAt(months[fi].key) : null, rankTo: li>=0 ? rankAt(months[li].key) : null};
+}
+
+// Últimas 8 semanas: carga (suma de UA) y wellness (promedio) del atleta y
+// del promedio de los compañeros.
+function athleteWeeklyData(a, mates) {
+  const today = new Date(todayLocal()+'T12:00:00');
+  const weeks = [];
+  for(let w=7; w>=0; w--) {
+    const days = [];
+    for(let d=6; d>=0; d--) { const x = new Date(today); x.setDate(x.getDate()-w*7-d); days.push(toLocalDateStr(x)); }
+    weeks.push({label:evalShortDate(days[0]), days});
+  }
+  const ua = (x, wk) => { const logs = (x._personal?.history?._sessionLogs)||[]; const s = logs.filter(l=>wk.days.includes(l.date)).reduce((t,l)=>t+(l.ua||0),0); return s>0 ? s : null; };
+  const well = (x, wk) => { const v = wk.days.map(d=>getWellnessScore(x._personal?.wellness?.[d])).filter(z=>z.allFilled).map(z=>z.pct); return v.length ? Math.round(v.reduce((s,z)=>s+z,0)/v.length) : null; };
+  const avgOf = (fn, wk) => { const v = mates.map(x=>fn(x, wk)).filter(v=>v!=null); return v.length>=2 ? v.reduce((s,x)=>s+x,0)/v.length : null; };
+  return {labels:weeks.map(w=>w.label), ua:weeks.map(w=>ua(a,w)), uaAvg:weeks.map(w=>avgOf(ua,w)), well:weeks.map(w=>well(a,w)), wellAvg:weeks.map(w=>avgOf(well,w))};
+}
+
+// Valor y nombre al final de cada línea (sin pisarse entre sí).
+function chartEndLabelsPlugin(fmtV) {
+  return { id:'endLabels', afterDatasetsDraw(chart){
+    const ctx = chart.ctx, c = chartColors(), items = [], narrow = chart.width<420;
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta = chart.getDatasetMeta(di); if(meta.hidden) return;
+      let li = ds.data.length-1; while(li>=0 && ds.data[li]==null) li--;
+      if(li<0) return;
+      items.push({y:meta.data[li].y, v:ds.data[li], name:ds._short||''});
+    });
+    items.sort((p,q)=>p.y-q.y);
+    for(let i=1;i<items.length;i++) if(items[i].y-items[i-1].y<15) items[i].y = items[i-1].y+15;
+    const x = chart.chartArea.right+10;
+    items.forEach(it=>{
+      ctx.save(); ctx.textBaseline='middle'; ctx.textAlign='left';
+      ctx.font = "800 12px 'Manrope',sans-serif"; ctx.fillStyle = c.text;
+      const vt = fmtV(it.v); ctx.fillText(vt, x, it.y);
+      if(!narrow && it.name) { const w = ctx.measureText(vt+' ').width; ctx.font = "500 12px 'Manrope',sans-serif"; ctx.fillStyle = c.text2; ctx.fillText(it.name, x+w, it.y); }
+      ctx.restore();
+    });
+  }};
+}
+
+function drawAthleteStatsTab(a) {
+  if(typeof Chart==='undefined' || !a) return;
+  const st = athleteStatsMates(a);
+  const c = chartColors();
+  const first = (a.name||a.email||'').split(/\s+/)[0];
+  const avgName = st.scope==='pos' ? 'prom. puesto' : 'prom. equipo';
+  if(!S.astCharts) S.astCharts = {};
+  Object.keys(S.astCharts).forEach(k=>{ try{ S.astCharts[k].destroy(); }catch(e){} delete S.astCharts[k]; });
+  const line = (id, labels, mine, avg, fmtV, unit, opts) => {
+    const cv = document.getElementById(id); if(!cv) return;
+    if(!mine.some(v=>v!=null) && !avg.some(v=>v!=null)) { cv.parentElement.innerHTML = '<div class="ts-empty">Sin datos todavía.</div>'; return; }
+    const ds = [{label:first, _short:first, data:mine, borderColor:c.accent, backgroundColor:c.accent, borderWidth:2.5, pointRadius:3.5, pointBorderColor:c.card, pointBorderWidth:1.5, spanGaps:true, tension:.25}];
+    if(avg.some(v=>v!=null)) ds.push({label:avgName, _short:avgName, data:avg, borderColor:c.avg, borderDash:[5,4], borderWidth:1.6, pointRadius:0, pointHoverRadius:3, spanGaps:true, tension:.25});
+    S.astCharts[id] = new Chart(cv, {
+      type:'line', data:{labels, datasets:ds},
+      options:{ responsive:true, maintainAspectRatio:false,
+        layout:{padding:{right:cv.parentElement.clientWidth<420?48:140, top:6}},
+        interaction:{mode:'index', intersect:false},
+        plugins:{ legend:{display:false}, tooltip:{filter:i=>i.parsed.y!=null, callbacks:{label:ctx=>' '+ctx.dataset._short+'  '+fmtV(ctx.parsed.y)+(unit?' '+unit:'')}} },
+        scales:{ x:{grid:{display:false}, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:8}}, y:Object.assign({grace:'10%', ticks:{maxTicksLimit:6}}, opts||{}) } },
+      plugins:[chartEndLabelsPlugin(fmtV)]
+    });
+  };
+  const met = AST_TESTS.find(m=>m.id===S.astEvolMetric);
+  if(met) {
+    const ev = athleteEvolData(a, st.mates, met.id), dec = met.unit==='kg' ? 0 : 1;
+    line('ast-evol-chart', ev.months.map(m=>m.label), ev.me, ev.avg, v=>cmpFmt(v,dec), met.unit);
+  }
+  const wk = athleteWeeklyData(a, st.mates);
+  line('ast-ua-chart', wk.labels, wk.ua, wk.uaAvg, v=>Math.round(v).toLocaleString('es-AR'), 'UA', {beginAtZero:true});
+  line('ast-well-chart', wk.labels, wk.well, wk.wellAvg, v=>Math.round(v)+'%', '', {suggestedMin:40, max:100});
+  drawTeamRadarChart((S.adminAthletes||[]).filter(x=>st.pool.uids.includes(x.uid)), a.uid);
+}
+window.drawAthleteStatsTab = drawAthleteStatsTab;
+
 function drawAtletaTabCharts() {
   if (!S.atletaView) return;
   const a = S.atletaView;
   if (S.atletaSubview === 'perfil') {
     drawAthleteTrendChart();
   } else if (S.atletaSubview === 'stats') {
-    const uids = getEffectiveGroupUids(a);
-    const mem = (S.adminAthletes||[]).filter(x=>uids.includes(x.uid));
-    if (a.compareTeamId) {
-      // Ficha individual comparándose con un equipo: solo el radar
-      // (bloqueado en el propio atleta) — sin gráfico de lesiones ni
-      // cuadrante, que no se renderizan en este modo (ver renderGroupStats).
-      drawTeamRadarChart(mem, a.uid);
-    } else {
-       drawTeamRadarChart(mem); drawTeamQuadrantChart(mem);
-    }
+    drawAthleteStatsTab(a);
   }
 }
 window.drawAtletaTabCharts = drawAtletaTabCharts;
