@@ -89,6 +89,9 @@
       const pr=prescribedRepsForRM(getExPrescriptionForWeek(S.assignedRoutine.sessions['Día 1'].flatMap(b=>b.categories[0].exercises).find(x=>x.id==='x1'), toRoutineRelativeWeek(getRoutineWeek(),S.userData)).reps).reps;
       const want=Math.round(100/rpePct(pr,8)*2)/2;
       ok(S.oneRM.sentadilla_barra===want&&JSON.parse(localStorage.getItem('__db')).personal.u1.oneRM.sentadilla_barra===want,'atleta: su RM pasó a '+want+' kg y quedó guardado ('+S.oneRM.sentadilla_barra+')'); } }
+  // ── el atleta también ve por qué está así su ACWR ──
+  { switchView('dashboard'); await wait(600); const tap=document.querySelector('#main .ax-tap'); ok(!!tap,'inicio: el ACWR se puede tocar');
+    if(tap){ tap.click(); await wait(300); const t=document.querySelector('#acwr-overlay')?.innerText||''; ok(/Tu carga, explicada/.test(t)&&/Carga por semana/i.test(t)&&!/undefined|NaN/.test(t),'atleta: ve la explicación de su ACWR'); closeAcwrExplain(); } }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();

@@ -1414,3 +1414,27 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 /* Tipo en "Molestias y lesiones recientes" */
 .inj-kind{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px;background:var(--amber-dim);color:var(--amber);vertical-align:1px;margin-left:4px}
 .inj-kind.les{background:var(--red-dim);color:var(--red)}
+/* ACWR: se toca y se explica */
+.ax-tap{cursor:pointer;border-radius:10px;transition:background .12s}
+.ax-tap:hover{background:var(--bg3)}
+.ax-box{max-width:560px}
+.ax-body{max-height:70vh;overflow-y:auto}
+.ax-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.ax-val{font-family:'Barlow Condensed',sans-serif;font-size:40px;font-weight:700;line-height:1}
+.ax-lbl{font-size:14px;font-weight:700}
+.ax-calc{font-size:12px;color:var(--text3);margin-bottom:10px}
+.ax-why{font-size:14px;line-height:1.5;color:var(--text);background:var(--bg3);border-radius:10px;padding:10px 12px;margin:0 0 12px}
+.ax-t{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin:12px 0 6px}
+.ax-w{display:grid;grid-template-columns:110px 1fr 60px;align-items:center;gap:8px;font-size:12px;padding:3px 0}
+.ax-w span{color:var(--text2)}
+.ax-w i{display:block;height:10px;border-radius:6px;background:var(--bg3);overflow:hidden}
+.ax-w u{display:block;height:100%;background:var(--accent-text);border-radius:6px;text-decoration:none}
+.ax-w b{text-align:right;font-variant-numeric:tabular-nums}
+.ax-a{display:grid;grid-template-columns:1fr auto auto 20px;align-items:baseline;gap:8px;font-size:13px;padding:5px 0;border-top:1px solid var(--border)}
+.ax-a small{font-size:11px;color:var(--text3)}
+.ax-a em{font-style:normal;font-weight:800;text-align:center;color:var(--text3)}
+.ax-a em.up{color:var(--red)} .ax-a em.down{color:var(--green)}
+.ax-s{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border)}
+.ax-s small{grid-column:1;font-size:11px;color:var(--text3)}
+.ax-s b{grid-row:1/3;grid-column:2;align-self:center}
+.ax-empty{font-size:13px;color:var(--text3);padding:12px 0}

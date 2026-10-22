@@ -415,6 +415,20 @@
     // en la ficha sigue la de hace 20 días
     await adminOpenAthleteDash('u4'); await wait(2000); setAtletaSubview('perfil'); await wait(600);
     { const mt=document.getElementById('main').innerText.replace(/\s+/g,' '); const k=mt.search(/Molestias/i); const inj=Object.keys((S.atletaView&&S.atletaView._personal&&S.atletaView._personal.injuries)||{}); ok(/Tobillo/i.test(mt),'ficha: la molestia vieja sigue en su perfil ['+S.currentView+'/'+S.atletaSubview+'/'+(S.atletaView&&S.atletaView.uid)+' inj='+inj.join(',')+' :: '+mt.slice(Math.max(0,k),k+200)+']'); } goBackFromAthleteDetail(); await wait(400); }
+  // ── ACWR: "Pico de carga" y la explicación de por qué ──
+  { ok(getACWRStatus(1.6,30).label==='Pico de carga'&&!/[Rr]iesgo lesional/.test(document.body.innerHTML),'ACWR > 1,5 dice "Pico de carga" (sin "riesgo lesional")');
+    const ds=o=>{const d=new Date(); d.setDate(d.getDate()-o); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());};
+    const mk=(o,act,mins,rpe)=>({date:ds(o),activity:act,session:act,week:1,rpe,mins,ua:mins*rpe});
+    // semana pesada por partidos: 3 semanas de 1000 UA de gimnasio y esta con 1000 de gimnasio + 1000 de partidos
+    const heavy=[]; for(let w=1;w<4;w++) for(let d=0;d<5;d++) heavy.push(mk(w*7+d,'gimnasio',40,5)); for(let d=0;d<5;d++) heavy.push(mk(d,'gimnasio',40,5)); heavy.push(mk(1,'partido',100,10));
+    const bh=acwrBreakdown(heavy); const hh=acwrExplainHtml(heavy,'Handball','X');
+    ok(bh&&!bh.baseLow&&/más/.test(hh)&&/Partido/.test(hh)&&/sesiones más pesadas/i.test(hh),'semana pesada: dice cuánto más y que lo subió el partido');
+    // base baja: 8 semanas de 1500, 3 flojas de 300, esta de 1500
+    const low=[]; for(let w=4;w<12;w++) for(let d=0;d<5;d++) low.push(mk(w*7+d,'gimnasio',50,6)); for(let w=1;w<4;w++) low.push(mk(w*7,'gimnasio',50,6)); for(let d=0;d<5;d++) low.push(mk(d,'gimnasio',50,6));
+    const bl=acwrBreakdown(low); ok(bl&&bl.baseLow&&/semanas flojas/.test(acwrExplainHtml(low,'','X')),'base baja: explica que viene de semanas flojas');
+    // se abre al tocar el ACWR de un atleta en el Dashboard
+    S.atletaView=null; switchView('dashboard'); await wait(2000); const tap=document.querySelector('#dash-athlete-list .ar-acwr.ax-tap');
+    if(tap){ tap.click(); await wait(300); ok(!!document.querySelector('#acwr-overlay .ax-body')&&S.currentView==='dashboard'&&!S.atletaView,'Dashboard: tocar el ACWR abre la explicación (sin abrir la ficha)'); closeAcwrExplain(); } else ok(false,'Dashboard: el ACWR de la fila se puede tocar'); txtBad('dashboard con ACWR'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

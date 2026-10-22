@@ -823,7 +823,7 @@ const INFO_LEGENDS = {
     + infoLegendRow('var(--purple)','menor a 0.8','carga baja respecto a tu base')
     + infoLegendRow('var(--green)','0.8 – 1.3','zona habitual')
     + infoLegendRow('var(--amber)','1.3 – 1.5','subida a vigilar')
-    + infoLegendRow('var(--red)','mayor a 1.5','subida marcada — la literatura la asocia a mayor riesgo')
+    + infoLegendRow('var(--red)','mayor a 1.5','pico de carga: subida marcada respecto de lo habitual')
     + `<p style="margin-top:10px;font-size:11px;color:var(--text3)">Necesita 21 días de historial para ser confiable.</p>`
   },
   monotony: { title:'Monotonía', html:
@@ -7082,7 +7082,7 @@ function renderTeamReportResumen(team, members) {
     : avgAcwr<0.8 ? {c:'#6b4fc7',bg:'#f0ecfb',label:'Subcarga'}
     : avgAcwr<=1.3 ? {c:'#16803c',bg:'#e7f5ec',label:'Zona óptima'}
     : avgAcwr<=1.5 ? {c:'#a16207',bg:'#fdf3e3',label:'Precaución'}
-    : {c:'#b91c1c',bg:'#fdecea',label:'Riesgo'};
+    : {c:'#b91c1c',bg:'#fdecea',label:'Pico de carga'};
   const injRag = injSum.grave>0 ? {c:'#b91c1c',bg:'#fdecea',label:'Atención'}
     : injSum.total>0 ? {c:'#a16207',bg:'#fdf3e3',label:'Vigilar'}
     : {c:'#16803c',bg:'#e7f5ec',label:'Sin novedad'};
@@ -7093,7 +7093,7 @@ function renderTeamReportResumen(team, members) {
   const highlights = [];
   if(injSum.grave>0) highlights.push(`⚠ ${injSum.grave} lesión${injSum.grave===1?'':'es'} grave${injSum.grave===1?'':'es'} activa${injSum.grave===1?'':'s'} — revisar antes de la próxima sesión.`);
   const riskyAthletes = summaries.filter(s=>s.acwr!=null && s.acwr>1.5).length;
-  if(riskyAthletes>0) highlights.push(`⚠ ${riskyAthletes} atleta${riskyAthletes===1?'':'s'} en zona de riesgo por ACWR alto (>1.5).`);
+  if(riskyAthletes>0) highlights.push(`⚠ ${riskyAthletes} atleta${riskyAthletes===1?'':'s'} con pico de carga (ACWR mayor a 1,5).`);
   if(wellnessTrend && wellnessTrend.txt!=='estable') highlights.push(`${wellnessTrend.arrow} El wellness del plantel viene ${wellnessTrend.txt} respecto a los ${periodDays} días previos (${wellnessPrev}% → ${wellnessNow}%).`);
   if(bajas>altas && bajas>0) highlights.push(`${bajas} lesiones nuevas contra ${altas} altas en los últimos ${periodDays} días — el balance es negativo.`);
   if(!highlights.length) highlights.push('Sin alertas relevantes — el plantel está estable en wellness, carga y lesiones.');
@@ -7491,7 +7491,7 @@ function renderMatchReadinessReport(team, members) {
   html += `<div class="admin-section"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
     <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media (7d)</div></div>
     <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${dolorMedia??'—'}${dolorMedia?'/5':''}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Dolor medio (7d)</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRiesgo>0?'var(--red)':'var(--text)'}">${acwrRiesgo}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR en riesgo</div></div>
+    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRiesgo>0?'var(--red)':'var(--text)'}">${acwrRiesgo}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Pico de carga</div></div>
     <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${lesionadasEnDuda>0?'var(--amber)':'var(--text)'}">${lesionadasEnDuda}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas/en duda</div></div>
   </div></div>`;
 
@@ -10451,7 +10451,7 @@ function renderPerfilTab(a) {
         ${todayFilled?'':'<em class="kpi-add">+ Cargar</em>'}
         ${todayFilled?sparklineSvg(getWellnessSparklineData(personal,14), wState.color, 56, 16):''}
       </div>
-      <div class="kpi-c">
+      <div class="kpi-c${m?' ax-tap':''}" ${m?`onclick="openAcwrExplain('${uid}')" title="Por qué está así"`:''}>
         <b style="color:${acwrSt.color}">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</b>
         <span>ACWR ${infoBtn('acwr')}</span>
         ${m?.acwr!=null?`<small style="color:${acwrSt.color}">${escP(acwrSt.label.replace(/\s*[✓⚠]\s*$/,''))}</small><i class="ar-zone"><u style="left:${Math.min(100,m.acwr/2*100)}%;background:${acwrSt.color}"></u></i>`:''}
@@ -15898,6 +15898,88 @@ function calcLoadMetrics(sessionLogs) {
 }
 window.calcLoadMetrics=calcLoadMetrics;
 
+// ── ¿POR QUÉ ESTÁ ASÍ EL ACWR? ───────────────────────────────────────────
+// Explicación armada con los registros del atleta, siempre al día (se calcula
+// en el momento): la cuenta (esta semana vs. lo habitual), qué actividades la
+// movieron, las sesiones más pesadas, y si el número sube porque la semana fue
+// pesada o porque viene de semanas flojas (base baja).
+function acwrBreakdown(logs) {
+  const m = calcLoadMetrics(logs||[]); if(!m) return null;
+  const now = new Date();
+  const ago = l => Math.floor((now - new Date(l.date))/86400000);
+  const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate()-7);
+  const acuteLogs = (logs||[]).filter(l=>new Date(l.date)>=weekAgo);
+  const weeks = [0,0,0,0];
+  (logs||[]).forEach(l=>{ const w=Math.floor(ago(l)/7); if(w>=0 && w<4) weeks[w]+=(+l.ua||0); });
+  const chronicAvg = weeks.reduce((s,v)=>s+v,0)/4;
+  const prevAvg = (weeks[1]+weeks[2]+weeks[3])/3;
+  // promedio de largo plazo (12 semanas) para distinguir "semana pesada" de "base baja"
+  const long = [];
+  for(let w=0; w<12; w++) long.push(0);
+  (logs||[]).forEach(l=>{ const w=Math.floor(ago(l)/7); if(w>=0 && w<12) long[w]+=(+l.ua||0); });
+  // lo habitual ANTES del último mes (semanas 4 a 11); si no hay, las de este mes
+  const older = long.slice(4).filter(v=>v>0);
+  const longWeeks = older.length>=2 ? older : long.slice(1).filter(v=>v>0);
+  const longAvg = longWeeks.length ? longWeeks.reduce((s,v)=>s+v,0)/longWeeks.length : null;
+  // por actividad: esta semana vs. promedio semanal de las últimas 4
+  const acts = {};
+  (logs||[]).forEach(l=>{ const a=ago(l); if(a<0 || a>=28) return; const k=l.activity||'otra'; if(!acts[k]) acts[k]={key:k, acute:0, total:0, label:l.session||k}; acts[k].total+=(+l.ua||0); });
+  acuteLogs.forEach(l=>{ const k=l.activity||'otra'; if(!acts[k]) acts[k]={key:k, acute:0, total:0, label:l.session||k}; acts[k].acute+=(+l.ua||0); });
+  const byAct = Object.values(acts).map(x=>({...x, avg:x.total/4, diff:x.acute - x.total/4})).sort((a,b)=>b.diff-a.diff);
+  const top = acuteLogs.slice().sort((a,b)=>(+b.ua||0)-(+a.ua||0)).slice(0,3);
+  const baseLow = longAvg!=null && prevAvg < 0.75*longAvg && m.acuteUA <= 1.2*longAvg;
+  return {m, acute:m.acuteUA, chronicAvg, prevAvg, weeks, longAvg, byAct, top, baseLow, ratio: chronicAvg>0 ? m.acuteUA/chronicAvg : null};
+}
+function acwrActLabel(key, fallback, sport) {
+  const act = LOAD_ACTIVITIES.find(x=>x.key===key);
+  return act ? getLoadActivityDisplay(act, sport).label : (fallback || key);
+}
+function acwrExplainHtml(logs, sport, name) {
+  const b = acwrBreakdown(logs);
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  if(!b) return '<div class="ax-empty">Todavía no hay cargas registradas.</div>';
+  const self = !name;
+  const R = n=>Math.round(n).toLocaleString('es-AR');
+  const st = getACWRStatus(b.m.acwr, b.m.daysOfHistory);
+  const pct = b.ratio!=null ? Math.round((b.ratio-1)*100) : null;
+  let why;
+  if(b.m.acwr==null) why = `Todavía no hay suficiente historial para un ACWR confiable (${st.label.toLowerCase()}).`;
+  else if(b.baseLow) why = `<b>No es que esta semana haya sido especialmente pesada</b>: ${R(b.acute)} UA es parecido a ${self?'tu':'su'} semana habitual de los últimos meses (${R(b.longAvg)} UA). El número sube porque ${self?'venís':'viene'} de semanas flojas (${R(b.prevAvg)} UA por semana en las 3 anteriores) y la base quedó baja.`;
+  else if(pct!=null && pct>0) {
+    const d = b.byAct.find(x=>x.diff>0);
+    why = `Esta semana ${self?'sumaste':'sumó'} <b>${pct}% más</b> que ${self?'tu':'su'} semana promedio de las últimas 4.${d?` Lo que más la subió: <b>${esc(acwrActLabel(d.key, d.label, sport))}</b> (${R(d.acute)} UA, cuando lo habitual es ${R(d.avg)}).`:''}`;
+  } else if(pct!=null) why = `Esta semana ${self?'sumaste':'sumó'} ${Math.abs(pct)}% menos que ${self?'tu':'su'} semana promedio de las últimas 4.`;
+  else why = '';
+  const maxW = Math.max(1, ...b.weeks);
+  const wkLbl = ['Esta semana','Semana pasada','Hace 2 semanas','Hace 3 semanas'];
+  const weeksHtml = b.weeks.map((v,i)=>`<div class="ax-w"><span>${wkLbl[i]}</span><i><u style="width:${Math.round(v/maxW*100)}%${i===0?';background:'+st.color:''}"></u></i><b>${R(v)}</b></div>`).join('');
+  const actsHtml = b.byAct.filter(x=>x.acute>0 || x.avg>0).map(x=>{ const up = x.acute > x.avg*1.15, down = x.acute < x.avg*0.85; return `<div class="ax-a"><span>${esc(acwrActLabel(x.key, x.label, sport))}</span><b>${R(x.acute)}</b><small>habitual ${R(x.avg)}</small><em class="${up?'up':down?'down':''}">${up?'▲':down?'▼':'='}</em></div>`; }).join('');
+  const topHtml = b.top.map(l=>{ const d=new Date(l.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric'}); return `<div class="ax-s"><span>${esc(d)} · ${esc(acwrActLabel(l.activity, l.session, sport))}</span><small>${l.mins||'?'} min · RPE ${l.rpe||'?'}</small><b>${R(+l.ua||0)} UA</b></div>`; }).join('');
+  return `<div class="ax-head"><div class="ax-val" style="color:${st.color}">${b.m.acwr!=null?b.m.acwr.toFixed(2):'—'}</div><div class="ax-lbl" style="color:${st.color}">${esc(st.label.replace(/\s*[✓⚠]\s*$/,''))}</div></div>
+    <div class="ax-calc">${R(b.acute)} UA esta semana ÷ ${R(b.chronicAvg)} UA de promedio semanal (últimas 4)</div>
+    ${why?`<p class="ax-why">${why}</p>`:''}
+    <div class="ax-t">Carga por semana</div><div class="ax-weeks">${weeksHtml}</div>
+    ${actsHtml?`<div class="ax-t">Esta semana, por actividad</div><div class="ax-acts">${actsHtml}</div>`:''}
+    ${topHtml?`<div class="ax-t">Las sesiones más pesadas de la semana</div><div class="ax-top">${topHtml}</div>`:''}`;
+}
+function openAcwrExplain(uid) {
+  let logs, sport, name, title;
+  if(uid==='self') { logs = S.history?._sessionLogs||[]; sport = mySport(); name = null; title = 'Tu carga, explicada'; }
+  else {
+    const a = (S.adminAthletes||[]).find(x=>x.uid===uid) || (S.dashAthletes||[]).find(x=>x.uid===uid);
+    if(!a) return;
+    logs = a._personal?.history?._sessionLogs||[]; sport = athleteSportOf(a); name = a.name||a.email; title = 'Por qué está así · '+name;
+  }
+  closeAcwrExplain();
+  const o = document.createElement('div');
+  o.className = 'video-modal open'; o.id = 'acwr-overlay';
+  o.onclick = e=>{ if(e.target===o) closeAcwrExplain(); };
+  o.innerHTML = `<div class="video-modal-box wide ax-box"><div class="video-modal-title">${title.replace(/</g,'&lt;')}</div><div class="ax-body">${acwrExplainHtml(logs, sport, name)}</div><div class="video-modal-btns"><button class="abtn" onclick="closeAcwrExplain()">Cerrar</button></div></div>`;
+  document.body.appendChild(o);
+}
+function closeAcwrExplain() { const o=document.getElementById('acwr-overlay'); if(o) o.remove(); }
+window.acwrBreakdown=acwrBreakdown; window.acwrExplainHtml=acwrExplainHtml; window.openAcwrExplain=openAcwrExplain; window.closeAcwrExplain=closeAcwrExplain;
+
 function getACWRStatus(acwr, daysOfHistory) {
   if(acwr===null||acwr===undefined) {
     if(daysOfHistory!=null && daysOfHistory<21) return {label:`Faltan ${21-daysOfHistory} día${21-daysOfHistory===1?'':'s'} de datos`,color:'var(--text3)'};
@@ -15906,14 +15988,9 @@ function getACWRStatus(acwr, daysOfHistory) {
   if(acwr<0.8)   return {label:'Subcarga',color:'var(--purple)'};
   if(acwr<=1.3)  return {label:'Zona óptima ✓',color:'var(--green)'};
   if(acwr<=1.5)  return {label:'Precaución',color:'var(--amber)'};
-  // El jugador ve una alerta más suave a propósito — "riesgo lesional" es un
-  // término fuerte para mostrarle a un chico sin que un profesional lo
-  // contextualice antes. El admin (S.isAdmin) sigue viendo la etiqueta
-  // técnica tal cual, porque la necesita para identificar rápido a quién
-  // mirar primero.
-  return S.isAdmin
-    ? {label:'Riesgo lesional ⚠',color:'var(--red)'}
-    : {label:'Posibles cargas elevadas ⚠ — consultalo con tu entrenador',color:'var(--red)'};
+  // Describe lo que pasa (la semana está muy por encima de lo habitual) sin
+  // alarmar; el detalle de por qué está en openAcwrExplain().
+  return {label:'Pico de carga',color:'var(--red)'};
 }
 window.getACWRStatus = getACWRStatus;
 
@@ -16293,7 +16370,7 @@ function athleteRowHtml(a, o) {
     const m = d.metrics, hasAcwr = m?.acwr!=null;
     const ac = getACWRStatus(hasAcwr?m.acwr:null, m?.daysOfHistory);
     load = `<div class="ar-load">
-      <div class="ar-acwr" title="${esc(ac.label)}"><b>${hasAcwr?m.acwr.toFixed(2):'—'}</b><small style="color:${ac.color}">${hasAcwr?esc(ac.label.replace(/\s*[✓⚠]\s*$/,'')):'ACWR'}</small><span class="ar-zone">${hasAcwr?`<i style="left:${Math.min(100,m.acwr/2*100)}%;background:${ac.color}"></i>`:''}</span></div>
+      <div class="ar-acwr${m?' ax-tap':''}" title="${esc(ac.label)}" ${m?`onclick="event.stopPropagation();openAcwrExplain('${a.uid}')"`:''}><b>${hasAcwr?m.acwr.toFixed(2):'—'}</b><small style="color:${ac.color}">${hasAcwr?esc(ac.label.replace(/\s*[✓⚠]\s*$/,'')):'ACWR'}</small><span class="ar-zone">${hasAcwr?`<i style="left:${Math.min(100,m.acwr/2*100)}%;background:${ac.color}"></i>`:''}</span></div>
       <div class="ar-ua"><b>${m?Math.round(m.acuteUA||0):'—'}</b><small>UA sem</small></div>
     </div>`;
     stat = `<div class="ar-st"><span style="color:${o.status.color};background:${o.status.bg}">${o.status.text}</span></div>`;
@@ -16649,7 +16726,7 @@ function renderAthleteHome() {
   ${metrics?`<div class="wellness-card" style="margin-bottom:14px">
     <div class="wellness-title">Control de carga</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:14px 0">
-      <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
+      <div class="ax-tap" style="text-align:center;padding:10px;border-right:1px solid var(--border)" onclick="openAcwrExplain('self')" title="Por qué está así">
         <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:4px">ACWR ${infoBtn('acwr')}</div>
         <div style="font-size:11px;color:${acwrSt.color};margin-top:2px">${acwrSt.label}</div>
