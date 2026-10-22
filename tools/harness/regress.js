@@ -443,6 +443,19 @@
     // se abre al tocar el ACWR de un atleta en el Dashboard
     S.atletaView=null; switchView('dashboard'); await wait(2000); const tap=document.querySelector('#dash-athlete-list .ar-acwr.ax-tap');
     if(tap){ tap.click(); await wait(300); ok(!!document.querySelector('#acwr-overlay .ax-body')&&S.currentView==='dashboard'&&!S.atletaView,'Dashboard: tocar el ACWR abre la explicación (sin abrir la ficha)'); closeAcwrExplain(); } else ok(false,'Dashboard: el ACWR de la fila se puede tocar'); txtBad('dashboard con ACWR'); }
+  // ── Informe: las 4 pestañas son hojas blancas con el mismo encabezado ──
+  { S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(500); openTeam('t1'); await wait(1500); setTeamSubview('reporte'); await wait(500);
+    for(const [sub,kind] of [['resumen','Informe mensual'],['staff','Reunión de staff'],['medico','Informe médico'],['partido','Previa del partido']]){
+      setTeamReportSubview(sub); await wait(900);
+      const sh=document.querySelector('.rp-sheet'); ok(!!sh&&document.querySelectorAll('.rp-sheet').length===1&&new RegExp(kind,'i').test(sh.querySelector('.rp-kind').innerText)&&!!sh.querySelector('.rp-foot'),'informe '+sub+': hoja con encabezado y pie');
+      ok(!!sh&&getComputedStyle(sh).backgroundColor==='rgb(255, 255, 255)','informe '+sub+': hoja blanca también en modo oscuro');
+      txtBad('informe '+sub); }
+    setTeamReportSubview('resumen'); await wait(900);
+    ok(!!document.getElementById('report-well-chart')&&!!document.querySelector('#report-acwr-chart, .rp-two .rp-empty')&&!document.getElementById('report-quadrant-chart'),'informe: wellness y ACWR en gráficos separados');
+    ok(!/[_](der|izq)\b/.test(document.querySelector('.rp-sheet').innerText),'informe: zonas con su nombre, no el código');
+    setTeamReportSubview('medico'); await wait(900); ok(!!document.querySelector('.rp-bm svg')&&!document.getElementById('medreport-severity-chart'),'informe médico: mapa del cuerpo (sin el cuadro vacío)');
+    setTeamReportSubview('partido'); await wait(700); ok(document.querySelectorAll('.rp-big3>div').length===3,'informe partido: disponibles, en duda y no disponibles');
+    S.teamReportSubview='resumen'; }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

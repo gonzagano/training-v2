@@ -2880,7 +2880,7 @@ function renderMain() {
     case 'stats':    m.innerHTML=renderStats(); break;
     case 'teams':    m.innerHTML=renderTeams();
       if(S.teamView && S.teamSubview==='stats') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamRadarChart(mem);drawTeamQuadrantChart(mem);},80); }
-      if(S.teamView && S.teamSubview==='reporte' && (S.teamReportSubview||'resumen')==='resumen') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamReportTrendChart(mem);drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');},80); }
+      if(S.teamView && S.teamSubview==='reporte' && (S.teamReportSubview||'resumen')==='resumen') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>{drawTeamReportTrendChart(mem);},80); }
       if(S.teamView && S.teamSubview==='reporte' && S.teamReportSubview==='medico') { const uids=getTeamStatsMemberUids(S.teamView); const mem=(S.adminAthletes||[]).filter(a=>uids.includes(a.uid)); setTimeout(()=>drawMedicalReportCharts(mem),80); }
       break;
     case 'atletas':  m.innerHTML=renderAtletas(); setTimeout(drawAtletaTabCharts,80); break;
@@ -6985,7 +6985,7 @@ function setTeamReportSubview(v) {
   if(v==='resumen') setTimeout(()=>{
     const mem = (S.adminAthletes||[]).filter(a=>getTeamStatsMemberUids(S.teamView||{}).includes(a.uid));
     drawTeamReportTrendChart(mem);
-    drawTeamQuadrantChart(mem,'report-quadrant-chart','reportQuadrantChartInstance','cmj','ice');
+    
   },80);
   if(v==='medico') setTimeout(()=>{
     const mem = (S.adminAthletes||[]).filter(a=>getTeamStatsMemberUids(S.teamView||{}).includes(a.uid));
@@ -7002,7 +7002,7 @@ function renderTeamReport(team) {
   const sub = S.teamReportSubview || 'resumen';
   const tabsHtml = `<div class="no-print" style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
     <div style="font-size:15px;font-weight:700;flex:1;min-width:160px">Informe del equipo</div>
-    <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+    <button class="abtn abtn-p" onclick="window.print()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg>Imprimir / PDF</button>
   </div>
   <div class="no-print" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
     ${TEAM_REPORT_TABS.map(t=>`<button class="snav-tab ${sub===t.id?'active':''}" onclick="setTeamReportSubview('${t.id}')">${t.label}</button>`).join('')}
@@ -7015,264 +7015,148 @@ function renderTeamReport(team) {
 }
 window.renderTeamReport=renderTeamReport;
 
+// ── INFORME: piezas comunes de las 4 hojas ───────────────────
+// Cada pestaña del Informe es una hoja blanca (aunque la app esté en modo
+// oscuro) con el mismo encabezado y pie, lista para imprimir o guardar como
+// PDF. Los gráficos de las hojas usan colores fijos de papel (RP_C).
+const RP_C = {text:'#12151C', text2:'#4B5160', text3:'#626B7E', grid:'rgba(18,21,28,0.07)', line:'#E3E6EC', accent:'#3E5FC4', green:'#1F7A4D', amber:'#C67C0F', red:'#C33A2C'};
+const rpEsc = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const rpDate = d => { const m = String(d||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[3])+' '+EVAL_MONTHS[+m[2]-1].slice(0,3).toLowerCase()+' '+m[1] : ''; };
+function rpSheet(team, members, kind, title, period, body) {
+  return `<div class="rp-sheet">
+    <div class="rp-head">
+      <div><div class="rp-kind">${kind}</div><div class="rp-title">${title}</div>
+        <div class="rp-sub">${rpEsc(team.name)}${team.category?' · '+rpEsc(team.category):''} · ${members.length} atleta${members.length!==1?'s':''}</div></div>
+      <div class="rp-meta"><div class="rp-brand">G-Metrics</div><div>${period}</div><div class="rp-gen">Generado el ${rpDate(todayLocal())}</div></div>
+    </div>
+    ${body}
+    <div class="rp-foot"><span>G-Metrics · ${title}</span><span>${rpEsc(team.name)}</span></div>
+  </div>`;
+}
+const rpKpi = (k, v, u, sub, col) => `<div class="rp-kpi"><div class="rp-k">${k}</div><div class="rp-v">${v}${u?`<i>${u}</i>`:''}</div><div class="rp-ks"${col?` style="color:${col}"`:''}>${sub||''}</div></div>`;
+const rpH = (t, sub) => `<div class="rp-h">${t}${sub?`<span>${sub}</span>`:''}</div>`;
+const rpTable = (cols, rows, cls) => `<div class="rp-tw"><table class="rp-t${cls?' '+cls:''}"><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+const RP_AVAIL = {ok:['Disponible','rp-ok'], duda:['En duda','rp-warn'], no:['No disponible','rp-bad']};
+const RP_SEV = {grave:['Grave','rp-bad'], moderada:['Moderada','rp-warn'], leve:['Leve','rp-ok']};
+const rpPill = ([txt, cls]) => `<span class="rp-pill ${cls}">${txt}</span>`;
+// Disponibilidad según la molestia/lesión activa más seria del atleta.
+function athleteAvailability(a) {
+  const act = Object.entries(a._personal?.injuries||{}).filter(([,inj])=>inj && inj.pain>0);
+  const rank = {grave:3, moderada:2, leve:1};
+  let worst = null;
+  act.forEach(([zid,inj])=>{ if(!worst || (rank[inj.severity]||1)>(rank[worst.inj.severity]||1)) worst = {zid, inj}; });
+  const key = !worst ? 'ok' : worst.inj.severity==='grave' ? 'no' : worst.inj.severity==='moderada' ? 'duda' : 'ok';
+  return {key, worst, motivo: worst ? bodyZoneLabel(worst.zid)+(worst.inj.severity==='grave'?' (grave)':'') : '—'};
+}
+window.athleteAvailability = athleteAvailability;
+function rpChartOpts(yOpts, tipLabel) {
+  return { responsive:true, maintainAspectRatio:false, animation:false,
+    interaction:{mode:'index', intersect:false},
+    plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#fff', titleColor:RP_C.text, bodyColor:RP_C.text2, borderColor:'rgba(18,21,28,.16)', borderWidth:1, displayColors:false, callbacks:tipLabel?{label:tipLabel}:{}} },
+    scales:{ x:{ticks:{color:RP_C.text3, maxRotation:0, autoSkip:true, maxTicksLimit:6}, grid:{display:false}, border:{color:RP_C.line}},
+      y:Object.assign({ticks:{color:RP_C.text3, maxTicksLimit:5}, grid:{color:RP_C.grid}, border:{display:false}}, yOpts||{}) } };
+}
+// Wellness y ACWR promedio del plantel, día a día (últimos `days` días).
+function teamDailySeries(members, days) {
+  const labels=[], well=[], acwr=[];
+  const today = new Date();
+  for(let i=days-1;i>=0;i--){
+    const d=new Date(today); d.setDate(d.getDate()-i);
+    const ds=toLocalDateStr(d);
+    labels.push((+ds.slice(8))+'/'+(+ds.slice(5,7)));
+    const w = members.map(a=>{ const s=getWellnessScore(a._personal?.wellness?.[ds]); return s.allFilled?s.pct:null; }).filter(v=>v!=null);
+    well.push(w.length ? Math.round(w.reduce((s,v)=>s+v,0)/w.length) : null);
+    const ac = members.map(a=>{ const m=calcLoadMetrics(((a._personal?.history?._sessionLogs)||[]).filter(l=>l.date<=ds)); return m?.acwr!=null?m.acwr:null; }).filter(v=>v!=null);
+    acwr.push(ac.length ? +(ac.reduce((s,v)=>s+v,0)/ac.length).toFixed(2) : null);
+  }
+  return {labels, well, acwr};
+}
 function renderTeamReportResumen(team, members) {
   const today = todayLocal();
   const periodDays = 30;
-  const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
-  const periodStartStr = toLocalDateStr(periodStart);
-  const prevPeriodStart = new Date(); prevPeriodStart.setDate(prevPeriodStart.getDate()-periodDays*2);
-  const prevPeriodStartStr = toLocalDateStr(prevPeriodStart);
-
-  const injSum = getTeamInjurySummary(members);
-  let altas=0, bajas=0;
-  members.forEach(a=>{
-    const archive = a._personal?.injuryArchive||[];
-    altas += archive.filter(x=>x.resolvedDate>=periodStartStr).length;
-    const active = a._personal?.injuries||{};
-    Object.values(active).forEach(inj=>{
-      const start = inj.history?.length ? inj.history[0].date : null;
-      if(start && start>=periodStartStr) bajas++;
-    });
-  });
-  const injuryRate = members.length ? Math.round((injSum.total/members.length)*100) : 0;
-
+  const dAgo = n => { const d=new Date(); d.setDate(d.getDate()-n); return toLocalDateStr(d); };
+  const start = dAgo(periodDays), prevStart = dAgo(periodDays*2);
+  const wellAvg = (from, to) => { let t=0, n=0; members.forEach(a=>Object.entries(a._personal?.wellness||{}).forEach(([d,e])=>{ if(d>=from && d<to){ const s=getWellnessScore(e); if(s.allFilled){t+=s.pct;n++;} } })); return n?Math.round(t/n):null; };
+  const wNow = wellAvg(start, today+'~'), wPrev = wellAvg(prevStart, start);
   const summaries = members.map(computeAthleteLoadSummary);
-  const avgW = avgMetric(summaries,'avgWellness');
   const avgAcwr = avgMetric(summaries,'acwr');
-
-  // Tendencia: wellness promedio de este período vs el período anterior —
-  // reconstruido día a día a partir de lo que cada atleta cargó, para poder
-  // decir "subiendo/bajando", no solo la foto de hoy.
-  const wellnessAvgForRange = (startStr, endStr) => {
-    let total=0, count=0;
-    members.forEach(a=>{
-      const w = a._personal?.wellness||{};
-      Object.entries(w).forEach(([date,entry])=>{
-        if(date>=startStr && date<endStr) {
-          const {pct,allFilled} = getWellnessScore(entry);
-          if(allFilled) { total+=pct; count++; }
-        }
-      });
-    });
-    return count?Math.round(total/count):null;
-  };
-  const wellnessPrev = wellnessAvgForRange(prevPeriodStartStr, periodStartStr);
-  const wellnessNow  = wellnessAvgForRange(periodStartStr, today);
-  const wellnessTrend = (wellnessPrev!=null && wellnessNow!=null)
-    ? (wellnessNow>wellnessPrev+2 ? {arrow:'↑',color:'#16803c',txt:'mejorando'} : wellnessNow<wellnessPrev-2 ? {arrow:'↓',color:'#b91c1c',txt:'bajando'} : {arrow:'→',color:'#6b6b6b',txt:'estable'})
-    : null;
-
-  const jumpRows = members.map(a=>{
-    const evals = a._personal?.evals||{};
-    const recs = evals['cmj']||[];
-    const best = recs.length?Math.max(...recs.map(r=>r.height)):null;
-    return {name:a.name||a.email, best};
-  }).filter(r=>r.best!=null).sort((a,b)=>b.best-a.best);
-  const teamAvgCMJ = jumpRows.length ? Math.round(jumpRows.reduce((s,r)=>s+r.best,0)/jumpRows.length) : null;
-
-  const positions = [...new Set(members.map(a=>a.position).filter(Boolean))];
-
-  // ── Semáforo (RAG) — mismos umbrales que ya usa el resto de la app, para
-  // que el informe diga lo mismo que la pantalla en vivo. ──────────────────
-  const wellnessRag = avgW==null ? {c:'#9aa0a6',bg:'#f2f2f2',label:'Sin datos'}
-    : avgW>=75 ? {c:'#16803c',bg:'#e7f5ec',label:'Bien'}
-    : avgW>=50 ? {c:'#a16207',bg:'#fdf3e3',label:'Normal'}
-    : {c:'#b91c1c',bg:'#fdecea',label:'Fatigado'};
-  const acwrRag = avgAcwr==null ? {c:'#9aa0a6',bg:'#f2f2f2',label:'Sin datos'}
-    : avgAcwr<0.8 ? {c:'#6b4fc7',bg:'#f0ecfb',label:'Subcarga'}
-    : avgAcwr<=1.3 ? {c:'#16803c',bg:'#e7f5ec',label:'Zona óptima'}
-    : avgAcwr<=1.5 ? {c:'#a16207',bg:'#fdf3e3',label:'Precaución'}
-    : {c:'#b91c1c',bg:'#fdecea',label:'Pico de carga'};
-  const injRag = injSum.grave>0 ? {c:'#b91c1c',bg:'#fdecea',label:'Atención'}
-    : injSum.total>0 ? {c:'#a16207',bg:'#fdf3e3',label:'Vigilar'}
-    : {c:'#16803c',bg:'#e7f5ec',label:'Sin novedad'};
-
-  // ── Puntos clave automáticos — lo que de verdad cambia una decisión, no
-  // todos los números crudos (así lo recomiendan los propios fabricantes:
-  // Catapult, por ejemplo, aconseja entregar un subconjunto chico y accionable). ──
-  const highlights = [];
-  if(injSum.grave>0) highlights.push(`⚠ ${injSum.grave} lesión${injSum.grave===1?'':'es'} grave${injSum.grave===1?'':'es'} activa${injSum.grave===1?'':'s'} — revisar antes de la próxima sesión.`);
-  const riskyAthletes = summaries.filter(s=>s.acwr!=null && s.acwr>1.5).length;
-  if(riskyAthletes>0) highlights.push(`⚠ ${riskyAthletes} atleta${riskyAthletes===1?'':'s'} con pico de carga (ACWR mayor a 1,5).`);
-  if(wellnessTrend && wellnessTrend.txt!=='estable') highlights.push(`${wellnessTrend.arrow} El wellness del plantel viene ${wellnessTrend.txt} respecto a los ${periodDays} días previos (${wellnessPrev}% → ${wellnessNow}%).`);
-  if(bajas>altas && bajas>0) highlights.push(`${bajas} lesiones nuevas contra ${altas} altas en los últimos ${periodDays} días — el balance es negativo.`);
-  if(!highlights.length) highlights.push('Sin alertas relevantes — el plantel está estable en wellness, carga y lesiones.');
-
-  return `<div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:760px;margin:0 auto;font-family:'Inter',-apple-system,sans-serif">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #243B6B;padding-bottom:14px;margin-bottom:18px">
-      <div>
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#243B6B">${team.name}</div>
-        <div style="font-size:12px;color:#555;margin-top:2px">${team.sport||''}${team.category?' · '+team.category:''} · ${members.length} atletas</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:11px;color:#243B6B;text-transform:uppercase;letter-spacing:.05em;font-weight:700">G-Metrics Performance Lab</div>
-        <div style="font-size:12px;color:#555;margin-top:2px">Período: últimos ${periodDays} días · Generado ${today}</div>
-      </div>
+  const acwrSt = getACWRStatus(avgAcwr);
+  const inj = getTeamInjurySummary(members);
+  const hurt = new Set(inj.details.map(d=>d.uid)).size;
+  const cmjUpTo = (a, date) => { const r=(a._personal?.evals?.cmj||[]).filter(x=>x && x.height!=null && (!date || String(x.date)<=date)); return r.length?Math.max(...r.map(x=>+x.height)):null; };
+  const cmjNowV = members.map(a=>cmjUpTo(a)).filter(v=>v!=null), cmjPrevV = members.map(a=>cmjUpTo(a,start)).filter(v=>v!=null);
+  const avg = v => v.length ? v.reduce((s,x)=>s+x,0)/v.length : null;
+  const cmjNow = avg(cmjNowV), cmjPrev = avg(cmjPrevV);
+  const vsPrev = (now, prev, dec, unit) => (now==null||prev==null) ? '' : (Math.abs(now-prev)<(dec?0.05:0.5) ? '= que el mes anterior' : (now>prev?'↑ +':'↓ −')+cmpFmt(Math.abs(now-prev),dec)+(unit||'')+' vs. mes anterior');
+  // Puntos clave: solo lo que cambia una decisión.
+  const pts = [];
+  inj.details.filter(d=>d.sev==='grave').forEach(d=>pts.push(`${rpEsc(d.athlete)}: ${rpEsc(bodyZoneLabel(d.zoneId)).toLowerCase()} grave (dolor ${d.pain}/10).`));
+  const peaks = summaries.filter(s=>s.acwr!=null && s.acwr>1.5).length;
+  if(peaks) pts.push(`${peaks} atleta${peaks===1?'':'s'} con pico de carga (ACWR mayor a 1,5).`);
+  if(wNow!=null && wPrev!=null && Math.abs(wNow-wPrev)>2) pts.push(`El wellness del plantel viene ${wNow>wPrev?'subiendo':'bajando'}: ${wPrev} % → ${wNow} % respecto de los 30 días anteriores.`);
+  if(!pts.length) pts.push('Sin alertas: el plantel está estable en wellness, carga y molestias.');
+  const rank = {grave:3, moderada:2, leve:1};
+  const injRows = inj.details.sort((a,b)=>(rank[b.sev]||1)-(rank[a.sev]||1) || b.pain-a.pain).map(d=>{
+    const a = members.find(x=>x.uid===d.uid)||{}; const since = injurySinceDate(a._personal?.injuries?.[d.zoneId]);
+    return [rpEsc(d.athlete), rpEsc(bodyZoneLabel(d.zoneId)), since?rpDate(since).replace(/ \d{4}$/,''):'—', d.pain+'/10', rpPill(RP_SEV[d.sev]||RP_SEV.leve)];
+  });
+  const cmjRows = members.map(a=>({a, r:compareTestValue(a,'cmj','best')})).filter(x=>x.r).sort((p,q)=>q.r.v-p.r.v).slice(0,8)
+    .map((x,i)=>({rank:i+1, name:x.a.name||x.a.email, color:RP_C.accent, v:x.r.v, date:x.r.date?evalShortDate(x.r.date):''}));
+  const body = `<div class="rp-kpis">
+      ${rpKpi('Wellness', wNow!=null?wNow:'—', wNow!=null?'%':'', vsPrev(wNow,wPrev,0,' pts'))}
+      ${rpKpi('ACWR promedio', avgAcwr!=null?cmpFmt(avgAcwr,2):'—', '', avgAcwr!=null?acwrSt.label.replace(/\s*[✓⚠]\s*$/,''):'sin datos', avgAcwr!=null?acwrSt.color:'')}
+      ${rpKpi('Sin molestias', members.length-hurt, '/'+members.length, inj.total?`${inj.grave} grave${inj.grave!==1?'s':''} · ${inj.moderada} moderada${inj.moderada!==1?'s':''}`:'plantel completo', inj.grave?RP_C.red:'')}
+      ${rpKpi('CMJ promedio', cmjNow!=null?cmpFmt(cmjNow,1):'—', cmjNow!=null?' cm':'', vsPrev(cmjNow,cmjPrev,1,' cm'))}
     </div>
-
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
-      <div style="background:${wellnessRag.bg};border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:11px;color:${wellnessRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Wellness</div>
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wellnessRag.c}">${avgW!=null?avgW+'%':'—'}</div>
-        <div style="font-size:11px;color:${wellnessRag.c};font-weight:600">${wellnessRag.label}${wellnessTrend?' '+wellnessTrend.arrow:''}</div>
-      </div>
-      <div style="background:${acwrRag.bg};border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:11px;color:${acwrRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Carga (ACWR)</div>
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRag.c}">${avgAcwr!=null?avgAcwr.toFixed(2):'—'}</div>
-        <div style="font-size:11px;color:${acwrRag.c};font-weight:600">${acwrRag.label}</div>
-      </div>
-      <div style="background:${injRag.bg};border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:11px;color:${injRag.c};text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">Lesiones</div>
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${injRag.c}">${injSum.total}</div>
-        <div style="font-size:11px;color:${injRag.c};font-weight:600">${injRag.label} · ${injuryRate}% plantel</div>
-      </div>
+    <div class="rp-key"><div class="rp-k">Puntos clave</div>${pts.map(p=>`<div>• ${p}</div>`).join('')}</div>
+    <div class="rp-two">
+      <div>${rpH('Wellness del plantel','% · 30 días')}<div class="rp-ch"><canvas id="report-well-chart"></canvas></div></div>
+      <div>${rpH('ACWR del plantel','30 días · franja = zona óptima')}<div class="rp-ch"><canvas id="report-acwr-chart"></canvas></div></div>
     </div>
-
-    <div style="background:#F0F3F9;border-left:3px solid #243B6B;border-radius:0 6px 6px 0;padding:12px 14px;margin-bottom:22px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#243B6B;margin-bottom:6px">Puntos clave</div>
-      ${highlights.map(h=>`<div style="font-size:12px;line-height:1.6">${h}</div>`).join('')}
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px">
-      <div>
-        <div style="font-size:13px;font-weight:700;margin-bottom:8px">Evolución del plantel (${periodDays} días)</div>
-        <div style="height:170px;position:relative"><canvas id="report-trend-chart"></canvas></div>
-      </div>
-      <div>
-        <div style="font-size:13px;font-weight:700;margin-bottom:8px">Cuadrante — CMJ vs. Índice Elástico</div>
-        <div style="height:170px;position:relative"><canvas id="report-quadrant-chart"></canvas></div>
-      </div>
-    </div>
-
-    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Lesiones activas por gravedad</div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <div style="flex:1;background:#fdecea;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#b91c1c">${injSum.grave}</div><div style="font-size:11px;color:#b91c1c;text-transform:uppercase">Graves</div></div>
-      <div style="flex:1;background:#fdf3e3;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#a16207">${injSum.moderada}</div><div style="font-size:11px;color:#a16207;text-transform:uppercase">Moderadas</div></div>
-      <div style="flex:1;background:#e7f5ec;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#16803c">${injSum.leve}</div><div style="font-size:11px;color:#16803c;text-transform:uppercase">Leves</div></div>
-      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#16803c">${altas}</div><div style="font-size:11px;color:#555;text-transform:uppercase">Altas (${periodDays}d)</div></div>
-      <div style="flex:1;background:#f2f2f2;border-radius:6px;padding:8px;text-align:center"><div style="font-size:16px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:#b91c1c">${bajas}</div><div style="font-size:11px;color:#555;text-transform:uppercase">Bajas nuevas</div></div>
-    </div>
-    ${injSum.details.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
-      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:left">Zona</th><th style="padding:6px 10px;text-align:center">Dolor</th><th style="padding:6px 10px;text-align:center">Gravedad</th></tr></thead>
-      <tbody>${injSum.details.sort((a,b)=>{const r={grave:3,moderada:2,leve:1}; return (r[b.sev]||1)-(r[a.sev]||1) || b.pain-a.pain;}).map(d=>{
-        const col = d.sev==='grave'?'#b91c1c':d.sev==='moderada'?'#a16207':'#16803c';
-        const bg = d.sev==='grave'?'#fdecea':d.sev==='moderada'?'#fdf3e3':'#e7f5ec';
-        const lbl = d.sev==='grave'?'Grave':d.sev==='moderada'?'Moderada':'Leve';
-        return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.athlete}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.zoneId}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${d.pain}/10</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:${bg};color:${col};font-weight:700;font-size:11px;padding:2px 8px;border-radius:10px">${lbl}</span></td></tr>`;
-      }).join('')}</tbody>
-    </table>`:'<div style="font-size:12px;color:#777;margin-bottom:20px">Sin lesiones activas.</div>'}
-
-    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Test de salto — mejor CMJ registrado</div>
-    ${jumpRows.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">
-      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Atleta</th><th style="padding:6px 10px;text-align:center">CMJ (cm)</th><th style="padding:6px 10px;text-align:center">vs. promedio</th></tr></thead>
-      <tbody>${jumpRows.map(r=>{
-        const diff = teamAvgCMJ!=null ? Math.round(r.best-teamAvgCMJ) : null;
-        const diffTxt = diff==null?'—':diff===0?'≈ promedio':(diff>0?'+':'')+diff+'cm';
-        const diffCol = diff==null?'#777':diff>0?'#16803c':diff<0?'#b91c1c':'#777';
-        return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${r.name}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;font-weight:700">${r.best}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;color:${diffCol}">${diffTxt}</td></tr>`;
-      }).join('')}</tbody>
-    </table>
-    <div style="font-size:11px;color:#777;margin-bottom:20px">Promedio del equipo: ${teamAvgCMJ}cm</div>`:'<div style="font-size:12px;color:#777;margin-bottom:20px">Sin tests de salto registrados.</div>'}
-
-    ${positions.length?`<div style="font-size:13px;font-weight:700;margin-bottom:8px">Promedios por posición</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
-      <thead><tr style="background:#f2f2f2"><th style="padding:6px 10px;text-align:left">Posición</th><th style="padding:6px 10px;text-align:center">Wellness</th><th style="padding:6px 10px;text-align:center">ACWR</th></tr></thead>
-      <tbody>${positions.map(pos=>{
-        const group=members.filter(a=>a.position===pos);
-        const s=group.map(computeAthleteLoadSummary);
-        const w=avgMetric(s,'avgWellness'); const ac=avgMetric(s,'acwr');
-        return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${pos}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${w!=null?w+'%':'—'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${ac!=null?ac.toFixed(2):'—'}</td></tr>`;
-      }).join('')}</tbody>
-    </table>`:''}
-
-    <div style="font-size:11px;color:#999;text-align:right;margin-top:20px">Generado el ${today} · G-Metrics Performance Lab</div>
-  </div>`;
+    ${rpH('Molestias activas', inj.total?`${hurt} de ${members.length} atletas`:'')}
+    ${injRows.length?rpTable(['Atleta','Zona','Desde','Dolor','Gravedad'], injRows):'<div class="rp-empty">Sin molestias activas.</div>'}
+    ${rpH('CMJ', 'cm · mejor marca'+(cmjRows.length>=8?' · top 8':''))}
+    ${cmjRows.length?statBarsHtml(cmjRows,{unit:'cm', dec:1, avg:cmjNow, avgLabel:'prom. equipo'}):'<div class="rp-empty">Sin tests de CMJ registrados.</div>'}`;
+  return rpSheet(team, members, 'Informe mensual', 'Resumen del plantel', `Período: ${rpDate(start).replace(/ \d{4}$/,'')} – ${rpDate(today).replace(/ \d{4}$/,'')}`, body);
 }
 window.renderTeamReportResumen=renderTeamReportResumen;
 
 // ── REUNIÓN DE STAFF ─────────────────────────────────────────
 function renderStaffMeetingReport(team, members) {
   const today = todayLocal();
-  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
-  const sevenDaysAgoStr = toLocalDateStr(sevenDaysAgo);
-
-  // Lesiones reales vs. molestias — acá SÍ se ven las dos, es la vista de
-  // adentro del equipo (a diferencia del Dashboard, que solo alerta lesiones).
+  const days7 = []; for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); days7.push(toLocalDateStr(d)); }
   const injSum = getTeamInjurySummary(members);
-  const realInjuriesActive = members.reduce((s,a)=>s+Object.values(a._personal?.injuries||{}).filter(inj=>inj.pain>0&&isRealInjury(inj)).length,0);
-  const molestiasActive = Math.max(0, injSum.total-realInjuriesActive);
-
-  const cargaronHoy = members.filter(a=>a._personal?.wellness?.[today]).length;
-  const nuncaCargaron = members.filter(a=>!Object.keys(a._personal?.wellness||{}).length).length;
-  const diasPromedio = members.length ? (members.reduce((s,a)=>{
-    const w=a._personal?.wellness||{};
-    return s+Object.keys(w).filter(d=>d>=sevenDaysAgoStr&&d<=today).length;
-  },0)/members.length).toFixed(1) : '0.0';
-  const noCargaronHoy = members.filter(a=>!a._personal?.wellness?.[today]);
-
-  const fatigaVals=[];
-  const dolorRows = members.map(a=>{
+  const realActive = members.filter(a=>Object.values(a._personal?.injuries||{}).some(inj=>inj.pain>0 && isRealInjury(inj)));
+  const molestias = members.filter(a=>!realActive.includes(a) && Object.values(a._personal?.injuries||{}).some(inj=>inj.pain>0));
+  const noHoy = members.filter(a=>!a._personal?.wellness?.[today]);
+  const diasProm = members.length ? members.reduce((s,a)=>s+days7.filter(d=>a._personal?.wellness?.[d]).length,0)/members.length : 0;
+  const order = {no:0, duda:1, ok:2};
+  const rows = members.map(a=>{
     const w = a._personal?.wellness||{};
-    const dates = Object.keys(w).sort();
-    const lastDate = dates[dates.length-1];
-    const last = lastDate?w[lastDate]:null;
-    if(last?.fatiga!=null) fatigaVals.push(last.fatiga);
-    return {name:a.name||a.email, fatiga:last?.fatiga??null, dolor:last?.dolor_muscular??null, date:lastDate};
-  }).filter(r=>r.fatiga!=null||r.dolor!=null);
-  const fatigaMedia = fatigaVals.length ? (fatigaVals.reduce((s,v)=>s+v,0)/fatigaVals.length).toFixed(1) : null;
-
-  const matchRows = members.map(a=>{
-    const logs = a._personal?.history?._sessionLogs||[];
-    const sum = getMatchMinutesSummary(logs);
-    return {name:a.name||a.email, ...sum};
-  }).filter(r=>r.partidosJugados>0).sort((x,y)=>y.minutosTotales-x.minutosTotales);
-
-  return `<div class="admin-section">
-    <div class="admin-section-title">Resumen ejecutivo del plantel — ${today}</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${members.length}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Plantel</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${realInjuriesActive>0?'var(--red)':'var(--text)'}">${realInjuriesActive}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${molestiasActive}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Molestias</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media</div></div>
+    const scores = days7.map(d=>{ const s=getWellnessScore(w[d]); return s.allFilled?s.pct:null; });
+    const lastDate = Object.keys(w).sort().pop();
+    const last = lastDate ? w[lastDate] : null;
+    const m = calcLoadMetrics((a._personal?.history?._sessionLogs)||[]);
+    const ua = ((a._personal?.history?._sessionLogs)||[]).filter(l=>days7.includes(l.date)).reduce((s,l)=>s+(l.ua||0),0);
+    return {a, scores, last:[...scores].reverse().find(v=>v!=null), fatiga:last?.fatiga, dolor:last?.dolor_muscular, acwr:m?.acwr, ua, av:athleteAvailability(a)};
+  }).sort((p,q)=>order[p.av.key]-order[q.av.key] || (p.last??101)-(q.last??101));
+  const bars = sc => `<span class="rp-wb">${sc.map(v=>`<i style="height:${v==null?3:5+v/100*13}px;background:${v==null?RP_C.line:v>=75?RP_C.green:v>=50?RP_C.amber:RP_C.red}"></i>`).join('')}</span>`;
+  const tRows = rows.map(r=>[rpEsc(r.a.name||r.a.email), bars(r.scores)+(r.last!=null?`<b>${r.last}%</b>`:'—'), r.fatiga??'—', r.dolor??'—', r.acwr!=null?cmpFmt(r.acwr,2):'—', r.ua?Math.round(r.ua).toLocaleString('es-AR'):'—', rpPill(RP_AVAIL[r.av.key])]);
+  const matchRows = members.map(a=>({a, ...getMatchMinutesSummary((a._personal?.history?._sessionLogs)||[])})).filter(r=>r.partidosJugados>0).sort((x,y)=>y.minutosTotales-x.minutosTotales)
+    .map(r=>[rpEsc(r.a.name||r.a.email), r.partidosJugados, r.minutosTotales, r.promedioPorPartido+"'"]);
+  const names = arr => arr.slice(0,2).map(a=>rpEsc((a.name||a.email||'').split(/\s+/)[0])).join(', ')+(arr.length>2?'…':'');
+  const body = `<div class="rp-kpis">
+      ${rpKpi('Plantel', members.length, '', 'atletas')}
+      ${rpKpi('Lesionados', realActive.length, '', realActive.length?names(realActive):'ninguno', realActive.length?RP_C.red:'')}
+      ${rpKpi('Con molestias', molestias.length, '', molestias.length?names(molestias):'ninguno', molestias.length?RP_C.amber:'')}
+      ${rpKpi('Wellness cargado', cmpFmt(diasProm,1), '/7', noHoy.length?`${noHoy.length} no cargaron hoy`:'todos cargaron hoy')}
     </div>
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Cumplimiento del wellness diario</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-bottom:10px">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${cargaronHoy===members.length?'var(--green)':'var(--text)'}">${cargaronHoy}/${members.length}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Cargaron hoy</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${diasPromedio}/7</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Promedio días (últ. 7)</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${nuncaCargaron>0?'var(--amber)':'var(--text)'}">${nuncaCargaron}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Nunca cargaron</div></div>
-    </div>
-    ${noCargaronHoy.length?`<div style="padding:0 16px 14px;font-size:11px;color:var(--text3)">Todavía no cargaron hoy: ${noCargaronHoy.map(a=>a.name||a.email).join(', ')}</div>`:''}
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Fatiga y dolor por jugador</div>
-        ${dolorRows.length?dolorRows.map(r=>`
-      <div style="padding:8px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <div style="font-size:12px;font-weight:600">${r.name}</div>
-        <div style="font-size:11px;color:var(--text3)">Fatiga ${r.fatiga??'—'}/5 · Dolor ${r.dolor??'—'}/5${r.date?' · '+r.date:''}</div>
-      </div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin registros de wellness todavía.</div>`}
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Participación en partidos del plantel</div>
-        ${matchRows.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="border-bottom:1px solid var(--border)">
-        <th style="text-align:left;padding:8px 10px;color:var(--text2)">Jugador</th>
-        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Partidos</th>
-        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Minutos totales</th>
-        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Promedio</th>
-      </tr></thead>
-      <tbody>${matchRows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:8px 10px;font-weight:600">${r.name}</td>
-        <td style="padding:8px 10px;text-align:center">${r.partidosJugados}</td>
-        <td style="padding:8px 10px;text-align:center">${r.minutosTotales}</td>
-        <td style="padding:8px 10px;text-align:center">${r.promedioPorPartido}'</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`:`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin partidos cargados en "Carga de hoy" todavía.</div>`}
-  </div>`;
+    ${noHoy.length?`<div class="rp-note"><b>No cargaron wellness hoy:</b> ${noHoy.map(a=>rpEsc(a.name||a.email)).join(', ')}</div>`:''}
+    ${rpH('Atleta por atleta','últimos 7 días · ordenado por estado')}
+    ${rpTable(['Atleta','Wellness 7 días','Fatiga 1–5','Dolor 1–5','ACWR','Carga sem. (UA)','Estado'], tRows, 'rp-tc')}
+    ${rpH('Partidos','minutos jugados')}
+    ${matchRows.length?rpTable(['Atleta','Partidos','Minutos','Promedio'], matchRows, 'rp-tc'):'<div class="rp-empty">Sin partidos cargados.</div>'}`;
+  return rpSheet(team, members, 'Reunión de staff', 'Estado del plantel', `Semana del ${rpDate(days7[0]).replace(/ \d{4}$/,'')} al ${rpDate(today).replace(/ \d{4}$/,'')}`, body);
 }
 window.renderStaffMeetingReport = renderStaffMeetingReport;
 
@@ -7333,88 +7217,51 @@ window.computeMedicalReportStats = computeMedicalReportStats;
 
 function renderMedicalReport(team, members) {
   const st = computeMedicalReportStats(members);
-  const maxZoneCount = st.zoneRows.length ? Math.max(...st.zoneRows.map(z=>z.count)) : 1;
-  const maxPosActive = st.positionRows.length ? Math.max(...st.positionRows.map(p=>p.active)) : 1;
-
-  return `<div class="admin-section">
-    <div class="admin-section-title">Resumen epidemiológico del plantel</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${st.prevalencia>0?'var(--red)':'var(--text)'}">${st.prevalencia}%</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Prevalencia actual</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.lesionesPorJugador}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesiones/jugador</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.activeToday}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Activas hoy</div></div>
-      <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${st.incidencia??'—'}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Incidencia /1000hs</div></div>
+  const active = [];
+  members.forEach(a=>Object.entries(a._personal?.injuries||{}).forEach(([zid,inj])=>{ if(inj && inj.pain>0) active.push({a, zid, inj}); }));
+  const rank = {grave:3, moderada:2, leve:1};
+  const zoneWorst = {};
+  active.forEach(x=>{ const cur = zoneWorst[x.zid]; if(!cur || (rank[x.inj.severity]||1)>(rank[cur.severity]||1)) zoneWorst[x.zid] = x.inj; });
+  const map = side => bodyMapSvg(side, z=>'body-zone'+bodyZoneSevCls(zoneWorst[z.id]), 'void', 250);
+  const molestias = active.filter(x=>!isRealInjury(x.inj)).length;
+  const maxZ = st.zoneRows.length ? Math.max(...st.zoneRows.map(z=>z.count)) : 1;
+  const actRows = active.sort((p,q)=>(rank[q.inj.severity]||1)-(rank[p.inj.severity]||1) || q.inj.pain-p.inj.pain).map(x=>{
+    const since = injurySinceDate(x.inj);
+    return [rpEsc(x.a.name||x.a.email), rpEsc(bodyZoneLabel(x.zid)), isRealInjury(x.inj)?'Lesión':'Molestia', since?rpDate(since).replace(/ \d{4}$/,''):'—', x.inj.pain+'/10', rpPill(RP_SEV[x.inj.severity]||RP_SEV.leve)];
+  });
+  const prev = members.length ? Math.round(new Set(active.map(x=>x.a.uid)).size/members.length*100) : 0;
+  const body = `<div class="rp-kpis">
+      ${rpKpi('Prevalencia hoy', prev, '%', `${new Set(active.map(x=>x.a.uid)).size} de ${members.length} atletas`, prev?RP_C.amber:'')}
+      ${rpKpi('Lesiones activas', st.activeToday, '', `+ ${molestias} molestia${molestias!==1?'s':''}`)}
+      ${rpKpi('Lesiones por atleta', st.lesionesPorJugador.replace('.',','), '', 'en total')}
+      ${rpKpi('Incidencia', st.incidencia!=null?String(st.incidencia).replace('.',','):'—', '', 'cada 1000 h de exposición')}
     </div>
-      </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Zonas del cuerpo más afectadas</div>
-    ${st.zoneRows.length?st.zoneRows.map(z=>`
-      <div style="padding:6px 16px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${z.label}</span><span style="font-weight:700">${z.count}</span></div>
-        <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;background:var(--red);border-radius:4px;width:${(z.count/maxZoneCount)*100}%"></div></div>
-      </div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin lesiones activas.</div>`}
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Incidencia por puesto</div>
-    ${st.positionRows.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="border-bottom:1px solid var(--border)">
-        <th style="text-align:left;padding:6px 16px;color:var(--text2)">Puesto</th>
-        <th style="text-align:center;padding:6px 10px;color:var(--text2)">Activas</th>
-        <th style="text-align:center;padding:6px 16px;color:var(--text2)">Incidencia /1000hs</th>
-      </tr></thead>
-      <tbody>${st.positionRows.map(p=>`
-        <tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:6px 16px">${p.label}</td>
-          <td style="padding:6px 10px;text-align:center;font-weight:700">${p.active}</td>
-          <td style="padding:6px 16px;text-align:center">${p.incidencia??'—'}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table></div>`:`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin lesiones activas, o los atletas no tienen puesto cargado en su ficha.</div>`}
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Distribución por gravedad</div>
-    <div style="height:180px;position:relative;padding:12px 16px"><canvas id="medreport-severity-chart"></canvas></div>
-  </div>
-
-  <div class="admin-section">
-    <div class="admin-section-title">Lesiones por mes (tendencia, últimos ${st.periodDays} días)</div>
-    <div style="height:180px;position:relative;padding:12px 16px">${st.monthKeys.length?'<canvas id="medreport-trend-chart"></canvas>':`<div style="font-size:13px;color:var(--text3)">Sin lesiones nuevas en el período.</div>`}</div>
-  </div>`;
+    <div class="rp-med">
+      <div>${rpH('Dónde','activas hoy')}<div class="rp-bm">${map('front')}${map('back')}</div>
+        <div class="rp-leg"><span><i style="background:${RP_C.red}"></i>grave</span><span><i style="background:${RP_C.amber}"></i>moderada</span><span><i style="background:${RP_C.green}"></i>leve</span></div></div>
+      <div>${rpH('Zonas con lesión','activas hoy')}
+        ${st.zoneRows.length?st.zoneRows.slice(0,6).map(z=>`<div class="rp-zb"><span>${rpEsc(z.label)}</span><span class="rp-zt"><i style="width:${z.count/maxZ*100}%"></i></span><b>${z.count}</b></div>`).join(''):'<div class="rp-empty">Sin lesiones activas.</div>'}
+        ${rpH('Lesiones nuevas por mes', `últimos ${st.periodDays} días`)}
+        ${st.monthKeys.length?'<div class="rp-ch rp-ch-s"><canvas id="medreport-trend-chart"></canvas></div>':'<div class="rp-empty">Sin lesiones nuevas en el período.</div>'}</div>
+    </div>
+    ${rpH('Activas hoy','')}
+    ${actRows.length?rpTable(['Atleta','Zona','Tipo','Desde','Dolor','Gravedad'], actRows):'<div class="rp-empty">Sin molestias ni lesiones activas.</div>'}
+    ${st.positionRows.length?rpH('Por puesto','')+rpTable(['Puesto','Activas','Incidencia /1000 h'], st.positionRows.map(p=>[rpEsc(p.label), p.active, p.incidencia!=null?String(p.incidencia).replace('.',','):'—']), 'rp-tc'):''}`;
+  return rpSheet(team, members, 'Informe médico', 'Lesiones y molestias', `Período: últimos ${st.periodDays} días`, body);
 }
 window.renderMedicalReport = renderMedicalReport;
 
 function drawMedicalReportCharts(members) {
   if(typeof Chart==='undefined') return;
   const st = computeMedicalReportStats(members);
-  try { S._medreportSeverityChart?.destroy(); } catch(e){}
   try { S._medreportTrendChart?.destroy(); } catch(e){}
-
-  const sevCanvas = document.getElementById('medreport-severity-chart');
-  if(sevCanvas && (st.grave+st.moderada+st.leve)>0) {
-    S._medreportSeverityChart = new Chart(sevCanvas, {
-      type:'doughnut',
-      data:{ labels:['Graves','Moderadas','Leves'], datasets:[{ data:[st.grave,st.moderada,st.leve], backgroundColor:['#C33A2C','#C67C0F','#1F7A4D'], borderWidth:0 }] },
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{color:cssVar('--text','#1A1D26'),font:{size:11},boxWidth:10} } } }
-    });
-  }
-
-  const trendCanvas = document.getElementById('medreport-trend-chart');
-  if(trendCanvas && st.monthKeys.length) {
-    S._medreportTrendChart = new Chart(trendCanvas, {
-      type:'bar',
-      data:{ labels:st.monthKeys, datasets:[{ label:'Lesiones', data:st.monthKeys.map(k=>st.monthCounts[k]), backgroundColor:'#3b7dd8', borderRadius:6 }] },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false} },
-        scales:{
-          x:{ ticks:{color:cssVar('--text','#1A1D26'),font:{size:10}}, grid:{display:false} },
-          y:{ beginAtZero:true, ticks:{color:cssVar('--text','#1A1D26'),font:{size:10},stepSize:1}, grid:{color:'rgba(18,21,28,0.08)'} }
-        }
-      }
-    });
-  }
+  const cv = document.getElementById('medreport-trend-chart');
+  if(!cv || !st.monthKeys.length) return;
+  S._medreportTrendChart = new Chart(cv, {
+    type:'bar',
+    data:{ labels:st.monthKeys.map(k=>EVAL_MONTHS[+k.slice(5)-1].slice(0,3).toLowerCase()), datasets:[{ data:st.monthKeys.map(k=>st.monthCounts[k]), backgroundColor:RP_C.accent, borderRadius:4, maxBarThickness:36 }] },
+    options: rpChartOpts({beginAtZero:true, ticks:{color:RP_C.text3, stepSize:1, precision:0}}, ctx=>' '+ctx.parsed.y+' lesión'+(ctx.parsed.y===1?'':'es'))
+  });
 }
 window.drawMedicalReportCharts = drawMedicalReportCharts;
 
@@ -7436,92 +7283,42 @@ window.getNextMatch = getNextMatch;
 
 function renderMatchReadinessReport(team, members) {
   const today = todayLocal();
-  const nextMatch = getNextMatch(team);
-  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
-  const sevenDaysAgoStr = toLocalDateStr(sevenDaysAgo);
-
-  let noWellness7d = 0;
+  const next = getNextMatch(team);
+  const days7 = []; for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); days7.push(toLocalDateStr(d)); }
+  const avg = v => v.length ? v.reduce((s,x)=>s+x,0)/v.length : null;
+  let noWell = 0;
+  const order = {no:0, duda:1, ok:2};
   const rows = members.map(a=>{
-    const personal = a._personal||{};
-    const logs = personal.history?._sessionLogs||[];
-    const m = calcLoadMetrics(logs);
-    const wellness = personal.wellness||{};
-    const recentEntries = Object.entries(wellness).filter(([d])=>d>=sevenDaysAgoStr && d<=today);
-    const fatigaVals = recentEntries.map(([,w])=>w.fatiga).filter(v=>v!=null);
-    const dolorVals = recentEntries.map(([,w])=>w.dolor_muscular).filter(v=>v!=null);
-    const fatigaAvg = fatigaVals.length ? +(fatigaVals.reduce((s,v)=>s+v,0)/fatigaVals.length).toFixed(1) : null;
-    const dolorAvg = dolorVals.length ? +(dolorVals.reduce((s,v)=>s+v,0)/dolorVals.length).toFixed(1) : null;
-    if(!recentEntries.length) noWellness7d++;
-
-    const injuries = personal.injuries||{};
-    const realInjuries = Object.values(injuries).filter(inj=>inj.pain>0 && isRealInjury(inj));
-    const rank = {grave:3,moderada:2,leve:1};
-    const worst = realInjuries.reduce((w,inj)=>(rank[inj.severity]||1)>(rank[w?.severity]||0)?inj:w, null);
-    let disponibilidad = {label:'Disponible', color:'var(--green)', dim:'var(--green-dim)'};
-    if(worst?.severity==='grave') disponibilidad = {label:'No disponible', color:'var(--red)', dim:'var(--red-dim)'};
-    else if(worst?.severity==='moderada') disponibilidad = {label:'En duda', color:'var(--amber)', dim:'var(--amber-dim)'};
-
-    const matchSummary = getMatchMinutesSummary(logs);
-    return {a, fatigaAvg, dolorAvg, acwr:m?.acwr??null, disponibilidad, diasSinPartido:matchSummary.daysSinceLastMatch};
-  });
-
-  const fatigaVals = rows.map(r=>r.fatigaAvg).filter(v=>v!=null);
-  const dolorVals = rows.map(r=>r.dolorAvg).filter(v=>v!=null);
-  const fatigaMedia = fatigaVals.length ? (fatigaVals.reduce((s,v)=>s+v,0)/fatigaVals.length).toFixed(1) : null;
-  const dolorMedia = dolorVals.length ? (dolorVals.reduce((s,v)=>s+v,0)/dolorVals.length).toFixed(1) : null;
-  const acwrRiesgo = rows.filter(r=>r.acwr!=null && r.acwr>1.5).length;
-  const lesionadasEnDuda = rows.filter(r=>r.disponibilidad.label!=='Disponible').length;
-
-  let html = `<div class="admin-section">`;
-  if(nextMatch) {
-    const daysUntil = Math.max(0, Math.ceil((new Date(nextMatch.date)-new Date(today))/(1000*60*60*24)));
-    html += `<div class="admin-section-title">Próximo partido</div>
-      <div style="padding:14px 16px;display:flex;align-items:center;gap:12px">
-        ${nextMatch.crestUrl?`<img src="${nextMatch.crestUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid var(--border2)">`:''}
-        <div>
-          <div style="font-size:15px;font-weight:700">${nextMatch.opponent?'vs. '+nextMatch.opponent:'Partido'} · ${nextMatch.homeAway==='visitante'?'✈️ Visitante':'🏠 Local'}</div>
-          <div style="font-size:12px;color:var(--text3)">${nextMatch.date} · en ${daysUntil} día${daysUntil===1?'':'s'}</div>
-        </div>
-      </div>`;
-  } else {
-    html += `<div class="admin-section-title">Próximo partido</div><div style="padding:12px 16px;font-size:13px;color:var(--text3)">No hay ningún partido cargado en el Calendario para este equipo.</div>`;
+    const w = a._personal?.wellness||{};
+    const rec = days7.map(d=>w[d]).filter(Boolean);
+    if(!rec.length) noWell++;
+    const m = calcLoadMetrics((a._personal?.history?._sessionLogs)||[]);
+    return {a, av:athleteAvailability(a), fatiga:avg(rec.map(x=>x.fatiga).filter(v=>v!=null)), dolor:avg(rec.map(x=>x.dolor_muscular).filter(v=>v!=null)),
+      acwr:m?.acwr, dsp:getMatchMinutesSummary((a._personal?.history?._sessionLogs)||[]).daysSinceLastMatch};
+  }).sort((p,q)=>order[p.av.key]-order[q.av.key] || (p.a.name||'').localeCompare(q.a.name||''));
+  const n = k => rows.filter(r=>r.av.key===k).length;
+  let match = '<div class="rp-empty">No hay ningún partido cargado en el Calendario para este equipo.</div>';
+  if(next) {
+    const dd = Math.max(0, Math.round((new Date(next.date+'T12:00:00')-new Date(today+'T12:00:00'))/86400000));
+    const wd = new Date(next.date+'T12:00:00').toLocaleDateString('es-AR',{weekday:'long', day:'numeric', month:'short'});
+    match = `<div class="rp-match">${next.crestUrl?`<img src="${next.crestUrl}" alt="">`:`<span class="rp-crest">${rpEsc((next.opponent||'P').slice(0,2).toUpperCase())}</span>`}
+      <div class="rp-match-w"><b>${next.opponent?'vs. '+rpEsc(next.opponent):'Partido'}</b><span>${next.homeAway==='visitante'?'Visitante':'Local'} · ${wd}${next.time?' · '+rpEsc(next.time):''}</span></div>
+      <div class="rp-match-d"><b>${dd}</b><span>día${dd===1?'':'s'}</span></div></div>`;
   }
-  html += `</div>`;
-
-  html += `<div class="admin-section"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)">
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${fatigaMedia??'—'}${fatigaMedia?'/5':''}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Fatiga media (7d)</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${dolorMedia??'—'}${dolorMedia?'/5':''}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Dolor medio (7d)</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrRiesgo>0?'var(--red)':'var(--text)'}">${acwrRiesgo}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Pico de carga</div></div>
-    <div style="background:var(--bg2);padding:12px;text-align:center"><div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${lesionadasEnDuda>0?'var(--amber)':'var(--text)'}">${lesionadasEnDuda}</div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Lesionadas/en duda</div></div>
-  </div></div>`;
-
-  if(noWellness7d>0) html += `<div style="background:var(--amber-dim);color:var(--amber);border-radius:var(--rsm);padding:10px 14px;margin-bottom:14px;font-size:12px">${craftIconSvg('alert','var(--amber)',12)} ${noWellness7d} atleta${noWellness7d===1?'':'s'} sin wellness cargado en los últimos 7 días — su estado real podría no estar reflejado.</div>`;
-
-  html += `<div class="admin-section"><div class="admin-section-title">Disponibilidad del plantel</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="border-bottom:1px solid var(--border)">
-        <th style="text-align:left;padding:8px 10px;color:var(--text2)">Atleta</th>
-        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Disponibilidad</th>
-        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Fatiga</th>
-        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Dolor</th>
-        <th style="text-align:center;padding:8px 10px;color:var(--text2)">ACWR</th>
-        <th style="text-align:center;padding:8px 10px;color:var(--text2)">Días s/partido</th>
-      </tr></thead>
-      <tbody>
-      ${[...rows].sort((x,y)=>(x.a.name||x.a.email||'').localeCompare(y.a.name||y.a.email||'')).map(r=>`
-        <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthlete('${r.a.uid}')">
-          <td style="padding:8px 10px;font-weight:600">${r.a.name||r.a.email}</td>
-          <td style="padding:8px 10px;text-align:center"><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${r.disponibilidad.dim};color:${r.disponibilidad.color}">${r.disponibilidad.label}</span></td>
-          <td style="padding:8px 10px;text-align:center">${r.fatigaAvg??'—'}</td>
-          <td style="padding:8px 10px;text-align:center">${r.dolorAvg??'—'}</td>
-          <td style="padding:8px 10px;text-align:center">${r.acwr!=null?r.acwr.toFixed(2):'—'}</td>
-          <td style="padding:8px 10px;text-align:center">${r.diasSinPartido??'—'}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table></div>
-  </div>`;
-
-  return html;
+  const f1 = v => v==null ? '—' : cmpFmt(v,1);
+  const tRows = rows.map(r=>[rpEsc(r.a.name||r.a.email), rpPill(RP_AVAIL[r.av.key]), rpEsc(r.av.motivo), f1(r.fatiga), f1(r.dolor), r.acwr!=null?cmpFmt(r.acwr,2):'—', r.dsp??'—']);
+  // Carga de los últimos 7 días: UA promedio del plantel por día.
+  const ua = days7.map(d=>{ const v = members.map(a=>((a._personal?.history?._sessionLogs)||[]).filter(l=>l.date===d).reduce((s,l)=>s+(l.ua||0),0)); const withLoad = v.filter(x=>x>0); return withLoad.length ? Math.round(withLoad.reduce((s,x)=>s+x,0)/withLoad.length) : 0; });
+  const maxUa = Math.max(1, ...ua);
+  const dayLbl = d => d===today ? 'hoy' : new Date(d+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short'}).replace('.','');
+  const body = `${match}
+    <div class="rp-big3"><div class="rp-ok"><b>${n('ok')}</b><span>Disponible${n('ok')!==1?'s':''}</span></div><div class="rp-warn"><b>${n('duda')}</b><span>En duda</span></div><div class="rp-bad"><b>${n('no')}</b><span>No disponible${n('no')!==1?'s':''}</span></div></div>
+    ${rpH('Plantel','ordenado por disponibilidad · promedios de los últimos 7 días')}
+    ${rpTable(['Atleta','Disponibilidad','Motivo','Fatiga','Dolor','ACWR','Días s/ partido'], tRows, 'rp-tc')}
+    ${noWell?`<div class="rp-note">${noWell} atleta${noWell===1?'':'s'} sin wellness en los últimos 7 días: su estado puede no estar al día.</div>`:''}
+    ${rpH('Carga de la semana previa','UA por día · promedio del plantel')}
+    <div class="rp-days">${days7.map((d,i)=>`<div><b>${ua[i]||''}</b><i style="height:${ua[i]?Math.max(4,ua[i]/maxUa*70):3}px;${ua[i]?'':'background:'+RP_C.line}"></i><span>${dayLbl(d)}</span></div>`).join('')}</div>`;
+  return rpSheet(team, members, 'Previa del partido', 'Cómo llegamos', next ? rpDate(next.date) : 'Sin partido cargado', body);
 }
 window.renderMatchReadinessReport = renderMatchReadinessReport;
 
@@ -8594,7 +8391,9 @@ function injurySinceDate(inj) {
 }
 function bodyZoneLabel(id) {
   const z = [...BODY_ZONES.front, ...BODY_ZONES.back].find(x=>x.id===id);
-  return z ? z.label : String(id||'').replace(/_/g,' ');
+  if(z) return z.label;
+  const t = String(id||'').replace(/_/g,' ');
+  return t.charAt(0).toUpperCase()+t.slice(1);
 }
 window.bodyZoneLabel = bodyZoneLabel;
 const TS_ICONS = {
@@ -8956,59 +8755,22 @@ function drawTeamQuadrantChart(members, canvasId, instanceKey, overrideX, overri
 }
 window.drawTeamQuadrantChart = drawTeamQuadrantChart;
 
-// Wellness y ACWR promedio del plantel, día a día — para el informe
-// imprimible del equipo (mismo criterio que drawAthleteTrendChart, pero
-// promediando entre todos los miembros en vez de un solo atleta, así el
-// informe muestra una tendencia real y no solo la foto del día en que se
-// generó.
-function drawTeamReportTrendChart(members, canvasId) {
+// Resumen del informe: wellness y ACWR del plantel en dos gráficos
+// separados (cada uno con su escala), 30 días.
+function drawTeamReportTrendChart(members) {
   if(typeof Chart==='undefined') return;
-  canvasId = canvasId || 'report-trend-chart';
-  const canvas = document.getElementById(canvasId);
-  if(!canvas) return;
-
-  const DAYS = 30;
-  const labels=[], acwrData=[], wellnessData=[];
-  const today = new Date();
-  for(let i=DAYS-1;i>=0;i--){
-    const d=new Date(today); d.setDate(d.getDate()-i);
-    const dateStr=toLocalDateStr(d);
-    labels.push(dateStr.slice(5));
-
-    const wPcts = members.map(a=>{
-      const { pct, allFilled } = getWellnessScore(a._personal?.wellness?.[dateStr]);
-      return allFilled ? pct : null;
-    }).filter(v=>v!=null);
-    wellnessData.push(wPcts.length ? Math.round(wPcts.reduce((s,v)=>s+v,0)/wPcts.length) : null);
-
-    const acwrVals = members.map(a=>{
-      const logs = (a._personal?.history?._sessionLogs)||[];
-      const m = calcLoadMetrics(logs.filter(l=>l.date<=dateStr));
-      return m?.acwr!=null ? m.acwr : null;
-    }).filter(v=>v!=null);
-    acwrData.push(acwrVals.length ? +(acwrVals.reduce((s,v)=>s+v,0)/acwrVals.length).toFixed(2) : null);
-  }
-  if(acwrData.every(v=>v===null) && wellnessData.every(v=>v===null)) return;
-
-  try{ S.reportTrendChartInstance?.destroy(); }catch(e){}
-  const gridColor='rgba(0,0,0,0.08)';
-  S.reportTrendChartInstance = new Chart(canvas, {
-    type:'line',
-    data:{ labels, datasets:[
-      {label:'Wellness % (plantel)',data:wellnessData,borderColor:'#1f7a4d',backgroundColor:'rgba(31,122,77,0.08)',yAxisID:'y',spanGaps:true,tension:.3,pointRadius:2,fill:true},
-      {label:'ACWR (plantel)',data:acwrData,borderColor:'#2f5fd8',backgroundColor:'rgba(47,95,216,0.08)',yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:2,fill:false},
-    ]},
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{ legend:{labels:{color:'#111',font:{size:9},boxWidth:9}} },
-      scales:{
-        x:{ ticks:{color:'#111',font:{size:8},maxRotation:0,autoSkip:true,maxTicksLimit:6}, grid:{color:gridColor} },
-        y:{ position:'left', min:0, max:100, ticks:{color:'#1f7a4d',font:{size:9},stepSize:25}, grid:{color:gridColor} },
-        y1:{ position:'right', min:0, suggestedMax:2, ticks:{color:'#2f5fd8',font:{size:9}}, grid:{drawOnChartArea:false} },
-      }
-    }
-  });
+  const s = teamDailySeries(members, 30);
+  const mk = (id, data, yOpts, fmtV, band) => {
+    const cv = document.getElementById(id); if(!cv) return;
+    try{ S['_rp_'+id]?.destroy(); }catch(e){}
+    if(!data.some(v=>v!=null)) { cv.parentElement.innerHTML = '<div class="rp-empty">Sin datos en el período.</div>'; return; }
+    const plugins = band ? [{ id:'acwrBand', beforeDatasetsDraw(ch){ const y=ch.scales.y, x=ch.scales.x; const t=y.getPixelForValue(1.3), b=y.getPixelForValue(0.8); ch.ctx.save(); ch.ctx.fillStyle='rgba(31,122,77,0.10)'; ch.ctx.fillRect(x.left, t, x.right-x.left, b-t); ch.ctx.restore(); } }] : [];
+    S['_rp_'+id] = new Chart(cv, { type:'line',
+      data:{ labels:s.labels, datasets:[{ data, borderColor:RP_C.accent, backgroundColor:RP_C.accent, borderWidth:2, pointRadius:0, pointHoverRadius:4, spanGaps:true, tension:.3 }] },
+      options: rpChartOpts(yOpts, ctx=>' '+fmtV(ctx.parsed.y)), plugins });
+  };
+  mk('report-well-chart', s.well, {suggestedMin:50, suggestedMax:100}, v=>Math.round(v)+' %');
+  mk('report-acwr-chart', s.acwr, {suggestedMin:0.6, suggestedMax:1.6, ticks:{color:RP_C.text3, maxTicksLimit:6, callback:v=>String(Math.round(v*10)/10).replace('.',',')}}, v=>cmpFmt(v,2), true);
 }
 window.drawTeamReportTrendChart = drawTeamReportTrendChart;
 
