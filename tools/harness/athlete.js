@@ -81,6 +81,14 @@
     const rp=sels().find(x=>/rpeRpe/.test(x.getAttribute('onchange'))); rp.value='8.5'; rp.dispatchEvent(new Event('change',{bubbles:true})); await wait(300);
     const txt=document.getElementById('main').innerText.replace(/\s+/g,' '); ok(txt.includes('157 kg · 1RM estimado'),'calculadora: 140 × 2 a RPE 8,5 → 1RM 157 kg');
     const cells=[...document.querySelectorAll('.rmc-reps > div b')].map(b=>b.textContent); ok(cells.length===12&&cells[0]==='157,5'&&cells[1]==='150','calculadora: carga para 1 a 12 reps, redondeada al disco ('+cells.slice(0,3).join(' / ')+')'); txtBad('calculadora RPE'); }
+  // ── el atleta registra kilos y RPE → su RM se actualiza solo ──
+  { switchView('session'); await wait(500); S.currentSession='Día 1'; S.rmCalcTabActive=false; renderMain(); await wait(500);
+    const row=document.getElementById('exrow-x1'); ok(!!row,'sesión: está la sentadilla');
+    if(row){ const ld=row.querySelector('input.field-inp.load'); ld.value='100'; ld.dispatchEvent(new Event('change',{bubbles:true}));
+      const rp=[...row.querySelectorAll('input.field-inp')].find(i=>/'rpe'/.test(i.getAttribute('onchange')||'')); rp.value='8'; rp.dispatchEvent(new Event('change',{bubbles:true})); await wait(1500);
+      const pr=prescribedRepsForRM(getExPrescriptionForWeek(S.assignedRoutine.sessions['Día 1'].flatMap(b=>b.categories[0].exercises).find(x=>x.id==='x1'), toRoutineRelativeWeek(getRoutineWeek(),S.userData)).reps).reps;
+      const want=Math.round(100/rpePct(pr,8)*2)/2;
+      ok(S.oneRM.sentadilla_barra===want&&JSON.parse(localStorage.getItem('__db')).personal.u1.oneRM.sentadilla_barra===want,'atleta: su RM pasó a '+want+' kg y quedó guardado ('+S.oneRM.sentadilla_barra+')'); } }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();

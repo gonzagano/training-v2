@@ -75,7 +75,7 @@ const quick = process.argv.includes('--quick');
           const cut = e => { window[k] = {fails: ['el script de prueba se cortó: ' + ((e && e.message) || e)], errs: []}; };
           try { Promise.resolve((0, eval)(c)).catch(cut); } catch (e) { cut(e); }
         }, key, code).catch(e => { err = e.message; });
-        await page.waitForFunction(k => window[k], {timeout: 150000, polling: 500}, key);
+        await page.waitForFunction(k => window[k], {timeout: 300000, polling: 500}, key);
         res = await page.evaluate(k => window[k], key);
       } catch (e) { err = e.message; }
       await ctx.close();

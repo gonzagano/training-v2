@@ -276,16 +276,35 @@
     ok(near(rmFromRpe(140,2,8.5),156.9507)&&near(rmFromRpe(65,2,10),68.0628)&&near(rmFromRpe(90,8,7),135.0338)&&rmFromRpe(175,1,10)===175,'1RM por RPE: da igual que la planilla (140×2@8,5 = 156,95)');
     ok(rpePct(13,9)===null&&rpePct(3,4)===null&&rpePct(3,9.2)===0.892,'1RM por RPE: fuera de tabla no inventa; RPE se redondea al medio punto');
     ok(roundPlate(83)===82.5&&roundPlate(83.8)===85&&fmtKg(82.5)==='82,5','redondeo al disco de 2,5 kg'); }
-  // ── RM estimado con lo que el atleta registró, y "Usar como RM" ──
-  { S.atletaView=null; switchView('atletas'); await wait(1200); openAtleta('u0'); await wait(1800);
-    const a0=S.adminAthletes.find(x=>x.uid==='u0'); const dbx=JSON.parse(localStorage.getItem('__db'));
-    const rec={date:todayLocal(), exercises:{x1:{load:100, rpe:8, checked:true}}}; dbx.personal.u0.history['w1-Día 1']=rec; localStorage.setItem('__db',JSON.stringify(dbx));
-    a0._personal.history=a0._personal.history||{}; a0._personal.history['w1-Día 1']=rec; a0._personal.oneRM.sentadilla_barra=110;
-    setAtletaSubview('perfil'); await wait(600);
-    const est=estimateRMsFromHistory(a0).sentadilla_barra; ok(est&&Math.abs(est.rm-100/0.762)<0.01&&est.reps===6&&est.rpe===8,'RM estimado: 100 kg × 6 @8 → 131,2 kg');
-    const btn=document.querySelector('.rm-use[onclick*="sentadilla_barra"]'); ok(!!btn&&/131/.test(btn.closest('.rm-est').innerText),'ficha: muestra el estimado y el botón para usarlo');
-    if(btn){ btn.click(); await wait(600); ok(JSON.parse(localStorage.getItem('__db')).personal.u0.oneRM.sentadilla_barra===131,'Usar como RM: queda guardado (131) en el atleta'); ok(!document.querySelector('.rm-use[onclick*="sentadilla_barra"]'),'después de usarlo ya no lo vuelve a ofrecer'); }
-    txtBad('perfil con RM estimado'); goBackFromAthleteDetail(); await wait(400); }
+  // ── el RM se actualiza SOLO con lo último que registró, usando las reps prescriptas ──
+  { ok(prescribedRepsForRM('6').reps===6&&prescribedRepsForRM('6–8').reps===6&&prescribedRepsForRM('8-6').reps===6&&prescribedRepsForRM('5/3/1')===null&&prescribedRepsForRM('')===null,'reps prescriptas: número, rango (toma el menor) y formatos que no cuentan');
+    S.atletaView=null; switchView('atletas'); await wait(1200);
+    const a0=S.adminAthletes.find(x=>x.uid==='u0'); await ensureGroupPersonalData(['u0']);
+    { const dbx=JSON.parse(localStorage.getItem('__db')); const keep=dbx.personal.u0.history._sessionLogs; dbx.personal.u0.history={_sessionLogs:keep}; delete dbx.personal.u0.oneRMAuto; localStorage.setItem('__db',JSON.stringify(dbx)); a0._personal.history={_sessionLogs:keep}; delete a0._personal.oneRMAuto; }
+    const put=(k,rec)=>{ const dbx=JSON.parse(localStorage.getItem('__db')); dbx.personal.u0.history[k]=rec; localStorage.setItem('__db',JSON.stringify(dbx)); a0._personal.history[k]=rec; };
+    // x1 = Sentadilla (RM de sentadilla), prescripta 4 × 6
+    put('w1-Día 1',{date:'2026-09-01', exercises:{x1:{load:100, rpe:8, checked:true}}});
+    openAtleta('u0'); await wait(1800);
+    const P=()=>JSON.parse(localStorage.getItem('__db')).personal.u0;
+    ok(P().oneRM.sentadilla_barra===131&&P().oneRMAuto?.sentadilla_barra?.reps===6,'al abrir la ficha: 100 kg a RPE 8 con 6 reps prescriptas → RM 131 ('+P().oneRM.sentadilla_barra+')');
+    // una sesión más nueva con menos → baja (es la última)
+    put('w2-Día 1',{date:'2026-09-08', exercises:{x1:{load:90, rpe:8, checked:true}}});
+    await adminAutoRM(a0); await wait(300); ok(P().oneRM.sentadilla_barra===118&&P().oneRMAuto.sentadilla_barra.kg===90,'sesión más nueva: el RM sigue a la última (90 × 6 @8 → 118)');
+    // RIR se convierte
+    const ex1=S.routines.find(r=>r.id==='r1').sessions['Día 1'].flatMap(b=>b.categories[0].exercises).find(e=>e.id==='x1');
+    // mismas reps pero el profe cambia la prescripción a 3 en la semana 3 → usa 3
+    ensureExProgression(ex1); while(ex1.progression.length<3) ex1.progression.push({}); ex1.progression[2]={...ex1.progression[0], reps:'3'};
+    put('w3-Día 1',{date:'2026-09-15', exercises:{x1:{load:100, rpe:9, checked:true}}});
+    await adminAutoRM(a0); await wait(300); ok(Math.abs(P().oneRM.sentadilla_barra-112)<0.6&&P().oneRMAuto.sentadilla_barra.reps===3,'usa las reps prescriptas de ESA semana (100 × 3 @9 → 112)');
+    // corregido a mano: la misma sesión no lo vuelve a pisar
+    await adminSaveOneRM('u0','sentadilla_barra','120'); await adminAutoRM(a0); await wait(300); ok(P().oneRM.sentadilla_barra===120,'si el profe lo corrige a mano, no se lo pisa con la misma sesión');
+    setAtletaSubview('perfil'); await wait(500); ok(/Se actualizó solo/.test(document.getElementById('main').innerText),'ficha: muestra de dónde salió el RM'); txtBad('perfil con RM automático');
+    // cargarle kilos y RPE desde la ficha lo actualiza en el momento
+    put('w4-Día 1',{exercises:{}}); ex1.progression[3]={...ex1.progression[0], reps:'5'};
+    await adminSetExerciseField('u0',4,'Día 1','x1','load','110',true); await adminSetExerciseField('u0',4,'Día 1','x1','rpe','9',true); await wait(400);
+    ok(Math.abs(P().oneRM.sentadilla_barra-(Math.round(110/0.837*2)/2))<0.01,'cargar kilos y RPE desde la ficha lo actualiza (110 × 5 @9 → '+P().oneRM.sentadilla_barra+')'); ok(P().history['w4-Día 1'].date===todayLocal(),'cargar desde la ficha deja la sesión con fecha');
+    goBackFromAthleteDetail(); await wait(400); }
+
   // ── prescribir solo la semana 1: las demás semanas repiten lo mismo ──
   { const ex1={id:'t1',name:'Prueba',progression:[{series:'4',reps:'6',pct:'75',rpe:'8',note:'Controlado'},{series:'',reps:'',pct:'',rpe:'',note:''},{},{}]};
     const p3=getExPrescriptionForWeek(ex1,3); ok(p3.series==='4'&&p3.reps==='6'&&p3.pct==='75'&&p3.rpe==='8'&&p3.note==='Controlado','semanas vacías repiten la semana 1 ('+JSON.stringify(p3)+')');

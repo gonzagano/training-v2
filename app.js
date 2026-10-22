@@ -1178,6 +1178,7 @@ onAuthStateChanged(auth, async (user) => {
     const d = pSnap.data();
     if (d.evals) S.evals = d.evals;
     if (d.oneRM) S.oneRM = d.oneRM;
+    if (d.oneRMAuto) S.oneRMAuto = d.oneRMAuto;
     // "history" (anidado) es la fuente de verdad; "sessionLogs" (campo suelto,
     // legado) es solo un respaldo para docs viejos que todavía no tengan
     // _sessionLogs adentro de history. Antes el orden era al revés en la
@@ -1327,6 +1328,8 @@ onAuthStateChanged(auth, async (user) => {
       }
     }
   }
+
+  if (!S.isAdmin) { try { athleteAutoRM(); } catch(e) { console.error('RM automático', e); } }
 
   // ── GATE DE ONBOARDING ──────────────────────────────────────
   // Los atletas (no el admin) no pueden usar la app hasta completar su perfil.
@@ -2977,37 +2980,87 @@ window.rpePct=rpePct; window.rmFromRpe=rmFromRpe; window.roundPlate=roundPlate; 
 // su rutina vinculados a ese RM, toma cada registro con kilos + RPE (o RIR) y
 // las repeticiones prescriptas (si son un número fijo), y estima el 1RM con la
 // tabla. Devuelve el mejor por levantamiento, con de dónde salió.
-function estimateRMsFromHistory(a) {
-  const p = a?._personal || {};
-  const routine = (S.routines||[]).find(r=>r.id===a?.assignedRoutine);
-  const hist = p.history || {};
-  if(!routine) return {};
-  const best = {};
-  Object.entries(hist).forEach(([key, rec])=>{
+// ── RM QUE SE ACTUALIZA SOLO CON LO QUE EL ATLETA REGISTRA ───────────────
+// Para cada levantamiento con RM (sentadilla, banca, peso muerto, cargada,
+// arranque): se mira la ÚLTIMA sesión en la que registró kilos + RPE (o RIR) en
+// un ejercicio de su rutina vinculado a ese RM ("De qué RM"), y con las
+// REPETICIONES QUE PRESCRIBIÓ EL PROFE para esa semana se estima el 1RM con la
+// tabla de RPE. Ese pasa a ser su RM (sube o baja). Si en esa sesión hay varios
+// ejercicios/series del mismo RM, cuenta el mejor.
+// Reps prescriptas: un número ("6") se usa tal cual; un rango ("6–8") usa el
+// número más bajo, para no inflar el RM. Si no hay reps o son de otro tipo
+// ("5/3/1", "AMRAP") esa sesión no cuenta.
+function prescribedRepsForRM(reps) {
+  const t = String(reps==null?'':reps).trim();
+  let m = /^(\d+)$/.exec(t); if(m) return {reps:+m[1], range:false};
+  m = /^(\d+)\s*(?:-|–|—|a)\s*(\d+)$/.exec(t); if(m) return {reps:Math.min(+m[1],+m[2]), range:true};
+  return null;
+}
+function latestRMEstimates(history, routine, userData, overrides) {
+  if(!routine || !history) return {};
+  const names = getOrderedSessionNames(routine);
+  const cand = {};
+  Object.entries(history).forEach(([key, rec])=>{
     const m = /^w(\d+)-(.+)$/.exec(key); if(!m || !rec || !rec.exercises) return;
     const week = +m[1], sName = m[2];
-    const blocks = (routine.sessions||{})[sName] || [];
-    blocks.forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(ex=>{
+    const order = rec.date || ('0000-w'+String(week).padStart(4,'0')+'-'+String(Math.max(0,names.indexOf(sName))).padStart(2,'0'));
+    ((routine.sessions||{})[sName]||[]).forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(ex=>{
       if(!ex.rmLift) return;
       const d = rec.exercises[ex.id]; if(!d) return;
       const kg = parseLoadKg(d.load); if(!(kg>0)) return;
-      const ov = getExerciseOverride(p.routineOverrides, routine.id, sName, ex.id);
-      const wp = getExDisplayForWeek(ex, week, toRoutineRelativeWeek(week, a), ov);
-      const reps = /^\s*\d+\s*$/.test(String(wp.reps||'')) ? +wp.reps : null; if(!reps) return;
       const raw = parseFloat(String(d.rpe??'').replace(',','.')); if(!isFinite(raw)) return;
+      const ov = routine.id ? getExerciseOverride(overrides, routine.id, sName, ex.id) : null;
+      const wp = getExDisplayForWeek(ex, week, toRoutineRelativeWeek(week, userData), ov);
+      const pr = prescribedRepsForRM(wp.reps); if(!pr) return;
       const rpe = (wp.intensityType||ex.intensityType||'RPE')==='RIR' ? 10-raw : raw;
-      const e1 = rmFromRpe(kg, reps, rpe); if(!e1) return;
-      if(!best[ex.rmLift] || e1>best[ex.rmLift].rm) best[ex.rmLift] = {rm:e1, kg, reps, rpe, week, sName, exName:wp.name||ex.name, date:rec.date||null};
+      const e1 = rmFromRpe(kg, pr.reps, rpe); if(!e1) return;
+      const e = {rm:Math.round(e1*2)/2, kg, reps:pr.reps, range:pr.range, rpe, week, sName, exName:wp.name||ex.name, date:rec.date||null, order};
+      const cur = cand[ex.rmLift];
+      if(!cur || e.order>cur.order || (e.order===cur.order && e.rm>cur.rm)) cand[ex.rmLift] = e;
     })));
   });
-  return best;
+  Object.values(cand).forEach(e=>{ e.sig = [e.order, e.sName, e.exName, e.kg, e.reps, e.rpe].join('|'); });
+  return cand;
 }
-window.estimateRMsFromHistory = estimateRMsFromHistory;
-async function useEstimatedRM(uid, liftId, value) {
-  await adminSaveOneRM(uid, liftId, String(value));
-  renderMain();
+// Qué RM cambiar: solo cuando hay un registro NUEVO (otra firma que la última
+// aplicada) y da distinto — así, si el profe lo corrige a mano, no se lo vuelve
+// a pisar con la misma sesión vieja.
+function rmAutoChanges(oneRM, oneRMAuto, est) {
+  const out = [];
+  Object.entries(est||{}).forEach(([lift, e])=>{
+    if(oneRMAuto?.[lift]?.sig === e.sig) return;
+    out.push({lift, value:e.rm, meta:{sig:e.sig, rm:e.rm, kg:e.kg, reps:e.reps, range:e.range, rpe:e.rpe, exName:e.exName, sName:e.sName, week:e.week, date:e.date||todayLocal(), prev:(oneRM?.[lift]??null)}});
+  });
+  return out;
 }
-window.useEstimatedRM = useEstimatedRM;
+// Atleta (su propio RM): al entrar y cada vez que registra kilos o RPE.
+async function athleteAutoRM() {
+  if(S.isAdmin || !S.assignedRoutine || !S.user) return;
+  const ch = rmAutoChanges(S.oneRM, S.oneRMAuto, latestRMEstimates(S.history, S.assignedRoutine, S.userData, S.routineOverrides));
+  if(!ch.length) return;
+  if(!S.oneRM) S.oneRM = {}; if(!S.oneRMAuto) S.oneRMAuto = {};
+  const dot = {};
+  ch.forEach(c=>{ S.oneRM[c.lift]=c.value; S.oneRMAuto[c.lift]=c.meta; dot['oneRM.'+c.lift]=c.value; dot['oneRMAuto.'+c.lift]=c.meta; });
+  try { await updateDocSafe(doc(db,'personal',S.user.uid), dot); } catch(e) { console.error('RM automático', e); }
+}
+// Profe (RM de un atleta): al abrir su ficha y cada vez que le carga kilos o RPE.
+async function adminAutoRM(a) {
+  if(!a || !a._personal) return false;
+  const routine = (S.routines||[]).find(r=>r.id===a.assignedRoutine);
+  const p = a._personal;
+  const ch = rmAutoChanges(p.oneRM, p.oneRMAuto, latestRMEstimates(p.history, routine, a, p.routineOverrides));
+  if(!ch.length) return false;
+  if(!p.oneRM) p.oneRM = {}; if(!p.oneRMAuto) p.oneRMAuto = {};
+  const dot = {};
+  ch.forEach(c=>{ p.oneRM[c.lift]=c.value; p.oneRMAuto[c.lift]=c.meta; dot['oneRM.'+c.lift]=c.value; dot['oneRMAuto.'+c.lift]=c.meta; });
+  try { await updateDocSafe(doc(db,'personal',a.uid), dot); return true; } catch(e) { console.error('RM automático (profe)', e); return false; }
+}
+function rmAutoNote(meta) {
+  if(!meta) return '';
+  const f = meta.date ? new Date(meta.date+'T00:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'numeric'}) : '';
+  return `Se actualizó solo${f?' el '+f:''}: ${meta.exName} ${fmtKg(meta.kg)} kg × ${meta.reps}${meta.range?' (rango, se toma el menor)':''} a RPE ${fmtKg(meta.rpe)}`;
+}
+window.latestRMEstimates=latestRMEstimates; window.rmAutoChanges=rmAutoChanges; window.athleteAutoRM=athleteAutoRM; window.adminAutoRM=adminAutoRM; window.prescribedRepsForRM=prescribedRepsForRM; window.rmAutoNote=rmAutoNote;
 
 const RM_CALC_PCTS = [100,95,90,85,80,75,70,65,60,55,50,45];
 function rmCalcRepHint(pct) {
@@ -3468,6 +3521,7 @@ function setField(exId,field,val) {
   if(!getSD(getRoutineWeek(),S.currentSession).date)
     getSD(getRoutineWeek(),S.currentSession).date=todayLocal();
   saveRoutineFieldSilently();
+  if(field==='load' || field==='rpe') athleteAutoRM();
 }
 window.setField=setField;
 
@@ -4652,10 +4706,15 @@ async function adminSetExerciseField(uid, wKey, sName, exId, field, value, noRen
     const rawTxt = String(value==null?'':value).trim();
     rec[field] = (num===null || isNaN(num)) ? (rawTxt ? rawTxt : null) : num;
     if(rec.load || rec.rpe) rec.checked = true;
-    await updateDocSafe(doc(db,'personal',uid), {}, [[['history', sk, 'exercises', exId], rec]]);
+    const fp = [[['history', sk, 'exercises', exId], rec]];
+    const needDate = !a._personal.history[sk]?.date;
+    if(needDate) fp.push([['history', sk, 'date'], todayLocal()]);
+    await updateDocSafe(doc(db,'personal',uid), {}, fp);
     if(!a._personal.history[sk]) a._personal.history[sk] = {};
+    if(needDate) a._personal.history[sk].date = todayLocal();
     if(!a._personal.history[sk].exercises) a._personal.history[sk].exercises = {};
     a._personal.history[sk].exercises[exId] = rec;
+    if(field==='load' || field==='rpe') await adminAutoRM(a);
     showToast('✓ Guardado');
   } catch(e) { showToast('Error al guardar'); if(noRender) return false; }
   if(noRender) return true;
@@ -10094,8 +10153,9 @@ function openAtleta(uid) {
   S._pastPhaseBlocksOpen = null;
   S._routineWeekPreview = null;
   S._perfilWellnessDay = null; S._hs = null;
-  ensureGroupPersonalData(getEffectiveGroupUids(a)).then(()=>{
+  ensureGroupPersonalData(getEffectiveGroupUids(a)).then(async ()=>{
     S.viewingAthlete = { uid, userData: a, personal: a._personal||{} };
+    try { await adminAutoRM(a); } catch(e) {}
     renderMain();
   }).catch((e)=>{ console.error('Error al abrir atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
   renderMain();
@@ -10480,8 +10540,8 @@ function renderPerfilTab(a) {
   </div>`;
   const secRM = `<div class="admin-section">
     <div class="admin-section-title">RM del atleta</div>
-        ${(()=>{ S._estRM = estimateRMsFromHistory(a); return ''; })()}${RM_LIFTS.map(rm=>`<div class="admin-item rm-item">
-      <span style="font-size:13px">${rm.label}${(()=>{ const e=S._estRM?.[rm.id]; if(!e) return ''; const cur=+(personal.oneRM?.[rm.id])||0; const est=Math.round(e.rm*2)/2; const up=est>cur+0.4; return `<small class="rm-est${up?' up':''}" title="${(e.exName||'').replace(/"/g,'')}: ${fmtKg(e.kg)} kg × ${e.reps} a RPE ${fmtKg(e.rpe)} (semana ${e.week}, ${String(e.sName).replace(/"/g,'')})">Estimado por lo que registró: <b>${fmtKg(est)} kg</b> · ${fmtKg(e.kg)}×${e.reps} @${fmtKg(e.rpe)}${up?` <button class="rm-use" onclick="useEstimatedRM('${uid}','${rm.id}',${est})">Usar como RM</button>`:''}</small>`; })()}</span>
+        ${RM_LIFTS.map(rm=>`<div class="admin-item rm-item">
+      <span style="font-size:13px">${rm.label}${(()=>{ const m=personal.oneRMAuto?.[rm.id]; if(!m) return ''; const manual = (+personal.oneRM?.[rm.id]||0)!==(+m.rm||0); return `<small class="rm-est${manual?'':' up'}">${rmAutoNote(m).replace(/</g,'&lt;')}${manual?' · después lo cambiaste a mano':''}</small>`; })()}</span>
       <input type="number" step="0.5" min="0" placeholder="kg" value="${personal.oneRM?.[rm.id]||''}" style="width:90px;text-align:right;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="adminSaveOneRM('${uid}','${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
   </div>`;
