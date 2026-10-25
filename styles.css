@@ -1550,3 +1550,14 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
   .rp-sheet .ca-row.ca-click:hover{background:none}
   .rp-ch canvas{max-width:100%}
 }
+.rm-skip{display:block;font-size:11px;font-weight:600;color:var(--amber);margin-top:2px}
+
+/* Molestias y lesiones recientes: un casillero por atleta */
+.att-grp{align-items:flex-start}
+.att-grp .att-nm{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}
+.inj-line{position:relative;padding:8px 32px 8px 0;border-top:1px dashed var(--border)}
+.att-grp .att-nm+.inj-line{border-top:0;padding-top:4px}
+.inj-line-m{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.inj-line-m>div{margin-top:0!important}
+.inj-line .att-when{margin-left:2px}
+.inj-line .att-x{position:absolute;right:0;top:8px}

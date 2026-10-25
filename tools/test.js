@@ -57,7 +57,8 @@ const quick = process.argv.includes('--quick');
       const page = await ctx.newPage();
       await page.setViewport({width: sc.width, height: sc.height, isMobile: !!sc.mobile, hasTouch: !!sc.mobile, deviceScaleFactor: 1});
       const consoleErrs = [];
-      page.on('pageerror', e => consoleErrs.push('pageerror: ' + e.message));
+      // con la ubicación del error (función y línea), para encontrarlo rápido
+      page.on('pageerror', e => consoleErrs.push('pageerror: ' + e.message + String(e.stack||'').split(/\r?\n/).slice(1,3).map(x=>' | '+x.trim()).join('')));
       page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|favicon|manifest|serviceworker|sw\.js/i.test(m.text())) consoleErrs.push('console: ' + m.text().slice(0, 200)); });
       const t0 = Date.now();
       let res = null, err = null;

@@ -456,6 +456,40 @@
     setTeamReportSubview('medico'); await wait(900); ok(!!document.querySelector('.rp-bm svg')&&!document.getElementById('medreport-severity-chart'),'informe médico: mapa del cuerpo (sin el cuadro vacío)');
     setTeamReportSubview('partido'); await wait(700); ok(document.querySelectorAll('.rp-big3>div').length===3,'informe partido: disponibles, en duda y no disponibles');
     S.teamReportSubview='resumen'; }
+  // ── el RM se recalcula al abrir la ficha por CUALQUIER camino, con los datos frescos (no la copia en memoria) ──
+  { const P=()=>JSON.parse(localStorage.getItem('__db')).personal.u2; const put=(k,rec)=>{ const dbx=JSON.parse(localStorage.getItem('__db')); dbx.personal.u2.history[k]=rec; localStorage.setItem('__db',JSON.stringify(dbx)); };
+    // u2 (Rossi) tiene la rutina r1; x2 = Press banca, se vincula al RM de press plano
+    const rt=S.routines.find(x=>x.id==='r1'); const x2=Object.values(rt.sessions).flat().flatMap(b=>b.categories[0].exercises).find(e=>e.id==='x2'); x2.rmLift='press_plano'; x2.reps='8'; delete x2.progression;
+    { const dbx=JSON.parse(localStorage.getItem('__db')); const ex=Object.values(dbx.routines.r1.sessions).flat().flatMap(b=>b.categories[0].exercises).find(e=>e.id==='x2'); ex.rmLift='press_plano'; ex.reps='8'; delete ex.progression; localStorage.setItem('__db',JSON.stringify(dbx)); }
+    S.atletaView=null; switchView('atletas'); await wait(1200); await ensureGroupPersonalData(['u2']);   // queda en memoria la copia vieja
+    const sess=Object.keys(rt.sessions).find(k=>rt.sessions[k].some(b=>b.categories[0].exercises.some(e=>e.id==='x2')));
+    put('w1-'+sess,{date:todayLocal(), exercises:{x2:{load:90, rpe:6, checked:true}}});   // el atleta registró DESPUÉS
+    await adminOpenAthleteDash('u2'); await wait(1500);
+    ok(P().oneRM.press_plano===147,'Dashboard → ficha: recalcula con lo recién registrado (90 × 8 @6 → 147; dio '+P().oneRM.press_plano+')');
+    goBackFromAthleteDetail(); await wait(500);
+    put('w2-'+sess,{date:'2099-01-01', exercises:{x2:{load:95, rpe:7, checked:true}}});
+    S.atletaView=null; switchView('atletas'); await wait(800); openAtleta('u2'); await wait(1800);
+    ok(P().oneRM.press_plano===Math.round(95/rpePct(8,7)*2)/2,'Atletas → ficha: también recalcula con datos frescos (95 × 8 @7 → '+P().oneRM.press_plano+')');
+    // registro más nuevo que no se puede usar → la ficha lo avisa con el motivo
+    x2.progression=[{series:'4',reps:'8'},{series:'4',reps:'8'},{series:'4',reps:'8/6/4'}]; const dbx=JSON.parse(localStorage.getItem('__db')); Object.values(dbx.routines.r1.sessions).flat().flatMap(b=>b.categories[0].exercises).find(e=>e.id==='x2').progression=x2.progression; localStorage.setItem('__db',JSON.stringify(dbx));
+    put('w3-'+sess,{date:'2099-02-01', exercises:{x2:{load:100, rpe:8, checked:true}}});
+    goBackFromAthleteDetail(); await wait(400); openAtleta('u2'); await wait(1800); setAtletaSubview('perfil'); await wait(500);
+    const sk=document.querySelector('.rm-skip'); ok(!!sk&&/semana 3/.test(sk.textContent)&&/8\/6\/4/.test(sk.textContent),'ficha: avisa qué registro no se pudo usar y por qué ('+(sk?sk.textContent:'nada')+')');
+    txtBad('ficha con aviso de RM'); goBackFromAthleteDetail(); await wait(400); }
+  // ── evolución de un test sin ningún registro: no se rompe ──
+  { let okE=true; try { const a0={_personal:{evals:{}}}; const d=athleteEvolData(a0,[a0,a0],'cmj'); okE = d && d.rankTo===null && d.gain===null; } catch(e){ okE=false; } ok(okE,'evolución de un test sin registros: no tira error'); }
+  // ── un atleta con varias molestias aparece UNA vez, con todas adentro ──
+  { const ds=o=>{const d=new Date(); d.setDate(d.getDate()-o); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());};
+    const dbx=JSON.parse(localStorage.getItem('__db'));
+    dbx.personal.u3.injuries={rodilla_izq_b:{pain:6,severity:'moderada',isInjury:false,history:[{date:ds(2),pain:6}]}, tobillo_izq_b:{pain:7,severity:'leve',isInjury:false,history:[{date:ds(2),pain:7}]}, hombro_der_b:{pain:4,severity:'leve',isInjury:true,history:[{date:ds(5),pain:4}]}};
+    localStorage.setItem('__db',JSON.stringify(dbx)); S.dashAthletes=null; S.adminAthletes=null; S.adminAthletesLoaded=false;
+    S.atletaView=null; switchView('dashboard'); await wait(2500);
+    const side=[...document.querySelectorAll('.att-side')].find(x=>/recientes/i.test(x.innerText));
+    const rowsP=[...(side?side.querySelectorAll('.att-grp'):[])].filter(x=>/Perez Juan/.test(x.innerText));
+    ok(rowsP.length===1,'recientes: Perez Juan aparece una sola vez ('+rowsP.length+')');
+    ok(rowsP[0]&&rowsP[0].querySelectorAll('.inj-line').length===3,'recientes: con sus 3 molestias/lesiones adentro');
+    ok(/\((\d+)\)/.test(side.querySelector('.att-side-t').textContent)&&+side.querySelector('.att-side-t').textContent.match(/\((\d+)\)/)[1]===side.querySelectorAll('.att-grp').length,'recientes: el número del título es de atletas');
+    txtBad('dashboard con molestias agrupadas'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

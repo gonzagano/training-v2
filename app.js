@@ -2999,7 +2999,8 @@ function prescribedRepsForRM(reps) {
 function latestRMEstimates(history, routine, userData, overrides) {
   if(!routine || !history) return {};
   const names = getOrderedSessionNames(routine);
-  const cand = {};
+  const cand = {}, skipped = {};
+  const skip = (lift, order, info) => { if(!skipped[lift] || order>skipped[lift].order) skipped[lift] = {order, ...info}; };
   Object.entries(history).forEach(([key, rec])=>{
     const m = /^w(\d+)-(.+)$/.exec(key); if(!m || !rec || !rec.exercises) return;
     const week = +m[1], sName = m[2];
@@ -3007,19 +3008,23 @@ function latestRMEstimates(history, routine, userData, overrides) {
     ((routine.sessions||{})[sName]||[]).forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(ex=>{
       if(!ex.rmLift) return;
       const d = rec.exercises[ex.id]; if(!d) return;
-      const kg = parseLoadKg(d.load); if(!(kg>0)) return;
-      const raw = parseFloat(String(d.rpe??'').replace(',','.')); if(!isFinite(raw)) return;
+      const hasLoad = d.load!=null && String(d.load).trim()!=='', hasRpe = d.rpe!=null && String(d.rpe).trim()!=='';
+      if(!hasLoad && !hasRpe) return;
       const ov = routine.id ? getExerciseOverride(overrides, routine.id, sName, ex.id) : null;
       const wp = getExDisplayForWeek(ex, week, toRoutineRelativeWeek(week, userData), ov);
-      const pr = prescribedRepsForRM(wp.reps); if(!pr) return;
+      const info = {week, sName, exName:wp.name||ex.name, load:d.load, rpeTxt:d.rpe, repsTxt:wp.reps};
+      const kg = parseLoadKg(d.load); if(!(kg>0)) { skip(ex.rmLift, order, {...info, why:'no tiene kilos'}); return; }
+      const raw = parseFloat(String(d.rpe??'').replace(',','.')); if(!isFinite(raw)) { skip(ex.rmLift, order, {...info, why:'no tiene RPE'}); return; }
+      const pr = prescribedRepsForRM(wp.reps); if(!pr) { skip(ex.rmLift, order, {...info, why: wp.reps ? `las reps prescriptas son "${wp.reps}" (necesita un número o un rango)` : 'no tiene reps prescriptas esa semana'}); return; }
       const rpe = (wp.intensityType||ex.intensityType||'RPE')==='RIR' ? 10-raw : raw;
-      const e1 = rmFromRpe(kg, pr.reps, rpe); if(!e1) return;
+      const e1 = rmFromRpe(kg, pr.reps, rpe); if(!e1) { skip(ex.rmLift, order, {...info, why:'queda fuera de la tabla (1 a 12 reps, RPE 4,5 a 10)'}); return; }
       const e = {rm:Math.round(e1*2)/2, kg, reps:pr.reps, range:pr.range, rpe, week, sName, exName:wp.name||ex.name, date:rec.date||null, order};
       const cur = cand[ex.rmLift];
       if(!cur || e.order>cur.order || (e.order===cur.order && e.rm>cur.rm)) cand[ex.rmLift] = e;
     })));
   });
   Object.values(cand).forEach(e=>{ e.sig = [e.order, e.sName, e.exName, e.kg, e.reps, e.rpe].join('|'); });
+  Object.defineProperty(cand, '_skipped', {value:skipped, enumerable:false});
   return cand;
 }
 // Qué RM cambiar: solo cuando hay un registro NUEVO (otra firma que la última
@@ -9899,7 +9904,7 @@ function openAtleta(uid) {
   S._pastPhaseBlocksOpen = null;
   S._routineWeekPreview = null;
   S._perfilWellnessDay = null; S._hs = null;
-  ensureGroupPersonalData(getEffectiveGroupUids(a)).then(async ()=>{
+  (async ()=>{ try { const fs1 = await getDoc(doc(db,'personal',uid)); a._personal = fs1.exists() ? fs1.data() : {}; } catch(e) {} })().then(()=>ensureGroupPersonalData(getEffectiveGroupUids(a))).then(async ()=>{
     S.viewingAthlete = { uid, userData: a, personal: a._personal||{} };
     try { await adminAutoRM(a); } catch(e) {}
     renderMain();
@@ -10258,14 +10263,16 @@ function athleteEvolData(a, mates, testId) {
   const bestUpTo = (x, key) => { const r = recs(x).filter(r=>String(r.date).slice(0,7)<=key); return r.length ? Math.max(...r.map(z=>+z.height)) : null; };
   const me = months.map(m=>inMonth(a, m.key));
   const avg = months.map(m=>{ const v = mates.map(x=>inMonth(x, m.key)).filter(v=>v!=null); return v.length>=2 ? v.reduce((s,x)=>s+x,0)/v.length : null; });
-  const fi = me.findIndex(v=>v!=null), li = me.length-1-[...me].reverse().findIndex(v=>v!=null);
+  const lastIdx = arr => { const r=[...arr].reverse().findIndex(v=>v!=null); return r<0 ? -1 : arr.length-1-r; };
+  const fi = me.findIndex(v=>v!=null), li = lastIdx(me);
   const gain = (fi>=0 && li>fi) ? me[li]-me[fi] : null;
-  const af = avg.findIndex(v=>v!=null), al = avg.length-1-[...avg].reverse().findIndex(v=>v!=null);
+  const af = avg.findIndex(v=>v!=null), al = lastIdx(avg);
   const teamGain = (af>=0 && al>af) ? avg[al]-avg[af] : null;
   const rankAt = key => { const mine = bestUpTo(a, key); if(mine==null) return null; const others = mates.map(x=>bestUpTo(x, key)).filter(v=>v!=null); return others.length ? others.filter(v=>v>mine).length+1 : null; };
   return {months, me, avg, gain, teamGain, fromLabel: fi>=0 ? months[fi].label : '',
     rankFrom: (fi>=0 && li>fi) ? rankAt(months[fi].key) : null, rankTo: li>=0 ? rankAt(months[li].key) : null};
 }
+window.athleteEvolData = athleteEvolData;
 
 // Últimas 8 semanas: carga (suma de UA) y wellness (promedio) del atleta y
 // del promedio de los compañeros.
@@ -10497,7 +10504,7 @@ function renderPerfilTab(a) {
   const secRM = `<div class="admin-section">
     <div class="admin-section-title">RM del atleta</div>
         ${RM_LIFTS.map(rm=>`<div class="admin-item rm-item">
-      <span style="font-size:13px">${rm.label}${(()=>{ const m=personal.oneRMAuto?.[rm.id]; if(!m) return ''; const manual = (+personal.oneRM?.[rm.id]||0)!==(+m.rm||0); return `<small class="rm-est${manual?'':' up'}">${rmAutoNote(m).replace(/</g,'&lt;')}${manual?' · después lo cambiaste a mano':''}</small>`; })()}</span>
+      <span style="font-size:13px">${rm.label}${(()=>{ const m=personal.oneRMAuto?.[rm.id]; if(!m) return ''; const manual = (+personal.oneRM?.[rm.id]||0)!==(+m.rm||0); return `<small class="rm-est${manual?'':' up'}">${rmAutoNote(m).replace(/</g,'&lt;')}${manual?' · después lo cambiaste a mano':''}</small>`; })()}${(()=>{ const est = latestRMEstimates(personal.history, (S.routines||[]).find(r=>r.id===a.assignedRoutine), a, personal.routineOverrides); const sk = est._skipped?.[rm.id]; const ap = est[rm.id]; if(!sk || (ap && ap.order>=sk.order)) return ''; return `<small class="rm-skip">No se usó lo de la semana ${sk.week} (${String(sk.exName).replace(/</g,'&lt;')}${sk.load!=null&&sk.load!==''?' · '+String(sk.load).replace(/</g,'&lt;')+' kg':''}${sk.rpeTxt!=null&&sk.rpeTxt!==''?' · RPE '+String(sk.rpeTxt).replace(/</g,'&lt;'):''}): ${sk.why.replace(/</g,'&lt;')}</small>`; })()}</span>
       <input type="number" step="0.5" min="0" placeholder="kg" value="${personal.oneRM?.[rm.id]||''}" style="width:90px;text-align:right;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="adminSaveOneRM('${uid}','${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
   </div>`;
@@ -12683,6 +12690,7 @@ async function adminOpenAthlete(uid) {
     // viejo — aplicarlo pisaría esa navegación y dejaría al admin "pegado"
     // en una ficha de la que ya se había ido.
     if (S._athleteOpenLoadingUid !== uid) return;
+    try { await adminAutoRM(a); } catch(e) {}
     S.atletaView = a;
     S.viewingAthlete = { uid, userData:a, personal:a._personal||{} };
   } catch(e) { S.viewingAthlete=null; S.atletaView=null; }
@@ -16222,7 +16230,7 @@ function injuryBadgesHtml({severity, zoneLabel, pain, athlete}) {
     <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${sevInfo.dim};color:${sevInfo.color};white-space:nowrap">${sevInfo.label}</span>
     <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--blue-dim);color:var(--blue);white-space:nowrap">${zoneLabel}</span>
     <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${painC.bg};color:${painC.color};white-space:nowrap">dolor ${pain}/10</span>
-    ${teamBadgeHtml(athlete)}
+    ${athlete?teamBadgeHtml(athlete):''}
   </div>`;
 }
 window.injuryBadgesHtml = injuryBadgesHtml;
@@ -16413,18 +16421,23 @@ function renderDashboardContent() {
 
   // ── Lesiones recientes (con el mismo filtro) ──
   const recentFeed = getRecentInjuryFeed(athletes).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  // Un casillero por ATLETA, con todas sus molestias/lesiones adentro (si no,
+  // un atleta con 3 molestias parecían 3 atletas). Primero el que cargó lo más reciente.
+  const recentByAth = new Map();
+  recentFeed.forEach(r=>{ if(!recentByAth.has(r.athlete.uid)) recentByAth.set(r.athlete.uid, {a:r.athlete, items:[]}); recentByAth.get(r.athlete.uid).items.push(r); });
+  const whenOf = d => { const n = d ? Math.round((new Date(todayLocal()+'T00:00:00') - new Date(d+'T00:00:00'))/86400000) : null; return n==null ? 'sin fecha' : n<=0 ? 'hoy' : n===1 ? 'ayer' : `hace ${n} días`; };
   const recentPanel = `<div class="att-side">
-    <div class="att-side-t">Molestias y lesiones recientes (${recentFeed.length})</div>
-    ${recentFeed.length?recentFeed.map(r=>{
-      const daysAgo = r.date ? Math.round((new Date(todayLocal()+'T00:00:00') - new Date(r.date+'T00:00:00'))/86400000) : null;
-      const whenLabel = daysAgo==null ? 'sin fecha' : daysAgo<=0 ? 'hoy' : daysAgo===1 ? 'ayer' : `hace ${daysAgo} días`;
-      return `<div class="att-row" onclick="adminOpenAthleteDash('${r.athlete.uid}')">
-        <div class="att-main"><div class="att-nm">${esc(r.athlete.name||r.athlete.email)} <span class="inj-kind${r.isInjury?' les':''}">${r.isInjury?'Lesión':'Molestia'}</span></div>
-          ${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain, athlete:r.athlete})}
-          ${r.note?`<div class="att-note">"${esc(r.note)}"</div>`:''}
-          <div class="att-when">${whenLabel}</div></div>
-        <button class="att-x" onclick="event.stopPropagation();dismissDashboardInjury('${r.athlete.uid}','${r.zoneId}','${r.date}')" title="Sacar de este panel">×</button>
-      </div>`; }).join(''):`<div class="att-empty">Nada en los últimos ${DASH_INJURY_DAYS} días.</div>`}
+    <div class="att-side-t">Molestias y lesiones recientes (${recentByAth.size})</div>
+    ${recentByAth.size ? [...recentByAth.values()].map(g=>`<div class="att-row att-grp" onclick="adminOpenAthleteDash('${g.a.uid}')">
+        <div class="att-main">
+          <div class="att-nm">${esc(g.a.name||g.a.email)} ${teamBadgeHtml(g.a)}</div>
+          ${g.items.map(r=>`<div class="inj-line">
+            <div class="inj-line-m"><span class="inj-kind${r.isInjury?' les':''}">${r.isInjury?'Lesión':'Molestia'}</span>${injuryBadgesHtml({severity:r.severity, zoneLabel:r.zoneLabel, pain:r.pain})}<span class="att-when">${whenOf(r.date)}</span></div>
+            ${r.note?`<div class="att-note">"${esc(r.note)}"</div>`:''}
+            <button class="att-x" onclick="event.stopPropagation();dismissDashboardInjury('${r.athlete.uid}','${r.zoneId}','${r.date}')" title="Sacar de este panel">×</button>
+          </div>`).join('')}
+        </div>
+      </div>`).join('') : `<div class="att-empty">Nada en los últimos ${DASH_INJURY_DAYS} días.</div>`}
   </div>`;
 
   // ── Filtro único: equipos reales con su cantidad ──
