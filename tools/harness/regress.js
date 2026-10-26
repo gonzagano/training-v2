@@ -333,7 +333,7 @@
     ok(chartSeriesColor(6)===chartSeriesColor(0),'gráficos: el color sigue el orden, no se inventan nuevos'); }
   // ── perfil: wellness y ACWR en dos franjas (nunca dos unidades en un mismo eje) ──
   { S.atletaView=null; switchView('atletas'); await wait(1000); openAtleta('u0'); await wait(1500); setAtletaSubview('perfil'); await wait(700);
-    const tr=S.athleteChartInstances?.trend; if(tr){ ok(tr.options.scales.y.stack==='trend'&&tr.options.scales.y1.stack==='trend','perfil: tendencia en dos franjas (wellness arriba, ACWR abajo)'); }
+    const tr=S.athleteChartInstances?.trend; if(tr){ ok(tr.data.datasets.length===2&&tr.options.scales.y.position==='left'&&tr.options.scales.y1.position==='right'&&tr.options.scales.y.max-tr.options.scales.y.min<=100,'perfil: wellness y ACWR en el mismo gráfico, cada uno con su escala'); }
     goBackFromAthleteDetail(); await wait(400); }
   // ── comparar atletas: de 2 a 6, saltos y fuerza separados, promedio, evolución ──
   { await ensureAdminAthletes(); await ensureGroupPersonalData(S.adminAthletes.map(a=>a.uid));
@@ -490,6 +490,26 @@
     ok(rowsP[0]&&rowsP[0].querySelectorAll('.inj-line').length===3,'recientes: con sus 3 molestias/lesiones adentro');
     ok(/\((\d+)\)/.test(side.querySelector('.att-side-t').textContent)&&+side.querySelector('.att-side-t').textContent.match(/\((\d+)\)/)[1]===side.querySelectorAll('.att-grp').length,'recientes: el número del título es de atletas');
     txtBad('dashboard con molestias agrupadas'); }
+  // ── Importar del Axon: reconoce por nombre dentro del equipo, no duplica, no crea atletas ──
+  { const p=parseAxonFile('MEIER_[\r\nMatias\r\n\r\n180\r\nFecha,Hora,Tipo,Piso,Vuelo,Altura,Velocidad,Q,"A Caida"\r\n22/09/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",\r\n22/09/26,20:09:20,CMJ," ",584,"41,8","2,86"," ",\r\n22/09/26,10:20:00,"Prom CMJ"," ","580,00","41,2","2,84"," ",\r\n22/09/26,20:12:00,Máximo,424,704,"60,7","3,45","1,661",\r\n','x.atl');
+    ok(p&&p.name==='MEIER Matias'&&p.jumps.length===3&&p.jumps[0].date==='2026-09-22'&&p.jumps[1].height===41.8,'Axon: lee nombre, fecha y altura (sin las filas de promedio)');
+    ok(p&&p.jumps[2].testId==='saltoAprox'&&p.jumps[2].contact===424&&p.jumps[2].q===1.661,'Axon: "Máximo" va a Salto de Aproximación con contacto y Q');
+    const cands=[{uid:'a',name:'Meier Matias'},{uid:'b',name:'Rossi Lucas'}];
+    ok(axonMatch('MEIER Matias',cands).uid==='a'&&axonMatch('MEIER Matias',cands).level==='ok','Axon: reconoce el mismo nombre');
+    ok(axonMatch('ROSSI Lucas Martín',cands).level==='maybe'&&axonMatch('GOMEZ Pedro',cands).level==='none','Axon: segundo nombre de más = revisar; desconocido = no importar');
+    const users0=Object.keys(JSON.parse(localStorage.getItem('__db')).users).length;
+    S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(500); openTeam('t1'); await wait(1500); setTeamSubview('evals'); await wait(1200);
+    const b=[...document.querySelectorAll('button')].find(x=>/Importar del Axon/.test(x.textContent)); ok(!!b,'Evaluaciones del equipo: botón Importar del Axon');
+    if(b){ b.click(); await wait(300);
+      const mk=(sur,first,rows)=>new File([new Uint8Array([...[sur+'_[',first,'','180','Fecha,Hora,Tipo,Piso,Vuelo,Altura,Velocidad,Q,"A Caida"',...rows].join('\r\n')].map(c=>c.charCodeAt(0)&255))], sur+'.atl');
+      await axonFilesChosen({files:[mk('MEIER','Matias',['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",','15/10/26,20:09:20,CMJ," ",584,"41,8","2,86"," ",']), mk('FANTASMA','Juan',['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",'])]}); await wait(500);
+      const tx=document.getElementById('axon-overlay').innerText; ok(/Reconocido/.test(tx)&&/No está en el equipo/.test(tx),'Axon: vista previa con reconocidos y no encontrados');
+      await confirmAxonImport(); await wait(600);
+      const d=JSON.parse(localStorage.getItem('__db')); const u=Object.entries(d.users).find(([,x])=>x.name==='Meier Matias'); const rec=u&&(d.personal[u[0]].evals?.cmj||[]).find(r=>r.date==='2026-10-15');
+      ok(rec&&rec.height===41.8&&rec.attempts.length===2&&rec.src==='axon','Axon: guarda el mejor salto con los 2 intentos en el atleta correcto');
+      ok(Object.keys(d.users).length===users0,'Axon: no crea atletas nuevos');
+      closeAxonImport(); openAxonImport(); await axonFilesChosen({files:[mk('MEIER','Matias',['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",'])]}); await wait(400);
+      ok(/Nada nuevo/.test(document.getElementById('axon-overlay').innerText),'Axon: importar dos veces no duplica'); closeAxonImport(); txtBad('evaluaciones equipo'); } }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

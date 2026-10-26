@@ -10429,7 +10429,7 @@ function renderPerfilTab(a) {
 
   <div class="admin-section">
     <div class="admin-section-title">Tendencia — últimos 30 días</div>
-    <div style="padding:var(--sp-4) var(--sp-4);height:220px;position:relative">
+    <div style="padding:var(--sp-4) var(--sp-4);height:280px;position:relative">
       <canvas id="athlete-trend-chart"></canvas>
     </div>
   </div>`;
@@ -12269,7 +12269,7 @@ window.setAthletesSearch=setAthletesSearch;
 // eligen (un equipo, los individuales o todos): su promedio es la línea
 // punteada de cada gráfico y de ahí salen los atajos por puesto.
 const CMP_MAX = 6;
-const CMP_JUMPS = ['cmj','sj','abalakov','saltoH','saltoAprox'];
+const CMP_JUMPS = ['cmj','sj','abalakov','saltoH','saltoAprox','dropJump'];
 
 async function adminGoCompare(scope) {
   // Volver lleva a donde se estaba (Atletas, un equipo o Panel Admin).
@@ -14347,6 +14347,7 @@ const EVAL_TESTS = [
   { id:'abalakov', label:'Abalakov',               unit:'cm', desc:'CMJ con brazos libres' },
   { id:'saltoH',  label:'Salto Horizontal',        unit:'cm', desc:'Salto horizontal a dos piernas' },
   { id:'saltoAprox', label:'Salto de Aproximación', unit:'cm', desc:'Salto con carrera de aproximación (remate/bloqueo)' },
+  { id:'dropJump', label:'Drop Jump',              unit:'cm', desc:'Salto desde un cajón, rebotando lo más rápido posible' },
   { id:'cmj_der', label:'CMJ Unilateral Der.',     unit:'cm', desc:'CMJ una pierna derecha' },
   { id:'cmj_izq', label:'CMJ Unilateral Izq.',     unit:'cm', desc:'CMJ una pierna izquierda' },
 ];
@@ -14552,6 +14553,7 @@ function renderEvals() {
       + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
       + athleteSel
       + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
+      + (S.teamView ? '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>' : '')
       + '</div>';
   }
 
@@ -14595,6 +14597,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
       + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
       + athleteSel
       + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
+      + (S.teamView ? '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>' : '')
       + '</div>';
   }
 
@@ -15173,6 +15176,201 @@ function drawPlayerTeamRadar(myData, team, myPosition) {
   });
 }
 window.drawPlayerTeamRadar = drawPlayerTeamRadar;
+
+// ── IMPORTAR DEL AXON JUMP ───────────────────────────────────
+// El programa de la alfombra Axon guarda un archivo .atl por atleta (texto,
+// con el nombre arriba y una fila por salto: fecha, hora, tipo, tiempo de
+// contacto "Piso", tiempo de vuelo, altura, velocidad, coeficiente Q y altura
+// de caída). Desde la pestaña Evaluaciones de un equipo se elige la carpeta
+// (o los archivos), la app reconoce a cada atleta por el nombre SOLO dentro de
+// ese equipo, muestra qué saltos nuevos hay y recién al confirmar los guarda:
+// un registro por test y por día con el mejor salto como marca y todos los
+// intentos adentro. Nunca crea atletas: el que no está en el equipo queda sin
+// importar. Si ya hay un registro de ese test en esa fecha, no lo duplica.
+const AXON_TEST_MAP = {'cmj':'cmj', 'abalakov':'abalakov', 'squat jump':'sj', 'sj':'sj', 'drop jump':'dropJump', 'máximo':'saltoAprox', 'maximo':'saltoAprox'};
+const axonNorm = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-zñ\s]/g,' ').replace(/\s+/g,' ').trim();
+function axonCsvSplit(line) {
+  const out = []; let cur = '', q = false;
+  for(const ch of line) { if(ch==='"') q = !q; else if(ch===',' && !q) { out.push(cur); cur=''; } else cur += ch; }
+  out.push(cur); return out;
+}
+const axonNum = s => { const v = parseFloat(String(s||'').replace(/"/g,'').trim().replace(',', '.')); return isNaN(v) ? null : v; };
+
+// Lee un .atl: nombre y saltos sueltos (sin las filas "Prom ..." que arma el programa).
+function parseAxonFile(text, fileName) {
+  const lines = text.split(/\r?\n/);
+  const hi = lines.findIndex(l=>/^Fecha,Hora,Tipo/i.test(l));
+  if(hi<0) return null;
+  const surname = (lines[0]||'').replace(/_\[.*$/,'').trim();
+  const first = (lines[1]||'').trim();
+  const name = [surname, first].filter(Boolean).join(' ').replace(/\s+/g,' ') || String(fileName||'').replace(/\.atl$/i,'');
+  const jumps = [];
+  lines.slice(hi+1).forEach(l=>{
+    const m = l.match(/^(\d{2})\/(\d{2})\/(\d{2}),/); if(!m) return;
+    const c = axonCsvSplit(l);
+    const tipo = axonNorm(c[2]);
+    if(/^prom/.test(tipo)) return;
+    const testId = AXON_TEST_MAP[tipo]; if(!testId) return;
+    const h = axonNum(c[5]); if(!(h>3 && h<120)) return;
+    jumps.push({date:'20'+m[3]+'-'+m[2]+'-'+m[1], time:(c[1]||'').trim(), testId, height:h,
+      contact:axonNum(c[3]), tof:axonNum(c[4]), vel:axonNum(c[6]), q:axonNum(c[7]), dropH:axonNum(c[8])});
+  });
+  return {name, file:fileName, jumps};
+}
+
+// Candidatos: los atletas del equipo (registrados y sin registrar).
+function axonCandidates(team) {
+  const uids = getTeamStatsMemberUids(team);
+  const reg = (S.adminAthletes||[]).filter(a=>uids.includes(a.uid)).map(a=>({uid:a.uid, name:a.name||a.email||''}));
+  const pend = (S.pendingAthletes||[]).filter(p=>p.teamId===team.id).map(p=>({uid:'pending:'+p.id, name:(p.name||'')+' (sin registrar)', raw:p.name||''}));
+  return reg.concat(pend);
+}
+// Mismas palabras = seguro; las palabras de uno contenidas en el otro (falta
+// un segundo nombre) = probable; nada = no está en el equipo.
+function axonMatch(axonName, cands) {
+  const ax = axonNorm(axonName).split(' ').filter(Boolean);
+  const scored = cands.map(c=>{
+    const ap = axonNorm(c.raw||c.name).split(' ').filter(Boolean);
+    const same = ap.length===ax.length && ap.every(w=>ax.includes(w));
+    const inside = ap.length>=2 && (ap.every(w=>ax.includes(w)) || (ax.length>=2 && ax.every(w=>ap.includes(w))));
+    return {c, score: same ? 2 : inside ? 1 : 0};
+  }).filter(x=>x.score>0).sort((p,q)=>q.score-p.score);
+  if(!scored.length) return {uid:'', level:'none'};
+  if(scored.length>1 && scored[0].score===scored[1].score) return {uid:'', level:'dup', options:scored.map(x=>x.c.uid)};
+  return {uid:scored[0].c.uid, level: scored[0].score===2 ? 'ok' : 'maybe'};
+}
+
+function openAxonImport() {
+  if(!S.teamView) { showToast('Entrá a un equipo para importar'); return; }
+  S._axon = {teamId:S.teamView.id, files:[], rows:[], from:'', step:'pick'};
+  renderAxonModal();
+}
+window.openAxonImport = openAxonImport;
+function closeAxonImport() { const o=document.getElementById('axon-overlay'); if(o) o.remove(); S._axon = null; }
+window.closeAxonImport = closeAxonImport;
+
+async function axonFilesChosen(input) {
+  const st = S._axon; if(!st) return;
+  const files = [...(input.files||[])].filter(f=>/\.atl$/i.test(f.name));
+  if(!files.length) { showToast('No hay archivos .atl ahí'); return; }
+  const dec = new TextDecoder('windows-1252');
+  const parsed = [];
+  for(const f of files) { try { const p = parseAxonFile(dec.decode(await f.arrayBuffer()), f.name); if(p) parsed.push(p); } catch(e){} }
+  const team = (S.teams||[]).find(t=>t.id===st.teamId);
+  const cands = axonCandidates(team);
+  // Para no duplicar hace falta lo que cada atleta ya tiene guardado.
+  await Promise.all(cands.map(c=>ensureAthleteEvalData(c.uid).catch(()=>{})));
+  st.rows = parsed.map(p=>{ const m = axonMatch(p.name, cands); return {...p, uid:m.uid, level:m.level}; })
+    .sort((p,q)=>({ok:2,maybe:1,dup:0,none:-1}[q.level]-{ok:2,maybe:1,dup:0,none:-1}[p.level]) || p.name.localeCompare(q.name));
+  st.step = 'review';
+  renderAxonModal();
+}
+window.axonFilesChosen = axonFilesChosen;
+function setAxonRowUid(i, uid) { if(S._axon?.rows[i]) { S._axon.rows[i].uid = uid; S._axon.rows[i].level = uid ? 'ok' : 'skip'; renderAxonModal(); } }
+window.setAxonRowUid = setAxonRowUid;
+function setAxonFrom(v) { if(S._axon) { S._axon.from = v||''; renderAxonModal(); } }
+window.setAxonFrom = setAxonFrom;
+
+// Qué se guardaría para una fila: un registro por test y fecha que todavía no exista.
+function axonPlan(row) {
+  if(!row.uid) return {recs:[], dupDays:0};
+  const have = getAthleteEvals(row.uid) || {};
+  const from = S._axon?.from || '';
+  const groups = {};
+  row.jumps.filter(j=>!from || j.date>=from).forEach(j=>{ const k = j.testId+'|'+j.date; (groups[k] = groups[k] || []).push(j); });
+  const recs = []; let dupDays = 0;
+  Object.entries(groups).forEach(([k, js])=>{
+    const [testId, date] = k.split('|');
+    if((have[testId]||[]).some(r=>r && r.date===date)) { dupDays++; return; }
+    const best = js.reduce((b,j)=>j.height>b.height?j:b, js[0]);
+    const rec = {date, height:best.height, src:'axon', attempts:js.map(j=>j.height)};
+    if(best.tof!=null) rec.tof = best.tof;
+    if(best.vel!=null) rec.vel = best.vel;
+    if(best.contact!=null) rec.contact = best.contact;
+    if(best.q!=null) rec.q = best.q;
+    if(best.dropH!=null) rec.dropH = best.dropH;
+    recs.push({testId, rec});
+  });
+  return {recs, dupDays};
+}
+
+function renderAxonModal() {
+  const st = S._axon; if(!st) return;
+  const team = (S.teams||[]).find(t=>t.id===st.teamId) || {};
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  let body = '', btns = '';
+  if(st.step==='pick') {
+    body = `<p class="axi-p">Elegí la carpeta de <b>${esc(team.name)}</b> dentro de los atletas del Axon (por ejemplo <i>Atletas › EDLP › LIGA</i>), o los archivos <b>.atl</b> sueltos.</p>
+      <div class="axi-pick">
+        <label class="abtn abtn-p">Elegir carpeta<input type="file" webkitdirectory directory multiple hidden onchange="axonFilesChosen(this)"></label>
+        <label class="abtn">Elegir archivos<input type="file" accept=".atl" multiple hidden onchange="axonFilesChosen(this)"></label>
+      </div>`;
+    btns = `<button class="abtn" onclick="closeAxonImport()">Cancelar</button>`;
+  } else if(st.step==='review') {
+    const cands = axonCandidates(team);
+    const label = id => (EVAL_TESTS.find(t=>t.id===id)||{label:id}).label;
+    let totalRecs = 0, people = 0;
+    const rows = st.rows.map((r,i)=>{
+      const plan = axonPlan(r);
+      if(plan.recs.length) { totalRecs += plan.recs.length; people++; }
+      const byTest = {}; plan.recs.forEach(x=>{ byTest[x.testId] = (byTest[x.testId]||0)+1; });
+      const dates = [...new Set(plan.recs.map(x=>x.rec.date))].sort();
+      const status = r.level==='ok' ? '<span class="axi-tag axi-ok">Reconocido</span>'
+        : r.level==='maybe' ? '<span class="axi-tag axi-warn">Revisá</span>'
+        : r.level==='dup' ? '<span class="axi-tag axi-warn">Elegí quién es</span>'
+        : r.level==='skip' ? '<span class="axi-tag">No importar</span>'
+        : '<span class="axi-tag axi-no">No está en el equipo</span>';
+      const sel = `<select class="axi-sel" onchange="setAxonRowUid(${i},this.value)"><option value="">— No importar —</option>${cands.map(c=>`<option value="${c.uid}" ${r.uid===c.uid?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`;
+      const what = !r.uid ? '<span class="axi-dim">—</span>'
+        : plan.recs.length ? `<b>${plan.recs.length}</b> nuevo${plan.recs.length!==1?'s':''} · ${Object.entries(byTest).map(([t,n])=>esc(label(t))+(n>1?' ×'+n:'')).join(', ')}<div class="axi-dim">${dates.length===1?evalShortDate(dates[0]):evalShortDate(dates[0])+' a '+evalShortDate(dates[dates.length-1])}${plan.dupDays?` · ${plan.dupDays} ya estaba${plan.dupDays!==1?'n':''}`:''}</div>`
+        : `<span class="axi-dim">Nada nuevo${plan.dupDays?` (${plan.dupDays} ya estaba${plan.dupDays!==1?'n':''})`:''}</span>`;
+      return `<tr><td><b>${esc(r.name)}</b><div class="axi-dim">${esc(r.file)}</div></td><td>${status}</td><td>${sel}</td><td>${what}</td></tr>`;
+    }).join('');
+    const nOk = st.rows.filter(r=>r.uid).length, nNo = st.rows.length-nOk;
+    body = `<div class="axi-top"><span><b>${st.rows.length}</b> archivo${st.rows.length!==1?'s':''} · <b>${nOk}</b> con atleta · <b>${nNo}</b> sin importar</span>
+        <label class="axi-from">Solo desde <input type="date" value="${st.from}" onchange="setAxonFrom(this.value)"></label></div>
+      <div class="axi-tw"><table class="axi-t"><thead><tr><th>En el Axon</th><th>Estado</th><th>Atleta en la app</th><th>Qué se carga</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    btns = `<button class="abtn" onclick="closeAxonImport()">Cancelar</button>
+      <button class="abtn abtn-p" ${totalRecs?'':'disabled'} onclick="confirmAxonImport()">Importar ${totalRecs} test${totalRecs!==1?'s':''} de ${people} atleta${people!==1?'s':''}</button>`;
+  } else if(st.step==='saving') {
+    body = `<p class="axi-p">Guardando… ${st.done||0} de ${st.total||0} atletas</p>`;
+  } else if(st.step==='done') {
+    body = `<p class="axi-p">Listo: se guardaron <b>${st.savedRecs}</b> test${st.savedRecs!==1?'s':''} de <b>${st.savedPeople}</b> atleta${st.savedPeople!==1?'s':''}.${st.failed?` <span style="color:var(--red)">No se pudo guardar a ${st.failed}; probá de nuevo (no se duplica).</span>`:''}</p>`;
+    btns = `<button class="abtn abtn-p" onclick="closeAxonImport();renderMain();setTimeout(drawEvalCharts,80)">Cerrar</button>`;
+  }
+  let o = document.getElementById('axon-overlay');
+  if(!o) { o = document.createElement('div'); o.className = 'video-modal open'; o.id = 'axon-overlay'; document.body.appendChild(o); }
+  o.innerHTML = `<div class="video-modal-box wide axi-box"><div class="video-modal-title">Importar del Axon · ${esc(team.name||'')}</div><div class="axi-body">${body}</div><div class="video-modal-btns">${btns}</div></div>`;
+}
+
+async function confirmAxonImport() {
+  const st = S._axon; if(!st) return;
+  const todo = st.rows.map(r=>({r, plan:axonPlan(r)})).filter(x=>x.plan.recs.length);
+  st.step = 'saving'; st.total = todo.length; st.done = 0; renderAxonModal();
+  let savedRecs = 0, savedPeople = 0, failed = 0;
+  for(const {r, plan} of todo) {
+    try {
+      // Datos frescos del atleta antes de sumar, para no pisar nada cargado mientras tanto.
+      if(S._athleteEvalsCache) delete S._athleteEvalsCache[r.uid];
+      await ensureAthleteEvalData(r.uid);
+      if(!S._athleteEvalsCache) S._athleteEvalsCache = {};
+      const ev = S._athleteEvalsCache[r.uid] = S._athleteEvalsCache[r.uid] || {};
+      let added = 0;
+      plan.recs.forEach(({testId, rec})=>{
+        if(!ev[testId]) ev[testId] = [];
+        if(ev[testId].some(x=>x && x.date===rec.date)) return;
+        ev[testId].push(rec); sortEvalRecsByDate(ev[testId]); added++;
+      });
+      if(added) { await saveAthleteEvalsDoc(r.uid, ev); syncEvalsToAthleteObject(r.uid); savedRecs += added; savedPeople++; }
+    } catch(e) { failed++; }
+    st.done++; renderAxonModal();
+  }
+  Object.assign(st, {step:'done', savedRecs, savedPeople, failed});
+  renderAxonModal();
+}
+window.confirmAxonImport = confirmAxonImport;
+window.parseAxonFile = parseAxonFile;
+window.axonMatch = axonMatch;
 
 async function saveAllEvals() {
   const date = document.getElementById('einp-date-all')?.value || todayLocal();
@@ -15993,10 +16191,15 @@ function drawAthleteTrendChart() {
 
   if(acwrData.every(v=>v===null) && wellnessData.every(v=>v===null)) return; // nada que graficar
 
-  // Wellness (%) arriba y ACWR abajo, cada uno con su escala y el mismo eje
-  // de fechas — nunca dos unidades sobre el mismo eje. La franja verde del
-  // ACWR es la zona óptima (0,8–1,3).
-  const c=chartColors();
+  // Wellness y ACWR en el mismo gráfico, cada uno con su escala (wellness a
+  // la izquierda, ACWR a la derecha). La escala del wellness se ajusta a los
+  // valores del atleta para que se noten las subidas y bajadas; la franja
+  // verde es la zona óptima del ACWR (0,8–1,3).
+  const c=chartColors(), cW=c.accent, cA=chartSeriesColor(1);
+  const wv=wellnessData.filter(v=>v!=null), av=acwrData.filter(v=>v!=null);
+  const wMin = wv.length ? Math.max(0, Math.floor((Math.min(...wv)-8)/10)*10) : 0;
+  const wMax = wv.length ? Math.min(100, Math.ceil((Math.max(...wv)+5)/10)*10) : 100;
+  const aMax = av.length ? Math.max(1.6, Math.ceil((Math.max(...av)+0.2)*10)/10) : 2;
   const acwrZone={ id:'acwrZone', beforeDatasetsDraw(chart){
     const y=chart.scales.y1, x=chart.scales.x; if(!y||!x) return;
     const ctx=chart.ctx, top=y.getPixelForValue(1.3), bot=y.getPixelForValue(0.8);
@@ -16007,21 +16210,21 @@ function drawAthleteTrendChart() {
     data:{
       labels,
       datasets:[
-        {label:'Wellness',data:wellnessData,borderColor:c.accent,backgroundColor:chartAlpha(c.accent,0.10),yAxisID:'y',spanGaps:true,tension:.3,pointRadius:0,pointHoverRadius:4,fill:true},
-        {label:'ACWR',data:acwrData,borderColor:c.text,yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:0,pointHoverRadius:4,fill:false},
+        {label:'Wellness %',data:wellnessData,borderColor:cW,backgroundColor:chartAlpha(cW,0.10),yAxisID:'y',spanGaps:true,tension:.3,pointRadius:2,pointHoverRadius:5,borderWidth:2.5,fill:'start'},
+        {label:'ACWR',data:acwrData,borderColor:cA,backgroundColor:cA,yAxisID:'y1',spanGaps:true,tension:.3,pointRadius:2,pointHoverRadius:5,borderWidth:2.5,fill:false},
       ]
     },
     options:{
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:(ctx)=>ctx.parsed.y==null?null:(ctx.dataset.label+': '+(ctx.datasetIndex===0?ctx.parsed.y+' %':String(ctx.parsed.y).replace('.',',')))}}
+        legend:{display:true, position:'top', align:'end'},
+        tooltip:{callbacks:{label:(ctx)=>ctx.parsed.y==null?null:(' '+(ctx.datasetIndex===0?'Wellness '+ctx.parsed.y+' %':'ACWR '+String(ctx.parsed.y).replace('.',',')))}}
       },
       scales:{
         x:{ ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:8}, grid:{display:false} },
-        y1:{ stack:'trend', stackWeight:1, offset:true, min:0, suggestedMax:2, ticks:{stepSize:1}, title:{display:true,text:'ACWR',color:c.text2} },
-        y:{ stack:'trend', stackWeight:1, offset:true, min:0, max:100, ticks:{stepSize:50}, title:{display:true,text:'Wellness %',color:c.text2} },
+        y:{ position:'left', min:wMin, max:wMax, ticks:{color:cW, maxTicksLimit:6, callback:v=>v+'%'}, title:{display:true,text:'Wellness',color:cW,font:{weight:700}} },
+        y1:{ position:'right', min:0, max:aMax, grid:{drawOnChartArea:false}, ticks:{color:cA, stepSize:0.5, callback:v=>String(v).replace('.',',')}, title:{display:true,text:'ACWR',color:cA,font:{weight:700}} },
       }
     },
     plugins:[acwrZone]
