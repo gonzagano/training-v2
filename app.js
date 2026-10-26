@@ -14882,6 +14882,77 @@ function renderEvalIndexTiles(edata) {
   return `<div class="ev-tiles">${bestTile}${indexTile('Índice elástico','ice',ice,iceS)}${indexTile('Coord. de brazos','coord',coord,coordS)}${asymTile}</div>`;
 }
 
+// ── ¿EL CAMBIO ES REAL? (error típico y cambio mínimo que importa) ──
+// Dos saltos del mismo atleta nunca dan igual: hay "ruido" (error típico).
+// Se calcula con los intentos de un mismo día (los que trae el Axon): primero
+// los del propio atleta, si no alcanzan los de todo el grupo, y si tampoco,
+// los valores medidos con ~3300 saltos del Axon del profe (CV en % de la marca).
+// Un cambio es REAL si supera el cambio detectable (2,77 × error típico, 95 %),
+// POSIBLE si supera el cambio mínimo que importa (0,2 × dispersión del
+// grupo; sin grupo, 3 % de la marca) y SIN CAMBIO si no llega a eso.
+const EVAL_NOISE_CV = {cmj:4.4, sj:5.8, abalakov:4.3, saltoAprox:6.5, dropJump:8.4, saltoH:4, cmj_der:6, cmj_izq:6};
+function evalPooledTE(recLists) {
+  let ss = 0, df = 0, cvss = 0;
+  recLists.forEach(recs=>(recs||[]).forEach(r=>{
+    const a = (r && Array.isArray(r.attempts)) ? r.attempts.filter(x=>typeof x==='number') : [];
+    if(a.length<2) return;
+    const m = a.reduce((s,x)=>s+x,0)/a.length;
+    a.forEach(x=>{ ss += (x-m)**2; cvss += ((x-m)/m)**2; }); df += a.length-1;
+  }));
+  return df ? {te:Math.sqrt(ss/df), cv:Math.sqrt(cvss/df)*100, df} : null;
+}
+// Ruido de un test para el atleta en pantalla: {cv, te(valor), src}.
+function evalNoise(testId, edata) {
+  const own = evalPooledTE([edata?.[testId]]);
+  if(own && own.df>=6) return {cv:own.cv, src:'sus propios intentos'};
+  const scope = (S.evalScopeUids||[]).map(u=>getAthleteEvals(u)?.[testId]).filter(Boolean);
+  const grp = evalPooledTE(scope);
+  if(grp && grp.df>=10) return {cv:grp.cv, src:'los intentos del equipo'};
+  if(EVAL_NOISE_CV[testId]) return {cv:EVAL_NOISE_CV[testId], src:'los saltos medidos con el Axon'};
+  return null;
+}
+// Cambio mínimo que importa: 0,2 × dispersión de las mejores marcas del grupo.
+function evalSWC(testId, value) {
+  const bests = (S.evalScopeUids||[]).map(u=>{ const r = getAthleteEvals(u)?.[testId]||[]; return r.length ? Math.max(...r.map(x=>+x.height)) : null; }).filter(v=>v!=null);
+  if(bests.length>=5) {
+    const m = bests.reduce((s,x)=>s+x,0)/bests.length;
+    const sd = Math.sqrt(bests.reduce((s,x)=>s+(x-m)**2,0)/(bests.length-1));
+    return {v:0.2*sd, src:'0,2 × la dispersión del equipo'};
+  }
+  return {v:0.03*value, src:'3 % de la marca'};
+}
+// Etiqueta para el cambio entre dos registros de un test.
+function evalChangeTag(testId, last, prev, edata, unit) {
+  if(!last || !prev) return '';
+  const d = last.height - prev.height;
+  const noise = evalNoise(testId, edata);
+  const ref = (last.height+prev.height)/2;
+  const swc = evalSWC(testId, ref);
+  const arrow = d>0?'▲':d<0?'▼':'=';
+  const base = `${arrow} ${evalSigned(d)} ${unit} vs. anterior`;
+  if(!noise) return `<span class="ev-pill ${d>0?'ev-up':d<0?'ev-down':'ev-eq'}">${base}</span>`;
+  const te = noise.cv/100*ref, mdc = 2.77*te;
+  const tip = `Ruido de este test: ±${evalNum(te)} ${unit} (calculado con ${noise.src}). Cambio real desde ${evalNum(mdc)} ${unit}; cambio que importa desde ${evalNum(swc.v)} ${unit} (${swc.src}).`.replace(/"/g,'');
+  let cls, word;
+  if(Math.abs(d)>=mdc) { cls = d>0?'ev-up':'ev-down'; word = d>0?'Mejora real':'Bajó de verdad'; }
+  else if(Math.abs(d)>=swc.v) { cls = 'ev-maybe'; word = d>0?'Posible mejora':'Posible baja'; }
+  else { cls = 'ev-eq'; word = 'Sin cambio'; }
+  return `<span class="ev-pill ${cls}" title="${tip}">${base} · <b>${word}</b></span>`;
+}
+// Saltos con tiempo de contacto (aproximación, Drop Jump): Q y contacto con
+// su cambio, y aviso cuando el contacto sube sin que la altura mejore
+// (puede ser fatiga).
+function evalReactiveTags(last, prev) {
+  if(!last || last.q==null) return '';
+  const f2 = v => String(Math.round(v*100)/100).replace('.',',');
+  let h = `<span class="ev-pill ev-eq">Q ${f2(last.q)}${prev&&prev.q!=null?` (${last.q-prev.q>=0?'+':'−'}${f2(Math.abs(last.q-prev.q))})`:''}</span>`;
+  if(last.contact!=null) h += `<span class="ev-pill ev-eq">Contacto ${Math.round(last.contact)} ms${prev&&prev.contact!=null?` (${last.contact-prev.contact>=0?'+':'−'}${Math.round(Math.abs(last.contact-prev.contact))})`:''}</span>`;
+  if(prev && prev.contact && last.contact && last.contact > prev.contact*1.10 && last.height <= prev.height)
+    h += `<span class="ev-pill ev-maybe" title="El tiempo de contacto subió más de un 10 % y la altura no mejoró: puede ser fatiga, técnica o el protocolo (cajón, consigna).">Contacto más largo: ¿fatiga?</span>`;
+  return h;
+}
+
+window.evalChangeTag = evalChangeTag; window.evalReactiveTags = evalReactiveTags;
 function renderEvalHistory(edata, isDesktop, testList) {
   if(!(S.evalHidden instanceof Set)) S.evalHidden = new Set();
 
@@ -14917,7 +14988,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
       const d = prev ? last.height-prev.height : null;
       const since = first && first!==last ? last.height-first.height : null;
       summary = `<div class="ev-val"><b class="ev-big">${evalNum(last.height)}<i> ${t.unit}</i></b>
-        ${d!=null ? `<span class="ev-pill ${d>0?'ev-up':d<0?'ev-down':'ev-eq'}">${d>0?'▲':d<0?'▼':'='} ${evalSigned(d)} vs. anterior</span>` : ''}
+        ${d!=null ? evalChangeTag(t.id, last, prev, edata, t.unit) : ''}${evalReactiveTags(last, prev)}
         ${since!=null ? `<span class="ev-pill ev-blue">${evalSigned(since)} ${t.unit} desde ${evalMonthName(first.date)}${first.height>0?` (${evalSigned(since/first.height*100)} %)`:''}</span>` : ''}
         ${jumpLevelTagHtml(t.id,last.height)}</div>`;
     }
@@ -14954,7 +15025,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
           + '<span>'+r.height+t.unit+(isAsym?' · Der:'+r.der+' / Izq:'+r.izq:'')+'</span>'
           + (isPR?'<span class="ev-pill ev-gold" style="padding:2px 9px 2px 5px">'+EVAL_MEDAL_SVG+'Récord</span>':'')
           + jumpLevelTagHtml(t.id,r.height) + '</div>'
-          + '<div class="eval-record-date">'+r.date+(r.tof?' · '+r.tof+'ms':'')+'</div></div>';
+          + '<div class="eval-record-date">'+r.date+(r.tof?' · '+r.tof+'ms':'')+(Array.isArray(r.attempts)&&r.attempts.length>1?' · intentos '+r.attempts.map(evalNum).join(' / '):'')+(r.q!=null?' · Q '+String(Math.round(r.q*100)/100).replace('.',','):'')+(r.contact!=null?' · contacto '+Math.round(r.contact)+' ms':'')+'</div></div>';
         // Solo el admin puede borrar un test ya cargado — un jugador lo podía
         // borrar sin querer (un toque de más en el "×") y no había forma de
         // recuperarlo. El admin sigue pudiendo corregir un dato mal cargado.

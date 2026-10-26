@@ -38,7 +38,7 @@
     S.evalRange='all'; switchEvalView('history'); await wait(700); txtBad('evaluaciones historial');
     const cmj=document.getElementById('eval-card-cmj'), tile=document.querySelector('.ev-tiles .ev-tile');
     ok(document.querySelectorAll('.ev-tiles .ev-tile').length===4&&/42,3/.test(tile.textContent)&&!!tile.querySelector('.ev-gold .ev-medal')&&/Faltan 2,7 cm/.test(tile.textContent)&&!!tile.querySelector('.ev-lvl-b i'),'evaluaciones: mejor CMJ con medalla y barra al próximo nivel');
-    ok(!!cmj&&/42,3/.test(cmj.querySelector('.ev-big').textContent)&&/\+1,3 vs\. anterior/.test(cmj.textContent)&&/\+4,1 cm desde \w+ \(\+10,7 %\)/.test(cmj.textContent)&&!!cmj.querySelector('.ev-headr .ev-gold'),'evaluaciones: CMJ con cambio vs. anterior, progreso acumulado y récord ('+cmj?.querySelector('.ev-headl')?.textContent.replace(/\s+/g,' ')+')');
+    ok(!!cmj&&/42,3/.test(cmj.querySelector('.ev-big').textContent)&&/\+1,3 cm vs\. anterior · (Mejora real|Posible mejora|Sin cambio)/.test(cmj.textContent)&&/\+4,1 cm desde \w+ \(\+10,7 %\)/.test(cmj.textContent)&&!!cmj.querySelector('.ev-headr .ev-gold'),'evaluaciones: CMJ con cambio vs. anterior, progreso acumulado y récord ('+cmj?.querySelector('.ev-headl')?.textContent.replace(/\s+/g,' ')+')');
     ok(/24 \/ 22,6/.test(document.getElementById('eval-card-asym').textContent)&&/5,8 % de diferencia/.test(document.getElementById('eval-card-asym').textContent),'evaluaciones: asimetría con las dos piernas y el % de diferencia');
     if(typeof Chart!=='undefined'){ const c=S.evalChartInstances['chart-hist-cmj'], as=S.evalChartInstances['chart-hist-asym'];
       ok(!!c&&c.config.type==='line'&&c.data.labels.length===5&&/^\d+ [a-z]{3}$/.test(c.data.labels[0]),'evaluaciones: gráfico de línea con fechas cortas ('+c?.data.labels[0]+')');
@@ -545,6 +545,19 @@
     ok(S.editingRoutine.sessions[d][0].id===last.id && labels.every((l,i)=>new RegExp('^(B|Bloque )'+(i+1)+'$').test(l)),'mover un bloque arriba: los números se reordenan ('+labels.join(', ')+')');
     const badge=document.querySelector('#rblock-'+last.id+' .block-badge'); ok(badge&&/1$/.test(badge.textContent.trim()),'el bloque movido arriba muestra el número 1 ('+(badge&&badge.textContent)+')');
     ok(renumberBlockLabels([{label:'Personal',id:'personal-block'},{label:'Bloque 7'},{label:'B9'},{label:'Calentamiento'}]).map(b=>b.label).join('|')==='Personal|Bloque 1|B2|Calentamiento','etiquetas propias se respetan'); }
+  // ── ¿el cambio es real? (error típico de los intentos y cambio mínimo que importa) ──
+  { const ses=(d,a)=>({date:d,height:Math.max(...a),attempts:a});
+    const ev={cmj:[ses('2026-05-10',[36.1,37.4,36.5]),ses('2026-06-10',[37.0,38.2]),ses('2026-07-10',[37.9,38.5,37.2]),ses('2026-08-10',[38.0,39.1]),ses('2026-09-10',[38.6,37.5])]};
+    const prev=ev.cmj[4];
+    ok(/Mejora real/.test(evalChangeTag('cmj',{date:'2026-10-10',height:43.8},prev,ev,'cm')),'cambio grande (+5,2 cm) = Mejora real');
+    ok(/Posible mejora/.test(evalChangeTag('cmj',{date:'2026-10-10',height:40.3},prev,ev,'cm')),'cambio chico (+1,7 cm) = Posible mejora');
+    ok(/Sin cambio/.test(evalChangeTag('cmj',{date:'2026-10-10',height:38.9},prev,ev,'cm')),'cambio mínimo (+0,3 cm) = Sin cambio');
+    ok(/Bajó de verdad/.test(evalChangeTag('cmj',{date:'2026-10-10',height:33.0},prev,ev,'cm')),'baja grande = Bajó de verdad');
+    ok(/sus propios intentos/.test(evalChangeTag('cmj',{date:'2026-10-10',height:43.8},prev,ev,'cm')),'el ruido sale de los intentos del propio atleta');
+    ok(/medidos con el Axon/.test(evalChangeTag('cmj',{date:'2026-10-10',height:43.8},{date:'2026-09-10',height:38.6},{cmj:[]},'cm')),'sin intentos usa el valor de referencia');
+    const rt=evalReactiveTags({height:59.3,q:1.48,contact:470},{height:61,q:1.7,contact:400});
+    ok(/Q 1,48/.test(rt)&&/Contacto 470 ms \(\+70\)/.test(rt)&&/fatiga/.test(rt),'salto con contacto: Q, contacto y aviso si el contacto sube sin mejorar la altura');
+    ok(!/fatiga/.test(evalReactiveTags({height:63,q:1.6,contact:470},{height:61,q:1.7,contact:400})),'si la altura mejora, no avisa fatiga'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

@@ -1194,6 +1194,8 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 .ev-up{color:var(--green);background:var(--green-dim)}
 .ev-down{color:var(--red);background:var(--red-dim)}
 .ev-eq{color:var(--text2);background:var(--bg3)}
+.ev-maybe{color:var(--amber);background:var(--amber-dim)}
+.ev-pill b{font-weight:800}
 .ev-blue{color:var(--accent-text);background:var(--accent-dim)}
 .ev-gold{color:#8A6412;background:rgba(242,193,78,.22);border:1px solid rgba(201,154,46,.6);padding:3px 11px 3px 6px}
 [data-theme="dark"] .ev-gold{color:#F2C14E;background:rgba(242,193,78,.14);border-color:rgba(242,193,78,.45)}
