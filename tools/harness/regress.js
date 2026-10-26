@@ -277,7 +277,7 @@
     ok(rpePct(13,9)===null&&rpePct(3,4)===null&&rpePct(3,9.2)===0.892,'1RM por RPE: fuera de tabla no inventa; RPE se redondea al medio punto');
     ok(roundPlate(83)===82.5&&roundPlate(83.8)===85&&fmtKg(82.5)==='82,5','redondeo al disco de 2,5 kg'); }
   // ── el RM se actualiza SOLO con lo último que registró, usando las reps prescriptas ──
-  { ok(prescribedRepsForRM('6').reps===6&&prescribedRepsForRM('6–8').reps===6&&prescribedRepsForRM('8-6').reps===6&&prescribedRepsForRM('5/3/1')===null&&prescribedRepsForRM('')===null,'reps prescriptas: número, rango (toma el menor) y formatos que no cuentan');
+  { ok(prescribedRepsForRM('6').reps===6&&prescribedRepsForRM('6–8').reps===6&&prescribedRepsForRM('8-6').reps===6&&prescribedRepsForRM('5/3/1').reps===5&&prescribedRepsForRM('8/8/6').reps===8&&prescribedRepsForRM('AMRAP')===null&&prescribedRepsForRM('')===null,'reps prescriptas: número, rango (toma el menor) y formatos que no cuentan');
     S.atletaView=null; switchView('atletas'); await wait(1200);
     const a0=S.adminAthletes.find(x=>x.uid==='u0'); await ensureGroupPersonalData(['u0']);
     { const dbx=JSON.parse(localStorage.getItem('__db')); const keep=dbx.personal.u0.history._sessionLogs; dbx.personal.u0.history={_sessionLogs:keep}; delete dbx.personal.u0.oneRMAuto; localStorage.setItem('__db',JSON.stringify(dbx)); a0._personal.history={_sessionLogs:keep}; delete a0._personal.oneRMAuto; }
@@ -463,18 +463,22 @@
     { const dbx=JSON.parse(localStorage.getItem('__db')); const ex=Object.values(dbx.routines.r1.sessions).flat().flatMap(b=>b.categories[0].exercises).find(e=>e.id==='x2'); ex.rmLift='press_plano'; ex.reps='8'; delete ex.progression; localStorage.setItem('__db',JSON.stringify(dbx)); }
     S.atletaView=null; switchView('atletas'); await wait(1200); await ensureGroupPersonalData(['u2']);   // queda en memoria la copia vieja
     const sess=Object.keys(rt.sessions).find(k=>rt.sessions[k].some(b=>b.categories[0].exercises.some(e=>e.id==='x2')));
-    put('w1-'+sess,{date:todayLocal(), exercises:{x2:{load:90, rpe:6, checked:true}}});   // el atleta registró DESPUÉS
+    put('w1-'+sess,{date:todayLocal(), exercises:{x2:{load:90, rpe:7, checked:true}}});   // el atleta registró DESPUÉS
     await adminOpenAthleteDash('u2'); await wait(1500);
-    ok(P().oneRM.press_plano===147,'Dashboard → ficha: recalcula con lo recién registrado (90 × 8 @6 → 147; dio '+P().oneRM.press_plano+')');
+    ok(P().oneRM.press_plano===Math.round(90/rpePct(8,7)*2)/2,'Dashboard → ficha: recalcula con lo recién registrado (90 × 8 @7 → '+P().oneRM.press_plano+')');
     goBackFromAthleteDetail(); await wait(500);
     put('w2-'+sess,{date:'2099-01-01', exercises:{x2:{load:95, rpe:7, checked:true}}});
     S.atletaView=null; switchView('atletas'); await wait(800); openAtleta('u2'); await wait(1800);
     ok(P().oneRM.press_plano===Math.round(95/rpePct(8,7)*2)/2,'Atletas → ficha: también recalcula con datos frescos (95 × 8 @7 → '+P().oneRM.press_plano+')');
     // registro más nuevo que no se puede usar → la ficha lo avisa con el motivo
-    x2.progression=[{series:'4',reps:'8'},{series:'4',reps:'8'},{series:'4',reps:'8/6/4'}]; const dbx=JSON.parse(localStorage.getItem('__db')); Object.values(dbx.routines.r1.sessions).flat().flatMap(b=>b.categories[0].exercises).find(e=>e.id==='x2').progression=x2.progression; localStorage.setItem('__db',JSON.stringify(dbx));
+    x2.progression=[{series:'4',reps:'8'},{series:'4',reps:'8'},{series:'4',reps:'8/6/4'},{series:'4',reps:'AMRAP'}]; const dbx=JSON.parse(localStorage.getItem('__db')); Object.values(dbx.routines.r1.sessions).flat().flatMap(b=>b.categories[0].exercises).find(e=>e.id==='x2').progression=x2.progression; localStorage.setItem('__db',JSON.stringify(dbx));
     put('w3-'+sess,{date:'2099-02-01', exercises:{x2:{load:100, rpe:8, checked:true}}});
+    goBackFromAthleteDetail(); await wait(400); openAtleta('u2'); await wait(1800);
+    ok(P().oneRM.press_plano===Math.round(100/rpePct(8,8)*2)/2,'reps "8/6/4": se usa la primera (100 × 8 @8 → '+P().oneRM.press_plano+')');
+    put('w4-'+sess,{date:'2099-03-01', exercises:{x2:{load:110, rpe:9, checked:true}}});
     goBackFromAthleteDetail(); await wait(400); openAtleta('u2'); await wait(1800); setAtletaSubview('perfil'); await wait(500);
-    const sk=document.querySelector('.rm-skip'); ok(!!sk&&/semana 3/.test(sk.textContent)&&/8\/6\/4/.test(sk.textContent),'ficha: avisa qué registro no se pudo usar y por qué ('+(sk?sk.textContent:'nada')+')');
+    const sk=document.querySelector('.rm-skip'); ok(!!sk&&/semana 4/.test(sk.textContent)&&/AMRAP/.test(sk.textContent),'ficha: avisa el registro que no se pudo usar y por qué ('+(sk?sk.textContent:'nada')+')');
+    ok(/se toma la primera/.test(document.getElementById('main').innerText),'ficha: aclara que se tomó la primera cantidad');
     txtBad('ficha con aviso de RM'); goBackFromAthleteDetail(); await wait(400); }
   // ── evolución de un test sin ningún registro: no se rompe ──
   { let okE=true; try { const a0={_personal:{evals:{}}}; const d=athleteEvolData(a0,[a0,a0],'cmj'); okE = d && d.rankTo===null && d.gain===null; } catch(e){ okE=false; } ok(okE,'evolución de un test sin registros: no tira error'); }
@@ -510,6 +514,37 @@
       ok(Object.keys(d.users).length===users0,'Axon: no crea atletas nuevos');
       closeAxonImport(); openAxonImport(); await axonFilesChosen({files:[mk('MEIER','Matias',['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",'])]}); await wait(400);
       ok(/Nada nuevo/.test(document.getElementById('axon-overlay').innerText),'Axon: importar dos veces no duplica'); closeAxonImport(); txtBad('evaluaciones equipo'); } }
+  // ── RPE menor a 7 no mueve el RM (y se avisa por qué) ──
+  { S.atletaView=null; switchView('atletas'); await wait(800);
+    const a0=S.adminAthletes.find(x=>x.uid==='u0'); await ensureGroupPersonalData(['u0']);
+    const dbx=JSON.parse(localStorage.getItem('__db')); dbx.personal.u0.history={_sessionLogs:dbx.personal.u0.history._sessionLogs}; delete dbx.personal.u0.oneRMAuto; dbx.personal.u0.oneRM.sentadilla_barra=110;
+    dbx.personal.u0.history['w1-Día 1']={date:'2099-05-01', exercises:{x1:{load:110, rpe:5, checked:true}}}; localStorage.setItem('__db',JSON.stringify(dbx));
+    openAtleta('u0'); await wait(1800); const P0=()=>JSON.parse(localStorage.getItem('__db')).personal.u0;
+    ok(P0().oneRM.sentadilla_barra===110,'RPE 5: el RM no se mueve (sigue 110; está '+P0().oneRM.sentadilla_barra+')');
+    setAtletaSubview('perfil'); await wait(500); const sk=document.querySelector('.rm-skip'); ok(!!sk&&/RPE 5/.test(sk.textContent)&&/RPE 7 o más/.test(sk.textContent),'ficha: avisa que RPE 5 no alcanza ('+(sk?sk.textContent:'nada')+')');
+    // RIR 2 = RPE 8: sí cuenta
+    ok(rmFromRpe(100,6,10-2)>0&&RM_AUTO_MIN_RPE===7,'RIR 2 (= RPE 8) sí cuenta');
+    goBackFromAthleteDetail(); await wait(400); }
+  // ── solo el levantamiento en sí actualiza el RM (una Split usa el RM pero no lo mueve) ──
+  { const U=exerciseUpdatesRM;
+    ok(U('Sentadilla con barra','sentadilla_barra')&&U('Sentadilla Trap Bar','sentadilla_barra')&&U('Sentadilla en trap bar','sentadilla_barra'),'actualizan el RM de sentadilla: con barra y trap bar');
+    ok(!U('Sentadilla Split','sentadilla_barra')&&!U('Sentadilla búlgara con barra','sentadilla_barra')&&!U('Sentadilla frontal con barra','sentadilla_barra')&&!U('Goblet squat','sentadilla_barra'),'no lo actualizan: split, búlgara, frontal, goblet');
+    ok(U('Press Plano (barra)','press_plano')&&U('Press plano','press_plano')&&!U('Press plano con mancuernas','press_plano')&&!U('Press inclinado','press_plano'),'press plano: sí con barra, no con mancuernas ni inclinado');
+    ok(U('Peso muerto','peso_muerto')&&!U('Peso muerto rumano','peso_muerto'),'peso muerto: sí el convencional, no el rumano');
+    // en la práctica: una Split vinculada al RM de sentadilla no lo mueve
+    const rt=S.routines.find(x=>x.id==='r1'); const exs=Object.values(rt.sessions).flat().flatMap(b=>b.categories[0].exercises); const x1=exs.find(e=>e.id==='x1');
+    const hist={'w1-Día 1':{date:'2099-06-01', exercises:{x1:{load:200, rpe:9}}}};
+    const keepName=x1.name; x1.name='Sentadilla Split'; const e1=latestRMEstimates(hist, rt, {}, {}); x1.name=keepName; const e2=latestRMEstimates(hist, rt, {}, {});
+    ok(!e1.sentadilla_barra&&!!e2.sentadilla_barra,'Split con "De qué RM: sentadilla": no mueve el RM; la sentadilla libre sí'); }
+  // ── el número del bloque sigue su posición al moverlo ──
+  { switchView('admin'); adminGoRoutines(); await wait(600); editRoutine('r1'); await wait(500); S._routineCompare=false;
+    const d=getOrderedSessionNames(S.editingRoutine)[0]; S._routineEditSession=d; renderMain(); await wait(300);
+    const arr=S.editingRoutine.sessions[d]; const last=arr[arr.length-1];
+    for(let i=0;i<arr.length;i++){ moveRoutineBlock(last.id,d,-1); await wait(120); }
+    const labels=S.editingRoutine.sessions[d].map(b=>b.label);
+    ok(S.editingRoutine.sessions[d][0].id===last.id && labels.every((l,i)=>new RegExp('^(B|Bloque )'+(i+1)+'$').test(l)),'mover un bloque arriba: los números se reordenan ('+labels.join(', ')+')');
+    const badge=document.querySelector('#rblock-'+last.id+' .block-badge'); ok(badge&&/1$/.test(badge.textContent.trim()),'el bloque movido arriba muestra el número 1 ('+(badge&&badge.textContent)+')');
+    ok(renumberBlockLabels([{label:'Personal',id:'personal-block'},{label:'Bloque 7'},{label:'B9'},{label:'Calentamiento'}]).map(b=>b.label).join('|')==='Personal|Bloque 1|B2|Calentamiento','etiquetas propias se respetan'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

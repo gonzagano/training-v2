@@ -1858,6 +1858,7 @@ window.getTodaysRoutineSession = getTodaysRoutineSession;
 //    cargado a este atleta puntual — un bloque sintético que solo existe
 //    para él, sin tocar la rutina compartida ni afectar a sus compañeros.
 function getVisibleRoutineBlocks(routine, sessionName, teamId, position, personalExtras) {
+  renumberBlockLabels(routine?.sessions?.[sessionName]);
   const allBlocks = (routine?.sessions || {})[sessionName] || [];
   const team = teamId ? S.teams.find(t=>t.id===teamId) : null;
   const posMap = (team && routine?.id && team.assignedRoutineId===routine.id) ? (team.routineBlockPositions||{}) : null;
@@ -2990,10 +2991,26 @@ window.rpePct=rpePct; window.rmFromRpe=rmFromRpe; window.roundPlate=roundPlate; 
 // Reps prescriptas: un número ("6") se usa tal cual; un rango ("6–8") usa el
 // número más bajo, para no inflar el RM. Si no hay reps o son de otro tipo
 // ("5/3/1", "AMRAP") esa sesión no cuenta.
+const RM_AUTO_MIN_RPE = 7;
+// "De qué RM" sirve para calcular los kilos de cualquier ejercicio (ej. una Split
+// con el RM de sentadilla), pero el RM solo lo actualizan los ejercicios de esta
+// lista: el levantamiento en sí (por nombre, sin tildes ni mayúsculas).
+const RM_UPDATERS = {
+  sentadilla_barra: n => /sentadilla/.test(n) && (/trap/.test(n) || /barra/.test(n)) && !/split|bulgara|frontal|goblet|zercher|hack|unilateral|pistol|smith|caja|box/.test(n),
+  press_plano:      n => /press (plano|banca)/.test(n) && !/mancuerna|inclinad|declinad|unilateral|maquina|smith|cerrad/.test(n),
+  peso_muerto:      n => /^peso muerto( con barra| convencional| \(barra\))?$/.test(n),
+  cargada_potencia: n => /^cargada de potencia( con barra| \(barra\))?$/.test(n),
+  arranque_potencia:n => /^arranque de potencia( con barra| \(barra\))?$/.test(n),
+};
+function exerciseUpdatesRM(name, lift) { const f = RM_UPDATERS[lift]; return f ? f(normTxt(name)) : false; }
+window.exerciseUpdatesRM = exerciseUpdatesRM;
+window.RM_AUTO_MIN_RPE = RM_AUTO_MIN_RPE;
 function prescribedRepsForRM(reps) {
   const t = String(reps==null?'':reps).trim();
   let m = /^(\d+)$/.exec(t); if(m) return {reps:+m[1], range:false};
   m = /^(\d+)\s*(?:-|–|—|a)\s*(\d+)$/.exec(t); if(m) return {reps:Math.min(+m[1],+m[2]), range:true};
+  // Por serie ("8/8/6", "10+10", "5, 3, 1"…): se toma la PRIMERA cantidad prescripta.
+  m = /^\D*?(\d+)/.exec(t); if(m && +m[1]>0) return {reps:+m[1], range:false, first:true, txt:t};
   return null;
 }
 function latestRMEstimates(history, routine, userData, overrides) {
@@ -3008,6 +3025,7 @@ function latestRMEstimates(history, routine, userData, overrides) {
     ((routine.sessions||{})[sName]||[]).forEach(b=>(b.categories||[]).forEach(c=>(c.exercises||[]).forEach(ex=>{
       if(!ex.rmLift) return;
       const d = rec.exercises[ex.id]; if(!d) return;
+      if(!exerciseUpdatesRM((getExerciseOverride(overrides, routine.id, sName, ex.id)?.name)||ex.name, ex.rmLift)) return;
       const hasLoad = d.load!=null && String(d.load).trim()!=='', hasRpe = d.rpe!=null && String(d.rpe).trim()!=='';
       if(!hasLoad && !hasRpe) return;
       const ov = routine.id ? getExerciseOverride(overrides, routine.id, sName, ex.id) : null;
@@ -3015,10 +3033,12 @@ function latestRMEstimates(history, routine, userData, overrides) {
       const info = {week, sName, exName:wp.name||ex.name, load:d.load, rpeTxt:d.rpe, repsTxt:wp.reps};
       const kg = parseLoadKg(d.load); if(!(kg>0)) { skip(ex.rmLift, order, {...info, why:'no tiene kilos'}); return; }
       const raw = parseFloat(String(d.rpe??'').replace(',','.')); if(!isFinite(raw)) { skip(ex.rmLift, order, {...info, why:'no tiene RPE'}); return; }
-      const pr = prescribedRepsForRM(wp.reps); if(!pr) { skip(ex.rmLift, order, {...info, why: wp.reps ? `las reps prescriptas son "${wp.reps}" (necesita un número o un rango)` : 'no tiene reps prescriptas esa semana'}); return; }
+      const pr = prescribedRepsForRM(wp.reps); if(!pr) { skip(ex.rmLift, order, {...info, why: wp.reps ? `las reps prescriptas son "${wp.reps}" (no tiene ningún número)` : 'no tiene reps prescriptas esa semana'}); return; }
       const rpe = (wp.intensityType||ex.intensityType||'RPE')==='RIR' ? 10-raw : raw;
+      // Lejos del fallo (RPE menor a 7 / RIR mayor a 3) la tabla extrapola demasiado: no mueve el RM.
+      if(rpe < RM_AUTO_MIN_RPE) { skip(ex.rmLift, order, {...info, why:`es RPE ${fmtKg(rpe)}: para estimar el RM tiene que ser RPE ${RM_AUTO_MIN_RPE} o más (RIR ${10-RM_AUTO_MIN_RPE} o menos)`}); return; }
       const e1 = rmFromRpe(kg, pr.reps, rpe); if(!e1) { skip(ex.rmLift, order, {...info, why:'queda fuera de la tabla (1 a 12 reps, RPE 4,5 a 10)'}); return; }
-      const e = {rm:Math.round(e1*2)/2, kg, reps:pr.reps, range:pr.range, rpe, week, sName, exName:wp.name||ex.name, date:rec.date||null, order};
+      const e = {rm:Math.round(e1*2)/2, kg, reps:pr.reps, range:pr.range, first:!!pr.first, repsTxt:pr.txt||'', rpe, week, sName, exName:wp.name||ex.name, date:rec.date||null, order};
       const cur = cand[ex.rmLift];
       if(!cur || e.order>cur.order || (e.order===cur.order && e.rm>cur.rm)) cand[ex.rmLift] = e;
     })));
@@ -3034,7 +3054,7 @@ function rmAutoChanges(oneRM, oneRMAuto, est) {
   const out = [];
   Object.entries(est||{}).forEach(([lift, e])=>{
     if(oneRMAuto?.[lift]?.sig === e.sig) return;
-    out.push({lift, value:e.rm, meta:{sig:e.sig, rm:e.rm, kg:e.kg, reps:e.reps, range:e.range, rpe:e.rpe, exName:e.exName, sName:e.sName, week:e.week, date:e.date||todayLocal(), prev:(oneRM?.[lift]??null)}});
+    out.push({lift, value:e.rm, meta:{sig:e.sig, rm:e.rm, kg:e.kg, reps:e.reps, range:e.range, first:!!e.first, repsTxt:e.repsTxt||'', rpe:e.rpe, exName:e.exName, sName:e.sName, week:e.week, date:e.date||todayLocal(), prev:(oneRM?.[lift]??null)}});
   });
   return out;
 }
@@ -3063,7 +3083,7 @@ async function adminAutoRM(a) {
 function rmAutoNote(meta) {
   if(!meta) return '';
   const f = meta.date ? new Date(meta.date+'T00:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'numeric'}) : '';
-  return `Se actualizó solo${f?' el '+f:''}: ${meta.exName} ${fmtKg(meta.kg)} kg × ${meta.reps}${meta.range?' (rango, se toma el menor)':''} a RPE ${fmtKg(meta.rpe)}`;
+  return `Se actualizó solo${f?' el '+f:''}: ${meta.exName} ${fmtKg(meta.kg)} kg × ${meta.reps}${meta.range?' (rango, se toma el menor)':''}${meta.first?` (de "${meta.repsTxt}", se toma la primera)`:''} a RPE ${fmtKg(meta.rpe)}`;
 }
 window.latestRMEstimates=latestRMEstimates; window.rmAutoChanges=rmAutoChanges; window.athleteAutoRM=athleteAutoRM; window.adminAutoRM=adminAutoRM; window.prescribedRepsForRM=prescribedRepsForRM; window.rmAutoNote=rmAutoNote;
 
@@ -3231,7 +3251,7 @@ function renderSession() {
           </div>`;
     return header + renderRMCalcSection(true);
   }
-  const blocks = getCurrentBlocks();
+  const blocks = renumberBlockLabels(getCurrentBlocks());
   const sessionLabel = S.isAdmin ? `Sesión ${S.currentSession}` : (S.currentSession||'Sesión');
   const isBrowsingWeek = !!S._routineViewWeek;
   const header = `<div class="page-header">
@@ -3949,6 +3969,19 @@ window.getBlockMainSub = getBlockMainSub;
 function bnpJoinSubs(cat, arr) { const l = cat.subs.filter(x=>(arr||[]).includes(x)); return l.length ? l.join(' // ') : null; }
 function blockSubParts(sub) { return sub ? String(sub).split(' // ') : []; }
 window.blockSubParts = blockSubParts;
+// "Bloque 3" / "B3" se renumeran según la posición en el día. Etiquetas propias
+// (ej. "Personal") se respetan.
+function renumberBlockLabels(arr) {
+  let n = 0;
+  (arr||[]).forEach(b=>{
+    if(!b || b.id==='personal-block') return;
+    n++;
+    const lbl = String(b.label||'').trim();
+    if(!lbl || /^(bloque\s*\d+|b\s*\d+)$/i.test(lbl)) b.label = (/^b\s*\d+$/i.test(lbl) ? 'B' : 'Bloque ') + n;
+  });
+  return arr;
+}
+window.renumberBlockLabels = renumberBlockLabels;
 function blockColorFor(main) { return (BLOCK_NAMES.find(c=>c.main===main)||{}).color || 'bx'; }
 function newNamedBlock(n, main, sub) {
   return { id:genId(), label:`Bloque ${n+1}`, title:blockFullName(main,sub), main, sub:sub||null, time:'', colorKey:blockColorFor(main), note:'', _open:true, categories:[{id:genId(),label:'Categoría',exercises:[]}] };
@@ -8972,7 +9005,7 @@ function getTeamDay(teamId,dayIdx){const team=S.teams.find(t=>t.id===teamId);if(
 function renderTeamDayEditor(team,{teamId,dayIdx}){
   const day=getTeamDay(teamId,dayIdx);
   if(!day)return`<div class="empty-state">Error cargando sesión.</div>`;
-  const blocks=day.blocks||[];
+  const blocks=renumberBlockLabels(day.blocks||[]);
   const blocksHtml=blocks.map(b=>renderTeamDayBlock(b,teamId,dayIdx)).join('');
   return`<div class="team-detail-header">
     <button class="back-btn" data-back="team-day">‹</button>
@@ -13711,6 +13744,7 @@ document.addEventListener('mouseover', e=>{
 function renderRoutineEditor() {
   const r = S.editingRoutine;
   if(!r) return `<div class="empty-state">Error: no hay rutina en edición.</div>`;
+  Object.values(r.sessions||{}).forEach(renumberBlockLabels);
   const sessionNames = getOrderedSessionNames(r);
   if(!S._routineEditSession || !r.sessions[S._routineEditSession]) {
     S._routineEditSession = sessionNames[0]||null;
