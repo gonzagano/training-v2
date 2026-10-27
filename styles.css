@@ -1585,3 +1585,14 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .axi-sel{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:6px 8px;font-family:inherit;font-size:13px;max-width:220px}
 .axi-un{margin-top:12px;font-size:13px;color:var(--text2)}
 .axi-un summary{cursor:pointer;font-weight:700;padding:6px 0}
+/* Gestión de rutinas agrupada por deporte */
+.rt-sport-grp{margin-bottom:var(--sp-4)}
+.rt-sport-h{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--r);box-shadow:var(--sh-card);padding:12px 16px;margin-bottom:10px;color:var(--text);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-align:left}
+.rt-sport-h .sp-ic{width:20px;height:20px;margin-right:0;color:var(--accent-text)}
+.rt-sport-h span{flex:1;min-width:0}
+.rt-sport-h b{font-size:12px;font-weight:700;color:var(--text3);background:var(--bg3);border-radius:20px;padding:2px 9px}
+.rt-sport-h i{font-style:normal;font-size:16px;color:var(--text3);transition:transform .15s}
+.rt-sport-grp.open .rt-sport-h i{transform:rotate(90deg)}
+.rt-sport-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.rt-sport-row label{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.rt-sport-sel{width:auto;min-width:0;max-width:200px;font-size:12px;padding:5px 8px}

@@ -10979,6 +10979,32 @@ async function personalizeAssignedRoutine(uid) {
 }
 window.personalizeAssignedRoutine = personalizeAssignedRoutine;
 
+// Al revés de "Personalizar": una rutina PROPIA del atleta se copia a Gestión de
+// rutinas como plantilla (sin dueño), con el deporte del atleta. La del atleta no se toca.
+async function sendPersonalRoutineToTemplates(uid, routineId) {
+  const a = S.adminAthletes?.find(x=>x.uid===uid) || S.atletaView;
+  const src = S.routines.find(r=>r.id===routineId);
+  if(!a || !src) return;
+  // "Fuerza · Germán" → "Fuerza" (el agregado de "Personalizar para…" no va en la plantilla)
+  const m = /^(.*\S)\s*·\s*([^·]+)$/.exec(String(src.name||''));
+  const base = (m && normTxt(a.name||'').includes(normTxt(m[2]))) ? m[1] : src.name;
+  const name = prompt('Nombre en Gestión de rutinas:', base);
+  if(!name || !name.trim()) return;
+  try {
+    const newId = genId();
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = newId; copy.name = name.trim(); copy.createdAt = new Date().toISOString();
+    delete copy.ownerUid; delete copy.continuesFromRoutineId; delete copy._open;
+    copy.sport = athleteSportOf(a) || '';
+    copy.fromPersonalRoutineId = src.id;
+    await setDoc(doc(db,'routines',newId), copy);
+    S.routines.push(copy);
+    showToast('✓ Copiada a Gestión de rutinas');
+    renderMain();
+  } catch(e) { console.error(e); showToast('No se pudo copiar la rutina'); }
+}
+window.sendPersonalRoutineToTemplates = sendPersonalRoutineToTemplates;
+
 // NOTA DEL PROFE en un ejercicio: queda en el documento del atleta (no toca la
 // plantilla ni cambia el ejercicio) y el atleta la ve destacada en esa tarjeta.
 function openCoachNoteModal(uid, exId, exName) {
@@ -11027,6 +11053,8 @@ function renderAtletaRutina(a) {
     ${dayCircles}
     <div class="rt-actions">
       ${routine && routine.ownerUid!==a.uid ? `<button class="abtn" onclick="personalizeAssignedRoutine('${a.uid}')" title="Copia la rutina asignada a una rutina propia de ${firstName} para editarla sin tocar la plantilla">Personalizar para ${firstName}</button>` : ''}
+      ${routine && routine.ownerUid===a.uid ? (()=>{ const sent = getTemplateRoutines().some(t=>t.fromPersonalRoutineId===routine.id);
+        return `<button class="abtn" onclick="sendPersonalRoutineToTemplates('${a.uid}','${routine.id}')" title="Guarda una copia como plantilla, para usarla con otros atletas">${sent?'✓ En Gestión de rutinas · copiar otra vez':'Pasar a Gestión de rutinas'}</button>`; })() : ''}
       <button class="abtn" onclick="createPersonalRoutine('${a.uid}')" title="Armar una rutina o días de entrenamiento solo para ${firstName}. No aparece en Gestionar rutinas.">Rutina propia</button>
     </div>
   </div>`;
@@ -13339,8 +13367,43 @@ function renderRoutineCard(r, weekLabel, depth) {
     <div style="font-size:11px;color:var(--text3);margin-top:4px">
       Asignada a: ${S.adminAthletes.filter(a=>a.assignedRoutine===r.id).map(a=>a.name||a.email).join(', ')||'nadie'}
     </div>
+    <div class="rt-sport-row">
+      <label for="rt-sport-${r.id}">Deporte</label>
+      <select id="rt-sport-${r.id}" class="field-inp rt-sport-sel" onchange="setRoutineSport('${r.id}', onSportSelect(this))">${sportOptionsHtml(routineSportOf(r))}</select>
+    </div>
   </div>`;
 }
+
+// Deporte de una rutina plantilla: el que se le eligió, o (si nunca se eligió)
+// el que más se repite entre los atletas que la tienen asignada.
+function routineSportOf(r) {
+  if(r.sport) return canonicalSport(r.sport);
+  const count = {};
+  (S.adminAthletes||[]).filter(a=>a.assignedRoutine===r.id).forEach(a=>{ const s = athleteSportOf(a); if(s) count[s]=(count[s]||0)+1; });
+  return Object.keys(count).sort((x,y)=>count[y]-count[x])[0] || '';
+}
+window.routineSportOf = routineSportOf;
+
+async function setRoutineSport(id, sport) {
+  const r = S.routines.find(x=>x.id===id);
+  if(!r) return;
+  const prev = r.sport;
+  r.sport = sport || '';
+  try {
+    await updateDocSafe(doc(db,'routines',id), {sport: r.sport});
+    showToast('✓ Deporte guardado');
+  } catch(e) { r.sport = prev; showToast('No se pudo guardar el deporte'); }
+  if(S.adminView==='routines') renderMain();
+}
+window.setRoutineSport = setRoutineSport;
+
+function toggleRoutineSportGroup(key) {
+  if(!S._routineSportClosed) S._routineSportClosed = new Set();
+  const set = S._routineSportClosed;
+  if(set.has(key)) set.delete(key); else set.add(key);
+  renderMain();
+}
+window.toggleRoutineSportGroup = toggleRoutineSportGroup;
 
 function renderRoutineChainNode(r, startWeek, childrenOf, depth, visited) {
   if(visited.has(r.id)) return ''; // corta cualquier ciclo (A continúa B que continúa A) — no debería poder armarse desde la UI, pero por las dudas
@@ -13361,10 +13424,29 @@ function renderAdminRoutines() {
     html+=`<div class="empty-state">No hay rutinas creadas.</div>`;
   } else {
     const { childrenOf, roots } = buildRoutineChains();
-    html += roots.map(root=>{
-      const chainHtml = renderRoutineChainNode(root, 1, childrenOf, 0, new Set());
-      const isChain = (childrenOf.get(root.id)||[]).length>0;
-      return isChain ? `<div style="border:1px dashed var(--border2);border-radius:var(--r);padding:10px;margin-bottom:12px">${chainHtml}</div>` : chainHtml;
+    // Agrupadas por deporte (una cadena de continuaciones va entera con el de su primera rutina);
+    // orden: la lista fija de deportes, después otros, y al final las que no tienen deporte.
+    const groups = new Map();
+    roots.forEach(root=>{ const s = routineSportOf(root); if(!groups.has(s)) groups.set(s, []); groups.get(s).push(root); });
+    const keys = [...groups.keys()].sort((x,y)=>{
+      const rank = s => !s ? 1e6 : (SPORTS.includes(s) ? SPORTS.indexOf(s) : 1e3);
+      return rank(x)-rank(y) || x.localeCompare(y);
+    });
+    const closed = S._routineSportClosed || new Set();
+    html += keys.map(s=>{
+      const list = groups.get(s);
+      const key = s || '__none__';
+      const open = !closed.has(key);
+      const n = list.reduce((acc, root)=>{ const seen=new Set(); const walk=r=>{ if(seen.has(r.id)) return; seen.add(r.id); (childrenOf.get(r.id)||[]).forEach(walk); }; walk(root); return acc+seen.size; }, 0);
+      const body = open ? list.map(root=>{
+        const chainHtml = renderRoutineChainNode(root, 1, childrenOf, 0, new Set());
+        const isChain = (childrenOf.get(root.id)||[]).length>0;
+        return isChain ? `<div style="border:1px dashed var(--border2);border-radius:var(--r);padding:10px;margin-bottom:12px">${chainHtml}</div>` : chainHtml;
+      }).join('') : '';
+      return `<div class="rt-sport-grp${open?' open':''}" data-sport="${key}">
+        <button class="rt-sport-h" onclick="toggleRoutineSportGroup('${key.replace(/'/g,"\\'")}')">${s ? sportIconHtml(s) : ''}<span>${s || 'Sin deporte'}</span><b>${n}</b><i>›</i></button>
+        ${body}
+      </div>`;
     }).join('');
   }
   return html;

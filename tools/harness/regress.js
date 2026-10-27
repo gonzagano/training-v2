@@ -564,6 +564,35 @@
     const rt=evalReactiveTags({height:59.3,q:1.48,contact:470},{height:61,q:1.7,contact:400});
     ok(/Q 1,48/.test(rt)&&/Contacto 470 ms \(\+70\)/.test(rt)&&/fatiga/.test(rt),'salto con contacto: Q, contacto y aviso si el contacto sube sin mejorar la altura');
     ok(!/fatiga/.test(evalReactiveTags({height:63,q:1.6,contact:470},{height:61,q:1.7,contact:400})),'si la altura mejora, no avisa fatiga'); }
+  // ── Gestión de rutinas agrupada por deporte + pasar una rutina propia a Gestión ──
+  { const dbx=JSON.parse(localStorage.getItem('__db')); const base=JSON.parse(JSON.stringify(dbx.routines.r1));
+    const own={...base, id:'rown5', name:'Rutina de Prueba · Ana', ownerUid:'u5'}; delete own.sport;
+    const sinDep={...JSON.parse(JSON.stringify(base)), id:'rnone', name:'Plantilla sin deporte'}; delete sinDep.sport;
+    dbx.routines.rown5=own; dbx.routines.rnone=sinDep; dbx.users.u5.assignedRoutine='rown5'; dbx.users.u5.sport='Básquet'; localStorage.setItem('__db',JSON.stringify(dbx));
+    S.routines.push(JSON.parse(JSON.stringify(own)), JSON.parse(JSON.stringify(sinDep)));
+    const a5=S.adminAthletes.find(x=>x.uid==='u5'); a5.assignedRoutine='rown5'; a5.sport='Básquet';
+    switchView('admin'); await wait(300); adminGoRoutines(); await wait(700);
+    const grp=s=>[...document.querySelectorAll('.rt-sport-grp')].find(g=>g.dataset.sport===s);
+    ok(grp('Handball')&&grp('Handball').querySelector('#routine-name-span-r1'),'rutinas: la de handball va en el grupo Handball (por sus atletas)');
+    ok(grp('__none__')&&/Sin deporte/.test(grp('__none__').textContent)&&grp('__none__').querySelector('#routine-name-span-rnone'),'rutinas: "Sin deporte" para la que no tiene');
+    ok(!document.getElementById('routine-name-span-rown5'),'rutinas: la propia del atleta no aparece en Gestión');
+    const order=[...document.querySelectorAll('.rt-sport-grp')].map(g=>g.dataset.sport); ok(order[order.length-1]==='__none__','rutinas: "Sin deporte" va al final ('+order.join(', ')+')');
+    const sel=document.getElementById('rt-sport-rnone'); sel.value='Rugby'; sel.dispatchEvent(new Event('change',{bubbles:true})); await wait(700);
+    ok(JSON.parse(localStorage.getItem('__db')).routines.rnone.sport==='Rugby'&&grp('Rugby')&&grp('Rugby').querySelector('#routine-name-span-rnone'),'rutinas: elegir deporte la guarda y la pasa a su grupo');
+    document.querySelector('.rt-sport-grp[data-sport="Rugby"] .rt-sport-h').click(); await wait(300); ok(!document.getElementById('routine-name-span-rnone')&&grp('Rugby'),'rutinas: el grupo se pliega');
+    document.querySelector('.rt-sport-grp[data-sport="Rugby"] .rt-sport-h').click(); await wait(300);
+    ok(document.documentElement.scrollWidth<=innerWidth+1,'rutinas por deporte: sin scroll horizontal'); txtBad('rutinas por deporte');
+    switchView('atletas'); await wait(600); openAtleta('u5'); await wait(1800); setAtletaSubview('rutina'); await wait(600);
+    const b=[...document.querySelectorAll('#main button')].find(x=>/Pasar a Gestión de rutinas/.test(x.textContent)); ok(!!b,'ficha: rutina propia tiene "Pasar a Gestión de rutinas"');
+    const keepP=window.prompt; let def=''; window.prompt=(m,d)=>{def=d; return 'Fuerza Básquet base';};
+    if(b){ b.click(); await wait(900); } window.prompt=keepP;
+    ok(def==='Rutina de Prueba','propone el nombre sin el del atleta ('+def+')');
+    const D2=JSON.parse(localStorage.getItem('__db')); const cp=Object.values(D2.routines).find(x=>x.fromPersonalRoutineId==='rown5');
+    ok(cp&&!cp.ownerUid&&cp.name==='Fuerza Básquet base'&&cp.sport==='Básquet','copia en Gestión: sin dueño, con el nombre elegido y el deporte del atleta');
+    ok(D2.routines.rown5.ownerUid==='u5'&&D2.users.u5.assignedRoutine==='rown5','la rutina del atleta sigue igual y asignada');
+    ok([...document.querySelectorAll('#main button')].some(x=>/✓ En Gestión de rutinas/.test(x.textContent)),'ficha: el botón muestra que ya está en Gestión');
+    goBackFromAthleteDetail(); await wait(400); switchView('admin'); await wait(300); adminGoRoutines(); await wait(700);
+    ok(grp('Básquet')&&/Fuerza Básquet base/.test(grp('Básquet').textContent),'aparece en Gestión, en el grupo Básquet'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
