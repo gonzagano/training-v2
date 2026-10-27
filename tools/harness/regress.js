@@ -519,7 +519,8 @@
       const ba=[...document.querySelectorAll('#main button')].find(x=>/Importar del Axon/.test(x.textContent)); ok(!!ba,'Atletas: botón Importar del Axon');
       if(ba){ ba.click(); await wait(400); const other=S.adminAthletes.find(x=>x.uid==='u4'); const [sur,...fn]=(other?.name||'Gomez Pedro').split(' ');
         await axonFilesChosen({files:[mk(sur.toUpperCase(),fn.join(' '),['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",'])]}); await wait(500);
-        const r0=S._axon?.rows?.[0]; ok(r0&&r0.uid==='u4'&&/todos los atletas/.test(document.getElementById('axon-overlay').innerText),'Axon desde Atletas: reconoce a un atleta de otro equipo ('+(r0&&r0.uid)+')'); closeAxonImport(); } } }
+        const r0=S._axon?.rows?.[0]; ok(r0&&r0.uid==='u4'&&/todos los atletas/.test(document.getElementById('axon-overlay').innerText),'Axon desde Atletas: reconoce a un atleta de otro equipo ('+(r0&&r0.uid)+')'); closeAxonImport(); }
+      ok(axonCandidates().some(c=>c.uid==='self'&&/(vos)/.test(c.name)),'Axon: el profe también aparece para elegir (sus propios saltos)'); } }
   // ── RPE menor a 7 no mueve el RM (y se avisa por qué) ──
   { S.atletaView=null; switchView('atletas'); await wait(800);
     const a0=S.adminAthletes.find(x=>x.uid==='u0'); await ensureGroupPersonalData(['u0']);
@@ -551,6 +552,16 @@
     ok(S.editingRoutine.sessions[d][0].id===last.id && labels.every((l,i)=>new RegExp('^(B|Bloque )'+(i+1)+'$').test(l)),'mover un bloque arriba: los números se reordenan ('+labels.join(', ')+')');
     const badge=document.querySelector('#rblock-'+last.id+' .block-badge'); ok(badge&&/1$/.test(badge.textContent.trim()),'el bloque movido arriba muestra el número 1 ('+(badge&&badge.textContent)+')');
     ok(renumberBlockLabels([{label:'Personal',id:'personal-block'},{label:'Bloque 7'},{label:'B9'},{label:'Calentamiento'}]).map(b=>b.label).join('|')==='Personal|Bloque 1|B2|Calentamiento','etiquetas propias se respetan'); }
+  // ── último testeo del grupo y "les toca testear" (más de 6 semanas) ──
+  { const ses=(d,a)=>({date:d,height:Math.max(...a),attempts:a}); const old=S._athleteEvalsCache; const oldScope=S.evalScopeUids; const oldCat=S.evalCategory;
+    const dAgo=n=>{const d=new Date(); d.setDate(d.getDate()-n); return toLocalDateStr(d);};
+    S._athleteEvalsCache={...(old||{}), u1:{cmj:[ses(dAgo(50),[38.0,37.4]),ses(dAgo(5),[43.4,42.8])]}, u2:{cmj:[ses(dAgo(50),[40.0,39.4]),ses(dAgo(4),[41.4,40.9])]}, u3:{cmj:[ses(dAgo(50),[35.0,34.4]),ses(dAgo(5),[35.2,34.9])]}, u4:{sj:[ses(dAgo(170),[30.1,29.5])]}};
+    S.evalScopeUids=['u1','u2','u3','u4']; S.evalCategory='saltabilidad'; S.evalTesteoTest='cmj';
+    const tx=renderEvalTesteoSummary();
+    ok(/1<\/b><span>mejoraron de verdad/.test(tx)&&/1<\/b><span>posible mejora/.test(tx)&&/1<\/b><span>sin cambio/.test(tx),'último testeo: 1 mejora real, 1 posible, 1 sin cambio');
+    const rt=renderEvalRetestList(); ok(/Gomez Pedro|u4/.test(rt)&&/hace 24 semanas/.test(rt)&&!/Meier/.test(rt),'les toca testear: solo el que no se testea hace más de 6 semanas');
+    const cb=renderEvalCompareBars(); ok(/ca-tr-up/.test(cb)&&/ca-tr-maybe/.test(cb)&&/ca-tr-none/.test(cb)&&!/Tercio/.test(cb)&&/Mejor/.test(cb),'comparar (Evaluaciones): barras con la tendencia de cada uno y "Mejor", sin colores por tercio');
+    S._athleteEvalsCache=old; S.evalScopeUids=oldScope; S.evalCategory=oldCat; }
   // ── ¿el cambio es real? (error típico de los intentos y cambio mínimo que importa) ──
   { const ses=(d,a)=>({date:d,height:Math.max(...a),attempts:a});
     const ev={cmj:[ses('2026-05-10',[36.1,37.4,36.5]),ses('2026-06-10',[37.0,38.2]),ses('2026-07-10',[37.9,38.5,37.2]),ses('2026-08-10',[38.0,39.1]),ses('2026-09-10',[38.6,37.5])]};

@@ -12455,7 +12455,8 @@ function statBarsHtml(rows, o) {
   const max = o.max || compareNiceMax(Math.max(best, o.avg||0));
   const pct = v => Math.max(0, Math.min(100, v/max*100));
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  return `<div class="ca-bars${o.wide?' ca-wide':''}">
+  const hasTr = rows.some(r=>r.trend), hasEx = !o.wide && rows.some(r=>r.extra);
+  return `<div class="ca-bars${o.wide?' ca-wide':''}${hasTr?' ca-hastr':''}${hasEx?' ca-hasex':''}">
     ${o.avg!=null?`<div class="ca-avg" style="--x:${(pct(o.avg)/100).toFixed(4)}"><span>${o.avgLabel||'prom.'} ${cmpFmt(o.avg,dec)}</span></div>`:''}
     ${rows.map(r=>{
       const has = r.v!=null;
@@ -12467,7 +12468,7 @@ function statBarsHtml(rows, o) {
         <div class="ca-trk">${has
           ? `<span class="ca-bar" style="width:${pct(r.v)}%;background:${r.color}"></span><span class="ca-val"><b>${cmpFmt(r.v,dec)}</b>${r.date?`<small>${r.date}</small>`:''}${o.wide?'':(r.extra||'')}</span>`
           : `<span class="ca-none">${r.none||'sin test'}</span>`}</div>
-        <div class="ca-pill">${o.wide&&has?(r.extra||''):''}${pill}</div>
+        ${hasTr?`<div class="ca-trc">${r.trend||''}</div>`:''}<div class="ca-pill">${o.wide&&has?(r.extra||''):''}${pill}</div>
       </div>`;
     }).join('')}
   </div>`;
@@ -15134,122 +15135,162 @@ function renderEvalHistory(edata, isDesktop, testList) {
 // por tercio (igual criterio que antes, pero por columna), y el alto total
 // no depende de cuántos tests haya, solo de cuántos atletas — mucho más
 // chico y entra en pantalla sin scrollear de más.
+// Clasifica el cambio entre dos registros: real / posible / sin cambio (y la dirección).
+function evalChangeClass(testId, last, prev, edata) {
+  const d = last.height - prev.height;
+  const noise = evalNoise(testId, edata);
+  const ref = (last.height+prev.height)/2;
+  const swc = evalSWC(testId, ref).v;
+  const mdc = noise ? 2.77*noise.cv/100*ref : null;
+  const k = (mdc!=null && Math.abs(d)>=mdc) ? 'real' : Math.abs(d)>=swc ? 'maybe' : 'none';
+  return {d, key: k==='none' ? 'none' : k+(d>0?'_up':'_down')};
+}
+window.evalChangeClass = evalChangeClass;
+
+// Atletas del alcance actual de Evaluaciones (un equipo o toda la app), con sus tests.
+function evalScopeAthletes() {
+  const pool = S.evalScopeUids ? (S.adminAthletes||[]).filter(a=>S.evalScopeUids.includes(a.uid)) : (S.adminAthletes||[]);
+  return pool.map(a=>({a, ed:getAthleteEvals(a.uid)||{}}));
+}
+
+// Resumen del último testeo: para el test elegido, quiénes se testearon en los
+// últimos días de ese testeo y cómo les fue contra su test anterior.
+function setEvalTesteoTest(id) { S.evalTesteoTest = id; renderMain(); }
+window.setEvalTesteoTest = setEvalTesteoTest;
+function renderEvalTesteoSummary() {
+  const list = evalScopeAthletes();
+  const tests = (S.evalCategory==='fuerza' ? STRENGTH_TESTS : EVAL_TESTS).filter(t=>list.some(x=>(x.ed[t.id]||[]).length));
+  if(!tests.length) return '';
+  const testId = tests.some(t=>t.id===S.evalTesteoTest) ? S.evalTesteoTest : tests[0].id;
+  const test = tests.find(t=>t.id===testId);
+  const lastDate = list.reduce((m,x)=>{ (x.ed[testId]||[]).forEach(r=>{ if(r && r.date>m) m = r.date; }); return m; }, '');
+  if(!lastDate) return '';
+  // El testeo = los registros de esa última semana (por si se testeó en dos días).
+  const from = toLocalDateStr(new Date(new Date(lastDate+'T12:00:00').getTime()-6*86400000));
+  const groups = {real_up:[], maybe_up:[], none:[], maybe_down:[], real_down:[], noprev:[]};
+  const dec = test.unit==='kg' ? 0 : 1;
+  list.forEach(({a, ed})=>{
+    const recs = sortEvalRecsByDate([...(ed[testId]||[])].filter(r=>r && r.height!=null));
+    const inT = recs.filter(r=>r.date>=from && r.date<=lastDate);
+    if(!inT.length) return;
+    const last = inT[inT.length-1];
+    const prev = [...recs].reverse().find(r=>r.date<from);
+    const name = a.name||a.email||'';
+    if(!prev) { groups.noprev.push({a, name}); return; }
+    const c = evalChangeClass(testId, last, prev, ed);
+    groups[c.key].push({a, name, d:c.d});
+  });
+  const tested = Object.values(groups).reduce((s,g)=>s+g.length,0);
+  if(!tested) return '';
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const who = g => g.sort((p,q)=>Math.abs(q.d||0)-Math.abs(p.d||0)).map(x=>`<a class="et-n" onclick="selectEvalAthlete('${x.a.uid}');switchEvalView('history')">${esc(x.name)}${x.d!=null?` <i>(${x.d>0?'+':'−'}${cmpFmt(Math.abs(x.d),dec)})</i>`:''}</a>`).join(' · ');
+  const ROWS = [['real_up','mejoraron de verdad','et-up'],['maybe_up','posible mejora','et-maybe'],['none','sin cambio','et-none'],['maybe_down','posible baja','et-maybe'],['real_down','bajaron de verdad','et-down']];
+  const compared = tested - groups.noprev.length;
+  const bar = compared ? `<div class="et-bar">${ROWS.filter(([k])=>groups[k].length).map(([k,,c])=>`<span class="${c}" style="flex:${groups[k].length}"></span>`).join('')}</div>` : '';
+  return `<section class="ts-card et-card">
+    <div class="ts-h"><div><div class="ts-k">Último testeo · ${evalShortDate(lastDate)}</div><div class="ts-ks">${esc(test.label)} · ${tested} atleta${tested!==1?'s':''} · comparado con el test anterior de cada uno</div></div>
+      <div class="ts-chips" style="margin:0">${tests.map(t=>`<button class="chip-btn ${t.id===testId?'on':''}" onclick="setEvalTesteoTest('${t.id}')">${esc(t.label)}</button>`).join('')}</div></div>
+    ${bar}
+    ${ROWS.filter(([k])=>groups[k].length).map(([k,lbl,c])=>`<div class="et-row"><div class="et-k ${c}"><b>${groups[k].length}</b><span>${lbl}</span></div><div class="et-who">${who(groups[k])}</div></div>`).join('')}
+    ${groups.noprev.length?`<div class="et-foot">${groups.noprev.length} sin test anterior para comparar: ${groups.noprev.map(x=>esc(x.name)).join(', ')}</div>`:''}
+  </section>`;
+}
+window.renderEvalTesteoSummary = renderEvalTesteoSummary;
+
+// Les toca testear: atletas que alguna vez se testearon y hace más de 6
+// semanas que no tienen ningún test (saltos o fuerza).
+const EVAL_RETEST_DAYS = 42;
+function renderEvalRetestList() {
+  const today = new Date(todayLocal()+'T12:00:00');
+  const due = evalScopeAthletes().map(({a, ed})=>{
+    let last = '';
+    Object.values(ed||{}).forEach(recs=>(recs||[]).forEach(r=>{ if(r && r.date && r.date>last) last = r.date; }));
+    if(!last) return null;
+    const days = Math.round((today - new Date(last+'T12:00:00'))/86400000);
+    return days > EVAL_RETEST_DAYS ? {a, last, days} : null;
+  }).filter(Boolean).sort((p,q)=>q.days-p.days);
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  return `<section class="ts-card et-card">
+    <div class="ts-h"><div><div class="ts-k">Les toca testear</div><div class="ts-ks">más de 6 semanas sin ningún test</div></div></div>
+    ${due.length ? due.map(x=>`<div class="et-due" onclick="selectEvalAthlete('${x.a.uid}');switchEvalView('history')"><b>${esc(x.a.name||x.a.email)}</b><span>último test ${evalShortDate(x.last)} · hace ${Math.round(x.days/7)} semanas</span></div>`).join('')
+      : '<div class="ts-empty">Todos los que se testearon tienen un test en las últimas 6 semanas.</div>'}
+  </section>`;
+}
+window.renderEvalRetestList = renderEvalRetestList;
+
+// Arriba de la comparación: el resumen del último testeo y a quién le toca
+// testear. Necesita los tests de todos los atletas del alcance (se traen una vez).
 function renderEvalCompare() {
+  const key = S.evalScopeUids ? S.evalScopeUids.join(',') : 'all';
+  const missing = (S.evalScopeUids||(S.adminAthletes||[]).map(a=>a.uid)).some(u=>!(S._athleteEvalsCache||{})[u]);
+  if(S.isAdmin && missing && S._evalAllLoadedKey!==key && !S._evalAllLoading) {
+    S._evalAllLoading = true;
+    Promise.resolve(loadAllAthleteEvals(true)).catch(()=>{}).finally(()=>{ S._evalAllLoading = false; S._evalAllLoadedKey = key; if(S.evalView==='compare') renderMain(); });
+  }
+  return '<div class="et-grid">'+renderEvalTesteoSummary()+renderEvalRetestList()+'</div>'+renderEvalCompareBars();
+}
+function setEvalCompareMode(v) { S.evalCompareMode = v; renderMain(); }
+window.setEvalCompareMode = setEvalCompareMode;
+// Comparar atletas (Evaluaciones): un gráfico de barras por test, todos del
+// mismo color, con el puesto, la fecha, el nivel, "Mejor" y, al lado de cada
+// atleta, cómo le fue contra su test anterior (real / posible / sin cambio /
+// bajó). Por puesto: el promedio de cada puesto.
+function renderEvalCompareBars() {
   if(!S.adminAthletes.length) {
     return '<div style="text-align:center;padding:30px;color:var(--text3)">'
       + '<div style="margin-bottom:10px">Cargando atletas...</div>'
       + '<button class="abtn abtn-p" onclick="loadEvalAthletes()">Cargar atletas</button></div>';
   }
-
   const testList = S.evalCategory==='fuerza' ? STRENGTH_TESTS : EVAL_TESTS;
-
-  const athletes = S.evalScopeUids
-    ? S.adminAthletes.filter(a=>S.evalScopeUids.includes(a.uid))
-    : [{uid:'self', name:'Yo (admin)', email:''}].concat(S.adminAthletes);
-
-  // Un valor por atleta por test (último registro), más la posición para
-  // poder agrupar/filtrar igual que antes.
-  const perAthlete = athletes.map(a=>{
-    const ed = a.uid==='self' ? S.evals : (S._athleteEvalsCache?.[a.uid]||{});
-    const values = {};
-    testList.forEach(t=>{
-      const recs = sortEvalRecsByDate([...(ed[t.id]||[])]);
-      values[t.id] = recs.length ? recs[recs.length-1].height : null;
+  const mode = S.evalCompareMode==='best' ? 'best' : 'last';
+  const list = evalScopeAthletes();
+  const positions = [...new Set(list.map(x=>x.a.position).filter(Boolean))].sort((p,q)=>p.localeCompare(q));
+  const groupBy = positions.length ? (S.evalCompareGroupBy==='position' ? 'position' : 'none') : 'none';
+  const c = chartColors();
+  const TR = {real_up:['▲','real','ca-tr-up'], maybe_up:['▲','posible','ca-tr-maybe'], none:['=','sin cambio','ca-tr-none'], maybe_down:['▼','posible baja','ca-tr-maybe'], real_down:['▼','bajó','ca-tr-down']};
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  let cards = '';
+  testList.forEach(t=>{
+    const dec = t.unit==='kg' ? 0 : 1;
+    const vals = list.map(({a, ed})=>{
+      const recs = sortEvalRecsByDate([...(ed[t.id]||[])].filter(r=>r && r.height!=null));
+      if(!recs.length) return {a, v:null};
+      const pick = mode==='best' ? recs.reduce((b,r)=>+r.height>+b.height?r:b) : recs[recs.length-1];
+      let trend = '';
+      if(recs.length>=2) { const k = evalChangeClass(t.id, recs[recs.length-1], recs[recs.length-2], ed).key; const m = TR[k]; trend = `<span class="ca-tr ${m[2]}" title="Último test contra el anterior">${m[0]}<em> ${m[1]}</em></span>`; }
+      return {a, v:+pick.height, date:pick.date?evalShortDate(pick.date):'', trend};
     });
-    return {name: a.name||a.email||'Atleta', position: a.position||null, values};
-  });
-  const withAnyData = perAthlete.filter(a=>testList.some(t=>a.values[t.id]!=null));
-  const withoutAnyData = perAthlete.filter(a=>!testList.some(t=>a.values[t.id]!=null));
-
-  const positions = [...new Set(withAnyData.map(d=>d.position).filter(Boolean))];
-  const groupBy = positions.length ? (S.evalCompareGroupBy||'none') : 'none';
-  const groupPos = S.evalCompareGroupPosition||'all';
-
-  // Agrupado por puesto: una fila por puesto, cada test promediado.
-  let rows;
-  if(groupBy==='position') {
-    const pool = groupPos==='all' ? withAnyData : withAnyData.filter(d=>d.position===groupPos);
-    if(groupPos==='all') {
+    const has = vals.filter(x=>x.v!=null);
+    if(!has.length) return;
+    let rows, avg;
+    if(groupBy==='position') {
       const byPos = {};
-      pool.forEach(d=>{ const p=d.position||'Sin puesto'; (byPos[p]=byPos[p]||[]).push(d); });
-      rows = Object.entries(byPos).map(([pos,members])=>{
-        const values = {};
-        testList.forEach(t=>{
-          const vals = members.map(m=>m.values[t.id]).filter(v=>v!=null);
-          values[t.id] = vals.length ? Math.round((vals.reduce((s,v)=>s+v,0)/vals.length)*10)/10 : null;
-        });
-        return {name: pos, values};
-      });
+      has.forEach(x=>{ const p = x.a.position||'Sin puesto'; (byPos[p] = byPos[p] || []).push(x.v); });
+      rows = Object.entries(byPos).map(([p, vs])=>({name:p+' · '+vs.length, color:c.accent, v:vs.reduce((s,x)=>s+x,0)/vs.length})).sort((p,q)=>q.v-p.v).map((r,i)=>({...r, rank:i+1}));
+      avg = has.reduce((s,x)=>s+x.v,0)/has.length;
     } else {
-      rows = pool;
+      rows = has.sort((p,q)=>q.v-p.v).map((x,i)=>({rank:i+1, name:x.a.name||x.a.email, color:c.accent, v:x.v, date:x.date,
+        extra:t.unit==='cm' ? '<span class="ca-lvl">'+jumpLevelTagHtml(t.id, x.v)+'</span>' : '', trend:x.trend, onclick:`selectEvalAthlete('${x.a.uid}');switchEvalView('history')`}));
+      avg = rows.length>=2 ? rows.reduce((s,r)=>s+r.v,0)/rows.length : null;
     }
-  } else {
-    rows = withAnyData;
-  }
-
-  let html = '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);overflow:hidden">';
-  html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
-  html += '<div style="font-size:15px;font-weight:600">Comparación de atletas</div>';
-  html += '</div>';
-
-  if(positions.length) {
-    html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border)">'
-      + ''
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-      + '<select class="abtn" onchange="setEvalCompareGroupBy(this.value)">'
-      +   '<option value="none" '+(groupBy==='none'?'selected':'')+'>Todos los atletas juntos</option>'
-      +   '<option value="position" '+(groupBy==='position'?'selected':'')+'>Agrupado por puesto</option>'
-      + '</select>'
-      + (groupBy==='position' ? '<select class="abtn" onchange="setEvalCompareGroupPosition(this.value)">'
-          + '<option value="all" '+(groupPos==='all'?'selected':'')+'>Promedio de cada puesto</option>'
-          + positions.map(p=>'<option value="'+p+'" '+(groupPos===p?'selected':'')+'>Solo '+p+'</option>').join('')
-          + '</select>' : '')
-      + '</div></div>';
-  }
-
-  html += '<div style="padding:12px 16px">';
-
-  // Un gráfico de barras horizontales por test — no una tabla de números —
-  // así se ve de un vistazo quién está arriba y quién abajo en cada métrica,
-  // sin tener que leer y comparar cifras columna por columna.
-  const anyTestHasData = rows.length && testList.some(t=>rows.some(r=>r.values[t.id]!=null));
-  if(anyTestHasData) {
-    testList.forEach(t=>{
-      const vals = rows.map(r=>({name:r.name, v:r.values[t.id]})).filter(x=>x.v!=null);
-      if(!vals.length) return;
-      vals.sort((a,b)=>b.v-a.v);
-      const colors = tercileColors(vals.map(x=>x.v));
-      const maxV = Math.max(...vals.map(x=>x.v)) * 1.05;
-      html += '<div style="margin-bottom:18px">'
-        + '<div style="font-size:12px;font-weight:700;margin-bottom:8px">'+t.label+' <span style="font-weight:400;color:var(--text3)">('+t.unit+')</span></div>';
-      vals.forEach((x,i)=>{
-        const pct = maxV>0 ? Math.max(4,(x.v/maxV)*100) : 0;
-        const color = colors[i];
-        html += '<div style="margin-bottom:6px">'
-          + '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-bottom:2px">'
-          + '<span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+x.name+'</span>'
-          + '<span style="font-weight:700;color:'+color+';flex-shrink:0">'+x.v+'</span></div>'
-          + '<div style="height:7px;background:var(--bg3);border-radius:4px;overflow:hidden">'
-          + '<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:4px"></div></div>'
-          + '</div>';
-      });
-      html += '</div>';
-    });
-    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-top:4px">'
-      + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block"></span>Tercio superior</span>'
-      + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#3b7dd8;display:inline-block"></span>Medio</span>'
-      + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>A reforzar</span>'
-      + '</div>';
-  } else {
-    html += '<div class="eval-no-data">Sin datos registrados.</div>';
-  }
-  if(withoutAnyData.length) {
-    html += '<div style="font-size:11px;color:var(--text3);margin-top:8px">Sin ningún test cargado: '+withoutAnyData.map(d=>d.name).join(', ')+'</div>';
-  }
-  html += '<button class="abtn abtn-p" style="width:100%;margin-top:12px" onclick="loadAllAthleteEvals()">↻ Actualizar datos de atletas</button>';
-  html += '</div></div>';
-  return html;
+    const missing = vals.filter(x=>x.v==null).map(x=>esc(x.a.name||x.a.email));
+    cards += `<section class="ts-card">
+      <div class="ts-h"><div><div class="ts-k">${esc(t.label)}${groupBy==='position'?' por puesto':''}</div><div class="ts-ks">${t.unit} · ${groupBy==='position'?'promedio de cada puesto':mode==='best'?'mejor marca':'último test'}</div></div></div>
+      ${statBarsHtml(rows, {unit:t.unit, dec, avg, avgLabel:'prom.'})}
+      ${missing.length && groupBy!=='position' ? `<div class="et-foot">Sin test: ${missing.join(' · ')}</div>` : ''}
+    </section>`;
+  });
+  return `<div class="ev-cmp-top">
+      <div class="ts-k">Comparar atletas</div>
+      <div class="ev-cmp-ctl">
+        ${positions.length?`<div class="ca-seg"><button class="chip-btn ${groupBy==='none'?'on':''}" onclick="setEvalCompareGroupBy('none')">Todos juntos</button><button class="chip-btn ${groupBy==='position'?'on':''}" onclick="setEvalCompareGroupBy('position')">Por puesto</button></div>`:''}
+        <div class="ca-seg"><button class="chip-btn ${mode==='last'?'on':''}" onclick="setEvalCompareMode('last')">Último test</button><button class="chip-btn ${mode==='best'?'on':''}" onclick="setEvalCompareMode('best')">Mejor marca</button></div>
+        <button class="abtn" onclick="loadAllAthleteEvals()">Actualizar</button>
+      </div>
+    </div>
+    ${cards ? `<div class="ev-cmp-grid">${cards}</div>` : '<div class="eval-no-data">Sin datos registrados.</div>'}`;
 }
+window.renderEvalCompareBars = renderEvalCompareBars;
 window.renderEvalCompare = renderEvalCompare;
 
 function renderAthleteTeamCompare(myData) {
@@ -15411,7 +15452,8 @@ function axonCandidates() {
   const tn = id => { const t = (S.teams||[]).find(x=>x.id===id); return t ? t.name+(t.category?' '+t.category:'') : ''; };
   const reg = (S.adminAthletes||[]).map(a=>({uid:a.uid, raw:a.name||a.email||'', team:a.teamId||'', name:(a.name||a.email||'')+(tn(a.teamId)?' · '+tn(a.teamId):'')}));
   const pend = (S.pendingAthletes||[]).map(p=>({uid:'pending:'+p.id, raw:p.name||'', team:p.teamId||'', name:(p.name||'')+' (sin registrar)'+(tn(p.teamId)?' · '+tn(p.teamId):'')}));
-  return reg.concat(pend).sort((a,b)=>a.name.localeCompare(b.name));
+  const me = S.isAdmin && S.userData?.name ? [{uid:'self', raw:S.userData.name, team:'', name:S.userData.name+' (vos)'}] : [];
+  return me.concat(reg, pend).sort((a,b)=>a.name.localeCompare(b.name));
 }
 // Mismas palabras = seguro; las palabras de uno contenidas en el otro (falta
 // un segundo nombre) = probable; nada = no está en la app.
@@ -15546,17 +15588,18 @@ async function confirmAxonImport() {
   for(const {r, plan} of todo) {
     try {
       // Datos frescos del atleta antes de sumar, para no pisar nada cargado mientras tanto.
-      if(S._athleteEvalsCache) delete S._athleteEvalsCache[r.uid];
-      await ensureAthleteEvalData(r.uid);
+      const isMe = r.uid==='self';
+      if(!isMe) { if(S._athleteEvalsCache) delete S._athleteEvalsCache[r.uid]; await ensureAthleteEvalData(r.uid); }
       if(!S._athleteEvalsCache) S._athleteEvalsCache = {};
-      const ev = S._athleteEvalsCache[r.uid] = S._athleteEvalsCache[r.uid] || {};
+      if(isMe && !S.evals) S.evals = {};
+      const ev = isMe ? S.evals : (S._athleteEvalsCache[r.uid] = S._athleteEvalsCache[r.uid] || {});
       let added = 0;
       plan.recs.forEach(({testId, rec})=>{
         if(!ev[testId]) ev[testId] = [];
         if(ev[testId].some(x=>x && x.date===rec.date)) return;
         ev[testId].push(rec); sortEvalRecsByDate(ev[testId]); added++;
       });
-      if(added) { await saveAthleteEvalsDoc(r.uid, ev); syncEvalsToAthleteObject(r.uid); savedRecs += added; savedPeople++; }
+      if(added) { if(isMe) { Object.keys(ev).forEach(markEvalDirty); scheduleSave(); } else { await saveAthleteEvalsDoc(r.uid, ev); syncEvalsToAthleteObject(r.uid); } savedRecs += added; savedPeople++; }
     } catch(e) { failed++; }
     st.done++; renderAxonModal();
   }
@@ -15565,6 +15608,7 @@ async function confirmAxonImport() {
 }
 window.confirmAxonImport = confirmAxonImport;
 window.parseAxonFile = parseAxonFile;
+window.axonCandidates = axonCandidates; window.statBarsHtml = statBarsHtml; window.compareTestValue = compareTestValue;
 window.axonMatch = axonMatch;
 
 async function saveAllEvals() {

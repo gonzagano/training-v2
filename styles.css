@@ -1287,7 +1287,12 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .ca-test-h{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
 .ca-test-h b{font-size:15px}
 .ca-test-h span{font-size:12px;color:var(--text3)}
-.ca-bars{position:relative;padding-top:20px;--nw:150px;--pw:92px;--g:10px}
+.ca-bars{position:relative;padding-top:20px;--nw:150px;--pw:92px;--g:10px;--tw:0px}
+.ca-bars.ca-hastr{--tw:calc(96px + var(--g))}
+.ca-bars.ca-hasex{--vw:150px}
+.ca-hasex .ca-trk{margin-right:var(--vw)}
+.ca-hasex .ca-val{margin-right:calc(-1 * var(--vw))}
+.ca-hastr .ca-row{grid-template-columns:minmax(0,var(--nw)) minmax(0,1fr) 96px var(--pw)}
 .ca-bars.ca-wide{--pw:200px}
 .ca-row{display:grid;grid-template-columns:minmax(0,var(--nw)) minmax(0,1fr) var(--pw);align-items:center;gap:var(--g);height:34px}
 .ca-nm{display:flex;align-items:center;gap:8px;min-width:0;font-size:13px;font-weight:600}
@@ -1301,7 +1306,7 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .ca-none{font-size:12px;font-style:italic;color:var(--text3)}
 .ca-pill{display:flex;justify-content:flex-end;align-items:center;gap:6px}
 .ca-diff{display:inline-flex;align-items:center;justify-content:center;min-width:76px;height:24px;padding:0 8px;border-radius:12px;background:var(--bg3);border:1px solid var(--border);font-size:12px;font-weight:700;color:var(--text2);white-space:nowrap}
-.ca-avg{position:absolute;top:0;bottom:0;left:calc(var(--nw) + var(--g) + (100% - var(--nw) - 2 * var(--g) - var(--pw) - 64px) * var(--x));border-left:1.5px dashed var(--text2);pointer-events:none}
+.ca-avg{position:absolute;top:0;bottom:0;left:calc(var(--nw) + var(--g) + (100% - var(--nw) - 2 * var(--g) - var(--pw) - var(--tw) - var(--vw,64px)) * var(--x));border-left:1.5px dashed var(--text2);pointer-events:none}
 .ca-avg span{position:absolute;top:0;transform:translateX(-50%);font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;background:var(--bg2);padding:0 4px}
 .ca-load .ar-list{margin:0}
 .ca-lrow .ar-row{box-shadow:inset 4px 0 0 var(--ca-c)}
@@ -1317,7 +1322,10 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
   .ca-bars,.ca-bars.ca-wide{--nw:96px;--pw:70px;--g:8px}
   .ca-trk{margin-right:56px}
   .ca-val{margin-right:-56px}
-  .ca-avg{left:calc(var(--nw) + var(--g) + (100% - var(--nw) - 2 * var(--g) - var(--pw) - 56px) * var(--x))}
+  .ca-avg{left:calc(var(--nw) + var(--g) + (100% - var(--nw) - 2 * var(--g) - var(--pw) - var(--tw) - 56px) * var(--x))}
+  .ca-bars.ca-hastr{--tw:calc(22px + var(--g))}
+  .ca-hastr .ca-row{grid-template-columns:minmax(0,var(--nw)) minmax(0,1fr) 22px var(--pw)}
+  .ca-tr em{display:none}
   .ca-diff{min-width:0;font-size:11px;padding:0 6px}
   .ca-pill .ev-pill{font-size:11px;padding:2px 8px 2px 4px}
   .ca-evol{height:240px}
@@ -1596,3 +1604,36 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .rt-sport-row{display:flex;align-items:center;gap:8px;margin-top:8px}
 .rt-sport-row label{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
 .rt-sport-sel{width:auto;min-width:0;max-width:200px;font-size:12px;padding:5px 8px}
+
+
+/* ── Evaluaciones: último testeo y les toca testear ── */
+.et-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:var(--sp-4);align-items:start}
+.et-card{margin-bottom:var(--sp-4)}
+.et-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px;margin:2px 0 10px}
+.et-bar span{display:block;background:currentColor}
+.et-up{color:var(--green)}.et-maybe{color:var(--amber)}.et-none{color:var(--text3)}.et-down{color:var(--red)}
+.et-row{display:flex;align-items:flex-start;gap:6px 14px;padding:9px 0;border-top:1px solid var(--border);flex-wrap:wrap}
+.et-who{flex:1;min-width:200px}
+.et-k{min-width:170px;display:flex;align-items:baseline;gap:8px}
+.et-k b{font-family:'Barlow Condensed',sans-serif;font-size:28px;line-height:1}
+.et-k span{font-size:13px;font-weight:700}
+.et-who{font-size:13px;color:var(--text2);line-height:1.7}
+.et-n{cursor:pointer;color:var(--text);font-weight:600}
+.et-n:hover{text-decoration:underline}
+.et-n i{font-style:normal;font-weight:500;color:var(--text3)}
+.et-foot{font-size:12px;color:var(--text3);margin-top:6px}
+.et-due{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);cursor:pointer;flex-wrap:wrap}
+.et-due b{font-size:13px}
+.et-due span{font-size:12px;color:var(--text3)}
+@media (max-width:600px){.ca-bars.ca-hasex{--vw:56px}}
+
+/* ── Evaluaciones › Comparar atletas ── */
+.ca-trc{display:flex;align-items:center}
+.ca-tr{font-size:11px;font-weight:800;white-space:nowrap}
+.ca-tr em{font-style:normal}
+.ca-tr-up{color:var(--green)}.ca-tr-maybe{color:var(--amber)}.ca-tr-none{color:var(--text3);font-weight:700}.ca-tr-down{color:var(--red)}
+.ev-cmp-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 12px}
+.ev-cmp-ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ev-cmp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4);align-items:start}
+.ev-cmp-grid .ts-card{margin-bottom:0}
+@media (max-width:1100px){.ev-cmp-grid{grid-template-columns:minmax(0,1fr)}}
