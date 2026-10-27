@@ -9825,7 +9825,7 @@ window.BODY_ZONES = BODY_ZONES;
 function renderAtletas() {
   if (S.atletaView) return renderAtletaDetail(S.atletaView);
 
-  let html = `<div class="pg-head"><div class="pg-head-t">Atletas</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="abtn" onclick="adminGoCompare('ind')">Comparar atletas</button><button class="abtn abtn-p" onclick="openNewAthleteModal()">Crear nuevo atleta +</button></div></div>`;
+  let html = `<div class="pg-head"><div class="pg-head-t">Atletas</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="abtn" onclick="openAxonImport()">Importar del Axon</button><button class="abtn" onclick="adminGoCompare('ind')">Comparar atletas</button><button class="abtn abtn-p" onclick="openNewAthleteModal()">Crear nuevo atleta +</button></div></div>`;
 
   if (!S.adminAthletesLoaded) {
     ensureAdminAthletes().then(renderMain);
@@ -14587,7 +14587,7 @@ function renderEvals() {
       + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
       + athleteSel
       + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
-      + (S.teamView ? '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>' : '')
+      + '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>'
       + '</div>';
   }
 
@@ -14631,7 +14631,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
       + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
       + athleteSel
       + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
-      + (S.teamView ? '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>' : '')
+      + '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>'
       + '</div>';
   }
 
@@ -15323,15 +15323,16 @@ function parseAxonFile(text, fileName) {
   return {name, file:fileName, jumps};
 }
 
-// Candidatos: los atletas del equipo (registrados y sin registrar).
-function axonCandidates(team) {
-  const uids = getTeamStatsMemberUids(team);
-  const reg = (S.adminAthletes||[]).filter(a=>uids.includes(a.uid)).map(a=>({uid:a.uid, name:a.name||a.email||''}));
-  const pend = (S.pendingAthletes||[]).filter(p=>p.teamId===team.id).map(p=>({uid:'pending:'+p.id, name:(p.name||'')+' (sin registrar)', raw:p.name||''}));
-  return reg.concat(pend);
+// Candidatos: TODOS los atletas de la app (registrados y sin registrar de los
+// planteles), con su equipo al lado para reconocerlos en la lista.
+function axonCandidates() {
+  const tn = id => { const t = (S.teams||[]).find(x=>x.id===id); return t ? t.name+(t.category?' '+t.category:'') : ''; };
+  const reg = (S.adminAthletes||[]).map(a=>({uid:a.uid, raw:a.name||a.email||'', team:a.teamId||'', name:(a.name||a.email||'')+(tn(a.teamId)?' · '+tn(a.teamId):'')}));
+  const pend = (S.pendingAthletes||[]).map(p=>({uid:'pending:'+p.id, raw:p.name||'', team:p.teamId||'', name:(p.name||'')+' (sin registrar)'+(tn(p.teamId)?' · '+tn(p.teamId):'')}));
+  return reg.concat(pend).sort((a,b)=>a.name.localeCompare(b.name));
 }
 // Mismas palabras = seguro; las palabras de uno contenidas en el otro (falta
-// un segundo nombre) = probable; nada = no está en el equipo.
+// un segundo nombre) = probable; nada = no está en la app.
 function axonMatch(axonName, cands) {
   const ax = axonNorm(axonName).split(' ').filter(Boolean);
   const scored = cands.map(c=>{
@@ -15345,10 +15346,10 @@ function axonMatch(axonName, cands) {
   return {uid:scored[0].c.uid, level: scored[0].score===2 ? 'ok' : 'maybe'};
 }
 
-function openAxonImport() {
-  if(!S.teamView) { showToast('Entrá a un equipo para importar'); return; }
-  S._axon = {teamId:S.teamView.id, files:[], rows:[], from:'', step:'pick'};
+async function openAxonImport() {
+  S._axon = {teamId:S.teamView?.id||null, files:[], rows:[], from:'', step:'pick'};
   renderAxonModal();
+  try { await ensureAdminAthletes(); } catch(e) {}
 }
 window.openAxonImport = openAxonImport;
 function closeAxonImport() { const o=document.getElementById('axon-overlay'); if(o) o.remove(); S._axon = null; }
@@ -15360,18 +15361,22 @@ async function axonFilesChosen(input) {
   if(!files.length) { showToast('No hay archivos .atl ahí'); return; }
   const dec = new TextDecoder('windows-1252');
   const parsed = [];
-  for(const f of files) { try { const p = parseAxonFile(dec.decode(await f.arrayBuffer()), f.name); if(p) parsed.push(p); } catch(e){} }
-  const team = (S.teams||[]).find(t=>t.id===st.teamId);
-  const cands = axonCandidates(team);
-  // Para no duplicar hace falta lo que cada atleta ya tiene guardado.
-  await Promise.all(cands.map(c=>ensureAthleteEvalData(c.uid).catch(()=>{})));
-  st.rows = parsed.map(p=>{ const m = axonMatch(p.name, cands); return {...p, uid:m.uid, level:m.level}; })
-    .sort((p,q)=>({ok:2,maybe:1,dup:0,none:-1}[q.level]-{ok:2,maybe:1,dup:0,none:-1}[p.level]) || p.name.localeCompare(q.name));
+  for(const f of files) { try { const p = parseAxonFile(dec.decode(await f.arrayBuffer()), f.name); if(p) { p.folder = String(f.webkitRelativePath||'').split('/').slice(0,-1).slice(-2).join(' › '); parsed.push(p); } } catch(e){} }
+  try { await ensureAdminAthletes(); } catch(e) {}
+  const cands = axonCandidates();
+  st.rows = parsed.map(p=>{
+    let m = axonMatch(p.name, cands);
+    // Mismo nombre en dos atletas: si estamos dentro de un equipo, gana el de ese equipo.
+    if(m.level==='dup' && st.teamId) { const inTeam = (m.options||[]).filter(u=>cands.find(c=>c.uid===u)?.team===st.teamId); if(inTeam.length===1) m = {uid:inTeam[0], level:'maybe'}; }
+    return {...p, uid:m.uid, level:m.level};
+  }).sort((p,q)=>({ok:2,maybe:1,dup:0,none:-1}[q.level]-{ok:2,maybe:1,dup:0,none:-1}[p.level]) || p.name.localeCompare(q.name));
+  // Para no duplicar hace falta lo que cada atleta reconocido ya tiene guardado.
+  await Promise.all([...new Set(st.rows.filter(r=>r.uid).map(r=>r.uid))].map(u=>ensureAthleteEvalData(u).catch(()=>{})));
   st.step = 'review';
   renderAxonModal();
 }
 window.axonFilesChosen = axonFilesChosen;
-function setAxonRowUid(i, uid) { if(S._axon?.rows[i]) { S._axon.rows[i].uid = uid; S._axon.rows[i].level = uid ? 'ok' : 'skip'; renderAxonModal(); } }
+async function setAxonRowUid(i, uid) { if(S._axon?.rows[i]) { S._axon.rows[i].uid = uid; S._axon.rows[i].level = uid ? 'ok' : 'skip'; if(uid) { try { await ensureAthleteEvalData(uid); } catch(e){} } renderAxonModal(); } }
 window.setAxonRowUid = setAxonRowUid;
 function setAxonFrom(v) { if(S._axon) { S._axon.from = v||''; renderAxonModal(); } }
 window.setAxonFrom = setAxonFrom;
@@ -15401,21 +15406,22 @@ function axonPlan(row) {
 
 function renderAxonModal() {
   const st = S._axon; if(!st) return;
-  const team = (S.teams||[]).find(t=>t.id===st.teamId) || {};
+  const team = (S.teams||[]).find(t=>t.id===st.teamId) || null;
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   let body = '', btns = '';
   if(st.step==='pick') {
-    body = `<p class="axi-p">Elegí la carpeta de <b>${esc(team.name)}</b> dentro de los atletas del Axon (por ejemplo <i>Atletas › EDLP › LIGA</i>), o los archivos <b>.atl</b> sueltos.</p>
+    body = `<p class="axi-p">Elegí la carpeta <b>Atletas</b> del Axon entera, la de un club o la de una categoría (por ejemplo <i>Atletas › EDLP › LIGA</i>), o archivos <b>.atl</b> sueltos. Se cargan los tests de los atletas que ya están en la app.</p>
       <div class="axi-pick">
         <label class="abtn abtn-p">Elegir carpeta<input type="file" webkitdirectory directory multiple hidden onchange="axonFilesChosen(this)"></label>
         <label class="abtn">Elegir archivos<input type="file" accept=".atl" multiple hidden onchange="axonFilesChosen(this)"></label>
       </div>`;
     btns = `<button class="abtn" onclick="closeAxonImport()">Cancelar</button>`;
   } else if(st.step==='review') {
-    const cands = axonCandidates(team);
+    const cands = axonCandidates();
     const label = id => (EVAL_TESTS.find(t=>t.id===id)||{label:id}).label;
     let totalRecs = 0, people = 0;
-    const rows = st.rows.map((r,i)=>{
+    const matched = [], unmatched = [];
+    st.rows.forEach((r,i)=>{
       const plan = axonPlan(r);
       if(plan.recs.length) { totalRecs += plan.recs.length; people++; }
       const byTest = {}; plan.recs.forEach(x=>{ byTest[x.testId] = (byTest[x.testId]||0)+1; });
@@ -15424,17 +15430,19 @@ function renderAxonModal() {
         : r.level==='maybe' ? '<span class="axi-tag axi-warn">Revisá</span>'
         : r.level==='dup' ? '<span class="axi-tag axi-warn">Elegí quién es</span>'
         : r.level==='skip' ? '<span class="axi-tag">No importar</span>'
-        : '<span class="axi-tag axi-no">No está en el equipo</span>';
+        : '<span class="axi-tag axi-no">No está en la app</span>';
       const sel = `<select class="axi-sel" onchange="setAxonRowUid(${i},this.value)"><option value="">— No importar —</option>${cands.map(c=>`<option value="${c.uid}" ${r.uid===c.uid?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`;
       const what = !r.uid ? '<span class="axi-dim">—</span>'
         : plan.recs.length ? `<b>${plan.recs.length}</b> nuevo${plan.recs.length!==1?'s':''} · ${Object.entries(byTest).map(([t,n])=>esc(label(t))+(n>1?' ×'+n:'')).join(', ')}<div class="axi-dim">${dates.length===1?evalShortDate(dates[0]):evalShortDate(dates[0])+' a '+evalShortDate(dates[dates.length-1])}${plan.dupDays?` · ${plan.dupDays} ya estaba${plan.dupDays!==1?'n':''}`:''}</div>`
         : `<span class="axi-dim">Nada nuevo${plan.dupDays?` (${plan.dupDays} ya estaba${plan.dupDays!==1?'n':''})`:''}</span>`;
-      return `<tr><td><b>${esc(r.name)}</b><div class="axi-dim">${esc(r.file)}</div></td><td>${status}</td><td>${sel}</td><td>${what}</td></tr>`;
-    }).join('');
+      const tr = `<tr><td><b>${esc(r.name)}</b><div class="axi-dim">${esc(r.folder||r.file)}</div></td><td>${status}</td><td>${sel}</td><td>${what}</td></tr>`;
+      if(r.uid || r.level==='dup' || r.level==='skip') matched.push(tr); else unmatched.push(tr);
+    });
     const nOk = st.rows.filter(r=>r.uid).length, nNo = st.rows.length-nOk;
     body = `<div class="axi-top"><span><b>${st.rows.length}</b> archivo${st.rows.length!==1?'s':''} · <b>${nOk}</b> con atleta · <b>${nNo}</b> sin importar</span>
         <label class="axi-from">Solo desde <input type="date" value="${st.from}" onchange="setAxonFrom(this.value)"></label></div>
-      <div class="axi-tw"><table class="axi-t"><thead><tr><th>En el Axon</th><th>Estado</th><th>Atleta en la app</th><th>Qué se carga</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      <div class="axi-tw"><table class="axi-t"><thead><tr><th>En el Axon</th><th>Estado</th><th>Atleta en la app</th><th>Qué se carga</th></tr></thead><tbody>${matched.join('')||'<tr><td colspan="4" class="axi-dim">Ningún atleta de estos archivos está en la app.</td></tr>'}</tbody></table></div>
+      ${unmatched.length?`<details class="axi-un"><summary>${unmatched.length} archivo${unmatched.length!==1?'s':''} de atletas que no están en la app (no se importan)</summary><div class="axi-tw"><table class="axi-t"><tbody>${unmatched.join('')}</tbody></table></div></details>`:''}`;
     btns = `<button class="abtn" onclick="closeAxonImport()">Cancelar</button>
       <button class="abtn abtn-p" ${totalRecs?'':'disabled'} onclick="confirmAxonImport()">Importar ${totalRecs} test${totalRecs!==1?'s':''} de ${people} atleta${people!==1?'s':''}</button>`;
   } else if(st.step==='saving') {
@@ -15445,7 +15453,7 @@ function renderAxonModal() {
   }
   let o = document.getElementById('axon-overlay');
   if(!o) { o = document.createElement('div'); o.className = 'video-modal open'; o.id = 'axon-overlay'; document.body.appendChild(o); }
-  o.innerHTML = `<div class="video-modal-box wide axi-box"><div class="video-modal-title">Importar del Axon · ${esc(team.name||'')}</div><div class="axi-body">${body}</div><div class="video-modal-btns">${btns}</div></div>`;
+  o.innerHTML = `<div class="video-modal-box wide axi-box"><div class="video-modal-title">Importar del Axon · ${team?esc(team.name):'todos los atletas'}</div><div class="axi-body">${body}</div><div class="video-modal-btns">${btns}</div></div>`;
 }
 
 async function confirmAxonImport() {

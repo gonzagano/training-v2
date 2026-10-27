@@ -1583,3 +1583,5 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .axi-warn{color:var(--amber);border-color:var(--amber)}
 .axi-no{color:var(--text3)}
 .axi-sel{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:6px 8px;font-family:inherit;font-size:13px;max-width:220px}
+.axi-un{margin-top:12px;font-size:13px;color:var(--text2)}
+.axi-un summary{cursor:pointer;font-weight:700;padding:6px 0}

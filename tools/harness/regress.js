@@ -507,13 +507,19 @@
     if(b){ b.click(); await wait(300);
       const mk=(sur,first,rows)=>new File([new Uint8Array([...[sur+'_[',first,'','180','Fecha,Hora,Tipo,Piso,Vuelo,Altura,Velocidad,Q,"A Caida"',...rows].join('\r\n')].map(c=>c.charCodeAt(0)&255))], sur+'.atl');
       await axonFilesChosen({files:[mk('MEIER','Matias',['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",','15/10/26,20:09:20,CMJ," ",584,"41,8","2,86"," ",']), mk('FANTASMA','Juan',['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",'])]}); await wait(500);
-      const tx=document.getElementById('axon-overlay').innerText; ok(/Reconocido/.test(tx)&&/No está en el equipo/.test(tx),'Axon: vista previa con reconocidos y no encontrados');
+      const tx=document.getElementById('axon-overlay').innerText; ok(/Reconocido/.test(tx)&&/no están en la app/.test(tx),'Axon: vista previa con reconocidos y los que no están en la app aparte');
       await confirmAxonImport(); await wait(600);
       const d=JSON.parse(localStorage.getItem('__db')); const u=Object.entries(d.users).find(([,x])=>x.name==='Meier Matias'); const rec=u&&(d.personal[u[0]].evals?.cmj||[]).find(r=>r.date==='2026-10-15');
       ok(rec&&rec.height===41.8&&rec.attempts.length===2&&rec.src==='axon','Axon: guarda el mejor salto con los 2 intentos en el atleta correcto');
       ok(Object.keys(d.users).length===users0,'Axon: no crea atletas nuevos');
       closeAxonImport(); openAxonImport(); await axonFilesChosen({files:[mk('MEIER','Matias',['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",'])]}); await wait(400);
-      ok(/Nada nuevo/.test(document.getElementById('axon-overlay').innerText),'Axon: importar dos veces no duplica'); closeAxonImport(); txtBad('evaluaciones equipo'); } }
+      ok(/Nada nuevo/.test(document.getElementById('axon-overlay').innerText),'Axon: importar dos veces no duplica'); closeAxonImport(); txtBad('evaluaciones equipo');
+      // desde Atletas (sin equipo): reconoce a cualquier atleta de la app, de cualquier equipo
+      S.teamView=null; S.atletaView=null; switchView('atletas'); await wait(900);
+      const ba=[...document.querySelectorAll('#main button')].find(x=>/Importar del Axon/.test(x.textContent)); ok(!!ba,'Atletas: botón Importar del Axon');
+      if(ba){ ba.click(); await wait(400); const other=S.adminAthletes.find(x=>x.uid==='u4'); const [sur,...fn]=(other?.name||'Gomez Pedro').split(' ');
+        await axonFilesChosen({files:[mk(sur.toUpperCase(),fn.join(' '),['15/10/26,20:09:14,CMJ," ",576,"40,6","2,82"," ",'])]}); await wait(500);
+        const r0=S._axon?.rows?.[0]; ok(r0&&r0.uid==='u4'&&/todos los atletas/.test(document.getElementById('axon-overlay').innerText),'Axon desde Atletas: reconoce a un atleta de otro equipo ('+(r0&&r0.uid)+')'); closeAxonImport(); } } }
   // ── RPE menor a 7 no mueve el RM (y se avisa por qué) ──
   { S.atletaView=null; switchView('atletas'); await wait(800);
     const a0=S.adminAthletes.find(x=>x.uid==='u0'); await ensureGroupPersonalData(['u0']);
