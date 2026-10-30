@@ -1349,6 +1349,7 @@ onAuthStateChanged(auth, async (user) => {
 
   renderBottomBar();
   renderAll();
+   syncPushSubscription();
 });
 
 // ── SAVE ──────────────────────────────────────────────────────
@@ -11401,7 +11402,6 @@ window.markAllNotificationsRead = markAllNotificationsRead;
 // mandarle y se la pasa a /api/send-push (función serverless de Vercel) —
 // el cifrado y el envío real no se pueden hacer desde el navegador del admin
 // porque los servidores push de Apple/Google no responden con CORS.
-const VAPID_PUBLIC_KEY = 'BD_LHVYb3YbBE8Ih_viOAqYlp_2TXWlJa0dLGfNKsQfZlnxun47Up_nD9RMvUieeUMcrWRXw60u5e3Q_1HCBKy8';
 // Igual que en la guía de la que sale este patrón: no es un secreto
 // criptográfico, solo evita que cualquiera le pegue a /api/send-push desde
 // afuera. Tiene que ser EXACTAMENTE el mismo string que la variable de
@@ -11425,6 +11425,62 @@ window.esIOS = esIOS;
 function esStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
 window.esStandalone = esStandalone;
 
+// La clave pública la informa el servidor (null = todavía sin configurar).
+async function getVapidPublicKey() {
+  try {
+    const r = await fetch('/api/send-push', {cache:'no-store'});
+    if(!r.ok) return null;
+    return (await r.json()).publicKey || null;
+  } catch(e) { return null; }
+}
+function subUsesKey(sub, key) {
+  const k = sub?.options?.applicationServerKey;
+  if(!k) return false;
+  const a = new Uint8Array(k), b = urlBase64ToUint8Array(key);
+  return a.length===b.length && a.every((v,i)=>v===b[i]);
+}
+// Suscribe ESTE dispositivo con la clave vigente (si tenía otra, la renueva) y la guarda.
+async function subscribeThisDevice(key) {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if(sub && !subUsesKey(sub, key)) { await sub.unsubscribe(); sub = null; }
+  if(!sub) sub = await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:urlBase64ToUint8Array(key)});
+  const raw = sub.toJSON();
+  const subData = { endpoint: raw.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth };
+  if(S.userData?.pushSubscription?.endpoint !== subData.endpoint || S.userData?.pushSubscription?.p256dh !== subData.p256dh) {
+    await setDoc(doc(db,'users',S.user.uid), {pushSubscription:subData}, {merge:true});
+    if(S.userData) S.userData.pushSubscription = subData;
+  }
+}
+// Al abrir la app: quien ya las activó queda con la clave vigente sin tener que hacer nada.
+async function syncPushSubscription() {
+  try {
+    if(!S.user || !S.userData?.pushSubscription) return;
+    if(typeof Notification==='undefined' || Notification.permission!=='granted' || !('serviceWorker' in navigator)) return;
+    const key = await getVapidPublicKey();
+    if(key) await subscribeThisDevice(key);
+  } catch(e) {}
+}
+window.syncPushSubscription = syncPushSubscription;
+
+// Aviso de prueba a este mismo usuario: dice la verdad sobre si salió o no.
+async function probarNotificacion() {
+  const sub = S.userData?.pushSubscription;
+  if(!sub) { showToast('Primero activá las notificaciones'); return; }
+  try {
+    const resp = await fetch('/api/send-push', {
+      method:'POST',
+      headers:{'Content-Type':'application/json', 'X-Push-Secret': PUSH_API_SECRET},
+      body: JSON.stringify({subscriptions:[sub], title:'G-Metrics', body:'Aviso de prueba: las notificaciones funcionan.', url:location.origin})
+    });
+    let data = {}; try { data = await resp.json(); } catch(e) {}
+    if(!resp.ok) { showToast('No salió: '+(data.error||('error '+resp.status))); return; }
+    const r = (data.results||[])[0];
+    showToast(r?.ok ? '✓ Enviado: tiene que llegarte en unos segundos' : 'No salió: '+(r?.reason||'error desconocido'));
+  } catch(e) { showToast('No salió: sin conexión con el servidor'); }
+}
+window.probarNotificacion = probarNotificacion;
+
 async function activarNotificacionesPush() {
   if(typeof Notification==='undefined') { showToast('Tu navegador no soporta notificaciones'); return; }
   if(esIOS() && !esStandalone()) {
@@ -11432,21 +11488,12 @@ async function activarNotificacionesPush() {
     return;
   }
   try {
+    const key = await getVapidPublicKey();
+    if(!key) { showToast('Las notificaciones todavía no están disponibles: falta configurar el servidor'); return; }
     const permiso = await Notification.requestPermission();
     if(permiso==='denied') { showToast('Bloqueaste las notificaciones — activalas desde la configuración del sitio en tu navegador'); return; }
     if(permiso!=='granted') return;
-    const reg = await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
-    if(!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-      });
-    }
-    const raw = sub.toJSON();
-    const subData = { endpoint: raw.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth };
-    await setDoc(doc(db,'users',S.user.uid), {pushSubscription:subData}, {merge:true});
-    if(S.userData) S.userData.pushSubscription = subData;
+    await subscribeThisDevice(key);
     showToast('✓ Notificaciones activadas');
     renderMain();
   } catch(e) {
@@ -11610,12 +11657,12 @@ function renderSettings() {
     <div class="settings-item">
       <div><div class="settings-lbl">Avisos en el celular</div><div class="settings-sub">${(()=>{
         if(typeof Notification==='undefined') return 'Tu navegador no soporta notificaciones.';
-        if(u.pushSubscription) return 'Activadas — te van a llegar aunque no tengas la app abierta.';
+        if(u.pushSubscription) return 'Activadas en este dispositivo.';
         if(Notification.permission==='denied') return 'Bloqueadas en el navegador — activalas desde la configuración del sitio.';
         if(esIOS() && !esStandalone()) return 'En iPhone primero agregá G-Metrics a tu pantalla de inicio (Compartir → Agregar a inicio) y abrila desde ahí.';
         return 'Recibí recordatorios de wellness/carga aunque no tengas la app abierta.';
       })()}</div></div>
-      ${typeof Notification!=='undefined' ? `<button class="abtn ${u.pushSubscription?'':'abtn-p'}" onclick="${u.pushSubscription?'desactivarNotificacionesPush()':'activarNotificacionesPush()'}">${u.pushSubscription?'Desactivar':'Activar'}</button>` : ''}
+      ${typeof Notification!=='undefined' ? `<div style="display:flex;gap:6px;flex-shrink:0">${u.pushSubscription?'<button class="abtn" onclick="probarNotificacion()">Probar</button>':''}<button class="abtn ${u.pushSubscription?'':'abtn-p'}" onclick="${u.pushSubscription?'desactivarNotificacionesPush()':'activarNotificacionesPush()'}">${u.pushSubscription?'Desactivar':'Activar'}</button></div>` : ''}
     </div>
   </div>
   ${S.isAdmin ? '' : `<div class="card">

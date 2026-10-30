@@ -604,6 +604,16 @@
     ok([...document.querySelectorAll('#main button')].some(x=>/✓ En Gestión de rutinas/.test(x.textContent)),'ficha: el botón muestra que ya está en Gestión');
     goBackFromAthleteDetail(); await wait(400); switchView('admin'); await wait(300); adminGoRoutines(); await wait(700);
     ok(grp('Básquet')&&/Fuerza Básquet base/.test(grp('Básquet').textContent),'aparece en Gestión, en el grupo Básquet'); }
+  // ── notificaciones: si el servidor no está configurado, lo dice en vez de "activar" ──
+  { const keepF=window.fetch; window.fetch=async(u,o)=>String(u).includes('/api/send-push')?new Response(JSON.stringify({publicKey:null}),{status:200,headers:{'Content-Type':'application/json'}}):keepF(u,o);
+    const keepN=window.Notification; let asked=0; window.Notification=Object.assign(function(){}, {permission:'default', requestPermission:async()=>{asked++; return 'default';}});
+    await activarNotificacionesPush(); await wait(200);
+    ok(asked===0,'notificaciones: sin servidor configurado no pide permiso');
+    ok(/falta configurar el servidor/.test(document.getElementById('toast')?.textContent||document.body.innerText),'notificaciones: avisa que falta configurar el servidor');
+    window.fetch=keepF; window.Notification=keepN;
+    const uD=S.userData.pushSubscription; S.userData.pushSubscription={endpoint:'https://x',p256dh:'a',auth:'b'}; switchView('settings'); await wait(300);
+    ok([...document.querySelectorAll('#main button')].some(b=>b.textContent.trim()==='Probar'),'ajustes: con notificaciones activas está "Probar"'); txtBad('ajustes con notificaciones');
+    if(uD) S.userData.pushSubscription=uD; else delete S.userData.pushSubscription; }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

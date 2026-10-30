@@ -6,8 +6,18 @@
 const webpush = require('web-push');
 
 module.exports = async (req, res) => {
+  // La clave pública no es secreta: la app la pide acá al activar notificaciones,
+  // así nunca queda desparejada con la privada.
+  if (req.method === 'GET') {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json({ publicKey: process.env.VAPID_PUBLIC_KEY || null });
+  }
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+  // Sin la variable cargada, "undefined === undefined" dejaba pasar a cualquiera sin clave.
+  if (!process.env.PUSH_API_SECRET) {
+    return res.status(500).json({ error: 'Faltan variables de entorno en Vercel: PUSH_API_SECRET' });
   }
   if (req.headers['x-push-secret'] !== process.env.PUSH_API_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
