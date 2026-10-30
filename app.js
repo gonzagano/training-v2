@@ -2541,26 +2541,67 @@ function switchView(v) {
     renderAll();
     return;
   }
+  resetAdminNavState();
+  S._navSeq = (S._navSeq||0)+1;
   if (v!=='wellness') S.wellnessViewDate=null; // siempre vuelve a "hoy" al reingresar
   if (v==='session') { S.rmCalcTabActive=false; S._routineViewWeek=null; } // Mi Rutina siempre entra por hoy, día y semana reales — nunca donde había quedado repasando
   S.currentView=v;
   renderBottomBar();
   renderAll();
+  window.scrollTo(0,0);
 }
 window.switchView = switchView;
 
-function goHome() {
-  // Reset all sub-views, go to session
-  S.adminView='main';
-  S.teamView=null;
-  S.teamDayEdit=null;
-  S.teamDayIdx=0;
-  S._routineEditorPrev=null;
-  S.editingRoutine=null;
-  S.viewingAthlete=null;
-  switchView('dashboard');
+// Tocar una sección del menú te lleva a la pantalla principal de esa sección,
+// estés donde estés: nada queda abierto (ficha, equipo, editor) ni se recuerda
+// un "de dónde vine" viejo, que es lo que hacía que el "‹" volviera a otro lado.
+function resetAdminNavState() {
+  if(!S.isAdmin) return;
+  S.atletaView=null; S.viewingAthlete=null; S._inAthleteDetail=false;
+  S._athleteDetailReturnCtx=null; S._athleteSiblingUids=null; S._athleteOpenLoadingUid=null;
+  S.teamView=null; S.teamDayEdit=null; S.teamDayIdx=0; S._teamViewLoadingId=null;
+  S.adminView='main'; S.editingRoutine=null; S._routineEditorPrev=null;
 }
+
+// ¿El editor de rutinas tiene algo que se perdería al salir? (lo que el editor
+// agrega para dibujarse —bloques abiertos, números de bloque— no cuenta).
+function routineEditorHasChanges() {
+  const r = S.editingRoutine;
+  if(!r || S.adminView!=='routine_edit') return false;
+  if(r._renames && r._renames.length) return true;
+  const saved = (S.routines||[]).find(x=>x.id===r.id);
+  if(!saved) return Object.values(r.sessions||{}).some(b=>(b||[]).length>0);
+  const clean = x => {
+    const o = JSON.parse(JSON.stringify(x));
+    const walk = v => { if(Array.isArray(v)) v.forEach(walk); else if(v && typeof v==='object') { delete v._open; delete v._editing; Object.values(v).forEach(walk); } };
+    walk(o); delete o._renames;
+    Object.values(o.sessions||{}).forEach(renumberBlockLabels);
+    return o;
+  };
+  return JSON.stringify(clean(r))!==JSON.stringify(clean(saved));
+}
+function hasUnsavedNavChanges() {
+  return routineEditorHasChanges() || !!(S.teamView && S._calDirtyDates && S._calDirtyDates.size);
+}
+function confirmLeaveUnsaved(go) {
+  if(!hasUnsavedNavChanges()) { go(); return; }
+  showConfirmModal({title:'Cambios sin guardar', message:'Si salís ahora, se pierde lo que cambiaste.', confirmLabel:'Salir sin guardar', danger:true, onConfirm:go});
+}
+function navMenu(v) { confirmLeaveUnsaved(()=>switchView(v)); }
+window.navMenu = navMenu;
+
+function goHome() { navMenu('dashboard'); }
 window.goHome=goHome;
+
+// Qué sección queda marcada en el menú: en una ficha (o el editor abierto desde
+// ella), la sección de la que se vino, no "Panel Admin" donde vive por dentro.
+function activeNavTab() {
+  if(!S.isAdmin) return S.currentView;
+  const ctx = S._athleteDetailReturnCtx;
+  if(S._inAthleteDetail && ctx && ctx.currentView) return ctx.currentView;
+  if(S.currentView==='admin' && (S.adminView==='trained_today' || S.adminView==='reminders')) return 'dashboard';
+  return S.currentView;
+}
 
 // navTo: unified navigation — always keeps UI consistent
 function navTo(viewOrFn) {
@@ -2616,6 +2657,10 @@ function getNavSnapshot() {
     // memoria y reaparecía en otra pestaña (ej. Atletas mostraba al último atleta)
     atletaViewUid: S.atletaView?.uid||null,
     atletaSubview: S.atletaSubview||null,
+    retView: S._athleteDetailReturnCtx?.currentView||null,
+    retAdminView: S._athleteDetailReturnCtx?.adminView||null,
+    retTeamId: S._athleteDetailReturnCtx?.teamView?.id||null,
+    retTeamSubview: S._athleteDetailReturnCtx?.teamSubview||null,
     editingRoutineId: S.editingRoutine?.id||null,
     routineEditorPrev: S._routineEditorPrev||null,
   };
@@ -2645,6 +2690,8 @@ function maybePushNavState() {
 
 function applyNavSnapshot(snap) {
   _navApplyingPopstate = true;
+  S._navSeq = (S._navSeq||0)+1;
+  S._athleteOpenLoadingUid = null; S._teamViewLoadingId = null;
   S.currentView = snap.currentView;
   S.adminView = snap.adminView;
   S.teamView = snap.teamViewId ? (S.teams||[]).find(t=>t.id===snap.teamViewId)||null : null;
@@ -2660,6 +2707,7 @@ function applyNavSnapshot(snap) {
   if(snap.atletaViewUid) {
     const av = (S.adminAthletes||[]).find(x=>x.uid===snap.atletaViewUid) || (S.dashAthletes||[]).find(x=>x.uid===snap.atletaViewUid) || null;
     S.atletaView = av; S._inAthleteDetail = !!av;
+    S._athleteDetailReturnCtx = snap.retView ? {currentView:snap.retView, adminView:snap.retAdminView, teamView:snap.retTeamId?(S.teams||[]).find(t=>t.id===snap.retTeamId)||null:null, teamSubview:snap.retTeamSubview} : null;
   } else {
     S.atletaView = null; S._inAthleteDetail = false; S._athleteDetailReturnCtx = null;
   }
@@ -2709,7 +2757,7 @@ function renderBottomBar() {
   const bb = document.getElementById('bottombar');
   if(bb) {
     bb.innerHTML = tabs.map(t=>`
-      <button class="bb-btn ${S.currentView===t.id?'active':''}" id="bb-${t.id}" onclick="switchView('${t.id}')">
+      <button class="bb-btn ${activeNavTab()===t.id?'active':''}" id="bb-${t.id}" onclick="navMenu('${t.id}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${t.svg}</svg>
         ${t.label}
       </button>`).join('');
@@ -2725,7 +2773,7 @@ function renderBottomBar() {
         navHtml += `<div class="sidebar-section">${t.section}</div>`;
         lastSection = t.section;
       }
-      navHtml += `<button class="sidebar-item ${S.currentView===t.id?'active':''}" onclick="switchView('${t.id}')" title="${t.label}">
+      navHtml += `<button class="sidebar-item ${activeNavTab()===t.id?'active':''}" onclick="navMenu('${t.id}')" title="${t.label}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${t.svg}</svg>
         <span class="sb-lbl">${t.label}</span>
       </button>`;
@@ -9925,7 +9973,7 @@ function openAtleta(uid) {
   const a = (S.adminAthletes || []).find(x => x.uid === uid);
   if (!a) return;
   if(!S._inAthleteDetail) {
-    S._athleteDetailReturnCtx = {currentView:'atletas', adminView:null, teamView:null, teamSubview:null};
+    S._athleteDetailReturnCtx = {currentView:'atletas', adminView:'main', teamView:null, teamSubview:null};
     S._athleteSiblingUids = computeAthleteSiblingUids();
   }
   S._inAthleteDetail = true;
@@ -9938,8 +9986,10 @@ function openAtleta(uid) {
   S._routineWeekPreview = null;
   S._perfilWellnessDay = null; S._hs = null;
   (async ()=>{ try { const fs1 = await getDoc(doc(db,'personal',uid)); a._personal = fs1.exists() ? fs1.data() : {}; } catch(e) {} })().then(()=>ensureGroupPersonalData(getEffectiveGroupUids(a))).then(async ()=>{
+    if(S.atletaView!==a) return; // ya te fuiste de esta ficha mientras cargaba
     S.viewingAthlete = { uid, userData: a, personal: a._personal||{} };
     try { await adminAutoRM(a); } catch(e) {}
+    if(S.atletaView!==a) return;
     renderMain();
   }).catch((e)=>{ console.error('Error al abrir atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
   renderMain();
@@ -12716,6 +12766,7 @@ async function adminOpenAthlete(uid) {
   S._athleteOpenLoadingUid = uid;
   S.adminView='athlete_detail';
   S.currentView='admin';
+  renderBottomBar();
   S.atletaSubview = 'perfil';
   S._atletaRoutineDay = null;
   S._atletaRoutineBlocksOpen = null;
@@ -12753,9 +12804,10 @@ async function adminOpenAthlete(uid) {
     // en una ficha de la que ya se había ido.
     if (S._athleteOpenLoadingUid !== uid) return;
     try { await adminAutoRM(a); } catch(e) {}
+    if (S._athleteOpenLoadingUid !== uid) return;
     S.atletaView = a;
     S.viewingAthlete = { uid, userData:a, personal:a._personal||{} };
-  } catch(e) { S.viewingAthlete=null; S.atletaView=null; }
+  } catch(e) { if (S._athleteOpenLoadingUid !== uid) return; S.viewingAthlete=null; S.atletaView=null; }
   renderMain();
 }
 window.adminOpenAthlete=adminOpenAthlete;
@@ -12771,6 +12823,7 @@ function goBackFromAthleteDetail() {
   S._athleteOpenLoadingUid = null;
   S.viewingAthlete = null;
   S.atletaView = null;
+  S.editingRoutine = null;
   if(ctx) {
     S.currentView = ctx.currentView;
     S.adminView = ctx.adminView;
@@ -12787,12 +12840,18 @@ window.goBackFromAthleteDetail = goBackFromAthleteDetail;
 // Usa la función nativa de impresión del navegador (sin librerías nuevas):
 // "Imprimir" en el diálogo del navegador permite guardar como PDF directamente.
 async function openWeeklyReport(uid) {
+  const seq = S._navSeq;
+  const from = S.currentView;
   await ensureGroupPersonalData([uid]);
+  if(seq !== S._navSeq) return; // tocaste otra sección mientras cargaba
   S.reportAthleteUid = uid;
+  S._reportReturnView = from;
   S.currentView = 'weekly_report';
   renderMain();
 }
 window.openWeeklyReport = openWeeklyReport;
+function closeWeeklyReport() { S.currentView = S._reportReturnView || 'admin'; renderBottomBar(); renderMain(); }
+window.closeWeeklyReport = closeWeeklyReport;
 
 function renderWeeklyReport() {
   const uid = S.reportAthleteUid;
@@ -12829,7 +12888,7 @@ function renderWeeklyReport() {
   }).join('');
 
   return `<div class="no-print" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
-    <button class="back-btn" onclick="S.currentView='admin';renderMain()">‹</button>
+    <button class="back-btn" onclick="closeWeeklyReport()">‹</button>
     <div style="font-size:15px;font-weight:700;flex:1">Reporte semanal</div>
     <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
   </div>
@@ -17402,9 +17461,13 @@ document.addEventListener('click', e => {
     case 'admin-athletes':
       S.adminView='athletes'; S.currentView='admin'; adminGoAthletes(); break;
     case 'routine-editor':
-      S.adminView=(S._routineEditorPrev||'routines');
-      if(S.adminView==='athlete_detail') S.atletaSubview='rutina';
-      S.currentView='admin'; renderBottomBar(); renderMain(); break;
+      confirmLeaveUnsaved(()=>{
+        S.adminView=(S._routineEditorPrev||'routines');
+        if(S.adminView==='athlete_detail') S.atletaSubview='rutina';
+        S.editingRoutine=null;
+        S.currentView='admin'; renderBottomBar(); renderMain();
+      });
+      break;
     case 'dashboard':
       S.adminView='main'; S.currentView='dashboard'; renderBottomBar(); renderMain(); break;
     case 'home':

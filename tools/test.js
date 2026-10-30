@@ -22,7 +22,8 @@ const SCENARIOS = [
   {label: 'iPad 768 claro', width: 768, height: 1024, theme: 'light'},
   {label: 'celular 390 oscuro', width: 390, height: 844, theme: 'dark', mobile: true},
 ];
-const SCRIPTS = ['regress.js', 'athlete.js'];
+const onlyArg = process.argv.find(a => a.startsWith('--only='));
+const SCRIPTS = onlyArg ? [onlyArg.slice(7) + '.js'] : ['regress.js', 'athlete.js', 'nav.js'];
 const quick = process.argv.includes('--quick');
 
 (async () => {
@@ -52,7 +53,7 @@ const quick = process.argv.includes('--quick');
   for (const sc of (quick ? SCENARIOS.slice(0, 1) : SCENARIOS)) {
     for (const script of SCRIPTS) {
       const code = fs.readFileSync(path.join(__dirname, 'harness', script), 'utf8');
-      const key = script === 'regress.js' ? '__regress' : '__athlete';
+      const key = '__' + script.replace('.js', '');
       const ctx = await browser.createBrowserContext();
       const page = await ctx.newPage();
       await page.setViewport({width: sc.width, height: sc.height, isMobile: !!sc.mobile, hasTouch: !!sc.mobile, deviceScaleFactor: 1});
