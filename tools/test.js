@@ -38,7 +38,8 @@ const quick = process.argv.includes('--quick');
   const proc = spawn(EDGE, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=' + dbgPort, '--user-data-dir=' + profile, 'about:blank'], {stdio: 'ignore'});
   const ready = async () => { for (let i = 0; i < 60; i++) { const ok = await new Promise(r => http.get('http://127.0.0.1:' + dbgPort + '/json/version', x => { x.resume(); r(x.statusCode === 200); }).on('error', () => r(false))); if (ok) return true; await new Promise(r => setTimeout(r, 500)); } return false; };
   if (!(await ready())) { console.error('El navegador de prueba no arrancó.'); proc.kill(); process.exit(2); }
-  const browser = await puppeteer.connect({browserURL: 'http://127.0.0.1:' + dbgPort, defaultViewport: null});
+  // protocolTimeout mayor que el timeout de 7 min de waitForFunction: si no, una prueba de más de 3 min cae con "Runtime.callFunctionOn timed out"
+  const browser = await puppeteer.connect({browserURL: 'http://127.0.0.1:' + dbgPort, defaultViewport: null, protocolTimeout: 480000});
   const killBrowser = () => {
     // Edge deja procesos hijos sueltos: se cierran TODOS los que usan el perfil temporal de esta corrida.
     try {
@@ -77,7 +78,7 @@ const quick = process.argv.includes('--quick');
           const cut = e => { window[k] = {fails: ['el script de prueba se cortó: ' + ((e && e.message) || e)], errs: []}; };
           try { Promise.resolve((0, eval)(c)).catch(cut); } catch (e) { cut(e); }
         }, key, code).catch(e => { err = e.message; });
-        await page.waitForFunction(k => window[k], {timeout: 300000, polling: 500}, key);
+        await page.waitForFunction(k => window[k], {timeout: 420000, polling: 500}, key);
         res = await page.evaluate(k => window[k], key);
       } catch (e) { err = e.message; }
       await ctx.close();

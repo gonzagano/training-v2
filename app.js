@@ -974,7 +974,7 @@ let S = {
   activeFilters: new Set(), selectedZone: null,
   teamView: null,
   teamDayEdit: null,
-  teamDayIdx: 0,
+  teamDayIdx: null,
   // ── DASHBOARD ──
   dashAthletes: [],      // cached for dashboard
   dashLoaded: false,
@@ -2561,7 +2561,7 @@ function resetAdminNavState() {
   if(!S.isAdmin) return;
   S.atletaView=null; S.viewingAthlete=null; S._inAthleteDetail=false;
   S._athleteDetailReturnCtx=null; S._athleteSiblingUids=null; S._athleteOpenLoadingUid=null;
-  S.teamView=null; S.teamDayEdit=null; S.teamDayIdx=0; S._teamViewLoadingId=null;
+  S.teamView=null; S.teamDayEdit=null; S.teamDayIdx=null; S._teamViewLoadingId=null;
   S.adminView='main'; S.editingRoutine=null; S._routineEditorPrev=null;
 }
 
@@ -2922,6 +2922,7 @@ window.openRMCalcTab = openRMCalcTab;
 function renderMain() {
   const m=document.getElementById('main');
   applyChartTheme();
+  renderOpenTabs();
   switch(S.currentView) {
     case 'dashboard': m.innerHTML=renderDashboard(); setTimeout(loadDashboard,50); break;
     case 'session':  m.innerHTML=renderSession(); break;
@@ -6521,15 +6522,17 @@ function renderTeamDetail(team) {
     </div>
     ${team.sport?`<span class="team-sport-badge">${sportIconHtml(team.sport,13)}${canonicalSport(team.sport)}</span>`:''}
     <button class="abtn tdh-cmp" onclick="adminGoCompare('${team.id}')">Comparar atletas</button>
+    <button class="abtn tdh-set${S._teamSettingsOpen===team.id?' on':''}" onclick="toggleTeamSettings()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Ajustes del equipo</button>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
-    <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Rutina</button>
+    <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Plantel</button>
     <button class="snav-tab ${sub==='evals'?'active':''}" onclick="setTeamSubview('evals')">Evaluaciones</button>
     <button class="snav-tab ${sub==='wellness'?'active':''}" onclick="setTeamSubview('wellness')">Wellness</button>
     <button class="snav-tab ${sub==='calendario'?'active':''}" onclick="setTeamSubview('calendario')">Calendario</button>
     <button class="snav-tab ${sub==='stats'?'active':''}" onclick="setTeamSubview('stats')">Estadísticas</button>
     <button class="snav-tab ${sub==='reporte'?'active':''}" onclick="setTeamSubview('reporte')">Informe</button>
   </div>`;
+  if(S._teamSettingsOpen===team.id) html += renderTeamSettings(team);
 
   if(sub==='wellness') html += renderGroupWellness(getTeamStatsMemberUids(team));
   else if(sub==='stats') html += renderGroupStats(getTeamStatsMemberUids(team));
@@ -7661,59 +7664,49 @@ async function confirmTeamRoutineAssign() {
 }
 window.confirmTeamRoutineAssign = confirmTeamRoutineAssign;
 
+// ── Pestaña Plantel del equipo ──
+// Arriba, una franja con la rutina del equipo y sus sesiones (el día se abre
+// tocándolo); abajo, una ficha por jugador con cuenta: wellness, ACWR, carga
+// de la semana y último test. Deporte, color y eliminar van en "Ajustes del equipo".
 function renderTeamRutina(team) {
-  const days=team.trainingDays||[];
-  let html = renderTeamRoutineAssignSection(team);
-  html+=`<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
-    <span style="font-size:11px;color:var(--text3)">Deporte:</span>
-    <select class="abtn" onchange="setTeamSport('${team.id}',onSportSelect(this))">${sportOptionsHtml(team.sport)}</select>
-  </div>
-  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-    <span style="font-size:11px;color:var(--text3)">Color:</span>
-    ${TEAM_COLORS.map(c=>`<div onclick="setTeamColor('${team.id}','${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${team.color===c?'#fff':'transparent'};transition:border .15s"></div>`).join('')}
-  </div>`;
+  const days = team.trainingDays||[];
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const memberUids = team.memberUids||[];
+  const r = team.assignedRoutineId ? S.routines.find(x=>x.id===team.assignedRoutineId) : null;
+  const assignedCount = memberUids.filter(uid=>(S.adminAthletes||[]).find(a=>a.uid===uid)?.assignedRoutine===team.assignedRoutineId).length;
+  const di = S.teamDayIdx!=null && days[S.teamDayIdx] ? S.teamDayIdx : null;
+  let html = `<section class="tp-strip">
+    <div class="tp-cell"><div class="tp-info"><div class="tp-k">Rutina del equipo</div>
+      <div class="tp-v">${team.assignedRoutineId ? `<b>${esc(r?r.name:'(rutina eliminada)')}</b> · ${assignedCount}/${memberUids.length} jugadores` : 'Sin asignar'}</div></div>
+      <button class="abtn${team.assignedRoutineId?'':' abtn-p'}" onclick="openTeamRoutineAssign('${team.id}')">${team.assignedRoutineId?'Cambiar':'Asignar rutina'}</button></div>
+    <div class="tp-cell"><div class="tp-info"><div class="tp-k">Sesiones de entrenamiento</div>
+      ${days.length ? `<div class="tp-days">${days.map((d,i)=>`<button class="chip-btn ${di===i?'on':''}" onclick="toggleTeamDay(${i})">${esc(d.title||'Día '+(i+1))}</button>`).join('')}</div>` : '<div class="tp-v">Sin sesiones todavía</div>'}</div>
+      <button class="abtn" onclick="addTrainingDay('${team.id}')">+ Agregar sesión</button></div>
+  </section>`;
+  if(S._teamRoutineAssign?.teamId===team.id) html += `<div class="admin-section">${renderTeamRoutineAssignWizard()}</div>`;
 
-  if(days.length) {
-    const curIdx = S.teamDayIdx||0;
-    html+=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;overflow-x:auto">
-      ${days.map((d,i)=>`<button class="snav-tab ${curIdx===i?'active':''}" onclick="S.teamDayIdx=${i};renderMain()">${d.title||'Día '+(i+1)}</button>`).join('')}
-    </div>`;
-    const day=days[Math.min(curIdx,days.length-1)];
-    const di=Math.min(curIdx,days.length-1);
-    if(day) {
-      const blocks=day.blocks||[];
-      html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:14px;font-weight:600">${day.title||'Día '+(di+1)}</div>
-        <div style="display:flex;gap:6px">
-          <button class="abtn abtn-p" onclick="openTeamDayEditor('${team.id}',${di})">✏️ Editar</button>
-          <button class="abtn abtn-d" onclick="deleteDay('${team.id}',${di})">×</button>
-        </div>
+  if(di!=null) {
+    const day = days[di], blocks = day.blocks||[];
+    html += `<section class="tp-day">
+      <div class="tp-day-h"><div class="tp-day-t">${esc(day.title||'Día '+(di+1))}</div>
+        <div style="display:flex;gap:6px"><button class="abtn abtn-p" onclick="openTeamDayEditor('${team.id}',${di})">Editar</button><button class="abtn" onclick="deleteDay('${team.id}',${di})" title="Eliminar día" aria-label="Eliminar día">×</button></div></div>`;
+    html += !blocks.length ? `<div class="pc-na" style="margin-bottom:10px">Sin ejercicios aún.</div>` : blocks.map(b=>{
+      const exList = b.categories.flatMap(c=>c.exercises);
+      return `<div class="card" style="padding:12px;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--purple);margin-bottom:6px">${b.label} — ${b.title}</div>
+        ${exList.map(ex=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:13px;font-weight:500">${ex.name}</span>
+          <span style="color:var(--accent-text);font-size:12px;font-weight:600;background:var(--accent-dim);padding:3px 8px;border-radius:20px;white-space:nowrap">${formatExSummary(ex)||'—'}</span>
+        </div>`).join('')}
       </div>`;
-      if(!blocks.length){
-        html+=`<div class="empty-state" style="margin-bottom:10px">Sin ejercicios aún.</div>`;
-      } else {
-        html+=blocks.map(b=>{
-          const exList=b.categories.flatMap(c=>c.exercises);
-          return `<div class="card" style="padding:12px;margin-bottom:8px">
-            <div style="font-size:12px;font-weight:600;color:var(--purple);margin-bottom:6px">${b.label} — ${b.title}</div>
-            ${exList.map(ex=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:13px;font-weight:500">${ex.name}</span>
-              <span style="color:var(--accent-text);font-size:12px;font-weight:600;background:var(--accent-dim);padding:3px 8px;border-radius:20px;white-space:nowrap">${formatExSummary(ex)||'—'}</span>
-            </div>`).join('')}
-          </div>`;
-        }).join('');
-      }
-      html+=`<div style="font-size:11px;color:var(--text3);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.06em">Notas por jugador</div>
-        <div class="player-note"><span class="player-note-name">+ Nota</span>
-          <input style="flex:1;background:transparent;border:none;outline:none;font-size:12px;color:var(--text)" placeholder="Jugador: nota específica..." onkeydown="if(event.key==='Enter')addPlayerNote('${team.id}',${di},this)">
-        </div>
-        ${(day.playerNotes||[]).map((n,ni)=>`<div class="player-note"><span class="player-note-name">${n.player}</span><span class="player-note-text">${n.note}</span><span style="cursor:pointer;color:var(--text3);font-size:14px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span></div>`).join('')}`;
-    }
-  } else {
-    html+=`<div class="empty-state">Sin sesiones de entrenamiento aún.</div>`;
+    }).join('');
+    html += `<div class="tp-k" style="margin:12px 0 6px">Notas por jugador</div>
+      <div class="player-note"><span class="player-note-name">+ Nota</span>
+        <input style="flex:1;background:transparent;border:none;outline:none;font-size:12px;color:var(--text)" placeholder="Jugador: nota específica..." onkeydown="if(event.key==='Enter')addPlayerNote('${team.id}',${di},this)">
+      </div>
+      ${(day.playerNotes||[]).map((n,ni)=>`<div class="player-note"><span class="player-note-name">${n.player}</span><span class="player-note-text">${n.note}</span><span style="cursor:pointer;color:var(--text3);font-size:14px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span></div>`).join('')}
+    </section>`;
   }
-
-  html+=`<button class="add-block-btn" style="margin-top:10px" onclick="addTrainingDay('${team.id}')">+ Agregar sesión</button>`;
 
   // Reconciliación: el roster (texto libre) y las cuentas realmente vinculadas
   // (memberUids, vía código de invitación) son dos listas separadas — esto puede
@@ -7721,36 +7714,116 @@ function renderTeamRutina(team) {
   // cuenta real, y avisamos si hay cuentas vinculadas que no están en el roster.
   const linkedMembers = (S.adminAthletes||[]).filter(a=>(team.memberUids||[]).includes(a.uid) || a.teamId===team.id);
   const unmatchedLinked = linkedMembers.filter(a=>!(team.players||[]).some(p=>namesLikelyMatch(p,a.name)||normPersonName(p)===normPersonName(a.email)));
+  const rows = (team.players||[]).map((p,pi)=>({p, pi, a: linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p))}));
+  const withAcc = rows.filter(x=>x.a), noAcc = rows.filter(x=>!x.a);
+  const q = DASH_QUICK.find(x=>x.id===(S.teamQuick||'all')) || DASH_QUICK[0];
+  const stOf = new Map(withAcc.map(x=>[x.pi, getDashAthleteStatus(x.a)]));
+  const byName = (x,y)=>(x.a.name||x.a.email||'').localeCompare(y.a.name||y.a.email||'','es');
+  const shown = withAcc.filter(x=>q.test(x.a)).sort(S.teamSort==='nombre' ? byName : (x,y)=>((stOf.get(x.pi).tier??9)-(stOf.get(y.pi).tier??9)) || byName(x,y));
 
-  html+=`<div class="admin-section" style="margin-top:16px"><div class="admin-section-title">Jugadores</div>
-    <div class="ar-list" style="border:0;border-radius:0;box-shadow:none">
-    ${athleteRowsHead(true)}
-    ${(team.players||[]).map((p,pi)=>{
-      const match=linkedMembers.find(a=>namesLikelyMatch(a.name,p)||normPersonName(a.email)===normPersonName(p));
-      if(!match) {
-        return `<div class="ar-row ar-plain" style="cursor:default;display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:14px;font-weight:600">${p} <span style="font-size:11px;color:var(--amber);font-weight:500;margin-left:6px">sin cuenta todavía</span></div>
-          <button class="abtn abtn-d" onclick="deletePlayer('${team.id}',${pi})">−</button>
-        </div>`;
-      }
-      return athleteRowHtml(match,{onclick:"adminOpenAthlete('"+match.uid+"')", sub:match.position||'Sin posición cargada', status:getDashAthleteStatus(match), extra:`<button class="abtn abtn-d" onclick="event.stopPropagation();deletePlayer('${team.id}',${pi})" title="Quitar del roster">−</button>`});
-    }).join('')}
+  html += `<div class="tp-bar">
+    <div class="tp-filters">${DASH_QUICK.map(x=>`<button class="chip-btn ${q.id===x.id?'on':''}" onclick="setTeamQuick('${x.id}')">${x.label} ${withAcc.filter(y=>x.test(y.a)).length}</button>`).join('')}</div>
+    <div class="tp-actions">
+      <select class="abtn" aria-label="Ordenar" onchange="setTeamSort(this.value)"><option value="estado">Ordenar: estado</option><option value="nombre" ${S.teamSort==='nombre'?'selected':''}>Ordenar: nombre</option></select>
+      <button class="abtn${S._teamAddPlayer?' abtn-p':''}" onclick="toggleTeamAddPlayer()">+ Agregar jugador</button>
     </div>
-    <div class="admin-item">
-      <input id="new-player-inp" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" placeholder="Nombre del jugador">
-      <button class="abtn abtn-p" onclick="addPlayer('${team.id}')">Agregar</button>
-    </div></div>
-  ${unmatchedLinked.length?`<div class="admin-section" style="margin-top:12px;border-color:var(--amber)">
+  </div>`;
+  if(S._teamAddPlayer) html += `<div class="tp-add"><input id="new-player-inp" placeholder="Nombre del jugador" onkeydown="if(event.key==='Enter')addPlayer('${team.id}')"><button class="abtn abtn-p" onclick="addPlayer('${team.id}')">Agregar</button></div>`;
+  html += shown.length ? `<div class="pc-grid">${shown.map(x=>teamPlayerCardHtml(team, x.a, x.pi, stOf.get(x.pi))).join('')}</div>`
+    : `<div class="tp-empty">${withAcc.length ? 'Nadie en este filtro.' : 'Todavía no hay jugadores con cuenta en este equipo.'}</div>`;
+  if(noAcc.length && q.id==='all') html += `<div class="tp-pending"><b>${noAcc.length} sin cuenta todavía:</b>${noAcc.map(x=>`<span class="tp-pn">${esc(x.p)}<button onclick="removeTeamPlayer('${team.id}',${x.pi})" title="Quitar del plantel" aria-label="Quitar del plantel">×</button></span>`).join('')}</div>`;
+  if(unmatchedLinked.length) html += `<div class="admin-section" style="margin-top:12px;border-color:var(--amber)">
     <div class="admin-section-title" style="color:var(--amber)">${craftIconSvg('alert','var(--amber)',12)} ${unmatchedLinked.length} atleta${unmatchedLinked.length===1?'':'s'} con cuenta vinculada pero fuera del roster</div>
     ${unmatchedLinked.map(a=>`<div class="admin-item">
       <div class="admin-item-lbl" style="cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">${a.name||a.email}</div>
       <button class="abtn abtn-p" onclick="addLinkedPlayerToRoster('${team.id}','${(a.name||a.email).replace(/'/g,"\\'")}')">+ Agregar al roster</button>
     </div>`).join('')}
-  </div>`:''}
-  <button class="abtn abtn-d" style="width:100%;margin-top:8px;padding:10px;border-radius:var(--r)" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>`;
+  </div>`;
   return html;
 }
+window.renderTeamRutina = renderTeamRutina;
 
+// Último test de saltos de un atleta (CMJ si tiene; si no, el primero que tenga).
+function teamLastTestInfo(a) {
+  const cached = getAthleteEvals(a.uid);
+  const ed = cached && Object.keys(cached).length ? cached : (a._personal?.evals||{});
+  const has = t=>t && (ed[t.id]||[]).some(r=>r && r.height!=null);
+  const test = [EVAL_TESTS.find(t=>t.id==='cmj'), ...EVAL_TESTS].find(has);
+  if(!test) return null;
+  const recs = sortEvalRecsByDate((ed[test.id]||[]).filter(r=>r && r.height!=null));
+  const last = recs[recs.length-1], prev = recs[recs.length-2] || null;
+  const days = last.date ? Math.round((new Date(todayLocal()+'T12:00:00') - new Date(String(last.date).slice(0,10)+'T12:00:00'))/86400000) : 0;
+  return {test, last, prev, ed, days};
+}
+window.teamLastTestInfo = teamLastTestInfo;
+
+const PC_CHANGE = {real_up:['▲ real','var(--green)'], maybe_up:['▲ posible','var(--amber)'], none:['= sin cambio','var(--text3)'], maybe_down:['▼ posible','var(--amber)'], real_down:['▼ real','var(--red)']};
+function teamPlayerCardHtml(team, a, pi, st) {
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const d = getAthleteRowData(a);
+  st = st || getDashAthleteStatus(a);
+  const sub = [a.position||'Sin posición', a.age?a.age+' años':'', a.weight?String(a.weight).replace('.',',')+' kg':''].filter(Boolean).join(' · ');
+  const wBars = d.scores.map((v,i)=>`<i title="${d.dates[i]}${v!=null?' · '+v+'%':' · sin wellness'}" style="height:${v==null?3:Math.round(7+v/100*21)}px;background:${v==null?'var(--border2)':getWellnessState(v).color}"></i>`).join('');
+  const well = d.last ? `<div class="pc-wv"><span class="pc-bars">${wBars}</span><b style="color:${getWellnessState(d.last.v).color}">${d.last.v}%</b></div>` : '<div class="pc-na">Sin cargar</div>';
+  const m = d.metrics, hasAcwr = m?.acwr!=null, ac = getACWRStatus(hasAcwr?m.acwr:null, m?.daysOfHistory);
+  const acwr = hasAcwr ? `<div class="pc-ac ax-tap" title="${esc(ac.label)}" onclick="event.stopPropagation();openAcwrExplain('${a.uid}')"><b>${cmpFmt(m.acwr,2)}</b><span class="ar-zone"><i style="left:${Math.min(100,m.acwr/2*100)}%;background:${ac.color}"></i></span></div>` : '<div class="pc-na">Faltan datos</div>';
+  const ua = m && m.acuteUA ? `<b>${String(Math.round(m.acuteUA)).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</b><small>UA</small>` : '<div class="pc-na">Sin carga</div>';
+  const lt = teamLastTestInfo(a);
+  let test = '<div class="pc-na">Sin tests</div>';
+  if(lt) {
+    let tag = '';
+    if(lt.days > EVAL_RETEST_DAYS) tag = `<span style="color:var(--amber)">hace ${Math.round(lt.days/7)} semanas</span> `;
+    else if(lt.prev) { const c = PC_CHANGE[evalChangeClass(lt.test.id, lt.last, lt.prev, lt.ed).key]; if(c) tag = `<span style="color:${c[1]}">${c[0]}</span> `; }
+    test = `<b>${cmpFmt(lt.last.height, lt.test.unit==='kg'?0:1)}</b><small>${esc(lt.test.unit)} ${esc(lt.test.label)}</small><div class="pc-ts">${tag}${evalShortDate(lt.last.date)}</div>`;
+  }
+  const chips = athleteActivityChips(d);
+  const cls = st.tier===0 ? ' pc-crit' : st.tier===1 ? ' pc-warn' : '';
+  return `<div class="pc-card${cls}" onclick="adminOpenAthlete('${a.uid}')">
+    <div class="pc-top">${avatarHtml(a.name||a.email, a.color, 44, a.photoUrl)}
+      <div class="pc-who"><div class="pc-nm">${esc(a.name||a.email)}</div><div class="pc-sb">${esc(sub)}</div></div>
+      <span class="pc-st" style="color:${st.color};background:${st.bg}">${st.text}</span>
+      <details class="pc-more" onclick="event.stopPropagation()"><summary title="Más opciones" aria-label="Más opciones"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></summary>
+        <div class="pc-menu"><button onclick="this.closest('details').removeAttribute('open');removeTeamPlayer('${team.id}',${pi})">Quitar del plantel</button></div></details>
+    </div>
+    <div class="pc-met">
+      <div><div class="pc-k">Wellness 7 días</div>${well}</div>
+      <div><div class="pc-k">ACWR</div>${acwr}</div>
+      <div><div class="pc-k">Carga semana</div>${ua}</div>
+      <div><div class="pc-k">Último test</div>${test}</div>
+    </div>
+    ${chips?`<div class="pc-chips">${chips}</div>`:''}
+  </div>`;
+}
+window.teamPlayerCardHtml = teamPlayerCardHtml;
+document.addEventListener('click', e=>{ document.querySelectorAll('.pc-more[open]').forEach(m=>{ if(!m.contains(e.target)) m.removeAttribute('open'); }); });
+
+function removeTeamPlayer(teamId, pi) {
+  const t = S.teams.find(x=>x.id===teamId), name = t?.players?.[pi];
+  if(name==null) return;
+  showConfirmModal({message:`¿Quitar a ${name} del plantel de ${t.name}?`, danger:true, confirmLabel:'Quitar', onConfirm:()=>deletePlayer(teamId, pi)});
+}
+window.removeTeamPlayer = removeTeamPlayer;
+function renderTeamSettings(team) {
+  return `<section class="tp-settings">
+    <div class="tp-set-row"><span class="tp-k">Deporte</span><select class="abtn" onchange="setTeamSport('${team.id}',onSportSelect(this))">${sportOptionsHtml(team.sport)}</select></div>
+    <div class="tp-set-row"><span class="tp-k">Color</span><div class="tp-colors">${TEAM_COLORS.map(c=>`<button class="tp-color${team.color===c?' on':''}" style="background:${c}" onclick="setTeamColor('${team.id}','${c}')" aria-label="Color"></button>`).join('')}</div></div>
+    <button class="abtn abtn-d tp-del" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>
+  </section>`;
+}
+window.renderTeamSettings = renderTeamSettings;
+function toggleTeamSettings() { const id = S.teamView?.id; S._teamSettingsOpen = S._teamSettingsOpen===id ? null : id; renderMain(); }
+window.toggleTeamSettings = toggleTeamSettings;
+function toggleTeamDay(i) { S.teamDayIdx = S.teamDayIdx===i ? null : i; renderMain(); }
+window.toggleTeamDay = toggleTeamDay;
+function setTeamQuick(v) { S.teamQuick = v; renderMain(); }
+window.setTeamQuick = setTeamQuick;
+function setTeamSort(v) { S.teamSort = v; renderMain(); }
+window.setTeamSort = setTeamSort;
+function toggleTeamAddPlayer() {
+  S._teamAddPlayer = !S._teamAddPlayer; renderMain();
+  if(S._teamAddPlayer) setTimeout(()=>document.getElementById('new-player-inp')?.focus(), 50);
+}
+window.toggleTeamAddPlayer = toggleTeamAddPlayer;
 
 const TEAM_COLORS = ['#d4647a','#b07ab8','#d4944a','#7ab88a','#68b4c8','#c87890','#a45870','#d4a8b0'];
 
@@ -9483,6 +9556,7 @@ function addTrainingDay(teamId) {
   const t=S.teams.find(x=>x.id===teamId); if(!t) return;
   if(!t.trainingDays) t.trainingDays=[];
   t.trainingDays.push({title:`Día ${t.trainingDays.length+1}`,blocks:[],playerNotes:[]});
+  S.teamDayIdx = t.trainingDays.length-1;
   saveTeam(teamId); renderMain();
 }
 window.addTrainingDay=addTrainingDay;
@@ -10080,14 +10154,135 @@ function navigateAthleteSibling(delta) {
   if(idx===-1) return;
   const nextUid = list[(idx+delta+list.length)%list.length];
   if(nextUid===curUid) return;
-  const sub = S.atletaSubview;
-  if(S.currentView==='atletas') openAtleta(nextUid);
-  else adminOpenAthlete(nextUid);
-  S.atletaSubview = sub;
+  goToAthleteKeepingTab(nextUid);
 }
 window.navigateAthleteSibling = navigateAthleteSibling;
+function goToAthleteKeepingTab(uid) {
+  closeAthleteNavMenu();
+  const sub = S.atletaSubview || 'perfil';
+  if(S.currentView==='atletas') openAtleta(uid, sub); else adminOpenAthlete(uid, sub);
+}
+window.goToAthleteKeepingTab = goToAthleteKeepingTab;
 
-function openAtleta(uid) {
+// ── BARRA PARA PASAR DE ATLETA EN ATLETA ─────────────────────
+// Anterior y siguiente con su nombre, y en el medio "2 de 18": al tocarlo se
+// abre la lista para saltar directo. Se usa en la ficha y en Evaluaciones del
+// equipo. goFn = nombre de la función global que recibe el uid.
+const anShort = n => { const w = String(n||'').trim().split(/\s+/); return w.length>1 ? w[0]+' '+w[1][0]+'.' : (w[0]||''); };
+function athleteNavBar(ids, curId, goFn, sublabel) {
+  const idx = ids.indexOf(curId);
+  if(ids.length<2 || idx<0) return '';
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const nm = id => getAthleteDisplayName(id);
+  const prev = ids[(idx-1+ids.length)%ids.length], next = ids[(idx+1)%ids.length];
+  const arrow = d => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(d<0?'M15 18 9 12l6-6':'m9 18 6-6-6-6')+'"/></svg>';
+  const rows = S._anMenuOpen ? ids.map((id,i)=>{
+    const a = (S.adminAthletes||[]).find(x=>x.uid===id);
+    const w = a && a._personal ? computeAthleteLoadSummary(a).avgWellness : null;
+    return `<button class="an-row${id===curId?' on':''}" onclick="${goFn}('${id}')"><i>${i+1}</i>${avatarHtml(nm(id), a?.color, 26, a?.photoUrl)}<span>${esc(nm(id))}${a?.position?`<small> · ${esc(a.position)}</small>`:''}</span>${w!=null?`<b style="color:${getWellnessState(Math.round(w)).color}">${Math.round(w)}%</b>`:''}</button>`;
+  }).join('') : '';
+  return `<div class="an-bar">
+    <button class="an-side" onclick="${goFn}('${prev}')" title="Anterior: ${esc(nm(prev))} (flecha ← del teclado)">${arrow(-1)}<span>${esc(anShort(nm(prev)))}</span></button>
+    <div class="an-mid"><button class="an-cur" onclick="toggleAthleteNavMenu(event)"><b>${idx+1} de ${ids.length}</b>${sublabel?`<span>${esc(sublabel)}</span>`:''}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      ${S._anMenuOpen?`<div class="an-menu" onclick="event.stopPropagation()">${rows}</div>`:''}</div>
+    <button class="an-side" onclick="${goFn}('${next}')" title="Siguiente: ${esc(nm(next))} (flecha → del teclado)"><span>${esc(anShort(nm(next)))}</span>${arrow(1)}</button>
+  </div>`;
+}
+function toggleAthleteNavMenu(e) { if(e) e.stopPropagation(); S._anMenuOpen = !S._anMenuOpen; renderMain(); }
+window.toggleAthleteNavMenu = toggleAthleteNavMenu;
+function closeAthleteNavMenu() { S._anMenuOpen = false; }
+window.closeAthleteNavMenu = closeAthleteNavMenu;
+document.addEventListener('click', ()=>{ if(S._anMenuOpen) { S._anMenuOpen = false; renderMain(); } });
+
+// Evaluaciones de un equipo: los atletas del plantel, registrados y sin registrar.
+function teamEvalAthleteIds() {
+  const reg = (S.adminAthletes||[]).filter(a=>(S.evalScopeUids||[]).includes(a.uid)).map(a=>a.uid);
+  const pend = (S.teamView && S.pendingAthletes) ? S.pendingAthletes.filter(p=>p.teamId===S.teamView.id).map(p=>'pending:'+p.id) : [];
+  return reg.concat(pend);
+}
+function goToEvalAthlete(uid) { closeAthleteNavMenu(); selectEvalAthlete(uid); }
+window.goToEvalAthlete = goToEvalAthlete;
+// Flechas ← → del teclado: pasan de atleta (nunca mientras se escribe).
+document.addEventListener('keydown', e=>{
+  if(e.key!=='ArrowLeft' && e.key!=='ArrowRight') return;
+  if(e.altKey||e.ctrlKey||e.metaKey||e.shiftKey) return;
+  const el = e.target;
+  if(el && (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable)) return;
+  if(document.querySelector('.video-modal.open, .modal-overlay.open')) return;
+  const d = e.key==='ArrowLeft' ? -1 : 1;
+  if(S._inAthleteDetail && (S._athleteSiblingUids||[]).length>1) { navigateAthleteSibling(d); return; }
+  if(S.teamView && S.teamSubview==='evals' && S.currentView==='teams') {
+    const ids = teamEvalAthleteIds(), i = ids.indexOf(S.evalAthleteId);
+    if(ids.length>1 && i>=0) goToEvalAthlete(ids[(i+d+ids.length)%ids.length]);
+  }
+});
+
+// ── ATLETAS ABIERTOS ─────────────────────────────────────────
+// Una tira finita arriba, como las pestañas de un navegador: cada atleta que
+// el profe deja abierto, con la pestaña de la ficha en la que estaba. Se guarda
+// en este dispositivo.
+const OPEN_TABS_KEY = 'gm-open-athletes';
+const OPEN_TABS_MAX = 8;
+const OPEN_TAB_LABEL = {perfil:'Perfil', rutina:'Rutina', wellness:'Wellness', stats:'Estadísticas', evals:'Evaluaciones'};
+function getOpenTabs() {
+  if(!S._openTabs) { try { S._openTabs = JSON.parse(localStorage.getItem(OPEN_TABS_KEY)||'[]'); } catch(e) { S._openTabs = []; } }
+  return Array.isArray(S._openTabs) ? S._openTabs : (S._openTabs = []);
+}
+function saveOpenTabs() { try { localStorage.setItem(OPEN_TABS_KEY, JSON.stringify(getOpenTabs())); } catch(e) {} }
+function toggleOpenAthlete(uid) {
+  const tabs = getOpenTabs(), i = tabs.findIndex(t=>t.uid===uid);
+  if(i>=0) tabs.splice(i,1);
+  else {
+    if(tabs.length>=OPEN_TABS_MAX) { showToast('Hasta '+OPEN_TABS_MAX+' atletas abiertos'); return; }
+    const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
+    tabs.push({uid, sub:S.atletaSubview||'perfil', name:a?.name||a?.email||''});
+  }
+  saveOpenTabs(); renderMain();
+}
+window.toggleOpenAthlete = toggleOpenAthlete;
+function closeOpenTab(e, uid) {
+  if(e) e.stopPropagation();
+  const tabs = getOpenTabs(), i = tabs.findIndex(t=>t.uid===uid);
+  if(i>=0) { tabs.splice(i,1); saveOpenTabs(); }
+  renderOpenTabs(); if(S._inAthleteDetail) renderMain();
+}
+window.closeOpenTab = closeOpenTab;
+async function goToOpenTab(uid) {
+  const t = getOpenTabs().find(x=>x.uid===uid);
+  if(!t) return;
+  const cur = S.atletaView?.uid;
+  if(S._inAthleteDetail && cur===uid) return;
+  await ensureAdminAthletes();
+  const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
+  if(!a) { showToast('Ese atleta ya no está en la app'); closeOpenTab(null, uid); return; }
+  closeAthleteNavMenu();
+  // Las flechas de la ficha recorren el plantel de ESTE atleta (o los individuales).
+  const team = getAthleteTeam(a), savedTeam = S.teamView;
+  let sibs;
+  if(team) { S.teamView = team; sibs = computeAthleteSiblingUids(); S.teamView = savedTeam; }
+  else sibs = (S.adminAthletes||[]).filter(x=>x.athleteType==='individual').sort((p,q)=>(p.name||p.email||'').localeCompare(q.name||q.email||'')).map(x=>x.uid);
+  await adminOpenAthlete(uid, t.sub||'perfil');
+  S._athleteSiblingUids = sibs;
+  renderMain();
+}
+window.goToOpenTab = goToOpenTab;
+function renderOpenTabs() {
+  const el = document.getElementById('open-tabs');
+  if(!el) return;
+  const tabs = S.isAdmin ? getOpenTabs() : [];
+  document.documentElement.classList.toggle('has-open-tabs', tabs.length>0);
+  if(!tabs.length) { el.innerHTML = ''; return; }
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const cur = S._inAthleteDetail ? S.atletaView?.uid : null;
+  el.innerHTML = tabs.map(t=>{
+    const a = (S.adminAthletes||[]).find(x=>x.uid===t.uid);
+    const name = a?.name||a?.email||t.name||'';
+    return `<button class="ot-tab${t.uid===cur?' on':''}" onclick="goToOpenTab('${t.uid}')" title="${esc(name).replace(/"/g,'')}">${avatarHtml(name, a?.color, 20, a?.photoUrl)}<b>${esc(anShort(name))}</b><small>${OPEN_TAB_LABEL[t.sub]||''}</small><i role="button" aria-label="Cerrar" onclick="closeOpenTab(event,'${t.uid}')">×</i></button>`;
+  }).join('');
+}
+window.renderOpenTabs = renderOpenTabs;
+
+function openAtleta(uid, sub) {
   const a = (S.adminAthletes || []).find(x => x.uid === uid);
   if (!a) return;
   if(!S._inAthleteDetail) {
@@ -10096,7 +10291,8 @@ function openAtleta(uid) {
   }
   S._inAthleteDetail = true;
   S.atletaView = a;
-  S.atletaSubview = 'perfil';
+  S.atletaSubview = sub || 'perfil';
+  if(sub==='evals') { S.evalScopeUids = [uid]; S.evalAthleteId = uid; }
   S._atletaRoutineDay = null;
   S._atletaRoutineBlocksOpen = null;
   S._pastPhaseDay = null;
@@ -10108,7 +10304,7 @@ function openAtleta(uid) {
     S.viewingAthlete = { uid, userData: a, personal: a._personal||{} };
     try { await adminAutoRM(a); } catch(e) {}
     if(S.atletaView!==a) return;
-    renderMain();
+    if(sub) setAtletaSubview(sub); else renderMain();
   }).catch((e)=>{ console.error('Error al abrir atleta', e); showToast('Error: '+(e?.message||e)); renderMain(); });
   renderMain();
 }
@@ -10280,21 +10476,20 @@ function renderAtletaDetail(a) {
   // si sabemos de qué lista se entró (ver computeAthleteSiblingUids).
   const sibs = S._athleteSiblingUids;
   const sibIdx = sibs ? sibs.indexOf(a.uid) : -1;
-  const sibNav = (sibs && sibs.length>1 && sibIdx>=0) ? `<div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
-      <button class="ex-icon-btn" onclick="navigateAthleteSibling(-1)" title="Atleta anterior"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
-      <span style="font-size:11px;color:var(--text3);white-space:nowrap;padding:0 2px">${sibIdx+1}/${sibs.length}</span>
-      <button class="ex-icon-btn" onclick="navigateAthleteSibling(1)" title="Atleta siguiente"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
-    </div>` : '';
+  const sibNav = (sibs && sibs.length>1 && sibIdx>=0) ? athleteNavBar(sibs, a.uid, 'goToAthleteKeepingTab', myTeam ? myTeam.name+(myTeam.category?' · '+myTeam.category:'') : 'Individuales') : '';
+  const isOpenTab = getOpenTabs().some(t=>t.uid===a.uid);
+  const pinBtn = `<button class="abtn ot-pin${isOpenTab?' on':''}" onclick="toggleOpenAthlete('${a.uid}')" title="${isOpenTab?'Quitar de los atletas abiertos':'Dejarlo abierto arriba, para volver rápido a la pestaña donde estabas'}"><svg width="14" height="14" viewBox="0 0 24 24" fill="${isOpenTab?'currentColor':'none'}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 3h6l-1 7 3 3v2H7v-2l3-3z"/></svg><span class="hs"> ${isOpenTab?'Abierto':'Dejar abierto'}</span></button>`;
   let html = `<div class="team-detail-header">
     <button class="back-btn" onclick="goBackFromAthleteDetail()">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
       ${avatarHtml(a.name||a.email, a.color, 36, a.photoUrl, true)}
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name || a.email}</span>
     </div>
-    ${sibNav}
+    ${pinBtn}
     <button class="abtn abtn-p hd-load" onclick="openProxyForm('${a.uid}')" title="Cargar el wellness y la carga de ${(a.name||'este atleta').replace(/"/g,'')}"><svg class="eic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="hs"> Cargar wellness / carga</span></button>
     <button class="abtn" onclick="openWeeklyReport('${a.uid}')" title="Reporte semanal">📄<span class="hs"> Reporte</span></button>
   </div>
+  ${sibNav}
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text)">${myTeam.name}</span>`:''}
     ${a.position?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${a.position}</span>`:''}
@@ -10796,6 +10991,8 @@ window.renderPerfilTab = renderPerfilTab;
 
 function setAtletaSubview(v) {
   S.atletaSubview = v;
+  const openT = S.atletaView && getOpenTabs().find(t=>t.uid===S.atletaView.uid);
+  if(openT && openT.sub!==v) { openT.sub = v; saveOpenTabs(); }
   // OJO: Evaluaciones nunca se amplía con el equipo de comparación — eso
   // dejaría entrar/editar el historial de evaluaciones de los compañeros
   // desde la ficha de un atleta individual, que es justo lo que no
@@ -12932,7 +13129,7 @@ function drawCompareCharts() {
 }
 window.drawCompareCharts=drawCompareCharts;
 
-async function adminOpenAthlete(uid) {
+async function adminOpenAthlete(uid, sub) {
   // Guardamos desde dónde se abrió esta ficha (Dashboard, un equipo, la
   // lista de Atletas...) para que "volver" te lleve ahí y no siempre al
   // mismo lugar fijo. Con el mismo contexto armamos la lista de "hermanos"
@@ -12946,7 +13143,7 @@ async function adminOpenAthlete(uid) {
   S.adminView='athlete_detail';
   S.currentView='admin';
   renderBottomBar();
-  S.atletaSubview = 'perfil';
+  S.atletaSubview = sub || 'perfil';
   S._atletaRoutineDay = null;
   S._atletaRoutineBlocksOpen = null;
   S._pastPhaseDay = null;
@@ -12987,7 +13184,9 @@ async function adminOpenAthlete(uid) {
     S.atletaView = a;
     S.viewingAthlete = { uid, userData:a, personal:a._personal||{} };
   } catch(e) { if (S._athleteOpenLoadingUid !== uid) return; S.viewingAthlete=null; S.atletaView=null; }
-  renderMain();
+  // Con pestaña pedida (flechas, atletas abiertos) pasa por setAtletaSubview:
+  // Evaluaciones necesita apuntar al atleta nuevo, no quedarse con el anterior.
+  if(sub && S.atletaView) setAtletaSubview(sub); else renderMain();
 }
 window.adminOpenAthlete=adminOpenAthlete;
 
@@ -14910,8 +15109,9 @@ function renderEvals() {
   if(S.isAdmin) {
     html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
       + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
-      + athleteSel
-      + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
+      + ((S.teamView && S.teamSubview==='evals' && teamEvalAthleteIds().length>1)
+          ? '<div class="an-inline">'+athleteNavBar(teamEvalAthleteIds(), S.evalAthleteId, 'goToEvalAthlete', currentAthleteName)+'</div>'
+          : athleteSel + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>')
       + '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>'
       + '</div>';
   }
@@ -14954,8 +15154,9 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
   if(S.isAdmin) {
     html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
       + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
-      + athleteSel
-      + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>'
+      + ((S.teamView && S.teamSubview==='evals' && teamEvalAthleteIds().length>1)
+          ? '<div class="an-inline">'+athleteNavBar(teamEvalAthleteIds(), S.evalAthleteId, 'goToEvalAthlete', currentAthleteName)+'</div>'
+          : athleteSel + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>')
       + '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>'
       + '</div>';
   }
@@ -16987,6 +17188,18 @@ function getAthleteRowData(a) {
 }
 window.getAthleteRowData = getAthleteRowData;
 
+// Actividad de hoy y de ayer + alertas, como chips (fila del Dashboard y ficha del Plantel).
+function athleteActivityChips(d) {
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const rpeCls = r=> r>=7 ? 'ar-hi' : r>=5 ? 'ar-mid' : 'ar-lo';
+  // Etiqueta de actividad neutra: solo el RPE lleva color, así el rojo queda
+  // reservado para las alertas de verdad (lesión, ACWR, caída de wellness).
+  const chip = (c, muted)=>`<span class="ar-ch ar-act${muted?' ar-muted':''}">${c.svg||ATH_ICONS[c.ic]}${muted?'Ayer · ':''}${esc(c.txt)}${c.rpe?`<b class="${rpeCls(+c.rpe)}">RPE ${esc(c.rpe)}</b>`:''}${c.mins?`<i>${esc(c.mins)} min</i>`:''}</span>`;
+  return d.todayChips.map(c=>chip(c,false)).join('') + d.yesterdayChips.map(c=>chip(c,true)).join('')
+    + d.alerts.map(x=>`<span class="ar-ch ar-al">${ATH_ICONS[x.kind==='inj'?'inj':'warn']}${esc(x.txt)}</span>`).join('');
+}
+window.athleteActivityChips = athleteActivityChips;
+
 function athleteRowHtml(a, o) {
   o = o || {};
   const d = getAthleteRowData(a);
@@ -17004,12 +17217,7 @@ function athleteRowHtml(a, o) {
     const delta = d.prev ? d.last.v-d.prev.v : null;
     pct = `<div class="ar-pc"><b style="color:${getWellnessState(d.last.v).color}">${d.last.v}%</b>${delta?`<small style="color:${delta>0?'var(--green)':'var(--red)'}">${delta>0?'▲ +':'▼ −'}${Math.abs(delta)}</small>`:''}</div>`;
   }
-  const rpeCls = r=> r>=7 ? 'ar-hi' : r>=5 ? 'ar-mid' : 'ar-lo';
-  // Etiqueta de actividad neutra: solo el RPE lleva color, así el rojo queda
-  // reservado para las alertas de verdad (lesión, ACWR, caída de wellness).
-  const chip = (c, muted)=>`<span class="ar-ch ar-act${muted?' ar-muted':''}">${c.svg||ATH_ICONS[c.ic]}${muted?'Ayer · ':''}${esc(c.txt)}${c.rpe?`<b class="${rpeCls(+c.rpe)}">RPE ${esc(c.rpe)}</b>`:''}${c.mins?`<i>${esc(c.mins)} min</i>`:''}</span>`;
-  let chips = d.todayChips.map(c=>chip(c,false)).join('') + d.yesterdayChips.map(c=>chip(c,true)).join('');
-  chips += d.alerts.map(x=>`<span class="ar-ch ar-al">${ATH_ICONS[x.kind==='inj'?'inj':'warn']}${esc(x.txt)}</span>`).join('');
+  let chips = athleteActivityChips(d);
   if(d.noWellnessToday) chips += `<span class="ar-ch ar-none">${ATH_ICONS.clock}Sin wellness hoy</span>`;
   if(!chips) chips = '<span class="ar-ch ar-none">Sin actividad hoy</span>';
   // Con o.status (Dashboard): suma ACWR, UA de la semana y el estado del atleta.
@@ -17633,7 +17841,7 @@ document.addEventListener('click', e => {
       // _teamViewLoadingId también se limpia acá: si había un fetch de
       // openTeam en vuelo, esto le avisa que ya no importa su resultado —
       // ver el comentario en openTeam().
-      S.teamView=null; S.teamDayEdit=null; S.teamDayIdx=0; S._teamViewLoadingId=null;
+      S.teamView=null; S.teamDayEdit=null; S.teamDayIdx=null; S._teamViewLoadingId=null;
       S.currentView='teams'; renderBottomBar(); renderMain(); break;
     case 'team-day':
       S.teamDayEdit=null;

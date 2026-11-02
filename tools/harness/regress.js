@@ -377,9 +377,9 @@
     setRoutineCompare(true); await wait(500); ok(!!document.querySelector('#cmpex-'+added.id+' .dup-tag'),'vista horizontal: también lo marca'); setRoutineCompare(false);
     txtBad('editor con repetidos'); }
   // ── estadísticas del equipo: números del plantel, ranking en barras, molestias en lista, radar con tabla, cuadrante y tabla por puesto ──
-  { const dbx=JSON.parse(localStorage.getItem('__db')); const mk=(b,st)=>['2026-05-12','2026-07-15','2026-09-12'].map((d,i)=>({date:d,height:+(b+st*i).toFixed(1)}));
+  { const dbx=JSON.parse(localStorage.getItem('__db')); const dAgo=n=>{const t=new Date(Date.now()-n*864e5);return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}; const mk=(b,st)=>[dAgo(150),dAgo(104),dAgo(45)].map((d,i)=>({date:d,height:+(b+st*i).toFixed(1)}));
     const P={u1:[37,0.8,32,90,70],u2:[40,0.6,35.5,120,80],u3:[34,0.4,null,95,65]};
-    Object.entries(P).forEach(([u,[c,st,sj,sq,bp]])=>{ dbx.personal[u]=dbx.personal[u]||{}; dbx.personal[u].evals={cmj:mk(c,st), abalakov:mk(c+6,st), ...(sj?{sj:mk(sj,st)}:{}), rm_sentadilla:[{date:'2026-08-20',height:sq}], rm_press_banca:[{date:'2026-08-20',height:bp}]}; const a=S.adminAthletes.find(x=>x.uid===u); if(a&&a._personal) a._personal.evals=dbx.personal[u].evals; });
+    Object.entries(P).forEach(([u,[c,st,sj,sq,bp]])=>{ dbx.personal[u]=dbx.personal[u]||{}; dbx.personal[u].evals={cmj:mk(c,st), abalakov:mk(c+6,st), ...(sj?{sj:mk(sj,st)}:{}), rm_sentadilla:[{date:dAgo(68),height:sq}], rm_press_banca:[{date:dAgo(68),height:bp}]}; const a=S.adminAthletes.find(x=>x.uid===u); if(a&&a._personal) a._personal.evals=dbx.personal[u].evals; });
     localStorage.setItem('__db',JSON.stringify(dbx));
     S.atletaView=null; S._inAthleteDetail=false; S.leaderboardTest='cmj'; S.leaderboardMode='pr'; S.radarMode='equipo'; S.radarAthleteId='u1';
     switchView('teams'); await wait(600); openTeam('t1'); await wait(1600); setTeamSubview('stats'); await wait(1800);
@@ -665,6 +665,50 @@
       ok(!JSON.stringify(dbR).includes('"_open"'),'ficha: no se guardan marcas de pantalla');
       const tpl=JSON.parse(localStorage.getItem('__db')).routines.r1; ok(tpl.sessions[d1].some(x=>x.id===b0.id),'la plantilla no se tocó (el mover del editor no se guardó)');
       txtBad('ficha horizontal con bloques'); setAtletaRoutineCicloView('micro'); goBackFromAthleteDetail(); await wait(300); } }
+  // ── flechas de atleta en atleta y atletas abiertos ──
+  { localStorage.removeItem('gm-open-athletes'); S._openTabs=null;
+    S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(500); openTeam('t1'); await wait(1500); adminOpenAthlete('u1'); await wait(1500);
+    setAtletaSubview('evals'); await wait(900);
+    ok(/1 de 3/.test(document.querySelector('.an-bar')?.innerText||''),'ficha: barra "1 de 3" con anterior y siguiente');
+    navigateAthleteSibling(1); await wait(1500);
+    ok(S.atletaView?.uid==='u2'&&S.atletaSubview==='evals'&&S.evalAthleteId==='u2','flechas en Evaluaciones: cambian también los tests al atleta nuevo (antes quedaban los del anterior)');
+    toggleAthleteNavMenu(); await wait(300); ok(document.querySelectorAll('.an-menu .an-row').length===3,'tocando "2 de 3" se abre el plantel'); document.body.click(); await wait(300); ok(!document.querySelector('.an-menu'),'tocando afuera se cierra');
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})); await wait(1500); ok(S.atletaView?.uid==='u3','flecha → del teclado pasa al siguiente');
+    toggleOpenAthlete('u3'); await wait(200); setAtletaSubview('rutina'); await wait(700);
+    ok(/Rutina/.test(document.querySelector('.ot-tab')?.innerText||'')&&document.querySelector('.ot-tab').classList.contains('on'),'dejar abierto: aparece la pestaña con su última sección');
+    ok(document.getElementById('open-tabs').getBoundingClientRect().height<=40,'la tira de abiertos es finita');
+    navigateAthleteSibling(-1); await wait(1500); ok(!document.querySelector('.ot-tab.on'),'otro atleta: la pestaña deja de estar activa');
+    goToOpenTab('u3'); await wait(1800); ok(S.atletaView?.uid==='u3'&&S.atletaSubview==='rutina','tocar la pestaña vuelve al atleta y a su última sección');
+    ok(JSON.parse(localStorage.getItem('gm-open-athletes')||'[]')[0]?.sub==='rutina','queda guardado en el dispositivo');
+    closeOpenTab(null,'u3'); await wait(300); ok(!document.querySelector('.ot-tab')&&getComputedStyle(document.getElementById('open-tabs')).display==='none','cerrar la última pestaña esconde la tira');
+    txtBad('ficha con abiertos'); goBackFromAthleteDetail(); await wait(500);
+    S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(500); openTeam('t1'); await wait(1500); setTeamSubview('evals'); await wait(1800); selectEvalAthlete('u1'); await wait(700);
+    const eb=document.querySelector('.an-inline .an-bar'); ok(!!eb&&/1 de 3/.test(eb.innerText),'Evaluaciones del equipo: barra de atleta en atleta');
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})); await wait(700); ok(S.evalAthleteId==='u2','Evaluaciones del equipo: la flecha pasa al siguiente'); }
+  // ── pestaña Plantel del equipo ──
+  { S.atletaView=null; S._inAthleteDetail=false; S.teamQuick='all'; S.teamSort='estado'; switchView('teams'); await wait(500); openTeam('t1'); await wait(1500); setTeamSubview('rutina'); await wait(900);
+    ok(/Plantel/.test(document.querySelector('.snav-tab.active')?.innerText||''),'equipo: la pestaña principal se llama Plantel');
+    let cards=document.querySelectorAll('.pc-grid .pc-card'); ok(cards.length===3,'Plantel: una ficha por jugador con cuenta ('+cards.length+')');
+    ok(!!document.querySelector('.tp-strip') && !document.querySelector('#main .tp-settings') && !/Deporte:|Color:/.test(document.getElementById('main').innerText),'Plantel: rutina y sesiones en la franja; deporte y color fuera de la vista');
+    ok(!document.querySelector('#main .pc-grid .abtn-d') && !document.querySelector('#main > * > .abtn-d, #main .ar-row .abtn-d'),'Plantel: sin botones rojos "−" sueltos');
+    ok([...cards].every(c=>c.querySelectorAll('.pc-k').length===4),'Plantel: wellness, ACWR, carga y último test en cada ficha');
+    const tiers=[...cards].map(c=>c.classList.contains('pc-crit')?0:c.classList.contains('pc-warn')?1:2); ok(tiers.every((t,i)=>!i||t>=tiers[i-1]),'Plantel: los que requieren atención primero ('+tiers.join(',')+')');
+    const cols=getComputedStyle(document.querySelector('.pc-grid')).gridTemplateColumns.split(' ').length;
+    ok(innerWidth>=1000 ? cols===2 : innerWidth<600 ? cols===1 : true,'Plantel: '+(innerWidth>=1000?'dos columnas en pantalla ancha':'una columna en el celular')+' ('+cols+')');
+    ok(document.documentElement.scrollWidth<=innerWidth+1,'Plantel: sin scroll horizontal');
+    ok(/1 sin cuenta todavía/.test(document.querySelector('.tp-pending')?.innerText||''),'Plantel: los que no tienen cuenta, aparte');
+    txtBad('plantel del equipo');
+    toggleTeamSettings(); await wait(300); ok(!!document.querySelector('.tp-settings select') && document.querySelectorAll('.tp-color').length===8,'Ajustes del equipo: deporte, color y eliminar'); toggleTeamSettings(); await wait(200);
+    const n0=S.teams.find(t=>t.id==='t1').players.length;
+    const card=document.querySelector('.pc-grid .pc-card'); card.querySelector('.pc-more summary').click(); await wait(250);
+    ok(card.querySelector('.pc-more').open && !S.atletaView,'Plantel: el menú ⋯ se abre sin entrar a la ficha');
+    document.body.click(); await wait(150); ok(!card.querySelector('.pc-more').open,'Plantel: tocando afuera se cierra el menú');
+    card.querySelector('.pc-more summary').click(); await wait(200); card.querySelector('.pc-menu button').click(); await wait(300);
+    ok(document.getElementById('confirm-modal-overlay').classList.contains('open') && S.teams.find(t=>t.id==='t1').players.length===n0,'Quitar del plantel pide confirmación antes');
+    closeConfirmModal(); await wait(200); ok(S.teams.find(t=>t.id==='t1').players.length===n0,'cancelar no quita a nadie');
+    setTeamQuick('nowell'); await wait(400); cards=document.querySelectorAll('.pc-grid .pc-card'); const nw=+(document.querySelectorAll('.tp-filters .chip-btn')[2].textContent.match(/(\d+)\s*$/)||[])[1];
+    ok(cards.length===nw || (!nw && !!document.querySelector('#main .tp-empty')),'Plantel: filtro Sin wellness ('+nw+')'); setTeamQuick('all'); await wait(300);
+    card.click && document.querySelector('.pc-grid .pc-card').click(); await wait(1500); ok(!!S.atletaView,'Plantel: tocar la ficha abre al atleta'); goBackFromAthleteDetail(); await wait(500); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
