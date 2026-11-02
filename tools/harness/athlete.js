@@ -92,6 +92,15 @@
   // ── el atleta también ve por qué está así su ACWR ──
   { switchView('dashboard'); await wait(600); const tap=document.querySelector('#main .ax-tap'); ok(!!tap,'inicio: el ACWR se puede tocar');
     if(tap){ tap.click(); await wait(300); const t=document.querySelector('#acwr-overlay')?.innerText||''; ok(/Tu carga, explicada/.test(t)&&/Carga por semana/i.test(t)&&!/undefined|NaN/.test(t),'atleta: ve la explicación de su ACWR'); closeAcwrExplain(); } }
+  // ── ejercicio personalizado con otro de la biblioteca: el atleta ve ese nombre y su video ──
+  { const lib2=S.library.find(l=>l.id!=='lsq'&&!/sentadilla/i.test(l.name)); S.videos[lib2.id]='https://youtu.be/abc123';
+    if(!S.routineOverrides) S.routineOverrides={}; const rid=S.assignedRoutine.id;
+    S.routineOverrides[rid]={...(S.routineOverrides[rid]||{}), 'Día 1':{x1:{fromWeek:1, name:lib2.name, libId:lib2.id, series:'4', reps:'6', rpe:'', note:''}}};
+    switchView('session'); await wait(400); S.currentSession='Día 1'; S.rmCalcTabActive=false; renderMain(); await wait(500);
+    const row=document.getElementById('exrow-x1'); const vb=row&&row.querySelector('[data-videokey]');
+    ok(row&&row.textContent.includes(lib2.name),'atleta: ve el ejercicio que eligió el profe ('+lib2.name+')');
+    ok(vb&&vb.getAttribute('data-videokey')===lib2.id&&vb.classList.contains('has-video'),'atleta: el video es el del ejercicio nuevo');
+    delete S.routineOverrides[rid]['Día 1']; renderMain(); }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();

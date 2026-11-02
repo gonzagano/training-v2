@@ -2196,6 +2196,7 @@ function getExDisplayForWeek(ex, absWeek, relWeek, override) {
       series: override.series||'', reps: override.reps||'', pct: override.pct||'',
       rpe: override.rpe||'', intensityType: override.intensityType || base.intensityType || 'RPE',
       note: override.note||'',
+      libId: override.libId || null,
       overridden: true,
     };
   }
@@ -3402,8 +3403,8 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   // Ejercicios agregados ANTES de que existiera libId no tienen ese vínculo — como
   // respaldo, buscamos por nombre exacto en la biblioteca para no perder el video.
   const libMatch = ex.libId ? null : S.library.find(l=>l.name.trim().toLowerCase()===(ex.name||'').trim().toLowerCase());
-  const videoKey=ex.libId||(libMatch&&libMatch.id)||ex.id;
-  const hasV=!!S.videos[videoKey];
+  let videoKey=ex.libId||(libMatch&&libMatch.id)||ex.id;
+  let hasV=!!S.videos[videoKey];
   const canEdit=S.isAdmin && !forceReadOnly;
   const isAthleteMode=!S.isAdmin && !!S.assignedRoutine;
   // Routine prescription values — resueltas según la semana actual, con
@@ -3417,6 +3418,11 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
   // lo que le toca de verdad, no lo que dice la rutina compartida.
   const exOverride = isAthleteMode ? getExerciseOverride(S.routineOverrides, S.assignedRoutine?.id, S.currentSession, ex.id) : null;
   const wp = getExDisplayForWeek(ex, getRoutineWeek(), toRoutineRelativeWeek(getRoutineWeek(), S.userData), exOverride);
+  // Personalizado con otro ejercicio: el video es el de ese ejercicio.
+  if(wp.overridden && wp.name!==ex.name) {
+    const k = wp.libId || S.library.find(l=>normTxt(l.name)===normTxt(wp.name))?.id;
+    if(k) { videoKey = k; hasV = !!S.videos[k]; }
+  }
   const displayExName = wp.name || ex.name;
   const prescSeries = wp.series;
   const prescReps   = wp.reps;
@@ -3957,6 +3963,7 @@ window.deleteExercise=deleteExercise;
 function copyBlockToClipboard(block) {
   S._blockClipboard = JSON.parse(JSON.stringify(block));
   showToast(`✓ "${block.title||block.label}" copiado — pegalo donde quieras`);
+  if(S.isAdmin) renderMain();
 }
 window.copyBlockToClipboard = copyBlockToClipboard;
 
@@ -3972,6 +3979,74 @@ function clonedBlockFromClipboard() {
   return b;
 }
 window.clonedBlockFromClipboard = clonedBlockFromClipboard;
+
+// ── MOVER UN BLOQUE A OTRO DÍA / COPIAR Y PEGAR DESDE LA FICHA ─────────────
+// kind 'editor' = la rutina abierta en el editor (se guarda con "Guardar");
+// kind 'ficha' = la rutina propia del atleta vista desde su ficha (se guarda al instante).
+function routineForBlockOps(kind, routineId) {
+  return kind==='editor' ? S.editingRoutine : (S.routines||[]).find(r=>r.id===routineId);
+}
+async function persistBlockOps(kind, r) {
+  if(kind==='ficha') {
+    try {
+      const sessions = JSON.parse(JSON.stringify(r.sessions||{}));
+      const walk = v => { if(Array.isArray(v)) v.forEach(walk); else if(v && typeof v==='object') { delete v._open; delete v._editing; Object.values(v).forEach(walk); } };
+      walk(sessions);
+      await updateDocSafe(doc(db,'routines',r.id), {sessions});
+    } catch(e) { showToast('No se pudo guardar'); }
+  }
+  renderMain();
+}
+function copyRoutineBlockById(routineId, blockId, sessionName) {
+  const r = routineForBlockOps('ficha', routineId);
+  const b = (r?.sessions?.[sessionName]||[]).find(x=>x.id===blockId);
+  if(b) copyBlockToClipboard(b);
+}
+window.copyRoutineBlockById = copyRoutineBlockById;
+async function pasteBlockIntoRoutine(routineId, sessionName) {
+  const r = routineForBlockOps('ficha', routineId); if(!r) return;
+  const b = clonedBlockFromClipboard();
+  if(!b) { showToast('No copiaste ningún bloque todavía'); return; }
+  delete b._open;
+  if(!r.sessions[sessionName]) r.sessions[sessionName] = [];
+  r.sessions[sessionName].push(b);
+  renumberBlockLabels(r.sessions[sessionName]);
+  showToast('✓ Bloque pegado en '+sessionName);
+  await persistBlockOps('ficha', r);
+}
+window.pasteBlockIntoRoutine = pasteBlockIntoRoutine;
+function openMoveBlockPicker(kind, routineId, blockId, fromSession) {
+  const r = routineForBlockOps(kind, routineId); if(!r) return;
+  const b = (r.sessions?.[fromSession]||[]).find(x=>x.id===blockId); if(!b) return;
+  const days = getOrderedSessionNames(r).filter(n=>n!==fromSession);
+  if(!days.length) { showToast('La rutina tiene un solo día'); return; }
+  S._moveBlockCtx = {kind, routineId, blockId, fromSession, days};
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  let o = document.getElementById('moveblock-overlay');
+  if(!o) { o = document.createElement('div'); o.className = 'video-modal open'; o.id = 'moveblock-overlay'; o.onclick = e=>{ if(e.target===o) closeMoveBlockPicker(); }; document.body.appendChild(o); }
+  o.className = 'video-modal open';
+  o.innerHTML = `<div class="video-modal-box"><div class="video-modal-title">Mover "${esc(b.title||b.label)}" a…</div>
+    <div class="mvb-days">${days.map((d,i)=>`<button class="abtn" onclick="moveBlockToDay(${i})">${esc(d)}</button>`).join('')}</div>
+    <div class="video-modal-btns"><button class="abtn" onclick="closeMoveBlockPicker()">Cancelar</button></div></div>`;
+}
+window.openMoveBlockPicker = openMoveBlockPicker;
+function closeMoveBlockPicker() { document.getElementById('moveblock-overlay')?.remove(); S._moveBlockCtx = null; }
+window.closeMoveBlockPicker = closeMoveBlockPicker;
+async function moveBlockToDay(i) {
+  const ctx = S._moveBlockCtx; if(!ctx) return;
+  const r = routineForBlockOps(ctx.kind, ctx.routineId);
+  const to = ctx.days[i];
+  closeMoveBlockPicker();
+  const from = r?.sessions?.[ctx.fromSession]; if(!from || !to) return;
+  const idx = from.findIndex(x=>x.id===ctx.blockId); if(idx<0) return;
+  const [b] = from.splice(idx,1);
+  if(!r.sessions[to]) r.sessions[to] = [];
+  r.sessions[to].push(b);
+  renumberBlockLabels(from); renumberBlockLabels(r.sessions[to]);
+  showToast('✓ Movido a '+to);
+  await persistBlockOps(ctx.kind, r);
+}
+window.moveBlockToDay = moveBlockToDay;
 
 // ── NOMBRES FIJOS DE BLOQUE ────────────────────────────────────────────────
 // Los bloques ya no se nombran a mano: se elige de esta lista. Tres tienen
@@ -4200,6 +4275,7 @@ window.hideLibNewExerciseForm = hideLibNewExerciseForm;
 
 function closeLib() {
   document.getElementById('lib-overlay').classList.remove('open');
+  if(S.libTarget?.isOverride) { S.libTarget = null; reopenExOverride(); }
   if(S.libTarget) { delete S.libTarget.replaceExId; delete S.libTarget.replaceName; }
   const t = document.querySelector('#lib-overlay .lib-title');
   if(t) t.textContent = 'Biblioteca de ejercicios';
@@ -4388,6 +4464,7 @@ window.replaceExercise = replaceExercise;
 
 function addFromLib(libId) {
   const libEx=S.library.find(e=>e.id===libId); if(!libEx||!S.libTarget) return;
+  if(S.libTarget.isOverride) { applyExOverridePick(libEx.id, libEx.name); return; }
   const {blockId,catIdx,sessionName,isRoutine}=S.libTarget;
   const replacedName = S.libTarget.replaceName;
   let didReplace = false;
@@ -4578,7 +4655,10 @@ function createAndAddExercise() {
   const newLibEx={id:genId(),name,tags};
   S.library.push(newLibEx);
   if(videoUrl) S.videos[newLibEx.id]=videoUrl;
-  if(S.libTarget) {
+  if(S.libTarget?.isOverride) {
+    scheduleSave(); // el ejercicio nuevo queda en la biblioteca
+    applyExOverridePick(newLibEx.id, name);
+  } else if(S.libTarget) {
     const {blockId,catIdx,sessionName,isRoutine}=S.libTarget;
     if(S.libTarget.isTD) {
       // Adding to team day editor (esto es lo que faltaba)
@@ -9238,17 +9318,51 @@ function openExerciseOverrideModal(uid, routineId, sName, exId, realWeek) {
   if(!ex) return;
   const personal = getPersonalOwner(uid);
   const existing = getExerciseOverride(personal?.routineOverrides, routineId, sName, exId);
-  S._exOverrideCtx = {uid, routineId, sName, exId};
+  S._exOverrideCtx = {uid, routineId, sName, exId, realWeek, hasExisting:!!existing};
+  S._exOverrideDraft = null;
   document.getElementById('exoverride-title').textContent = 'Personalizar · ' + ex.name;
   document.getElementById('exoverride-body').innerHTML = renderExOverrideForm(ex, existing, realWeek);
   document.getElementById('exoverride-overlay').classList.add('open');
 }
+
+function readExOverrideInputs() {
+  const g = id => document.getElementById(id)?.value || '';
+  return {name:g('exov-name').trim(), libId:g('exov-libid'), series:g('exov-series').trim(), reps:g('exov-reps').trim(), rpe:g('exov-rpe').trim(), fromWeek:+g('exov-fromweek')||1, note:g('exov-note').trim(), intensityType:S._exOverrideDraft?.intensityType};
+}
+// "Cambiar ejercicio": guarda lo escrito, abre la biblioteca y al elegir (o crear) uno vuelve al formulario.
+function pickExOverrideFromLib() {
+  const ctx = S._exOverrideCtx; if(!ctx) return;
+  S._exOverrideDraft = readExOverrideInputs();
+  closeExOverride();
+  openLib(null, null);
+  S.libTarget = {isOverride:true};
+  const t = document.querySelector('#lib-overlay .lib-title');
+  if(t) t.textContent = 'Cambiar por…';
+}
+window.pickExOverrideFromLib = pickExOverrideFromLib;
+function applyExOverridePick(libId, name) {
+  if(S._exOverrideDraft) { S._exOverrideDraft.libId = libId; S._exOverrideDraft.name = name; }
+  closeLib();
+}
+function reopenExOverride() {
+  const ctx = S._exOverrideCtx; if(!ctx) return;
+  const routine = S.routines.find(r=>r.id===ctx.routineId);
+  const ex = routine ? findExInRoutine(routine, ctx.sName, ctx.exId) : null;
+  if(!ex) return;
+  document.getElementById('exoverride-body').innerHTML = renderExOverrideForm(ex, ctx.hasExisting ? (S._exOverrideDraft||{}) : null, ctx.realWeek, S._exOverrideDraft);
+  document.getElementById('exoverride-overlay').classList.add('open');
+}
 window.openExerciseOverrideModal = openExerciseOverrideModal;
 
-function renderExOverrideForm(ex, existing, realWeek) {
-  const v = existing || {fromWeek:realWeek, name:ex.name, series:ex.series||'', reps:ex.reps||'', rpe:ex.rpe||'', intensityType:ex.intensityType||'RPE', note:''};
+function renderExOverrideForm(ex, existing, realWeek, draft) {
+  const v = draft || existing || {fromWeek:realWeek, name:ex.name, series:ex.series||'', reps:ex.reps||'', rpe:ex.rpe||'', intensityType:ex.intensityType||'RPE', note:''};
+  const vid = v.libId ? !!S.videos[v.libId] : false;
   return `<div style="display:flex;flex-direction:column;gap:10px;padding-top:2px">
-        <div><label class="eval-lbl">Nombre del ejercicio</label><input id="exov-name" class="auth-inp" style="margin:0" value="${(v.name||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="eval-lbl">Ejercicio</label>
+          <div class="exov-ex"><input id="exov-name" class="auth-inp" style="margin:0" value="${(v.name||'').replace(/"/g,'&quot;')}" oninput="document.getElementById('exov-libid').value=''"><button class="abtn abtn-p" onclick="pickExOverrideFromLib()">Cambiar ejercicio</button></div>
+          <input type="hidden" id="exov-libid" value="${v.libId||''}">
+          ${v.libId ? `<div class="exov-lib">De la biblioteca · ${vid?'con video':'sin video'}</div>` : ''}
+        </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div><label class="eval-lbl">Series</label><input id="exov-series" class="auth-inp" style="margin:0" value="${v.series||''}"></div>
       <div><label class="eval-lbl">Reps</label><input id="exov-reps" class="auth-inp" style="margin:0" value="${v.reps||''}"></div>
@@ -9274,6 +9388,9 @@ function saveExOverrideFromModal() {
     rpe: document.getElementById('exov-rpe').value.trim(),
     note: document.getElementById('exov-note').value.trim(),
   };
+  const libId = document.getElementById('exov-libid')?.value || '';
+  if(libId) data.libId = libId;
+  S._exOverrideDraft = null;
   closeExOverride();
   saveAthleteExerciseOverride(ctx.uid, ctx.routineId, ctx.sName, ctx.exId, data);
 }
@@ -11474,10 +11591,12 @@ async function probarNotificacion() {
       body: JSON.stringify({subscriptions:[sub], title:'G-Metrics', body:'Aviso de prueba: las notificaciones funcionan.', url:location.origin})
     });
     let data = {}; try { data = await resp.json(); } catch(e) {}
-    if(!resp.ok) { showToast('No salió: '+(data.error||('error '+resp.status))); return; }
     const r = (data.results||[])[0];
-    showToast(r?.ok ? '✓ Enviado: tiene que llegarte en unos segundos' : 'No salió: '+(r?.reason||'error desconocido'));
-  } catch(e) { showToast('No salió: sin conexión con el servidor'); }
+    const msg = !resp.ok ? 'No salió: '+(data.error||('error '+resp.status))
+      : r?.ok ? 'Salió bien. Tiene que llegarte en unos segundos (si tenés la app abierta en primer plano, en algunos celulares no se muestra: salí de la app y probá de nuevo).'
+      : 'No salió: '+pushFailText(r);
+    showConfirmModal({title:'Aviso de prueba', message:msg});
+  } catch(e) { showConfirmModal({title:'Aviso de prueba', message:'No salió: sin conexión con el servidor.'}); }
 }
 window.probarNotificacion = probarNotificacion;
 
@@ -11522,6 +11641,15 @@ window.desactivarNotificacionesPush = desactivarNotificacionesPush;
 // adentro de la app vía S.notifications). Se apoya en S.adminAthletes, que ya
 // tiene el documento completo de cada atleta cargado — no hace falta pedirle
 // permiso a Firestore para leer la suscripción de cada uno por separado.
+// Motivo de un envío fallido, en palabras. 401/403 del servicio de avisos = esa
+// activación se hizo con una clave anterior: se renueva sola cuando la persona abre la app.
+function pushFailText(r) {
+  if(r && (r.status===401 || r.status===403)) return 'la activación de ese celular es de antes del cambio de claves. Se renueva sola cuando abre la app; si no, que toque Desactivar y Activar en Ajustes.';
+  if(r && (r.status===404 || r.status===410)) return 'ese celular ya no tiene las notificaciones activadas.';
+  return String(r?.reason||'error desconocido').slice(0,200);
+}
+window.pushFailText = pushFailText;
+
 async function sendPushToUids(uids, {title, body, url} = {}) {
   const subs = (uids||[])
     .map(uid => (S.adminAthletes||[]).find(a=>a.uid===uid)?.pushSubscription)
@@ -11566,7 +11694,8 @@ async function sendPushToUids(uids, {title, body, url} = {}) {
     // privada de Vercel), guardamos un ejemplo de la razón real que dio el
     // servidor de push, para poder mostrarla en vez de un "no llegó" mudo.
     const otherFail = results.find(r=>!r.ok && r.status!==404 && r.status!==410);
-    return {sent, total:uids.length, attempted:subs.length, failReason: otherFail?.reason||null};
+    const oldKey = results.filter(r=>!r.ok && (r.status===401||r.status===403)).length;
+    return {sent, total:uids.length, attempted:subs.length, oldKey, failReason: otherFail ? pushFailText(otherFail) : null};
   } catch(e) {
     // Típicamente esto es que /api/send-push ni existe todavía en el
     // deploy (404 de la propia app, no de la función) — fetch tira acá en
@@ -12257,7 +12386,10 @@ async function sendInAppReminder() {
   } else {
     pushMsg = ` (${pushResult.sent} con notificación push real)`;
   }
-  showToast(`✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}${pushMsg}`);
+  const resumen = `✓ Enviado a ${sentCount} atleta${sentCount!==1?'s':''}${pushMsg}`;
+  // Si algo de las notificaciones no salió, el resultado queda en pantalla hasta que lo cierres.
+  if(pushResult.error || (pushResult.attempted>0 && pushResult.sent<pushResult.attempted)) showConfirmModal({title:'Recordatorio', message:resumen});
+  else showToast(resumen);
 }
 window.sendInAppReminder = sendInAppReminder;
 
@@ -13784,6 +13916,7 @@ function cmpBlockMatches(b, st) {
 }
 // Íconos chicos de la vista horizontal
 const CMP_IC = {
+  move:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h12"/><polyline points="12 6 18 12 12 18"/><path d="M21 4v16"/></svg>',
   up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
   down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
   swap:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
@@ -13848,7 +13981,7 @@ function renderDaysCompare(routine) {
         }).join('') + `<button class="cmp-add" onclick="openRoutineLib('${b.id}','${sn}',${ci})">+ Ejercicio</button>`;
       }).join('');
       return `<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span><span class="cmp-btt" onclick="renameBlockPicker('routine','${b.id}','${sn}')" title="Cambiar el nombre del bloque">${esc(b.title)}</span><span class="cmp-tools">
-          ${tool('up',`moveRoutineBlock('${b.id}','${sn}',-1)`,'Mover arriba',bi===0)}${tool('down',`moveRoutineBlock('${b.id}','${sn}',1)`,'Mover abajo',bi===all.length-1)}${tool('copy',`copyBlockToClipboard(getRBlock('${b.id}','${sn}'))`,'Copiar bloque')}${tool('x',`deleteRBlock(event,'${b.id}','${sn}')`,'Eliminar bloque',false,'del')}
+          ${tool('up',`moveRoutineBlock('${b.id}','${sn}',-1)`,'Mover arriba',bi===0)}${tool('down',`moveRoutineBlock('${b.id}','${sn}',1)`,'Mover abajo',bi===all.length-1)}${tool('copy',`copyBlockToClipboard(getRBlock('${b.id}','${sn}'))`,'Copiar bloque')}${tool('move',`openMoveBlockPicker('editor','','${b.id}','${sn}')`,'Mover a otro día')}${tool('x',`deleteRBlock(event,'${b.id}','${sn}')`,'Eliminar bloque',false,'del')}
         </span></div>${body}</div>`;
     }).join('');
     return `<div class="cmp-col"><div class="cmp-dh"><span>${esc(n)}</span>${open.length>1?`<button class="cmp-x" onclick="cmpToggleDay(${i})">Cerrar</button>`:''}</div>
@@ -13880,7 +14013,8 @@ function renderAtletaRoutineHoriz(a, routine, previewWeek) {
     return `<div class="cmp-col"><div class="cmp-dh"><span>${esc(n)}${n===today?' <small class="cmp-today">hoy</small>':''}${rec?.done?' <small class="cmp-done">✓</small>':''}</span></div>
       ${blocks.length ? blocks.map(b=>{
         const isPersonalBlock = b.id==='personal-block';
-        return `<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span><span>${esc(b.title||'')}</span></div>
+        const bt = own && !isPersonalBlock ? `<span class="cmp-tools"><button class="cmp-t" onclick="copyRoutineBlockById('${routine.id}','${b.id}','${sn}')" title="Copiar bloque" aria-label="Copiar bloque">${CMP_IC.copy}</button><button class="cmp-t" onclick="openMoveBlockPicker('ficha','${routine.id}','${b.id}','${sn}')" title="Mover a otro día" aria-label="Mover a otro día">${CMP_IC.move}</button></span>` : '';
+        return `<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span><span class="cmp-btt">${esc(b.title||'')}</span>${bt}</div>
         ${(b.categories||[]).flatMap(c=>c.exercises||[]).map(e=>{
           const override = isPersonalBlock ? null : getExerciseOverride(a._personal?.routineOverrides, routine.id, n, e.id);
           const wp = getExDisplayForWeek(e, previewWeek, rel, override);
@@ -13907,6 +14041,7 @@ function renderAtletaRoutineHoriz(a, routine, previewWeek) {
           </div>`;
         }).join('')||'<div class="cmp-ex"><span>Sin ejercicios</span></div>'}
       </div>`; }).join('') : '<div class="cmp-none">—</div>'}
+      ${own && S._blockClipboard ? `<div class="cmp-foot"><button class="cmp-add cmp-addb" onclick="pasteBlockIntoRoutine('${routine.id}','${sn}')">Pegar bloque</button></div>` : ''}
     </div>`; }).join('') + `</div>`;
 }
 window.renderAtletaRoutineHoriz = renderAtletaRoutineHoriz;
@@ -14034,6 +14169,7 @@ function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
       <span class="ex-icon-btn" style="${bIdx===0?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',-1)" title="Mover arriba"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></span>
       <span class="ex-icon-btn" style="${bIdx===totalBlocks-1?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',1)" title="Mover abajo"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
       <span class="ex-icon-btn" onclick="event.stopPropagation();copyBlockToClipboard(getRBlock('${b.id}','${sessionName}'))" title="Copiar bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+      <span class="ex-icon-btn" onclick="event.stopPropagation();openMoveBlockPicker('editor','','${b.id}','${sessionName}')" title="Mover a otro día">${CMP_IC.move.replace('<svg ','<svg width="11" height="11" ')}</span>
       <span class="block-del" onclick="deleteRBlock(event,'${b.id}','${sessionName}')">×</span>
       <span class="block-chevron">›</span>
     </div>

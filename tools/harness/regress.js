@@ -337,7 +337,7 @@
     goBackFromAthleteDetail(); await wait(400); }
   // ── comparar atletas: de 2 a 6, saltos y fuerza separados, promedio, evolución ──
   { await ensureAdminAthletes(); await ensureGroupPersonalData(S.adminAthletes.map(a=>a.uid));
-    const mk=(b,st)=>['2026-05-12','2026-06-15','2026-08-10','2026-09-12'].map((d,i)=>({date:d,height:+(b+st*i).toFixed(1)}));
+    const mk=(b,st)=>[120,90,60,30].map(n=>{const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10);}).map((d,i)=>({date:d,height:+(b+st*i).toFixed(1)}));
     [['u0',38,0.7,110,71],['u1',35,0.6,85,92],['u2',37,0.5,120,84],['u3',34,0.3,95,78]].forEach(([uid,c,st,sq,w],k)=>{ const a=S.adminAthletes.find(x=>x.uid===uid); if(!a) return; a.weight=w; a._personal=a._personal||{}; a._personal.evals={cmj:mk(c,st), sj:k===1?[]:mk(c-3,st), rm_sentadilla:[{date:'2026-08-20',height:sq}]}; });
     S.compareUids=[]; S.compareScope='all'; S.compareStrengthRel=false; S.compareMode='last';
     switchView('atletas'); await wait(800); const cb=document.querySelector('#main button[onclick="adminGoCompare(\'ind\')"]'); ok(!!cb,'Atletas: botón Comparar atletas');
@@ -614,6 +614,57 @@
     const uD=S.userData.pushSubscription; S.userData.pushSubscription={endpoint:'https://x',p256dh:'a',auth:'b'}; switchView('settings'); await wait(300);
     ok([...document.querySelectorAll('#main button')].some(b=>b.textContent.trim()==='Probar'),'ajustes: con notificaciones activas está "Probar"'); txtBad('ajustes con notificaciones');
     if(uD) S.userData.pushSubscription=uD; else delete S.userData.pushSubscription; }
+  // ── personalizar un ejercicio eligiendo otro de la biblioteca ──
+  { const lib2=S.library.find(l=>l.id!=='lsq'&&!/sentadilla/i.test(l.name)); S.videos[lib2.id]='https://youtu.be/abc123';
+    openExerciseOverrideModal('u1','r1','Día 1','x1',1); await wait(200);
+    document.getElementById('exov-series').value='5'; document.getElementById('exov-reps').value='3';
+    const btn=[...document.querySelectorAll('#exoverride-overlay button')].find(b=>/Cambiar ejercicio/.test(b.textContent)); ok(!!btn,'personalizar: está "Cambiar ejercicio"');
+    btn.click(); await wait(250);
+    ok(document.getElementById('lib-overlay').classList.contains('open')&&!document.getElementById('exoverride-overlay').classList.contains('open'),'personalizar: se abre la biblioteca');
+    closeLib(); await wait(150);
+    ok(document.getElementById('exoverride-overlay').classList.contains('open')&&document.getElementById('exov-series').value==='5'&&document.getElementById('exov-reps').value==='3','biblioteca cerrada sin elegir: vuelve al formulario con lo escrito');
+    [...document.querySelectorAll('#exoverride-overlay button')].find(b=>/Cambiar ejercicio/.test(b.textContent)).click(); await wait(250);
+    addFromLib(lib2.id); await wait(250);
+    ok(document.getElementById('exov-name').value===lib2.name&&document.getElementById('exov-libid').value===lib2.id&&document.getElementById('exov-series').value==='5','elegido de la biblioteca: queda el ejercicio nuevo y lo escrito');
+    ok(/con video/.test(document.getElementById('exoverride-body').innerText),'muestra que el ejercicio elegido tiene video');
+    saveExOverrideFromModal(); await wait(900);
+    const ov=JSON.parse(localStorage.getItem('__db')).personal.u1.routineOverrides?.r1?.['Día 1']?.x1;
+    ok(ov&&ov.libId===lib2.id&&ov.name===lib2.name&&ov.series==='5','se guarda en el atleta con el ejercicio de la biblioteca');
+    ok(!JSON.stringify(JSON.parse(localStorage.getItem('__db')).personal.admin1||{}).includes(lib2.id),'no cae en el admin');
+    // crear uno nuevo (sin video) desde ahí mismo
+    openExerciseOverrideModal('u1','r1','Día 1','x1',1); await wait(200);
+    [...document.querySelectorAll('#exoverride-overlay button')].find(b=>/Cambiar ejercicio/.test(b.textContent)).click(); await wait(250);
+    showLibNewExerciseForm(); document.getElementById('lib-new-name').value='Estocada con salto prueba'; S._newExTags=new Set(['Empuje MMII','unilateral']);
+    const keepRules=window.getMissingLibRules; window.getMissingLibRules=()=>[];
+    try{ createAndAddExercise(); }catch(e){} await wait(250); window.getMissingLibRules=keepRules;
+    ok(document.getElementById('exov-name').value==='Estocada con salto prueba'&&!!document.getElementById('exov-libid').value,'crear un ejercicio nuevo desde ahí lo deja elegido');
+    ok(S.library.some(l=>l.name==='Estocada con salto prueba'),'el ejercicio nuevo queda en la biblioteca');
+    closeExOverride(); txtBad('personalizar con biblioteca'); }
+  // ── mover un bloque a otro día (editor) y copiar/pegar/mover desde la ficha (rutina propia) ──
+  { switchView('admin'); await wait(200); adminGoRoutines(); await wait(300); editRoutine('r1'); await wait(300); S._routineCompare=false;
+    const days=getOrderedSessionNames(S.editingRoutine); const d1=days[0], d2=days[1]; const b0=S.editingRoutine.sessions[d1][0]; const n2=S.editingRoutine.sessions[d2].length;
+    S._routineEditSession=d1; renderMain(); await wait(200);
+    const mv=document.querySelector('#rblock-'+b0.id+' [onclick*="openMoveBlockPicker"]'); ok(!!mv,'editor: el bloque tiene "Mover a otro día"');
+    mv&&mv.click(); await wait(150); const opt=[...document.querySelectorAll('#moveblock-overlay button')].find(x=>x.textContent===d2); ok(!!opt,'mover: ofrece los otros días');
+    opt&&opt.click(); await wait(200);
+    ok(!S.editingRoutine.sessions[d1].some(x=>x.id===b0.id)&&S.editingRoutine.sessions[d2].length===n2+1&&S.editingRoutine.sessions[d2][n2].id===b0.id,'mover: el bloque pasó al final de '+d2);
+    ok(/^(B|Bloque )1$/.test(S.editingRoutine.sessions[d1][0].label)&&new RegExp('^(B|Bloque )'+(n2+1)+'$').test(S.editingRoutine.sessions[d2][n2].label),'mover: los números de bloque se acomodan');
+    S._routineCompare=true; renderMain(); await wait(200); ok(!!document.querySelector('#cmp-wrap [onclick*="openMoveBlockPicker"]'),'editor horizontal: también está "Mover a otro día"');
+    S.editingRoutine=null; S.adminView='main';
+    // ficha: rutina propia de u5, vista horizontal
+    const own=S.routines.find(x=>x.id==='rown5'); ok(!!own,'hay rutina propia de prueba');
+    if(own){ switchView('atletas'); await wait(400); openAtleta('u5'); await wait(1400); setAtletaSubview('rutina'); await wait(400); setAtletaRoutineCicloView('horiz'); await wait(400);
+      const od=getOrderedSessionNames(own); const ob=own.sessions[od[0]][0]; const on2=own.sessions[od[1]].length;
+      const cp=document.querySelector('#main .cmp-ath [onclick*="copyRoutineBlockById"]'); ok(!!cp,'ficha horizontal: copiar bloque en la rutina propia');
+      cp&&cp.click(); await wait(300); const pg=[...document.querySelectorAll('#main .cmp-ath button')].filter(x=>/Pegar bloque/.test(x.textContent)); ok(pg.length===od.length,'ficha: aparece "Pegar bloque" en cada día');
+      pg[1]&&pg[1].click(); await wait(700);
+      let dbR=JSON.parse(localStorage.getItem('__db')).routines.rown5; ok(dbR.sessions[od[1]].length===on2+1&&dbR.sessions[od[1]][on2].title===ob.title&&dbR.sessions[od[1]][on2].id!==ob.id,'ficha: pegar lo guarda al instante como copia');
+      const mv2=[...document.querySelectorAll('#main .cmp-ath [onclick*="openMoveBlockPicker"]')][0]; mv2&&mv2.click(); await wait(150);
+      [...document.querySelectorAll('#moveblock-overlay button')].find(x=>x.textContent===od[1])?.click(); await wait(700);
+      dbR=JSON.parse(localStorage.getItem('__db')).routines.rown5; ok(!dbR.sessions[od[0]].some(x=>x.id===ob.id)&&dbR.sessions[od[1]].some(x=>x.id===ob.id),'ficha: mover lo guarda al instante');
+      ok(!JSON.stringify(dbR).includes('"_open"'),'ficha: no se guardan marcas de pantalla');
+      const tpl=JSON.parse(localStorage.getItem('__db')).routines.r1; ok(tpl.sessions[d1].some(x=>x.id===b0.id),'la plantilla no se tocó (el mover del editor no se guardó)');
+      txtBad('ficha horizontal con bloques'); setAtletaRoutineCicloView('micro'); goBackFromAthleteDetail(); await wait(300); } }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
