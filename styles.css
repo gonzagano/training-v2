@@ -1776,3 +1776,13 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .vt-card{display:flex;gap:14px;align-items:flex-start}
 .vt-body{flex:1;min-width:0}
 @media (max-width:520px){.vt-card .vt{width:64px;height:48px;border-radius:8px}.vt-card{gap:10px}}
+
+/* Bloques y ejercicios que valen solo algunas semanas */
+.wk-rng{display:inline-block;font-size:11px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);border-radius:10px;padding:1px 7px;margin:0 6px;white-space:nowrap;vertical-align:middle;text-transform:none;letter-spacing:0}
+.wk-off{opacity:.45}
+.wk-off:hover{opacity:.8}
+.edw-bar{margin-bottom:12px;align-items:center}
+.edw-l{font-size:12px;font-weight:600;color:var(--text2);margin-right:6px}
+.chip-btn.edw-cur{border-color:var(--accent)}
+.wkr-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0}
+.wkr-row .auth-inp{margin:4px 0 0}

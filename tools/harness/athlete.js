@@ -104,6 +104,13 @@
     const vh=exVideoThumbHtml(lib2.id,'x'); ok(vt&&(vt.getAttribute('onclick')||'').includes(lib2.id)&&/abc123\/mq1\.jpg/.test(vh)&&/mq2\.jpg/.test(vh)&&/mq3\.jpg/.test(vh),'atleta: miniatura con las 3 fotos del video, al lado del ejercicio');
     if(vt){ vt.click(); await wait(300); ok(document.getElementById('video-overlay')?.classList.contains('open')===true,'atleta: tocando la miniatura se abre el video'); try{ closeVideoModal(); }catch(e){} }
     delete S.routineOverrides[rid]['Día 1']; renderMain(); }
+  // ── un bloque que arranca en una semana futura no aparece todavía; al ir a esa semana, sí ──
+  { switchView('session'); await wait(300); S.currentSession='Día 1'; S.rmCalcTabActive=false; resetRoutineWeekView(); await wait(300);
+    const rw=toRoutineRelativeWeek(getRoutineWeek(),S.userData); const blk=S.assignedRoutine.sessions['Día 1'].find(b=>b.categories.some(c=>c.exercises.some(e=>e.id==='x1')));
+    blk.fromWeek=rw+1; renderMain(); await wait(300);
+    ok(!document.getElementById('exrow-x1'),'atleta: el bloque que empieza la semana que viene no aparece en esta');
+    browseRoutineWeek(1); await wait(400); ok(!!document.getElementById('exrow-x1'),'atleta: en la semana siguiente sí aparece');
+    resetRoutineWeekView(); delete blk.fromWeek; renderMain(); await wait(200); txtBad('semanas de bloques (atleta)'); }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();

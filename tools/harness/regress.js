@@ -653,7 +653,7 @@
     S.editingRoutine=null; S.adminView='main';
     // ficha: rutina propia de u5, vista horizontal
     const own=S.routines.find(x=>x.id==='rown5'); ok(!!own,'hay rutina propia de prueba');
-    if(own){ switchView('atletas'); await wait(400); openAtleta('u5'); await wait(1400); setAtletaSubview('rutina'); await wait(400); setAtletaRoutineCicloView('horiz'); await wait(400);
+    if(own){ switchView('atletas'); await wait(400); openAtleta('u5'); await wait(1400); setAtletaSubview('rutina'); await wait(400); jumpRoutineWeekPreview('u5', getCurrentPhaseStartWeek(S.adminAthletes.find(x=>x.uid==='u5'))); await wait(200); setAtletaRoutineCicloView('horiz'); await wait(400);
       const od=getOrderedSessionNames(own); const ob=own.sessions[od[0]][0]; const on2=own.sessions[od[1]].length;
       const cp=document.querySelector('#main .cmp-ath [onclick*="copyRoutineBlockById"]'); ok(!!cp,'ficha horizontal: copiar bloque en la rutina propia');
       cp&&cp.click(); await wait(300); const pg=[...document.querySelectorAll('#main .cmp-ath button')].filter(x=>/Pegar bloque/.test(x.textContent)); ok(pg.length===od.length,'ficha: aparece "Pegar bloque" en cada día');
@@ -709,6 +709,46 @@
     setTeamQuick('nowell'); await wait(400); cards=document.querySelectorAll('.pc-grid .pc-card'); const nw=+(document.querySelectorAll('.tp-filters .chip-btn')[2].textContent.match(/(\d+)\s*$/)||[])[1];
     ok(cards.length===nw || (!nw && !!document.querySelector('#main .tp-empty')),'Plantel: filtro Sin wellness ('+nw+')'); setTeamQuick('all'); await wait(300);
     card.click && document.querySelector('.pc-grid .pc-card').click(); await wait(1500); ok(!!S.atletaView,'Plantel: tocar la ficha abre al atleta'); goBackFromAthleteDetail(); await wait(500); }
+  // ── cambios de bloques que valen desde una semana (las anteriores quedan como estaban) ──
+  { switchView('admin'); await wait(200); adminGoRoutines(); await wait(300); editRoutine('r1'); await wait(300); S._routineCompare=false;
+    const R=S.editingRoutine; const dn=getOrderedSessionNames(R); const d1=dn[0], d2=dn[1];
+    if(getRoutineDurationWeeks(R)<4) R.durationWeeks=4;
+    setEditorWeek(3); await wait(200);
+    ok(/S3/.test(document.querySelector('.edw-bar .chip-btn.on')?.textContent||''),'editor: barra de semanas, parado en la 3');
+    // agregar un ejercicio en la semana 3
+    const bA=R.sessions[d1][1]; openRoutineLib(bA.id,d1,0); await wait(150); const libX=S.library.find(l=>!/sentadilla/i.test(l.name)); addFromLib(libX.id); await wait(200);
+    const added=bA.categories[0].exercises[bA.categories[0].exercises.length-1]; ok(added.fromWeek===3,'agregar en la semana 3: vale desde la 3 ('+added.fromWeek+')');
+    // sacar un bloque en la semana 3: queda hasta la 2
+    const bDel=R.sessions[d1][0]; deleteRBlock({stopPropagation(){}},bDel.id,d1); await wait(150);
+    ok(/semana 3/.test(document.getElementById('confirm-modal-body').textContent),'sacar en la semana 3: lo avisa'); confirmModalConfirm(); await wait(200);
+    ok(R.sessions[d1].some(b=>b.id===bDel.id)&&bDel.untilWeek===2,'sacar en la semana 3: el bloque queda hasta la 2');
+    ok(document.getElementById('rblock-'+bDel.id)?.classList.contains('wk-off'),'editor: lo que no va en esa semana se ve atenuado');
+    // mover en la semana 3: hasta la 2 sigue donde estaba, desde la 3 en el otro día
+    const bMv=R.sessions[d1].find(b=>b.id!==bDel.id); const n2=R.sessions[d2].length;
+    openMoveBlockPicker('editor','',bMv.id,d1); await wait(100); [...document.querySelectorAll('#moveblock-overlay button')].find(x=>x.textContent===d2).click(); await wait(200);
+    const cp=R.sessions[d2][n2]; ok(bMv.untilWeek===2&&R.sessions[d1].includes(bMv)&&cp&&cp.fromWeek===3&&cp.title===bMv.title&&cp.id!==bMv.id,'mover en la semana 3: se parte (hasta S2 en '+d1+', desde S3 en '+d2+')');
+    ok(blocksForWeek(R.sessions[d1],1).some(b=>b.id===bMv.id)&&!blocksForWeek(R.sessions[d1],3).some(b=>b.id===bMv.id)&&blocksForWeek(R.sessions[d2],3).includes(cp)&&!blocksForWeek(R.sessions[d2],2).includes(cp),'semana 1 como estaba, semana 3 con el cambio');
+    // elegir las semanas a mano
+    const bR=R.sessions[d2][0]; openWeekRangeModal('editor','',d2,bR.id); await wait(100); document.getElementById('wkr-from').value='2'; await saveWeekRange(); await wait(150);
+    ok(bR.fromWeek===2&&!bR.untilWeek,'semanas a mano: desde la 2');
+    setEditorWeek(1); S._routineEditSession=d2; renderMain(); await wait(150); ok(document.getElementById('rblock-'+bR.id)?.classList.contains('wk-off')&&/desde S2/.test(document.getElementById('rblock-'+bR.id)?.textContent||''),'editor: muestra "desde S2" y en la semana 1 va atenuado');
+    S._routineCompare=true; setEditorWeek(3); await wait(200); ok(!!document.querySelector('#cmp-wrap .wk-off')&&!!document.querySelector('#cmp-wrap [onclick*="openWeekRangeModal"]'),'editor horizontal: atenuado y botón de semanas');
+    ok(JSON.parse(localStorage.getItem('__db')).routines.r1.sessions[d1].some(b=>b.id===bDel.id&&!b.untilWeek),'nada se guardó sin tocar Guardar');
+    S.editingRoutine=null; S.adminView='main'; S._routineCompare=false;
+    // la ficha muestra la semana que mirás, y "Editar rutina" abre el editor en esa semana
+    const own=S.routines.find(x=>x.id==='rown5');
+    if(own){ if(getRoutineDurationWeeks(own)<4) own.durationWeeks=4; const od=getOrderedSessionNames(own); const ob=own.sessions[od[0]].find(b=>!b.fromWeek&&!b.untilWeek); ob.fromWeek=3;
+      switchView('atletas'); await wait(400); openAtleta('u5'); await wait(1400); setAtletaSubview('rutina'); await wait(300); setAtletaRoutineCicloView('micro'); await wait(200);
+      const a5=S.adminAthletes.find(x=>x.uid==='u5'); const pf=getCurrentPhaseStartWeek(a5);
+      jumpRoutineWeekPreview('u5',pf); await wait(300); setAtletaRoutineDay(0); await wait(200);
+      const titles=()=>[...document.querySelectorAll('#main .block-title')].map(x=>x.textContent);
+      ok(!titles().includes(ob.title)||own.sessions[od[0]].filter(b=>b.title===ob.title).length>1,'ficha semana 1: no aparece el bloque que va desde la 3');
+      jumpRoutineWeekPreview('u5',pf+2); await wait(300); ok(titles().includes(ob.title),'ficha semana 3: aparece');
+      ok(S._fichaRelWeek===3,'ficha: sabe que estás mirando la semana 3');
+      const eb=[...document.querySelectorAll('#main button')].find(x=>/Editar rutina/.test(x.textContent)); eb&&eb.click(); await wait(400);
+      ok(S.editingRoutine&&getCmpState(S.editingRoutine).week===3,'"Editar rutina" abre el editor en la semana 3, no en la 1 ('+(S.editingRoutine&&getCmpState(S.editingRoutine).week)+')');
+      delete ob.fromWeek; S._routineWeekPreview=null; S.editingRoutine=null; switchView('atletas'); await wait(300); }
+    txtBad('semanas de bloques'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

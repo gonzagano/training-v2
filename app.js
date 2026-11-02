@@ -1858,7 +1858,37 @@ window.getTodaysRoutineSession = getTodaysRoutineSession;
 // 2) Se le suman, al final, los ejercicios "personales" que el admin le haya
 //    cargado a este atleta puntual — un bloque sintético que solo existe
 //    para él, sin tocar la rutina compartida ni afectar a sus compañeros.
-function getVisibleRoutineBlocks(routine, sessionName, teamId, position, personalExtras) {
+// Bloques y ejercicios pueden valer solo algunas semanas de la planificación
+// (fromWeek / untilWeek, semanas RELATIVAS a la rutina). Así un cambio hecho en
+// la semana 4 no aparece en las semanas 1 a 3.
+function activeInWeek(x, w) { return !w || !x || ((!x.fromWeek || w>=x.fromWeek) && (!x.untilWeek || w<=x.untilWeek)); }
+window.activeInWeek = activeInWeek;
+function blocksForWeek(blocks, w) {
+  if(!w) return blocks||[];
+  return (blocks||[]).filter(b=>activeInWeek(b,w)).map(b=>
+    (b.categories||[]).some(c=>(c.exercises||[]).some(e=>!activeInWeek(e,w)))
+      ? {...b, categories:b.categories.map(c=>({...c, exercises:(c.exercises||[]).filter(e=>activeInWeek(e,w))}))}
+      : b);
+}
+window.blocksForWeek = blocksForWeek;
+function weekRangeTag(x) {
+  if(!x || (!x.fromWeek && !x.untilWeek)) return '';
+  const t = x.fromWeek && x.untilWeek ? 'S'+x.fromWeek+'–S'+x.untilWeek : x.fromWeek ? 'desde S'+x.fromWeek : 'hasta S'+x.untilWeek;
+  return '<span class="wk-rng">'+t+'</span>';
+}
+window.weekRangeTag = weekRangeTag;
+// Semana en la que está parado el editor de rutinas (los cambios de bloques valen desde ahí).
+function editorWeek() { return S.editingRoutine ? (getCmpState(S.editingRoutine).week||1) : 1; }
+window.editorWeek = editorWeek; window.getCmpState = (r)=>getCmpState(r);
+function setEditorWeek(w) { if(!S.editingRoutine) return; getCmpState(S.editingRoutine).week = w; renderMain(); }
+window.setEditorWeek = setEditorWeek;
+function editorWeekBar(r) {
+  const weeks = Math.max(1, getRoutineDurationWeeks(r)); if(weeks<2) return '';
+  const st = getCmpState(r);
+  return `<div class="cmp-bar edw-bar"><span class="edw-l">Semana</span><span class="cmp-wk">${Array.from({length:weeks},(_,i)=>`<button class="chip-btn ${st.week===i+1?'on':''} ${st.cur===i+1?'edw-cur':''}" onclick="setEditorWeek(${i+1})">S${i+1}${st.cur===i+1?' · actual':''}</button>`).join('')}</span></div>`;
+}
+
+function getVisibleRoutineBlocks(routine, sessionName, teamId, position, personalExtras, relWeek) {
   renumberBlockLabels(routine?.sessions?.[sessionName]);
   const allBlocks = (routine?.sessions || {})[sessionName] || [];
   const team = teamId ? S.teams.find(t=>t.id===teamId) : null;
@@ -1866,6 +1896,10 @@ function getVisibleRoutineBlocks(routine, sessionName, teamId, position, persona
   let blocks = posMap
     ? allBlocks.filter(b=>{ const positions=posMap[b.id]; return !positions || !positions.length || positions.includes(position); })
     : allBlocks;
+  if(relWeek) {
+    const wb = blocksForWeek(blocks, relWeek);
+    if(wb.length!==blocks.length || wb.some((b,i)=>b!==blocks[i])) { blocks = wb.map(b=>({...b})); renumberBlockLabels(blocks); }
+  }
   const extras = (personalExtras||{})[sessionName] || [];
   if(extras.length) {
     blocks = [...blocks, {id:'personal-block', label:'Personal', title:'Ejercicios personales', colorKey:'bx', note:'', categories:[{id:'personal-cat', label:'Solo para vos', exercises:extras}]}];
@@ -2902,7 +2936,7 @@ function getCurrentBlocks() {
   if (S.isAdmin) return S.blocks;
   // Athletes ONLY see what was assigned by admin — never DEFAULT_BLOCKS
   if (S.assignedRoutine) {
-    return getVisibleRoutineBlocks(S.assignedRoutine, S.currentSession, S.userData?.teamId, S.userData?.position, S.personalExtras);
+    return getVisibleRoutineBlocks(S.assignedRoutine, S.currentSession, S.userData?.teamId, S.userData?.position, S.personalExtras, toRoutineRelativeWeek(getRoutineWeek(), S.userData));
   }
   return []; // No assigned routine = empty, not default
 }
@@ -4005,11 +4039,12 @@ function copyRoutineBlockById(routineId, blockId, sessionName) {
   if(b) copyBlockToClipboard(b);
 }
 window.copyRoutineBlockById = copyRoutineBlockById;
-async function pasteBlockIntoRoutine(routineId, sessionName) {
+async function pasteBlockIntoRoutine(routineId, sessionName, week) {
   const r = routineForBlockOps('ficha', routineId); if(!r) return;
   const b = clonedBlockFromClipboard();
   if(!b) { showToast('No copiaste ningún bloque todavía'); return; }
-  delete b._open;
+  delete b._open; delete b.fromWeek; delete b.untilWeek;
+  if(week>1) b.fromWeek = week;
   if(!r.sessions[sessionName]) r.sessions[sessionName] = [];
   r.sessions[sessionName].push(b);
   renumberBlockLabels(r.sessions[sessionName]);
@@ -4017,12 +4052,12 @@ async function pasteBlockIntoRoutine(routineId, sessionName) {
   await persistBlockOps('ficha', r);
 }
 window.pasteBlockIntoRoutine = pasteBlockIntoRoutine;
-function openMoveBlockPicker(kind, routineId, blockId, fromSession) {
+function openMoveBlockPicker(kind, routineId, blockId, fromSession, week) {
   const r = routineForBlockOps(kind, routineId); if(!r) return;
   const b = (r.sessions?.[fromSession]||[]).find(x=>x.id===blockId); if(!b) return;
   const days = getOrderedSessionNames(r).filter(n=>n!==fromSession);
   if(!days.length) { showToast('La rutina tiene un solo día'); return; }
-  S._moveBlockCtx = {kind, routineId, blockId, fromSession, days};
+  S._moveBlockCtx = {kind, routineId, blockId, fromSession, days, week: kind==='editor' ? editorWeek() : (week||1)};
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   let o = document.getElementById('moveblock-overlay');
   if(!o) { o = document.createElement('div'); o.className = 'video-modal open'; o.id = 'moveblock-overlay'; o.onclick = e=>{ if(e.target===o) closeMoveBlockPicker(); }; document.body.appendChild(o); }
@@ -4041,14 +4076,56 @@ async function moveBlockToDay(i) {
   closeMoveBlockPicker();
   const from = r?.sessions?.[ctx.fromSession]; if(!from || !to) return;
   const idx = from.findIndex(x=>x.id===ctx.blockId); if(idx<0) return;
-  const [b] = from.splice(idx,1);
   if(!r.sessions[to]) r.sessions[to] = [];
-  r.sessions[to].push(b);
+  const W = ctx.week||1, orig = from[idx];
+  if(W>1 && activeInWeek(orig, W) && !(orig.fromWeek && orig.fromWeek>=W)) {
+    // Movido en una semana posterior: hasta la semana anterior queda donde estaba.
+    const copy = JSON.parse(JSON.stringify(orig));
+    copy.id = genId(); (copy.categories||[]).forEach(c=>{ c.id = genId(); (c.exercises||[]).forEach(e=>{ e.id = genId(); }); });
+    copy.fromWeek = W; delete copy._open;
+    orig.untilWeek = W-1;
+    r.sessions[to].push(copy);
+  } else {
+    const [b] = from.splice(idx,1);
+    r.sessions[to].push(b);
+  }
   renumberBlockLabels(from); renumberBlockLabels(r.sessions[to]);
   showToast('✓ Movido a '+to);
   await persistBlockOps(ctx.kind, r);
 }
 window.moveBlockToDay = moveBlockToDay;
+
+function openWeekRangeModal(kind, routineId, sessionName, blockId) {
+  const r = routineForBlockOps(kind, routineId);
+  const b = (r?.sessions?.[sessionName]||[]).find(x=>x.id===blockId); if(!b) return;
+  S._wkRangeCtx = {kind, routineId, sessionName, blockId};
+  const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const weeks = Math.max(1, getRoutineDurationWeeks(r));
+  let o = document.getElementById('wkrange-overlay');
+  if(!o) { o = document.createElement('div'); o.id = 'wkrange-overlay'; o.onclick = e=>{ if(e.target===o) closeWeekRangeModal(); }; document.body.appendChild(o); }
+  o.className = 'video-modal open';
+  o.innerHTML = `<div class="video-modal-box"><div class="video-modal-title">Semanas de "${esc(b.title||b.label)}"</div>
+    <div class="wkr-row"><label class="eval-lbl">Desde la semana<input id="wkr-from" type="number" min="1" max="${weeks}" class="auth-inp" placeholder="1" value="${b.fromWeek||''}"></label>
+    <label class="eval-lbl">Hasta la semana<input id="wkr-until" type="number" min="1" max="${weeks}" class="auth-inp" placeholder="${weeks}" value="${b.untilWeek||''}"></label></div>
+    <div class="video-modal-btns"><button class="abtn" onclick="closeWeekRangeModal()">Cancelar</button><button class="abtn abtn-p" onclick="saveWeekRange()">Guardar</button></div></div>`;
+}
+window.openWeekRangeModal = openWeekRangeModal;
+function closeWeekRangeModal() { document.getElementById('wkrange-overlay')?.remove(); S._wkRangeCtx = null; }
+window.closeWeekRangeModal = closeWeekRangeModal;
+async function saveWeekRange() {
+  const ctx = S._wkRangeCtx; if(!ctx) return;
+  const from = Math.max(0, parseInt(document.getElementById('wkr-from').value)||0);
+  const until = Math.max(0, parseInt(document.getElementById('wkr-until').value)||0);
+  if(from && until && until<from) { showToast('"Hasta" tiene que ser igual o después de "desde"'); return; }
+  const r = routineForBlockOps(ctx.kind, ctx.routineId);
+  const b = (r?.sessions?.[ctx.sessionName]||[]).find(x=>x.id===ctx.blockId);
+  closeWeekRangeModal();
+  if(!b) return;
+  if(from>1) b.fromWeek = from; else delete b.fromWeek;
+  if(until) b.untilWeek = until; else delete b.untilWeek;
+  await persistBlockOps(ctx.kind, r);
+}
+window.saveWeekRange = saveWeekRange;
 
 // ── NOMBRES FIJOS DE BLOQUE ────────────────────────────────────────────────
 // Los bloques ya no se nombran a mano: se elige de esta lista. Tres tienen
@@ -4205,7 +4282,9 @@ function bnpConfirm() {
   } else if(ctx.kind==='routine') {
     const r = S.editingRoutine; if(!r) return;
     if(!r.sessions[ctx.sessionName]) r.sessions[ctx.sessionName]=[];
-    r.sessions[ctx.sessionName].push(newNamedBlock(r.sessions[ctx.sessionName].length, main, sub));
+    const nb = newNamedBlock(r.sessions[ctx.sessionName].length, main, sub);
+    if(editorWeek()>1) nb.fromWeek = editorWeek();
+    r.sessions[ctx.sessionName].push(nb);
   } else if(ctx.kind==='td') {
     const day = getTeamDay(ctx.teamId, ctx.dayIdx); if(!day) return;
     if(!day.blocks) day.blocks=[];
@@ -4433,9 +4512,16 @@ window.renderLibList=renderLibList;
 function placeLibExercise(arr, newEx) {
   const rid = S.libTarget?.replaceExId;
   const i = rid ? arr.findIndex(e=>e.id===rid) : -1;
-  if(i<0) { arr.push(newEx); return false; }
+  const W = (S.libTarget?.isRoutine && S.editingRoutine) ? editorWeek() : 1;
+  if(i<0) { if(W>1) newEx.fromWeek = W; arr.push(newEx); return false; }
   const rep = JSON.parse(JSON.stringify(arr[i]));
   rep.id = newEx.id; rep.libId = newEx.libId; rep.name = newEx.name; rep.rmLift = '';
+  // Reemplazo parado en una semana posterior: el viejo sigue en las semanas anteriores.
+  if(W>1 && activeInWeek(arr[i], W) && !(arr[i].fromWeek && arr[i].fromWeek>=W)) {
+    arr[i].untilWeek = W-1; rep.fromWeek = W; delete rep.untilWeek;
+    arr.splice(i+1, 0, rep);
+    return true;
+  }
   arr[i] = rep;
   return true;
 }
@@ -11481,6 +11567,7 @@ function renderAtletaRutina(a) {
   const phaseTotal = getRoutineDurationWeeks(routine);
   const phaseLast = Math.max(phaseFirst+phaseTotal-1, realWeek, previewWeek);
   const relNow = Math.max(1, previewWeek-phaseFirst+1), relTotal = phaseLast-phaseFirst+1;
+  S._fichaRelWeek = relNow; S._fichaRealRel = Math.max(1, realWeek-phaseFirst+1);
   const weekSegs = Array.from({length:phaseLast-phaseFirst+1}, (_,i)=>{
     const w = phaseFirst+i;
     const cls = [w===realWeek?'cur':(w<realWeek?'past':''), w===previewWeek?'view':''].join(' ');
@@ -11530,7 +11617,7 @@ function renderAtletaRutina(a) {
     }).join('')}</div>
     ${sessionNames.map(sName => {
       if(sName!==selDay || S._atletaRoutineCicloView==='horiz') return '';
-      const blocks = getVisibleRoutineBlocks(routine, sName, a.teamId, a.position, a._personal?.personalExtras);
+      const blocks = getVisibleRoutineBlocks(routine, sName, a.teamId, a.position, a._personal?.personalExtras, S._atletaRoutineCicloView==='macro' ? 0 : relNow);
       // Si el día tiene bloques cargados en la rutina pero ninguno le queda
       // visible a ESTE atleta, es porque el filtro de puestos del equipo
       // (routineBlockPositions) los excluyó a todos por su puesto — eso no
@@ -11578,7 +11665,7 @@ function renderAtletaRutina(a) {
                     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
                       <div style="font-size:14px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${ex.name}</span>${personalizarBtn}</div>
                       ${buildWeeklyProgressionTable(lastWeekEx, previewWeek, (w) => ({
-                        wp: getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, a), override),
+                        wp: (activeInWeek(b, toRoutineRelativeWeek(w, a)) && activeInWeek(ex, toRoutineRelativeWeek(w, a))) ? getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, a), override) : {series:'',reps:'',pct:'',rpe:'',note:'',intensityType:''},
                         d: getPhaseSessionRecord(a, a._personal?.history, w, sName)?.exercises?.[ex.id] || {}
                       }), {uid:a.uid, sName, exId:ex.id}, firstWeekEx)}
                     </div>`;
@@ -14003,7 +14090,13 @@ window.createRoutine=createRoutine;
 // Editar desde la ficha una rutina PROPIA del atleta (la creada con "+ Crear
 // rutina propia"): mismo editor completo, y al volver cae de nuevo en la ficha.
 // Abre el editor desde la ficha del atleta (la 'X' de volver lo deja en su ficha, pestaña Rutina)
-function editPersonalRoutine(id) { if(S._atletaRoutineCicloView==='horiz') S._routineCompare = true; editRoutine(id, 'athlete_detail'); }
+function editPersonalRoutine(id) {
+  if(S._atletaRoutineCicloView==='horiz') S._routineCompare = true;
+  // abre en la semana que estabas mirando en la ficha (la actual, si no cambiaste), no en la 1
+  const wk = S._fichaRelWeek || 1;
+  S._cmp = {rid:id, closed:{}, main:null, sub:null, q:'', week:wk, openEx:null, cur:S._fichaRealRel||wk};
+  editRoutine(id, 'athlete_detail');
+}
 window.editPersonalRoutine = editPersonalRoutine;
 
 // Muestra el editor de rutinas SIEMPRE en la pantalla correcta: la ficha del atleta
@@ -14145,6 +14238,7 @@ function cmpBlockMatches(b, st) {
 }
 // Íconos chicos de la vista horizontal
 const CMP_IC = {
+  weeks:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 15h8"/></svg>',
   move:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h12"/><polyline points="12 6 18 12 12 18"/><path d="M21 4v16"/></svg>',
   up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
   down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
@@ -14163,7 +14257,7 @@ function renderDaysCompare(routine) {
   const q1 = t=>String(t).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const names = getOrderedSessionNames(routine);
   const weeks = Math.max(1, getRoutineDurationWeeks(routine));
-  if(st.week>weeks) st.week = 1;
+  if(st.week>weeks) st.week = weeks;
   const W = st.week;
   // chips de filtro: solo lo que existe en esta rutina
   const mainCount = new Map(); let nNone = 0;
@@ -14200,8 +14294,8 @@ function renderDaysCompare(routine) {
           const own = (e.progression && e.progression[W-1]) ? e.progression[W-1] : (W===1 ? e : {});
           const fld = (k, ph, cls)=>{ const ov = own[k]; const has = ov!=null && String(ov).trim()!==''; const hv = (!has && W>1) ? p[k] : ''; return `<input class="cmp-f ${cls||''}" type="text" inputmode="${k==='note'?'text':'decimal'}" placeholder="${esc(hv||ph)}" ${hv?'data-inh="1"':''} title="${ph}" value="${has?esc(ov):''}" onchange="setRExWeekField(${args},${W},'${k}',this.value)">`; };
           const isOpen = st.openEx===e.id;
-          return `<div class="cmp-ex cmp-exe" data-k="${esc(exerciseSeriesKey(e))}" id="cmpex-${e.id}">
-            <div class="cmp-exh"><b>${esc(e.name)}${routineDupTag(routine, e)}</b><span class="cmp-tools">
+          return `<div class="cmp-ex cmp-exe${activeInWeek(e,W)?'':' wk-off'}" data-k="${esc(exerciseSeriesKey(e))}" id="cmpex-${e.id}">
+            <div class="cmp-exh"><b>${esc(e.name)}${routineDupTag(routine, e)}${weekRangeTag(e)}</b><span class="cmp-tools">
               ${tool('up',`moveRExercise(${args},-1)`,'Subir',ei===0)}${tool('down',`moveRExercise(${args},1)`,'Bajar',ei===exs.length-1)}${tool('swap',`replaceExercise('routine','${e.id}','${b.id}',${ci},'${sn}')`,'Reemplazar por otro ejercicio')}${tool('more',`cmpToggleEx('${e.id}')`,'Todas las semanas, RM y nota',false,isOpen?'on':'')}${tool('x',`deleteRExercise(${args})`,'Quitar ejercicio',false,'del')}
             </span></div>
             <div class="cmp-in">${fld('series','Series')}<i>×</i>${fld('reps','Reps')}${fld('pct','%RM')}${fld('rpe',p.intensityType||'RPE')}</div>
@@ -14209,8 +14303,8 @@ function renderDaysCompare(routine) {
           </div>`;
         }).join('') + `<button class="cmp-add" onclick="openRoutineLib('${b.id}','${sn}',${ci})">+ Ejercicio</button>`;
       }).join('');
-      return `<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span><span class="cmp-btt" onclick="renameBlockPicker('routine','${b.id}','${sn}')" title="Cambiar el nombre del bloque">${esc(b.title)}</span><span class="cmp-tools">
-          ${tool('up',`moveRoutineBlock('${b.id}','${sn}',-1)`,'Mover arriba',bi===0)}${tool('down',`moveRoutineBlock('${b.id}','${sn}',1)`,'Mover abajo',bi===all.length-1)}${tool('copy',`copyBlockToClipboard(getRBlock('${b.id}','${sn}'))`,'Copiar bloque')}${tool('move',`openMoveBlockPicker('editor','','${b.id}','${sn}')`,'Mover a otro día')}${tool('x',`deleteRBlock(event,'${b.id}','${sn}')`,'Eliminar bloque',false,'del')}
+      return `<div class="cmp-blk ${b.colorKey||'bx'}${activeInWeek(b,W)?'':' wk-off'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span>${weekRangeTag(b)}<span class="cmp-btt" onclick="renameBlockPicker('routine','${b.id}','${sn}')" title="Cambiar el nombre del bloque">${esc(b.title)}</span><span class="cmp-tools">
+          ${tool('up',`moveRoutineBlock('${b.id}','${sn}',-1)`,'Mover arriba',bi===0)}${tool('down',`moveRoutineBlock('${b.id}','${sn}',1)`,'Mover abajo',bi===all.length-1)}${tool('copy',`copyBlockToClipboard(getRBlock('${b.id}','${sn}'))`,'Copiar bloque')}${tool('move',`openMoveBlockPicker('editor','','${b.id}','${sn}')`,'Mover a otro día')}${tool('weeks',`openWeekRangeModal('editor','','${sn}','${b.id}')`,'Semanas en las que está')}${tool('x',`deleteRBlock(event,'${b.id}','${sn}')`,'Eliminar bloque',false,'del')}
         </span></div>${body}</div>`;
     }).join('');
     return `<div class="cmp-col"><div class="cmp-dh"><span>${esc(n)}</span>${open.length>1?`<button class="cmp-x" onclick="cmpToggleDay(${i})">Cerrar</button>`:''}</div>
@@ -14237,12 +14331,12 @@ function renderAtletaRoutineHoriz(a, routine, previewWeek) {
   const cols = names.map(()=> 'minmax(0,1fr)').join(' ');
   return `<div class="cmp-cols cmp-ath" style="--cmp-cols:${cols};padding:10px 12px 12px">` + names.map(n=>{
     const sn = q1(n);
-    const blocks = getVisibleRoutineBlocks(routine, n, a.teamId, a.position, a._personal?.personalExtras);
+    const blocks = getVisibleRoutineBlocks(routine, n, a.teamId, a.position, a._personal?.personalExtras, rel);
     const rec = getPhaseSessionRecord(a, a._personal?.history, previewWeek, n);
     return `<div class="cmp-col"><div class="cmp-dh"><span>${esc(n)}${n===today?' <small class="cmp-today">hoy</small>':''}${rec?.done?' <small class="cmp-done">✓</small>':''}</span></div>
       ${blocks.length ? blocks.map(b=>{
         const isPersonalBlock = b.id==='personal-block';
-        const bt = own && !isPersonalBlock ? `<span class="cmp-tools"><button class="cmp-t" onclick="copyRoutineBlockById('${routine.id}','${b.id}','${sn}')" title="Copiar bloque" aria-label="Copiar bloque">${CMP_IC.copy}</button><button class="cmp-t" onclick="openMoveBlockPicker('ficha','${routine.id}','${b.id}','${sn}')" title="Mover a otro día" aria-label="Mover a otro día">${CMP_IC.move}</button></span>` : '';
+        const bt = own && !isPersonalBlock ? `<span class="cmp-tools"><button class="cmp-t" onclick="copyRoutineBlockById('${routine.id}','${b.id}','${sn}')" title="Copiar bloque" aria-label="Copiar bloque">${CMP_IC.copy}</button><button class="cmp-t" onclick="openMoveBlockPicker('ficha','${routine.id}','${b.id}','${sn}',${rel})" title="Mover a otro día" aria-label="Mover a otro día">${CMP_IC.move}</button><button class="cmp-t" onclick="openWeekRangeModal('ficha','${routine.id}','${sn}','${b.id}')" title="Semanas en las que está" aria-label="Semanas en las que está">${CMP_IC.weeks}</button></span>` : '';
         return `<div class="cmp-blk ${b.colorKey||'bx'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span><span class="cmp-btt">${esc(b.title||'')}</span>${bt}</div>
         ${(b.categories||[]).flatMap(c=>c.exercises||[]).map(e=>{
           const override = isPersonalBlock ? null : getExerciseOverride(a._personal?.routineOverrides, routine.id, n, e.id);
@@ -14270,7 +14364,7 @@ function renderAtletaRoutineHoriz(a, routine, previewWeek) {
           </div>`;
         }).join('')||'<div class="cmp-ex"><span>Sin ejercicios</span></div>'}
       </div>`; }).join('') : '<div class="cmp-none">—</div>'}
-      ${own && S._blockClipboard ? `<div class="cmp-foot"><button class="cmp-add cmp-addb" onclick="pasteBlockIntoRoutine('${routine.id}','${sn}')">Pegar bloque</button></div>` : ''}
+      ${own && S._blockClipboard ? `<div class="cmp-foot"><button class="cmp-add cmp-addb" onclick="pasteBlockIntoRoutine('${routine.id}','${sn}',${rel})">Pegar bloque</button></div>` : ''}
     </div>`; }).join('') + `</div>`;
 }
 window.renderAtletaRoutineHoriz = renderAtletaRoutineHoriz;
@@ -14349,6 +14443,7 @@ function renderRoutineEditor() {
     ${sessionNames.length>1?`<button class="abtn ${S._routineCompare?'abtn-p':''}" onclick="setRoutineCompare(${!S._routineCompare})" style="font-size:11px">Vista horizontal</button>`:''}
     ${curSession&&!S._routineCompare?`<button class="abtn" onclick="startRenameRoutineSession('${curSession}')" style="font-size:11px" title="Cambiar el nombre de este día">✎ Renombrar</button><button class="abtn abtn-d" onclick="deleteRoutineSession('${curSession}')" style="font-size:11px">× ${curSession}</button>`:''}
   </div>
+  ${!(S._routineCompare&&sessionNames.length>1) ? editorWeekBar(r) : ''}
   ${S._routineCompare&&sessionNames.length>1 ? renderDaysCompare(r) : curSession?`
     ${blocksHtml}
     <div style="display:flex;gap:8px">
@@ -14386,9 +14481,9 @@ function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Agregar subcategoría</button>`;
 
-  return `<div class="card block ${cc} ${open?'open':''}" id="rblock-${b.id}">
+  return `<div class="card block ${cc} ${open?'open':''}${activeInWeek(b, editorWeek())?'':' wk-off'}" id="rblock-${b.id}">
     <div class="block-header" onclick="toggleRBlock('${b.id}','${sessionName}')">
-      <span class="block-badge">${b.label}</span>
+      <span class="block-badge">${b.label}</span>${weekRangeTag(b)}
       <div class="block-title-wrap">
         <span class="block-title" ondblclick="event.stopPropagation();renameBlockPicker('routine','${b.id}','${sessionName}')">${b.title}</span>
         <input class="block-title-inp" id="rbtinp-${b.id}" onblur="saveRBlockTitle('${b.id}','${sessionName}',this)" onkeydown="if(event.key==='Enter')this.blur()">
@@ -14399,6 +14494,7 @@ function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
       <span class="ex-icon-btn" style="${bIdx===totalBlocks-1?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',1)" title="Mover abajo"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
       <span class="ex-icon-btn" onclick="event.stopPropagation();copyBlockToClipboard(getRBlock('${b.id}','${sessionName}'))" title="Copiar bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
       <span class="ex-icon-btn" onclick="event.stopPropagation();openMoveBlockPicker('editor','','${b.id}','${sessionName}')" title="Mover a otro día">${CMP_IC.move.replace('<svg ','<svg width="11" height="11" ')}</span>
+      <span class="ex-icon-btn" onclick="event.stopPropagation();openWeekRangeModal('editor','','${sessionName}','${b.id}')" title="Semanas en las que está">${CMP_IC.weeks.replace('<svg ','<svg width="11" height="11" ')}</span>
       <span class="block-del" onclick="deleteRBlock(event,'${b.id}','${sessionName}')">×</span>
       <span class="block-chevron">›</span>
     </div>
@@ -14419,7 +14515,7 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
   const getWP = (w) => (ex.progression && ex.progression[w-1]) ? ex.progression[w-1] : (w===1 ? {series:ex.series||'',reps:ex.reps||'',pct:ex.pct||'',rpe:ex.rpe||'',intensityType:ex.intensityType||'RPE',note:ex.note||''} : {});
   // lo que esa semana hereda de la anterior (se muestra en gris si el casillero está vacío)
   const inh = (w, f, ph) => { const own=getWP(w)[f]; if(own!=null && String(own).trim()!=='') return `placeholder="${ph}"`; const v = w>1 ? getExPrescriptionForWeek(ex, w)[f] : ''; return v ? `placeholder="${String(v).replace(/"/g,'&quot;')}" data-inh="1"` : `placeholder="${ph}"`; };
-  return `<div class="ex-row" id="rexrow-${ex.id}">
+  return `<div class="ex-row${activeInWeek(ex, editorWeek())?'':' wk-off'}" id="rexrow-${ex.id}">
     <div class="ex-main">
       <div class="ex-name-row">
         <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">
@@ -14665,6 +14761,8 @@ function pasteRoutineBlock(sessionName) {
   const n=r.sessions[sessionName].length;
   b.colorKey=colors[n%colors.length];
   b.label=`Bloque ${n+1}`;
+  delete b.fromWeek; delete b.untilWeek;
+  if(editorWeek()>1) b.fromWeek = editorWeek();
   r.sessions[sessionName].push(b);
   renderMain();
   showToast('✓ Bloque pegado');
@@ -14698,9 +14796,14 @@ window.saveRBlockTitle=saveRBlockTitle;
 
 function deleteRBlock(e,blockId,sessionName) {
   e.stopPropagation();
-  showConfirmModal({message:'¿Eliminar este bloque?', danger:true, confirmLabel:'Eliminar', onConfirm: () => {
+  const W = editorWeek();
+  const blk = (S.editingRoutine?.sessions?.[sessionName]||[]).find(b=>b.id===blockId);
+  // Parado en una semana posterior: deja de estar desde esa semana (las anteriores lo conservan).
+  const fromHere = W>1 && blk && activeInWeek(blk, W) && !(blk.fromWeek && blk.fromWeek>=W);
+  showConfirmModal({message: fromHere ? '¿Sacar este bloque desde la semana '+W+'? En las semanas anteriores queda.' : '¿Eliminar este bloque?', danger:true, confirmLabel: fromHere ? 'Sacar' : 'Eliminar', onConfirm: () => {
     const r=S.editingRoutine; if(!r) return;
-    r.sessions[sessionName]=(r.sessions[sessionName]||[]).filter(b=>b.id!==blockId);
+    if(fromHere) { const b=(r.sessions[sessionName]||[]).find(x=>x.id===blockId); if(b) b.untilWeek = W-1; }
+    else r.sessions[sessionName]=(r.sessions[sessionName]||[]).filter(b=>b.id!==blockId);
     renderMain();
   }});
 }
@@ -14810,7 +14913,10 @@ window.copyRExWeekForward = copyRExWeekForward;
 
 function deleteRExercise(exId,blockId,sessionName,catIdx) {
   const b=getRBlock(blockId,sessionName); if(!b) return;
-  b.categories[catIdx].exercises=b.categories[catIdx].exercises.filter(e=>e.id!==exId);
+  const W = editorWeek();
+  const ex = b.categories[catIdx].exercises.find(e=>e.id===exId);
+  if(ex && W>1 && activeInWeek(ex, W) && !(ex.fromWeek && ex.fromWeek>=W)) { ex.untilWeek = W-1; showToast('Sacado desde la semana '+W); }
+  else b.categories[catIdx].exercises=b.categories[catIdx].exercises.filter(e=>e.id!==exId);
   renderMain();
 }
 window.deleteRExercise=deleteRExercise;
