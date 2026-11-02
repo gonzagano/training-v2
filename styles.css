@@ -1758,3 +1758,21 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 @media (max-width:700px){.tp-strip{grid-template-columns:minmax(0,1fr)}.tp-cell+.tp-cell{border-left:0;border-top:1px solid var(--border)}.tp-del{margin-left:0}}
 @media (max-width:520px){.pc-met{grid-template-columns:1fr 1fr;row-gap:14px}.pc-top{flex-wrap:wrap;row-gap:8px}.pc-who{flex-basis:calc(100% - 112px)}.pc-st{order:5;margin-left:56px}}
 .tp-empty{padding:26px 16px;text-align:center;font-size:13.5px;color:var(--text3);border:1.5px dashed var(--border2);border-radius:var(--r)}
+
+/* ── Miniatura del video al lado del ejercicio ── */
+.vt{position:relative;flex-shrink:0;width:96px;height:72px;border-radius:10px;overflow:hidden;background:var(--accent-dim);border:0;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}
+.vt.vt-none{cursor:default}
+.vt-sm{width:64px;height:48px;border-radius:8px}
+.vt img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.vt-f{opacity:0;animation:vtflip 2.1s steps(1) infinite}
+.vt-f2{animation-delay:.7s}
+.vt-f3{animation-delay:1.4s}
+@keyframes vtflip{0%{opacity:1}33.34%{opacity:0}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.vt-f{animation:none}}
+.vt-tag{position:absolute;left:5px;bottom:4px;display:inline-flex;align-items:center;gap:3px;padding:1px 5px;border-radius:5px;background:rgba(10,14,22,.62);color:#fff;font-size:11px;font-weight:800;line-height:1.4}
+.vt-sm .vt-tag{left:3px;bottom:3px;padding:1px 4px}
+.vt-sm .vt-tag{font-size:0;gap:0}
+.vt-sm .vt-tag svg{width:8px;height:8px}
+.vt-card{display:flex;gap:14px;align-items:flex-start}
+.vt-body{flex:1;min-width:0}
+@media (max-width:520px){.vt-card .vt{width:64px;height:48px;border-radius:8px}.vt-card{gap:10px}}

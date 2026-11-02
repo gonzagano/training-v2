@@ -3476,6 +3476,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
     <div class="ex-check ${d.checked?'checked':''}" onclick="toggleCheck('${ex.id}')"></div>
     <div class="ex-main">
       <div class="ex-name-row">
+        ${exVideoThumbHtml(videoKey, displayExName, 'vt-sm')}
         <span class="ex-name" ${canEdit?`ondblclick="editExName(this,'${ex.id}','${blockId}',${catIdx})"`:''}>${displayExName}${exOverride?' <span style="font-size:11px;font-weight:700;color:var(--accent-text)">· personalizado</span>':''}</span>
         <input class="ex-name-inp" id="exinp-${ex.id}" ${canEdit?`onblur="saveExName('${ex.id}','${blockId}',${catIdx},this)" onkeydown="if(event.key==='Enter')this.blur()"`:''}>
         <div class="ex-actions" style="flex-direction:column">
@@ -4723,6 +4724,32 @@ function getYouTubeThumbUrl(url) {
   return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : '';
 }
 window.getYouTubeThumbUrl = getYouTubeThumbUrl;
+
+// Video del ejercicio: el de la biblioteca (por libId o por nombre); si el
+// profe lo personalizó con otro ejercicio, el de ese.
+function exVideoKey(ex, wp) {
+  if(wp && wp.overridden && wp.name && wp.name!==ex.name) {
+    const k = wp.libId || S.library.find(l=>normTxt(l.name)===normTxt(wp.name))?.id;
+    if(k) return k;
+  }
+  return ex.libId || S.library.find(l=>l.name.trim().toLowerCase()===(ex.name||'').trim().toLowerCase())?.id || ex.id;
+}
+window.exVideoKey = exVideoKey;
+// Miniatura del video al lado del ejercicio: YouTube da 3 fotos de cada video
+// (principio, mitad, final) y se van turnando, como un gif cortito. Tocándola
+// se abre el video. Si una foto no existe, YouTube manda una gris de 120 px:
+// se descarta y queda la foto principal de fondo.
+const VT_PESA = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"/><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.5" height="10" rx="1"/><rect x="15.5" y="7" width="2.5" height="10" rx="1"/></svg>';
+function exVideoThumbHtml(key, name, cls) {
+  const url = (S.videos||{})[key] || '';
+  cls = cls ? ' '+cls : '';
+  if(!url) return `<span class="vt vt-none${cls}">${VT_PESA}</span>`;
+  const id = getYouTubeVideoId(url);
+  const nm = String(name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  const img = (n, c)=>`<img class="${c}" src="https://img.youtube.com/vi/${id}/${n}.jpg" alt="" loading="lazy" onload="if(this.naturalWidth<=120)this.remove()" onerror="this.remove()">`;
+  return `<button type="button" class="vt${id?'':' vt-none'}${cls}" onclick="event.stopPropagation();openVideoModal('${key}','${nm}',false)" title="Ver video" aria-label="Ver video">${id ? img('mqdefault','vt-b')+img('mq1','vt-f vt-f1')+img('mq2','vt-f vt-f2')+img('mq3','vt-f vt-f3') : VT_PESA}<span class="vt-tag"><svg width="9" height="9" viewBox="0 0 24 24" fill="#fff"><polygon points="6 4 20 12 6 20"/></svg>video</span></button>`;
+}
+window.exVideoThumbHtml = exVideoThumbHtml;
 
 function openVideoModal(exId,exName,editable) {
   S.videoTarget=exId;
@@ -11557,7 +11584,9 @@ function renderAtletaRutina(a) {
                     </div>`;
                   }
                   return `
-                  <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
+                  <div class="vt-card" style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
+                    ${exVideoThumbHtml(exVideoKey(ex, wp), wp.name||ex.name)}
+                    <div class="vt-body">
                     <div style="font-size:14px;font-weight:600;margin-bottom:8px">${trendChipHtml(a, a._personal?.history, routine, previewWeek>realWeek?previewWeek:realWeek, ex, "openAdminProgressionModal('"+a.uid+"','"+ex.id+"','"+ex.name.replace(/'/g,"\'")+"','"+sName.replace(/'/g,"\'")+"')").replace('class="trend-chip"','class="trend-chip" style="float:right;margin-left:8px"')}${wp.name}${override?` <span style="font-size:11px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);padding:1px 6px;border-radius:8px;text-transform:none;letter-spacing:0">personalizado desde S${override.fromWeek}</span>`:''} <span style="font-size:11px;color:var(--accent-text);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span> ${personalizarBtn}${isPersonalBlock?`<span style="float:right;font-size:11px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
@@ -11587,6 +11616,7 @@ function renderAtletaRutina(a) {
                     ${doneData.athleteNote?`<div style="margin-top:6px;background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--rxs);padding:8px 10px;font-size:12px;color:var(--text)">
                       <span style="font-weight:700;color:var(--amber)">📝 Nota del atleta:</span> ${doneData.athleteNote}
                     </div>`:''}
+                    </div>
                   </div>`;}).join('')}
               `).join('')}
             </div>

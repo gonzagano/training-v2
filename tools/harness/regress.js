@@ -2,7 +2,7 @@
 (async function(){
   const wait=(ms=600)=>new Promise(r=>setTimeout(r,ms));
   const errs=[]; window.addEventListener('error',e=>errs.push(e.message)); window.addEventListener('unhandledrejection',e=>errs.push('rej '+(e.reason?.message||e.reason)));
-  const fails=[]; const ok=(c,msg)=>{ if(!c) fails.push(msg); };
+  const fails=[]; const ok=(c,msg)=>{ window.__lastOk=msg; if(!c) fails.push(msg); };
   const txtBad=(name)=>{ const t=document.getElementById('main').innerText; ['undefined','NaN','[object'].forEach(b=>{ if(t.includes(b)) fails.push(name+': aparece "'+b+'"'); }); if(document.documentElement.scrollWidth>innerWidth+1) fails.push(name+': scroll horizontal'); };
   const R={};
   // ── ADMIN ──

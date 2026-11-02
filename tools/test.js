@@ -80,7 +80,11 @@ const quick = process.argv.includes('--quick');
         }, key, code).catch(e => { err = e.message; });
         await page.waitForFunction(k => window[k], {timeout: 420000, polling: 500}, key);
         res = await page.evaluate(k => window[k], key);
-      } catch (e) { err = e.message; }
+      } catch (e) {
+        err = e.message;
+        // si se colgó, en qué paso quedó
+        try { const last = await page.evaluate(() => window.__lastOk); if (last) err += ' — última prueba que corrió: ' + last; } catch (e2) {}
+      }
       await ctx.close();
       const fails = (res && res.fails) || [];
       const errs = [...((res && res.errs) || []), ...consoleErrs];

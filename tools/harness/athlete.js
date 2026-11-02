@@ -100,6 +100,9 @@
     const row=document.getElementById('exrow-x1'); const vb=row&&row.querySelector('[data-videokey]');
     ok(row&&row.textContent.includes(lib2.name),'atleta: ve el ejercicio que eligió el profe ('+lib2.name+')');
     ok(vb&&vb.getAttribute('data-videokey')===lib2.id&&vb.classList.contains('has-video'),'atleta: el video es el del ejercicio nuevo');
+    const vt=row&&row.querySelector('.vt');
+    const vh=exVideoThumbHtml(lib2.id,'x'); ok(vt&&(vt.getAttribute('onclick')||'').includes(lib2.id)&&/abc123\/mq1\.jpg/.test(vh)&&/mq2\.jpg/.test(vh)&&/mq3\.jpg/.test(vh),'atleta: miniatura con las 3 fotos del video, al lado del ejercicio');
+    if(vt){ vt.click(); await wait(300); ok(document.getElementById('video-overlay')?.classList.contains('open')===true,'atleta: tocando la miniatura se abre el video'); try{ closeVideoModal(); }catch(e){} }
     delete S.routineOverrides[rid]['Día 1']; renderMain(); }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
