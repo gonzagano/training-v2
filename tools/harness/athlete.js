@@ -103,6 +103,13 @@
     const vt=row&&row.querySelector('.vt');
     const vh=exVideoThumbHtml(lib2.id,'x'); ok(vt&&(vt.getAttribute('onclick')||'').includes(lib2.id)&&/abc123\/mq1\.jpg/.test(vh)&&/mq2\.jpg/.test(vh)&&/mq3\.jpg/.test(vh),'atleta: miniatura con las 3 fotos del video, al lado del ejercicio');
     if(vt){ vt.click(); await wait(300); ok(document.getElementById('video-overlay')?.classList.contains('open')===true,'atleta: tocando la miniatura se abre el video'); try{ closeVideoModal(); }catch(e){} }
+    // más cuadros: con la respuesta del servidor, la miniatura pasa a la tira de 25 fotitos y se mueve
+    { const cv=document.createElement('canvas'); cv.width=50; cv.height=50; const sheet=cv.toDataURL('image/png');
+      const keepF=window.fetch; window.fetch=async(u,o)=>String(u).includes('/api/yt-frames')?new Response(JSON.stringify({w:160,h:90,cols:5,rows:5,count:20,interval:2000,sheets:[sheet]}),{status:200,headers:{'Content-Type':'application/json'}}):keepF(u,o);
+      clearYtFrames('abc123'); await wait(1200); window.fetch=keepF; renderMain(); await wait(600);
+      const sb=document.querySelector('#exrow-x1 .vt-sb'); const p1=sb&&sb.style.backgroundPosition; await wait(450); const p2=sb&&sb.style.backgroundPosition;
+      ok(!!sb&&/5\d\d% 5\d\d%|500% 500%/.test(sb.style.backgroundSize),'atleta: miniatura con la tira de cuadros del video');
+      ok(!!p1&&p1!==p2,'atleta: los cuadros se van pasando ('+p1+' → '+p2+')'); }
     delete S.routineOverrides[rid]['Día 1']; renderMain(); }
   // ── un bloque que arranca en una semana futura no aparece todavía; al ir a esa semana, sí ──
   { switchView('session'); await wait(300); S.currentSession='Día 1'; S.rmCalcTabActive=false; resetRoutineWeekView(); await wait(300);

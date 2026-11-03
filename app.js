@@ -4833,9 +4833,63 @@ function exVideoThumbHtml(key, name, cls) {
   const id = getYouTubeVideoId(url);
   const nm = String(name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
   const img = (n, c)=>`<img class="${c}" src="https://img.youtube.com/vi/${id}/${n}.jpg" alt="" loading="lazy" onload="if(this.naturalWidth<=120)this.remove()" onerror="this.remove()">`;
-  return `<button type="button" class="vt${id?'':' vt-none'}${cls}" onclick="event.stopPropagation();openVideoModal('${key}','${nm}',false)" title="Ver video" aria-label="Ver video">${id ? img('mqdefault','vt-b')+img('mq1','vt-f vt-f1')+img('mq2','vt-f vt-f2')+img('mq3','vt-f vt-f3') : VT_PESA}<span class="vt-tag"><svg width="9" height="9" viewBox="0 0 24 24" fill="#fff"><polygon points="6 4 20 12 6 20"/></svg>video</span></button>`;
+  return `<button type="button" class="vt${id?'':' vt-none'}${cls}" ${id?`data-yt="${id}" `:''}onclick="event.stopPropagation();openVideoModal('${key}','${nm}',false)" title="Ver video" aria-label="Ver video">${id ? img('mqdefault','vt-b')+img('mq1','vt-f vt-f1')+img('mq2','vt-f vt-f2')+img('mq3','vt-f vt-f3') : VT_PESA}<span class="vt-tag"><svg width="9" height="9" viewBox="0 0 24 24" fill="#fff"><polygon points="6 4 20 12 6 20"/></svg>video</span></button>`;
 }
 window.exVideoThumbHtml = exVideoThumbHtml;
+
+// Más cuadros para la miniatura: las fotitos de la barra del reproductor de
+// YouTube (las trae /api/yt-frames, de a 25 por imagen). Se piden una vez por
+// video y quedan guardadas en el dispositivo una semana; mientras tanto, o si
+// fallan, quedan las 3 fotos de siempre. Se mueve siempre, como un gif
+// (aunque el sistema tenga las animaciones reducidas): es el contenido, no adorno.
+const YT_FRAMES_KEY = 'gm-yt-frames-v1', YT_FRAMES_TTL = 7*86400000, YT_FRAME_MS = 140;
+let _ytFrames = null; const _ytFramesPending = {};
+function ytFramesCache() {
+  if(!_ytFrames) { try { _ytFrames = JSON.parse(localStorage.getItem(YT_FRAMES_KEY)||'{}') || {}; } catch(e) { _ytFrames = {}; } }
+  return _ytFrames;
+}
+function saveYtFrames() { try { localStorage.setItem(YT_FRAMES_KEY, JSON.stringify(_ytFrames||{})); } catch(e) {} }
+function ytFramesFor(id) {
+  const c = ytFramesCache(), d = c[id];
+  if(d && Date.now()-d.t < YT_FRAMES_TTL) return d.none ? null : d;
+  if(_ytFramesPending[id]) return null;
+  _ytFramesPending[id] = true;
+  fetch('/api/yt-frames?id='+encodeURIComponent(id))
+    .then(r=>r.ok ? r.json() : null)
+    .then(j=>{
+      if(!j || !j.sheets || !j.sheets.length) { c[id] = {none:1, t:Date.now()}; saveYtFrames(); return; }
+      // Primero que cargue la imagen: si no carga (firma vencida), quedan las 3 fotos.
+      const im = new Image();
+      im.onload = ()=>{ c[id] = {t:Date.now(), url:j.sheets[0], cols:j.cols, rows:j.rows, n:Math.max(1, Math.min(j.count, j.cols*j.rows))}; saveYtFrames(); };
+      im.onerror = ()=>{ c[id] = {none:1, t:Date.now()}; saveYtFrames(); };
+      im.src = j.sheets[0];
+    })
+    .catch(()=>{ c[id] = {none:1, t:Date.now()}; saveYtFrames(); })
+    .finally(()=>{ delete _ytFramesPending[id]; });
+  return null;
+}
+function tickYtThumbs() {
+  if(document.hidden) return;
+  const step = Math.floor(Date.now()/YT_FRAME_MS);
+  document.querySelectorAll('.vt[data-yt]').forEach(el=>{
+    const d = ytFramesFor(el.dataset.yt);
+    if(!d) return;
+    let sb = el.querySelector('.vt-sb');
+    if(!sb) {
+      sb = document.createElement('span'); sb.className = 'vt-sb';
+      sb.style.backgroundImage = `url("${d.url}")`;
+      sb.style.backgroundSize = `${d.cols*100}% ${d.rows*100}%`;
+      el.insertBefore(sb, el.querySelector('.vt-tag'));
+      el.classList.add('vt-has-sb');
+    }
+    const i = step % d.n;
+    const cx = d.cols>1 ? (i % d.cols)/(d.cols-1)*100 : 0, cy = d.rows>1 ? Math.floor(i/d.cols)/(d.rows-1)*100 : 0;
+    sb.style.backgroundPosition = `${cx}% ${cy}%`;
+  });
+}
+setInterval(tickYtThumbs, YT_FRAME_MS);
+function clearYtFrames(id) { const c = ytFramesCache(); delete c[id]; delete _ytFramesPending[id]; saveYtFrames(); }
+window.ytFramesFor = ytFramesFor; window.tickYtThumbs = tickYtThumbs; window.clearYtFrames = clearYtFrames;
 
 function openVideoModal(exId,exName,editable) {
   S.videoTarget=exId;
