@@ -793,6 +793,13 @@
     openLib(null,null); showLibNewExerciseForm(); await wait(100);
     ok(getComputedStyle(document.getElementById('lib-new-wrap')).overflowY==='auto'&&getComputedStyle(document.querySelector('.lib-new-btn')).position==='sticky','crear ejercicio: "+ Agregar" queda siempre a la vista');
     closeLib(); S.editingRoutine=null; S.adminView='main'; txtBad('planificar con tab'); }
+  // ── "Marcar como actual": la semana cambia el lunes, no el día en que se marcó ──
+  { await ensureAdminAthletes(); await adminSetRealRoutineWeek('u2', 9); await wait(300);
+    const anc = S.adminAthletes.find(x=>x.uid==='u2').trainingStartDate;
+    const nextMon = new Date(); nextMon.setHours(0,0,0,0); nextMon.setDate(nextMon.getDate() - mondayIndex(nextMon) + 7);
+    const lastSun = new Date(nextMon); lastSun.setDate(nextMon.getDate()-1);
+    ok(new Date(anc+'T00:00:00').getDay()===1, 'marcar semana: el ancla es un lunes ('+anc+')');
+    ok(computeWeekFromDate(anc)===9 && computeWeekOfDate(anc, toLocalDateStr(lastSun))===9 && computeWeekOfDate(anc, toLocalDateStr(nextMon))===10, 'marcada la 9: sigue en 9 hasta el domingo y el lunes pasa a la 10'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

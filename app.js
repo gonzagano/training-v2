@@ -13879,7 +13879,8 @@ async function adminSetRealRoutineWeek(uid, week) {
   if(!a) return;
   const w = Math.max(1, week);
   const base = new Date(); base.setHours(0,0,0,0);
-  base.setDate(base.getDate() - (w-1)*7);
+  // Desde el lunes de esta semana: si no, la semana cambiaba el día en que se marcó (ej. los miércoles).
+  base.setDate(base.getDate() - mondayIndex(base) - (w-1)*7);
   const newAnchor = toLocalDateStr(base);
   try {
     const update = { trainingStartDate: newAnchor };
