@@ -321,7 +321,7 @@
     const s1=cells('series')[0]; s1.value='5'; s1.dispatchEvent(new Event('change',{bubbles:true})); const r1=cells('reps')[0]; r1.value='3'; r1.dispatchEvent(new Event('change',{bubbles:true})); const q1=cells('rpe')[0]; q1.value='8'; q1.dispatchEvent(new Event('change',{bubbles:true}));
     renderMain(); await wait(400);
     const row2=document.getElementById('rexrow-'+e0.id); const reps4=[...row2.querySelectorAll('input.field-inp')].filter(i=>(i.getAttribute('onchange')||'').includes("'reps'"))[3];
-    ok(reps4&&reps4.value===''&&reps4.placeholder==='3'&&reps4.dataset.inh==='1','editor: la semana 4 muestra en gris lo de la semana 1');
+    ok(reps4&&reps4.value==='3','editor: lo de la semana 1 aparece cargado en la semana 4');
     await saveRoutineToFirestore(); await wait(700);
     const saved=JSON.parse(localStorage.getItem('__db')).routines.r1.sessions[sess][0].categories[0].exercises[0]; const pw=getExPrescriptionForWeek(saved,4);
     ok(pw.series==='5'&&pw.reps==='3'&&pw.rpe==='8','guardada: la semana 4 tiene 5 × 3 a RPE 8 sin haberla completado');
@@ -749,6 +749,50 @@
       ok(S.editingRoutine&&getCmpState(S.editingRoutine).week===3,'"Editar rutina" abre el editor en la semana 3, no en la 1 ('+(S.editingRoutine&&getCmpState(S.editingRoutine).week)+')');
       delete ob.fromWeek; S._routineWeekPreview=null; S.editingRoutine=null; switchView('atletas'); await wait(300); }
     txtBad('semanas de bloques'); }
+  // ── volver a usar un ejercicio cortado, y semanas más allá de la duración ──
+  { switchView('admin'); await wait(200); adminGoRoutines(); await wait(300); editRoutine('r1'); await wait(300); S._routineCompare=false;
+    const R=S.editingRoutine; R.durationWeeks=4; const d1=getOrderedSessionNames(R)[0]; S._routineEditSession=d1;
+    const blk=R.sessions[d1].find(b=>(b.categories[0].exercises||[]).length); const cat=blk.categories[0]; const old=cat.exercises[0];
+    const lib2=S.library.find(l=>!/sentadilla/i.test(l.name)&&l.id!==old.libId);
+    setEditorWeek(3); replaceExercise('routine',old.id,blk.id,0,d1); await wait(150); addFromLib(lib2.id); await wait(200);
+    const sub=cat.exercises.find(e=>e.replacesId===old.id); ok(old.untilWeek===2&&sub&&sub.fromWeek===3,'reemplazar en la S3: el viejo hasta la S2, el nuevo desde la S3 y recuerda a quién reemplazó');
+    setEditorWeek(5); blk._open=true; renderMain(); await wait(200);
+    const rb=document.querySelector('#rexrow-'+old.id+' .wk-revive button'); ok(!!rb&&/semana 5/.test(rb.textContent),'ejercicio cortado: botón "Volver a usar desde la semana 5"');
+    rb&&rb.click(); await wait(200);
+    const back=cat.exercises.find(e=>e!==old&&e.name===old.name&&e.fromWeek===5);
+    ok(!!back&&sub.untilWeek===4&&old.untilWeek===2,'vuelve desde la S5 y el reemplazo termina en la S4');
+    ok(activeInWeek(old,1)&&activeInWeek(sub,4)&&!activeInWeek(sub,5)&&activeInWeek(back,6),'semanas 1-2 original, 3-4 reemplazo, 5 en adelante original');
+    // arrepentirse en la misma semana del corte: se deshace del todo
+    const old2=cat.exercises.find(e=>!e.untilWeek&&!e.fromWeek&&e!==old); if(old2){ setEditorWeek(3); replaceExercise('routine',old2.id,blk.id,0,d1); await wait(150); addFromLib(lib2.id); await wait(200);
+      const sub2=cat.exercises.find(e=>e.replacesId===old2.id); reviveFromWeek('editor','',d1,blk.id,old2.id); await wait(150);
+      ok(!old2.untilWeek&&!cat.exercises.includes(sub2),'en la misma semana del corte: se deshace (vuelve el original y se va el reemplazo)'); }
+    // el atleta va por la semana 7 de una rutina de 4: el editor llega hasta la 7
+    S._cmp.cur=7; setEditorWeek(7); await wait(200);
+    ok(/S7/.test(document.querySelector('.edw-bar .chip-btn.on')?.textContent||'')&&editorWeek()===7,'rutina de 4 semanas y el atleta en la 7: el editor se para en la 7');
+    S._routineCompare=true; renderMain(); await wait(200); ok(editorWeek()===7,'vista horizontal: también en la 7');
+    setRExWeekField(back.id,blk.id,d1,0,7,'reps','12'); ok(getExPrescriptionForWeek(back,7).reps==='12'&&getExPrescriptionForWeek(back,6).reps!=='12','lo que cambio en la S7 queda en la S7');
+    S._routineCompare=false; S.editingRoutine=null; S.adminView='main'; txtBad('volver a usar'); }
+  // ── planificar con Tab: la semana 1 se copia a las siguientes, y las comillas no se cortan ──
+  { switchView('admin'); await wait(200); adminGoRoutines(); await wait(300); editRoutine('r1'); await wait(300); S._routineCompare=false;
+    const R=S.editingRoutine; R.durationWeeks=4; const d1=getOrderedSessionNames(R)[0]; S._routineEditSession=d1;
+    const blk=R.sessions[d1].find(b=>b.categories[0].exercises.length); blk._open=true; const ex=blk.categories[0].exercises[0]; delete ex.progression; ex.series=''; ex.reps='';
+    renderMain(); await wait(250);
+    const inp=(w,f)=>document.querySelector('#rexrow-'+ex.id+' input[onchange*=",'+w+",'"+f+"',this.value\"]");
+    const put=async(w,f,v)=>{ const i=inp(w,f); i.value=v; i.dispatchEvent(new Event('change',{bubbles:true})); await wait(80); };
+    await put(1,'series','3');
+    ok([2,3,4].every(w=>inp(w,'series')?.value==='3'),'series 3 en la semana 1: aparece en las semanas 2, 3 y 4 ('+[2,3,4].map(w=>inp(w,'series')?.value).join(',')+')');
+    await put(3,'series','4'); ok(inp(2,'series').value==='3'&&inp(4,'series').value==='4','cambiar la semana 3 arrastra a la 4, no a la 2');
+    await put(1,'series','5'); ok(inp(2,'series').value==='5'&&inp(3,'series').value==='4','cambiar la semana 1 de nuevo: la 2 la sigue, la 3 conserva su valor propio');
+    await put(1,'reps','10" de pausa'); renderMain(); await wait(200);
+    ok(inp(1,'reps').value==='10" de pausa'&&inp(2,'reps').value==='10" de pausa','comillas: 10" de pausa se guarda y se ve entero');
+    // notas: borrar la nota en la semana 2 = sin nota desde ahí (no hereda la de la semana 1)
+    await put(1,'note','Bajar lento'); ok(inp(4,'note').value==='Bajar lento','la nota de la semana 1 pasa a las siguientes');
+    await put(2,'note',''); ok(getExPrescriptionForWeek(ex,1).note==='Bajar lento'&&[2,3,4].every(w=>getExPrescriptionForWeek(ex,w).note===''),'borrar la nota en la semana 2: semanas 2 a 4 sin nota, la 1 la conserva');
+    await put(3,'note','Pausa arriba'); ok(getExPrescriptionForWeek(ex,2).note===''&&getExPrescriptionForWeek(ex,3).note==='Pausa arriba'&&getExPrescriptionForWeek(ex,4).note==='Pausa arriba','nota nueva en la semana 3: la 2 sigue sin nota');
+    // crear ejercicio: el formulario se desplaza y el botón no desaparece
+    openLib(null,null); showLibNewExerciseForm(); await wait(100);
+    ok(getComputedStyle(document.getElementById('lib-new-wrap')).overflowY==='auto'&&getComputedStyle(document.querySelector('.lib-new-btn')).position==='sticky','crear ejercicio: "+ Agregar" queda siempre a la vista');
+    closeLib(); S.editingRoutine=null; S.adminView='main'; txtBad('planificar con tab'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

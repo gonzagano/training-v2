@@ -1880,10 +1880,21 @@ window.weekRangeTag = weekRangeTag;
 // Semana en la que está parado el editor de rutinas (los cambios de bloques valen desde ahí).
 function editorWeek() { return S.editingRoutine ? (getCmpState(S.editingRoutine).week||1) : 1; }
 window.editorWeek = editorWeek; window.getCmpState = (r)=>getCmpState(r);
+// Semanas que muestra el editor: la duración, o más si un atleta con esta rutina ya va por una semana posterior.
+function editorWeeksCount(r) {
+  if(!r) return 1;
+  const st = (S._cmp && S._cmp.rid===r.id) ? S._cmp : {};
+  let n = Math.max(1, getRoutineDurationWeeks(r), st.cur||0, st.week||0);
+  (S.adminAthletes||[]).forEach(a=>{
+    if(a.assignedRoutine===r.id && a.routineAssignedDate) n = Math.max(n, toRoutineRelativeWeek(computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate), a));
+  });
+  return n;
+}
+window.editorWeeksCount = editorWeeksCount;
 function setEditorWeek(w) { if(!S.editingRoutine) return; getCmpState(S.editingRoutine).week = w; renderMain(); }
 window.setEditorWeek = setEditorWeek;
 function editorWeekBar(r) {
-  const weeks = Math.max(1, getRoutineDurationWeeks(r)); if(weeks<2) return '';
+  const weeks = editorWeeksCount(r); if(weeks<2) return '';
   const st = getCmpState(r);
   return `<div class="cmp-bar edw-bar"><span class="edw-l">Semana</span><span class="cmp-wk">${Array.from({length:weeks},(_,i)=>`<button class="chip-btn ${st.week===i+1?'on':''} ${st.cur===i+1?'edw-cur':''}" onclick="setEditorWeek(${i+1})">S${i+1}${st.cur===i+1?' · actual':''}</button>`).join('')}</span></div>`;
 }
@@ -2188,7 +2199,7 @@ function getExPrescriptionForWeek(ex, week) {
     // de la última semana que sí se completó — prescribir solo la semana 1 vale
     // para toda la planificación, y cambiar la semana 1 arrastra a las que siguen vacías.
     const idx = Math.min(week, ex.progression.length) - 1;
-    const pick = f => { for(let i=idx;i>=0;i--){ const v=ex.progression[i]?.[f]; if(v!=null && String(v).trim()!=='') return v; } return ex[f]||''; };
+    const pick = f => { for(let i=idx;i>=0;i--){ if(f==='note' && ex.progression[i]?.noteOff) return ''; const v=ex.progression[i]?.[f]; if(v!=null && String(v).trim()!=='') return v; } return ex[f]||''; };
     return {
       series: pick('series'), reps: pick('reps'), pct: pick('pct'),
       rpe: pick('rpe'), intensityType: ex.intensityType||'RPE', note: pick('note')
@@ -4082,7 +4093,7 @@ async function moveBlockToDay(i) {
     // Movido en una semana posterior: hasta la semana anterior queda donde estaba.
     const copy = JSON.parse(JSON.stringify(orig));
     copy.id = genId(); (copy.categories||[]).forEach(c=>{ c.id = genId(); (c.exercises||[]).forEach(e=>{ e.id = genId(); }); });
-    copy.fromWeek = W; delete copy._open;
+    copy.fromWeek = W; delete copy._open; copy.movedFromId = orig.id;
     orig.untilWeek = W-1;
     r.sessions[to].push(copy);
   } else {
@@ -4100,7 +4111,7 @@ function openWeekRangeModal(kind, routineId, sessionName, blockId) {
   const b = (r?.sessions?.[sessionName]||[]).find(x=>x.id===blockId); if(!b) return;
   S._wkRangeCtx = {kind, routineId, sessionName, blockId};
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  const weeks = Math.max(1, getRoutineDurationWeeks(r));
+  const weeks = kind==='editor' ? editorWeeksCount(r) : Math.max(getRoutineDurationWeeks(r), S._fichaRealRel||1);
   let o = document.getElementById('wkrange-overlay');
   if(!o) { o = document.createElement('div'); o.id = 'wkrange-overlay'; o.onclick = e=>{ if(e.target===o) closeWeekRangeModal(); }; document.body.appendChild(o); }
   o.className = 'video-modal open';
@@ -4126,6 +4137,45 @@ async function saveWeekRange() {
   await persistBlockOps(ctx.kind, r);
 }
 window.saveWeekRange = saveWeekRange;
+
+// Un bloque o ejercicio cortado (o que arranca más adelante) vuelve desde la semana W.
+// Parado justo en la semana del corte, el corte se deshace; más adelante, vuelve
+// desde ahí y lo que lo había reemplazado termina la semana anterior.
+function reviveFromWeek(kind, routineId, sessionName, blockId, exId) {
+  const r = routineForBlockOps(kind, routineId); if(!r) return;
+  const W = kind==='editor' ? editorWeek() : (S._fichaRelWeek||1);
+  const blocks = r.sessions?.[sessionName]||[];
+  const b = blocks.find(x=>x.id===blockId); if(!b) return;
+  let list, x;
+  if(exId) { const cat = (b.categories||[]).find(c=>(c.exercises||[]).some(e=>e.id===exId)); if(!cat) return; list = cat.exercises; x = list.find(e=>e.id===exId); }
+  else { list = blocks; x = b; }
+  if(!x || activeInWeek(x, W)) return;
+  // el que lo reemplazó / la copia movida a otro día (los cambios viejos no tienen el vínculo: se reconocen por la semana)
+  const holders = exId ? [list] : Object.values(r.sessions||{});
+  const partners = [];
+  holders.forEach(arr=>(arr||[]).forEach((o,i)=>{
+    if(o===x) return;
+    const linked = exId ? o.replacesId===x.id : o.movedFromId===x.id;
+    const guessed = !o.replacesId && !o.movedFromId && x.untilWeek && o.fromWeek===x.untilWeek+1 && (exId ? i===list.indexOf(x)+1 : o.title===x.title);
+    if(linked || guessed) partners.push({arr, o});
+  }));
+  if(x.fromWeek && W < x.fromWeek) { if(W>1) x.fromWeek = W; else delete x.fromWeek; }
+  else if(x.untilWeek && W === x.untilWeek+1) delete x.untilWeek;
+  else {
+    const c = JSON.parse(JSON.stringify(x)); c.id = genId();
+    if(!exId) (c.categories||[]).forEach(cc=>{ cc.id = genId(); (cc.exercises||[]).forEach(e=>{ e.id = genId(); }); });
+    c.fromWeek = W; delete c.untilWeek; delete c._open; delete c.replacesId; delete c.movedFromId;
+    list.splice(list.indexOf(x)+1, 0, c);
+  }
+  partners.forEach(({arr, o})=>{
+    if(!activeInWeek(o, W)) return;
+    if(o.fromWeek && o.fromWeek>=W) arr.splice(arr.indexOf(o), 1); else o.untilWeek = W-1;
+  });
+  if(!exId) Object.values(r.sessions||{}).forEach(renumberBlockLabels);
+  showToast('✓ Vuelve desde la semana '+W);
+  persistBlockOps(kind, r);
+}
+window.reviveFromWeek = reviveFromWeek;
 
 // ── NOMBRES FIJOS DE BLOQUE ────────────────────────────────────────────────
 // Los bloques ya no se nombran a mano: se elige de esta lista. Tres tienen
@@ -4518,7 +4568,7 @@ function placeLibExercise(arr, newEx) {
   rep.id = newEx.id; rep.libId = newEx.libId; rep.name = newEx.name; rep.rmLift = '';
   // Reemplazo parado en una semana posterior: el viejo sigue en las semanas anteriores.
   if(W>1 && activeInWeek(arr[i], W) && !(arr[i].fromWeek && arr[i].fromWeek>=W)) {
-    arr[i].untilWeek = W-1; rep.fromWeek = W; delete rep.untilWeek;
+    arr[i].untilWeek = W-1; rep.fromWeek = W; delete rep.untilWeek; rep.replacesId = arr[i].id;
     arr.splice(i+1, 0, rep);
     return true;
   }
@@ -9398,17 +9448,17 @@ function renderTeamDayBlock(b,teamId,dayIdx){
       const hasV = !!S.videos[videoKey];
       inner+=`<div class="ex-row" id="tdexrow-${ex.id}"><div class="ex-main"><div class="ex-name-row"><span class="ex-name" ondblclick="editTDExName(this,'${ex.id}','${b.id}','${teamId}',${dayIdx},${ci})">${ex.name}</span><input class="ex-name-inp" id="tdexinp-${ex.id}" onblur="saveTDExName('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},this)" onkeydown="if(event.key==='Enter')this.blur()"><div class="ex-actions"><div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${videoKey}" onclick="openVideoModal('${videoKey}','${ex.name}',true)" title="Video"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><div class="ex-icon-btn" onclick="replaceExercise('td','${ex.id}','${b.id}',${ci},'','${teamId}',${dayIdx})" title="Reemplazar por otro ejercicio"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div><div class="ex-icon-btn del-ex" onclick="deleteTDEx('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci})">×</div></div></div>
       <div class="ex-fields">
-        <div class="field-box"><span class="field-lbl">Series</span><input class="field-inp" type="text" placeholder="3x" value="${ex.series||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'series',this.value)"></div>
-        <div class="field-box"><span class="field-lbl">Reps</span><input class="field-inp" type="text" placeholder="6–8" value="${ex.reps||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'reps',this.value)"></div>
-        <div class="field-box"><span class="field-lbl">%RM</span><input class="field-inp" type="text" placeholder="—" value="${ex.pct||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'pct',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">Series</span><input class="field-inp" type="text" placeholder="3x" value="${attrEsc(ex.series)}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'series',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">Reps</span><input class="field-inp" type="text" placeholder="6–8" value="${attrEsc(ex.reps)}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'reps',this.value)"></div>
+        <div class="field-box"><span class="field-lbl">%RM</span><input class="field-inp" type="text" placeholder="—" value="${attrEsc(ex.pct)}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'pct',this.value)"></div>
         <div class="field-box"><span class="field-lbl">De qué RM</span><select class="field-inp" style="width:auto;padding:6px 4px;font-size:11px" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'rmLift',this.value)"><option value="">—</option>${RM_LIFTS.map(rm=>`<option value="${rm.id}" ${ex.rmLift===rm.id?'selected':''}>${rm.label}</option>`).join('')}</select></div>
         <div class="field-box" style="gap:3px"><span class="field-lbl">Intensidad ${infoBtn('intensity')}</span>
           <div class="intensity-sel">
             <button class="intensity-type-btn ${(ex.intensityType||'RPE')==='RPE'?'active':''}" onclick="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'intensityType','RPE');this.classList.add('active');this.nextElementSibling.classList.remove('active')">RPE</button>
             <button class="intensity-type-btn ${ex.intensityType==='RIR'?'active':''}" onclick="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'intensityType','RIR');this.classList.add('active');this.previousElementSibling.classList.remove('active')">RIR</button>
           </div>
-          <input class="field-inp" type="text" placeholder="—" value="${ex.rpe||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'rpe',this.value)" style="width:48px"></div>
-        <div class="field-box"><span class="field-lbl">Nota</span><input class="field-inp" style="width:80px" type="text" placeholder="—" value="${ex.note||''}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'note',this.value)"></div>
+          <input class="field-inp" type="text" placeholder="—" value="${attrEsc(ex.rpe)}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'rpe',this.value)" style="width:48px"></div>
+        <div class="field-box"><span class="field-lbl">Nota</span><input class="field-inp" style="width:80px" type="text" placeholder="—" value="${attrEsc(ex.note)}" onchange="setTDExField('${ex.id}','${b.id}','${teamId}',${dayIdx},${ci},'note',this.value)"></div>
       </div></div></div>`;
     });
     inner+=`<button class="add-btn" onclick="openTDLib('${b.id}','${teamId}',${dayIdx},${ci})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar ejercicio</button>`;
@@ -9604,11 +9654,11 @@ function renderExOverrideForm(ex, existing, realWeek, draft) {
           ${v.libId ? `<div class="exov-lib">De la biblioteca · ${vid?'con video':'sin video'}</div>` : ''}
         </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div><label class="eval-lbl">Series</label><input id="exov-series" class="auth-inp" style="margin:0" value="${v.series||''}"></div>
-      <div><label class="eval-lbl">Reps</label><input id="exov-reps" class="auth-inp" style="margin:0" value="${v.reps||''}"></div>
+      <div><label class="eval-lbl">Series</label><input id="exov-series" class="auth-inp" style="margin:0" value="${attrEsc(v.series)}"></div>
+      <div><label class="eval-lbl">Reps</label><input id="exov-reps" class="auth-inp" style="margin:0" value="${attrEsc(v.reps)}"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div><label class="eval-lbl">${v.intensityType||'RPE'}</label><input id="exov-rpe" class="auth-inp" style="margin:0" value="${v.rpe||''}"></div>
+      <div><label class="eval-lbl">${v.intensityType||'RPE'}</label><input id="exov-rpe" class="auth-inp" style="margin:0" value="${attrEsc(v.rpe)}"></div>
       <div><label class="eval-lbl">A partir de la semana</label><input id="exov-fromweek" type="number" min="1" class="auth-inp" style="margin:0" value="${v.fromWeek||realWeek}"></div>
     </div>
     <div><label class="eval-lbl">Nota (opcional)</label><input id="exov-note" class="auth-inp" style="margin:0" value="${(v.note||'').replace(/"/g,'&quot;')}"></div>
@@ -10056,6 +10106,10 @@ function similarLibExercises(name, excludeId) {
     return hit ? {e, exact} : null;
   }).filter(Boolean).sort((a,b)=>(b.exact-a.exact) || a.e.name.localeCompare(b.e.name));
 }
+// Texto seguro para value="..." (un 10" de pausa cortaba todo lo que venía después de la comilla).
+function attrEsc(v) { return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+window.attrEsc = attrEsc;
+
 function updateSimilarExercises(inputId, boxId, excludeId) {
   const box = document.getElementById(boxId), inp = document.getElementById(inputId);
   if(!box || !inp) return;
@@ -14310,7 +14364,7 @@ function renderDaysCompare(routine) {
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   const q1 = t=>String(t).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const names = getOrderedSessionNames(routine);
-  const weeks = Math.max(1, getRoutineDurationWeeks(routine));
+  const weeks = editorWeeksCount(routine);
   if(st.week>weeks) st.week = weeks;
   const W = st.week;
   // chips de filtro: solo lo que existe en esta rutina
@@ -14348,7 +14402,7 @@ function renderDaysCompare(routine) {
           const own = (e.progression && e.progression[W-1]) ? e.progression[W-1] : (W===1 ? e : {});
           const fld = (k, ph, cls)=>{ const ov = own[k]; const has = ov!=null && String(ov).trim()!==''; const hv = (!has && W>1) ? p[k] : ''; return `<input class="cmp-f ${cls||''}" type="text" inputmode="${k==='note'?'text':'decimal'}" placeholder="${esc(hv||ph)}" ${hv?'data-inh="1"':''} title="${ph}" value="${has?esc(ov):''}" onchange="setRExWeekField(${args},${W},'${k}',this.value)">`; };
           const isOpen = st.openEx===e.id;
-          return `<div class="cmp-ex cmp-exe${activeInWeek(e,W)?'':' wk-off'}" data-k="${esc(exerciseSeriesKey(e))}" id="cmpex-${e.id}">
+          return `<div class="cmp-ex cmp-exe${activeInWeek(e,W)?'':' wk-off'}" data-k="${esc(exerciseSeriesKey(e))}" id="cmpex-${e.id}">${activeInWeek(e,W)?'':`<div class="wk-revive"><button class="abtn" onclick="reviveFromWeek('editor','','${sn}','${b.id}','${e.id}')">Volver a usar desde S${W}</button></div>`}
             <div class="cmp-exh"><b>${esc(e.name)}${routineDupTag(routine, e)}${weekRangeTag(e)}</b><span class="cmp-tools">
               ${tool('up',`moveRExercise(${args},-1)`,'Subir',ei===0)}${tool('down',`moveRExercise(${args},1)`,'Bajar',ei===exs.length-1)}${tool('swap',`replaceExercise('routine','${e.id}','${b.id}',${ci},'${sn}')`,'Reemplazar por otro ejercicio')}${tool('more',`cmpToggleEx('${e.id}')`,'Todas las semanas, RM y nota',false,isOpen?'on':'')}${tool('x',`deleteRExercise(${args})`,'Quitar ejercicio',false,'del')}
             </span></div>
@@ -14357,7 +14411,7 @@ function renderDaysCompare(routine) {
           </div>`;
         }).join('') + `<button class="cmp-add" onclick="openRoutineLib('${b.id}','${sn}',${ci})">+ Ejercicio</button>`;
       }).join('');
-      return `<div class="cmp-blk ${b.colorKey||'bx'}${activeInWeek(b,W)?'':' wk-off'}"><div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span>${weekRangeTag(b)}<span class="cmp-btt" onclick="renameBlockPicker('routine','${b.id}','${sn}')" title="Cambiar el nombre del bloque">${esc(b.title)}</span><span class="cmp-tools">
+      return `<div class="cmp-blk ${b.colorKey||'bx'}${activeInWeek(b,W)?'':' wk-off'}">${activeInWeek(b,W)?'':`<div class="wk-revive"><button class="abtn" onclick="reviveFromWeek('editor','','${sn}','${b.id}')">Volver a usar desde S${W}</button></div>`}<div class="cmp-bt"><span class="block-badge">${esc(b.label)}</span>${weekRangeTag(b)}<span class="cmp-btt" onclick="renameBlockPicker('routine','${b.id}','${sn}')" title="Cambiar el nombre del bloque">${esc(b.title)}</span><span class="cmp-tools">
           ${tool('up',`moveRoutineBlock('${b.id}','${sn}',-1)`,'Mover arriba',bi===0)}${tool('down',`moveRoutineBlock('${b.id}','${sn}',1)`,'Mover abajo',bi===all.length-1)}${tool('copy',`copyBlockToClipboard(getRBlock('${b.id}','${sn}'))`,'Copiar bloque')}${tool('move',`openMoveBlockPicker('editor','','${b.id}','${sn}')`,'Mover a otro día')}${tool('weeks',`openWeekRangeModal('editor','','${sn}','${b.id}')`,'Semanas en las que está')}${tool('x',`deleteRBlock(event,'${b.id}','${sn}')`,'Eliminar bloque',false,'del')}
         </span></div>${body}</div>`;
     }).join('');
@@ -14535,7 +14589,7 @@ function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Agregar subcategoría</button>`;
 
-  return `<div class="card block ${cc} ${open?'open':''}${activeInWeek(b, editorWeek())?'':' wk-off'}" id="rblock-${b.id}">
+  return `<div class="card block ${cc} ${open?'open':''}${activeInWeek(b, editorWeek())?'':' wk-off'}" id="rblock-${b.id}">${activeInWeek(b, editorWeek())?'':`<div class="wk-revive"><button class="abtn" onclick="reviveFromWeek('editor','','${sessionName}','${b.id}')">Volver a usar desde la semana ${editorWeek()}</button></div>`}
     <div class="block-header" onclick="toggleRBlock('${b.id}','${sessionName}')">
       <span class="block-badge">${b.label}</span>${weekRangeTag(b)}
       <div class="block-title-wrap">
@@ -14564,12 +14618,12 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
   const videoKey = ex.libId || (libMatch&&libMatch.id) || ex.id;
   const hasV = !!S.videos[videoKey];
   const isFirst = exIdx===0, isLast = exIdx===(totalEx-1);
-  const durationWeeks = getRoutineDurationWeeks(S.editingRoutine);
+  const durationWeeks = editorWeeksCount(S.editingRoutine);
   const weeksArr = Array.from({length:durationWeeks}, (_,i)=>i+1);
   const getWP = (w) => (ex.progression && ex.progression[w-1]) ? ex.progression[w-1] : (w===1 ? {series:ex.series||'',reps:ex.reps||'',pct:ex.pct||'',rpe:ex.rpe||'',intensityType:ex.intensityType||'RPE',note:ex.note||''} : {});
   // lo que esa semana hereda de la anterior (se muestra en gris si el casillero está vacío)
   const inh = (w, f, ph) => { const own=getWP(w)[f]; if(own!=null && String(own).trim()!=='') return `placeholder="${ph}"`; const v = w>1 ? getExPrescriptionForWeek(ex, w)[f] : ''; return v ? `placeholder="${String(v).replace(/"/g,'&quot;')}" data-inh="1"` : `placeholder="${ph}"`; };
-  return `<div class="ex-row${activeInWeek(ex, editorWeek())?'':' wk-off'}" id="rexrow-${ex.id}">
+  return `<div class="ex-row${activeInWeek(ex, editorWeek())?'':' wk-off'}" id="rexrow-${ex.id}">${activeInWeek(ex, editorWeek())?'':`<div class="wk-revive"><button class="abtn" onclick="reviveFromWeek('editor','','${sessionName}','${blockId}','${ex.id}')">Volver a usar desde la semana ${editorWeek()}</button></div>`}
     <div class="ex-main">
       <div class="ex-name-row">
         <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">
@@ -14613,23 +14667,23 @@ function renderRoutineExRow(ex, blockId, sessionName, catIdx, exIdx, totalEx) {
           <tbody>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Series</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'series','3x')} value="${getWP(w).series||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'series',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'series','3x')} value="${attrEsc(getWP(w).series)}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'series',this.value)"></td>`).join('')}
             </tr>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Reps</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'reps','6–8')} value="${getWP(w).reps||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'reps',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'reps','6–8')} value="${attrEsc(getWP(w).reps)}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'reps',this.value)"></td>`).join('')}
             </tr>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">%RM</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'pct','—')} value="${getWP(w).pct||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'pct',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'pct','—')} value="${attrEsc(getWP(w).pct)}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'pct',this.value)"></td>`).join('')}
             </tr>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">${ex.intensityType||'RPE'}</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'rpe','—')} value="${getWP(w).rpe||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'rpe',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:64px;text-align:center" type="text" ${inh(w,'rpe','—')} value="${attrEsc(getWP(w).rpe)}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'rpe',this.value)"></td>`).join('')}
             </tr>
             <tr>
               <td style="padding:5px 8px;font-size:11px;color:var(--text3);font-weight:600;position:sticky;left:0;background:var(--bg2)">Nota</td>
-              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:90px" type="text" ${inh(w,'note','—')} value="${getWP(w).note||''}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'note',this.value)"></td>`).join('')}
+              ${weeksArr.map(w=>`<td style="padding:3px 4px"><input class="field-inp" style="width:100%;min-width:90px" type="text" ${inh(w,'note','—')} value="${attrEsc(getWP(w).note)}" onchange="setRExWeekField('${ex.id}','${blockId}','${sessionName}',${catIdx},${w},'note',this.value)"></td>`).join('')}
             </tr>
           </tbody>
         </table>
@@ -14945,18 +14999,33 @@ window.ensureExProgression = ensureExProgression;
 function setRExWeekField(exId, blockId, sessionName, catIdx, week, field, val) {
   const b = getRBlock(blockId, sessionName); if(!b) return;
   const ex = b.categories[catIdx].exercises.find(e=>e.id===exId); if(!ex) return;
+  const prev = getExPrescriptionForWeek(ex, week)[field];
   const prog = ensureExProgression(ex);
   // Si se edita una semana más adelante de lo cargado hasta ahora, se
   // extiende repitiendo la última semana definida (progresión por defecto).
   while(prog.length < week) prog.push({...prog[prog.length-1]});
-  prog[week-1][field] = val;
+  // Nota borrada a propósito = "sin nota desde esta semana" (si no, heredaría la de antes).
+  const setVal = (wk, v) => { wk[field] = v; if(field==='note') { if(String(v).trim()==='') wk.noteOff = true; else delete wk.noteOff; } };
+  setVal(prog[week-1], val);
+  // Las semanas siguientes que venían igual (vacías o con el valor anterior) pasan
+  // al nuevo, hasta la primera que tenga uno propio distinto: se planifica con Tab.
+  const last = editorWeeksCount(S.editingRoutine);
+  for(let w=week+1; w<=last; w++) {
+    if(!prog[w-1]) prog[w-1] = {};
+    const own = prog[w-1][field];
+    const hasOwn = (own!=null && String(own).trim()!=='') || (field==='note' && prog[w-1].noteOff);
+    if(hasOwn && (own||'')!==(prev||'')) break;
+    setVal(prog[w-1], val);
+    const inp = document.querySelector(`#rexrow-${exId} input[onchange*=",${w},'${field}',this.value"]`);
+    if(inp) { inp.value = val; inp.removeAttribute('data-inh'); if(field==='note' && !val) inp.placeholder = '—'; }
+  }
 }
 window.setRExWeekField = setRExWeekField;
 
 function copyRExWeekForward(exId, blockId, sessionName, catIdx, week) {
   const b = getRBlock(blockId, sessionName); if(!b) return;
   const ex = b.categories[catIdx].exercises.find(e=>e.id===exId); if(!ex) return;
-  const durationWeeks = getRoutineDurationWeeks(S.editingRoutine);
+  const durationWeeks = editorWeeksCount(S.editingRoutine);
   const prog = ensureExProgression(ex);
   const base = {...prog[week-1]};
   for(let w=week+1; w<=durationWeeks; w++) prog[w-1] = {...base};
