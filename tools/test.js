@@ -39,7 +39,14 @@ const quick = process.argv.includes('--quick');
   profile = path.join(os.tmpdir(), 'gm-test-profile-' + Date.now());
   proc = spawn(EDGE, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=' + dbgPort, '--user-data-dir=' + profile, 'about:blank'], {stdio: 'ignore'});
   const ready = async () => { for (let i = 0; i < 60; i++) { const ok = await new Promise(r => http.get('http://127.0.0.1:' + dbgPort + '/json/version', x => { x.resume(); r(x.statusCode === 200); }).on('error', () => r(false))); if (ok) return true; await new Promise(r => setTimeout(r, 500)); } return false; };
-  if (!(await ready())) { console.error('El navegador de prueba no arrancó.'); proc.kill(); process.exit(2); }
+  if (!(await ready())) {
+    // a veces Edge no levanta al primer intento: uno más, con otro puerto y otro perfil
+    try { proc.kill(); } catch (e) {}
+    dbgPort = 9400 + Math.floor(Math.random() * 400);
+    profile = path.join(os.tmpdir(), 'gm-test-profile-' + Date.now());
+    proc = spawn(EDGE, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=' + dbgPort, '--user-data-dir=' + profile, 'about:blank'], {stdio: 'ignore'});
+    if (!(await ready())) { console.error('El navegador de prueba no arrancó.'); proc.kill(); process.exit(2); }
+  }
   // protocolTimeout mayor que el timeout de 7 min de waitForFunction: si no, una prueba de más de 3 min cae con "Runtime.callFunctionOn timed out"
   browser = await puppeteer.connect({browserURL: 'http://127.0.0.1:' + dbgPort, defaultViewport: null, protocolTimeout: 480000});
   };
