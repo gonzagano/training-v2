@@ -1194,6 +1194,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.personalExtras) S.personalExtras = d.personalExtras;
     if (d.routineOverrides) S.routineOverrides = d.routineOverrides;
     if (d.coachNotes) S.coachNotes = d.coachNotes;
+    if (d.goals) S.goals = d.goals;
     if (d.notifications) S.notifications = d.notifications;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
     // BUG encontrado y corregido acá — la causa real de "siempre me dice
@@ -1307,6 +1308,9 @@ onAuthStateChanged(auth, async (user) => {
         S.currentRoutineSessions = getOrderedSessionNames(S.assignedRoutine);
         if (S.currentRoutineSessions.length) S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, S.userData.routineAssignedDate, S.userData.trainingWeekdays);
         // blocks are read-only from routine; don't overwrite with personal
+      }
+      if (S.userData.teamId) {
+        try { const tSnap = await getDoc(doc(db, 'teams', S.userData.teamId)); if (tSnap.exists()) S.myTeam = { id: S.userData.teamId, ...tSnap.data() }; } catch (e) { console.error('Equipo del atleta', e); }
       }
     } else if (S.userData.teamId) {
       const tSnap = await getDoc(doc(db, 'teams', S.userData.teamId));
@@ -2917,7 +2921,7 @@ function renderSubnav() {
   // veía acá "Sem 1" pelado (sin fecha); ahora usa el mismo texto unificado
   // "Semana actual · [fechas]" que ya tiene el resto de la app.
   const wp=document.getElementById('week-pill'); if(wp) wp.textContent = getCurrentWeekRangeLabel();
-  const dwr=document.getElementById('desktop-week-range'); if(dwr) dwr.textContent = getWeekHeaderLabel();
+  const dwr=document.getElementById('desktop-week-range'); if(dwr) dwr.textContent = getCurrentWeekRangeLabel();
   if(S.currentView!=='session') { nav.innerHTML=''; return; }
   // Sessions: for admin use A/B/C/D; for athlete with routine use routine session names
   const sessions = getSessionList();
@@ -3359,7 +3363,7 @@ function renderSession() {
   // cambia qué semana se está mirando en esta pantalla.
   const weekBrowser = (!S.isAdmin && !isTeamAthlete()) ? `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:-6px 0 16px">
     <button class="abtn" onclick="browseRoutineWeek(-1)" title="Semana anterior">‹</button>
-    <span style="font-size:12px;font-weight:700;color:${isBrowsingWeek?'var(--accent)':'var(--text3)'}">Semana ${getRoutineWeek()}${isBrowsingWeek?' · repasando':''}</span>
+    <span style="font-size:12px;font-weight:700;color:${isBrowsingWeek?'var(--accent-text)':'var(--text3)'}">Semana ${getRoutineWeek()}${isBrowsingWeek?' · repasando':''}</span>
     <button class="abtn" onclick="browseRoutineWeek(1)" title="Semana siguiente">›</button>
     ${isBrowsingWeek?`<button class="abtn" onclick="resetRoutineWeekView()">Volver a hoy</button>`:''}
   </div>` : '';
@@ -5542,8 +5546,8 @@ function renderWellnessDayStrip(wKey) {
     const submitted = !!(rec && rec.submitted);
     const partial = !!(rec && !submitted && Object.keys(rec).length);
     const isSel = d.key === wKey;
-    const bg = submitted ? 'var(--green)' : partial ? 'var(--amber)' : 'var(--bg3)';
-    const fg = (submitted || partial) ? '#fff' : 'var(--text3)';
+    const bg = submitted ? 'var(--green-dim)' : partial ? 'var(--amber-dim)' : 'var(--bg3)';
+    const fg = submitted ? 'var(--green)' : partial ? 'var(--amber)' : 'var(--text3)';
     const border = isSel ? 'var(--accent)' : 'var(--border2)';
     return `<div onclick="goToWellnessDate('${d.key}')" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;min-width:0">
       <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase">${d.dow}</div>
@@ -5643,7 +5647,6 @@ function renderWellness() {
   // Desktop: two-column layout. Mobile: stacked.
   let html = `<div class="page-header">
     <div class="page-title">Wellness</div>
-    <div class="page-subtitle">${wKey}</div>
   </div>
   <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:10px 12px 8px;margin-bottom:14px">
   ${renderWellnessDayStrip(wKey)}
@@ -5674,7 +5677,7 @@ function renderWellness() {
   WELLNESS_ITEMS.forEach(item=>{
     const val=w[item.key]||0;
     const selOpt=item.options.find(o=>o.v===val);
-    const selColor = val ? `hsl(${Math.round((val-1)/4*120)},65%,45%)` : 'var(--text3)';
+    const selColor = val ? `hsl(${Math.round((val-1)/4*120)},65%,var(--wl-txt-l))` : 'var(--text3)';
     html+=`<div class="hooper-item">
       <div class="hooper-label">
         <span>${item.label}</span>
@@ -5819,7 +5822,7 @@ function renderZoneDetail() {
     <div style="font-size:12px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px dashed var(--border)">Cuestionario rápido</div>
     ${OSTRC_QUESTIONS.map(q=>{
       const cur = inj.ostrc?.[q.id];
-      const opts = q.options.map(o=>`<button onclick="setOstrcAnswer('${zid}','${q.id}',${o.v})" style="flex:1;min-width:70px;padding:6px 4px;border-radius:var(--rxs);border:1px solid ${cur===o.v?'var(--accent)':'var(--border2)'};background:${cur===o.v?'var(--accent-dim)':'transparent'};color:${cur===o.v?'var(--accent)':'var(--text3)'};font-weight:${cur===o.v?'700':'400'};font-size:11px;cursor:pointer">${o.label}</button>`).join('');
+      const opts = q.options.map(o=>`<button onclick="setOstrcAnswer('${zid}','${q.id}',${o.v})" style="flex:1;min-width:70px;padding:6px 4px;border-radius:var(--rxs);border:1px solid ${cur===o.v?'var(--accent)':'var(--border2)'};background:${cur===o.v?'var(--accent-dim)':'transparent'};color:${cur===o.v?'var(--accent-text)':'var(--text3)'};font-weight:${cur===o.v?'700':'400'};font-size:11px;cursor:pointer">${o.label}</button>`).join('');
       return `<div style="margin-bottom:10px">
         <div style="font-size:11.5px;color:var(--text3);margin-bottom:5px">${q.label}</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">${opts}</div>
@@ -6603,6 +6606,7 @@ function renderStats() {
   for(let w=1;w<=S.currentWeek;w++) sessionList.forEach(s=>{
     const sd=getSD(w,s); if(sd.done&&sd.date) doneDs.add(sd.date);
   });
+  (S.history?._sessionLogs||[]).forEach(l=>{ if(l.date) doneDs.add(l.date); });
   const allExById={};
   getCurrentBlocks().forEach(b=>b.categories.forEach(c=>c.exercises.forEach(e=>{allExById[e.id]=e.name;})));
   const topEx=Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -6630,7 +6634,7 @@ function renderStats() {
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Sesiones</div>
       <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${totalS}</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">completadas</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">de la rutina</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
       <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Racha semanal</div>
@@ -6687,7 +6691,7 @@ function renderStats() {
       ${wScores.map(({date,pct})=>{
         const st=getWellnessState(pct);
         return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
-          <div style="font-size:12px;color:var(--text3);min-width:44px">${date.slice(5)}</div>
+          <div style="font-size:12px;color:var(--text3);min-width:52px;text-transform:capitalize">${new Date(date+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric'}).replace('.','')}</div>
           <div style="flex:1;height:6px;border-radius:3px;background:var(--bg3)">
             <div style="height:100%;border-radius:3px;background:${st.color};width:${pct}%;transition:width .3s"></div>
           </div>
@@ -7068,9 +7072,9 @@ function renderCalendarEventChips(events, maxChips) {
     const badgeLabel = isLocal ? 'LOCAL' : 'VISITANTE';
     const name = e.opponent || 'Rival';
     return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:100%">
-      <span style="font-size:8.5px;font-weight:700;text-align:center;line-height:1.15;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${name}</span>
+      <span style="font-size:11px;font-weight:700;text-align:center;line-height:1.15;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${name}</span>
       ${e.crestUrl?`<img src="${e.crestUrl}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid var(--border2)">`:`<div style="width:30px;height:30px;border-radius:50%;background:var(--bg3);border:1px solid var(--border2)"></div>`}
-      <span style="font-size:7.5px;font-weight:800;letter-spacing:.02em;padding:1px 5px;border-radius:3px;color:#fff;background:${badgeColor}">${badgeLabel}</span>
+      <span style="font-size:11px;font-weight:800;letter-spacing:.02em;padding:0 4px;border-radius:3px;color:#fff;background:${badgeColor}" title="${badgeLabel}">${isLocal?'LOC':'VIS'}</span>
     </div>`;
   }).join('');
   const otherChips = shownOthers.length ? `<div style="display:flex;flex-direction:column;gap:2px;width:100%">
@@ -7115,7 +7119,7 @@ function renderCalendarMonthView(team) {
       const isToday = dateStr===today, isSelected = dateStr===selected;
       return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:64px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:2px;font-size:12px;padding:4px 2px;
         background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
-        <span style="color:${isToday?'var(--accent)':'var(--text)'}">${day}</span>
+        <span style="color:${isToday?'var(--accent-text)':'var(--text)'}">${day}</span>
         ${renderCalendarEventChips(events, 3)}
       </div>`;
     }).join('')}
@@ -7151,7 +7155,7 @@ function renderCalendarWeekView(team) {
       return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:88px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:3px;padding:4px 2px;
         background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
         <span style="font-size:11px;color:var(--text3);font-weight:600">${dayInitials[i]}</span>
-        <span style="font-size:14px;color:${isToday?'var(--accent)':'var(--text)'}">${d.getDate()}</span>
+        <span style="font-size:14px;color:${isToday?'var(--accent-text)':'var(--text)'}">${d.getDate()}</span>
         ${renderCalendarEventChips(events, 4)}
       </div>`;
     }).join('')}
@@ -7921,7 +7925,7 @@ function renderTeamRutina(team) {
       <div class="player-note"><span class="player-note-name">+ Nota</span>
         <input style="flex:1;background:transparent;border:none;outline:none;font-size:12px;color:var(--text)" placeholder="Jugador: nota específica..." onkeydown="if(event.key==='Enter')addPlayerNote('${team.id}',${di},this)">
       </div>
-      ${(day.playerNotes||[]).map((n,ni)=>`<div class="player-note"><span class="player-note-name">${n.player}</span><span class="player-note-text">${n.note}</span><span style="cursor:pointer;color:var(--text3);font-size:14px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span></div>`).join('')}
+      ${(day.playerNotes||[]).map((n,ni)=>`<div class="player-note"><span class="player-note-name">${escHtml(n.player)}</span><span class="player-note-text">${escHtml(n.note)}</span><span style="cursor:pointer;color:var(--text3);font-size:14px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span></div>`).join('')}
     </section>`;
   }
 
@@ -7952,7 +7956,7 @@ function renderTeamRutina(team) {
   if(unmatchedLinked.length) html += `<div class="admin-section" style="margin-top:12px;border-color:var(--amber)">
     <div class="admin-section-title" style="color:var(--amber)">${craftIconSvg('alert','var(--amber)',12)} ${unmatchedLinked.length} atleta${unmatchedLinked.length===1?'':'s'} con cuenta vinculada pero fuera del roster</div>
     ${unmatchedLinked.map(a=>`<div class="admin-item">
-      <div class="admin-item-lbl" style="cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">${a.name||a.email}</div>
+      <div class="admin-item-lbl" style="cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">${escHtml(a.name||a.email)}</div>
       <button class="abtn abtn-p" onclick="addLinkedPlayerToRoster('${team.id}','${(a.name||a.email).replace(/'/g,"\\'")}')">+ Agregar al roster</button>
     </div>`).join('')}
   </div>`;
@@ -8046,6 +8050,10 @@ const TEAM_COLORS = ['#d4647a','#b07ab8','#d4944a','#7ab88a','#68b4c8','#c87890'
 
 // Avatar circular con iniciales en vez de un simple punto de color — más fácil
 // de escanear en listas largas y le da más carácter a cada atleta.
+// Texto que escribe un usuario, listo para meter en el HTML sin que se ejecute nada.
+function escHtml(t) { return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+window.escHtml = escHtml;
+
 function getInitials(name) {
   if(!name) return '?';
   const parts=name.trim().split(/\s+/).filter(Boolean);
@@ -8058,7 +8066,7 @@ function avatarHtml(name, color, size, photoUrl, zoom) {
   size = size||28;
   if(photoUrl) return `<img src="${photoUrl}" ${zoom?'class="av-zoom" onclick="event.stopPropagation();openPhotoZoom(this.src)" title="Ver foto"':''} style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;display:block" alt="">`;
   const fs = Math.round(size*0.36);
-  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color||'var(--accent)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:${fs}px;font-weight:700;letter-spacing:-.02em">${getInitials(name)}</div>`;
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color||'var(--accent)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:${fs}px;font-weight:700;letter-spacing:-.02em">${escHtml(getInitials(name))}</div>`;
 }
 window.avatarHtml=avatarHtml;
 // Foto en grande (se cierra tocando afuera, la cruz o con Escape).
@@ -8495,7 +8503,7 @@ window.resetAthleteAccount = resetAthleteAccount;
 function hasPlayedTwoGamesThisWeek(personal) {
   const logs = personal?.history?._sessionLogs || personal?.sessionLogs || [];
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
-  const gameLogs = logs.filter(l=>(l.activity==='partido'||l.activity==='partido2') && new Date(l.date)>=weekAgo);
+  const gameLogs = logs.filter(l=>(l.activity==='partido'||l.activity==='partido2') && daysAgoLocal(l.date)<=6);
   const gameDates = new Set(gameLogs.map(l=>l.date));
   return gameLogs.length>=2 || gameDates.size>=2;
 }
@@ -8676,7 +8684,7 @@ function renderAthleteSummaryCard(a) {
   return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div>
-        <div style="font-size:14px;font-weight:600">${a.name || a.email}</div>
+        <div style="font-size:14px;font-weight:600">${escHtml(a.name || a.email)}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.sport || ''}${a.position ? ' · ' + a.position : ''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
@@ -9295,7 +9303,7 @@ function renderTriageTable(members) {
         const monSt = getMonotonyStatus(summary.monotony);
         const worstSev = worst ? (severityInfo(worst.severity)||severityInfo('leve')) : null;
         return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
-          <td style="padding:8px 10px;font-weight:600;white-space:nowrap">${a.name||a.email}</td>
+          <td style="padding:8px 10px;font-weight:600;white-space:nowrap">${escHtml(a.name||a.email)}</td>
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${wState.color}">${summary.avgWellness!=null?summary.avgWellness+'%':'—'}</td>
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${acwrSt.color}">${summary.acwr!=null?summary.acwr.toFixed(2):'—'}</td>
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${monSt.color}">${summary.monotony!=null?summary.monotony.toFixed(1):'—'}</td>
@@ -10704,7 +10712,7 @@ function renderAtletaDetail(a) {
     <button class="back-btn" onclick="goBackFromAthleteDetail()">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
       ${avatarHtml(a.name||a.email, a.color, 36, a.photoUrl, true)}
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name || a.email}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.name || a.email)}</span>
     </div>
     ${pinBtn}
     <button class="abtn abtn-p hd-load" onclick="openProxyForm('${a.uid}')" title="Cargar el wellness y la carga de ${(a.name||'este atleta').replace(/"/g,'')}"><svg class="eic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="hs"> Cargar wellness / carga</span></button>
@@ -10736,7 +10744,7 @@ function renderAtletaDetail(a) {
   else if (sub === 'wellness') html += `<button class="load-cta" onclick="openProxyForm('${a.uid}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Cargar wellness y carga de ${String((a.name||'').split(' ').slice(-1)[0]||'este atleta').replace(/</g,'&lt;')}</span></button>` + renderGroupWellness(getEffectiveGroupUids(a), {compareOnly: !!a.compareTeamId, selfUid: a.uid});
   else if (sub === 'stats') html += renderAthleteStatsTab(a);
   else if (sub === 'evals') html += renderEvals();
-  else html += renderPerfilTab(a);
+  else html += goalsCardHtml(a.uid) + renderPerfilTab(a);
   return html;
 }
 window.renderAtletaDetail = renderAtletaDetail;
@@ -11112,7 +11120,7 @@ function renderPerfilTab(a) {
         ${isRealInjury(inj)?`
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 5px">Fase de retorno al juego</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${RTP_PHASES.map(p=>`<button onclick="adminSetInjuryRtpPhase('${uid}','${id}','${p.id}')" style="flex:1;min-width:80px;padding:6px;border-radius:var(--rxs);border:1px solid ${inj.rtpPhase===p.id?'var(--accent)':'var(--border2)'};background:${inj.rtpPhase===p.id?'var(--accent-dim)':'transparent'};color:${inj.rtpPhase===p.id?'var(--accent)':'var(--text3)'};font-weight:${inj.rtpPhase===p.id?'700':'400'};font-size:11px;cursor:pointer">${p.label}</button>`).join('')}
+          ${RTP_PHASES.map(p=>`<button onclick="adminSetInjuryRtpPhase('${uid}','${id}','${p.id}')" style="flex:1;min-width:80px;padding:6px;border-radius:var(--rxs);border:1px solid ${inj.rtpPhase===p.id?'var(--accent)':'var(--border2)'};background:${inj.rtpPhase===p.id?'var(--accent-dim)':'transparent'};color:${inj.rtpPhase===p.id?'var(--accent-text)':'var(--text3)'};font-weight:${inj.rtpPhase===p.id?'700':'400'};font-size:11px;cursor:pointer">${p.label}</button>`).join('')}
         </div>`:''}
         ${renderInjuryStudies(id, inj, uid)}
       </div>`;
@@ -11128,7 +11136,7 @@ function renderPerfilTab(a) {
   const secData = `<div class="admin-section">
     <div class="admin-section-title">Datos del atleta</div>
     <div class="pf-form">
-      <label class="pf-f pf-wide"><span>Nombre</span><input class="pf-inp" id="edit-name-${uid}" value="${a.name||''}" placeholder="Apellido y nombre" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()"></label>
+      <label class="pf-f pf-wide"><span>Nombre</span><input class="pf-inp" id="edit-name-${uid}" value="${escHtml(a.name||'')}" placeholder="Apellido y nombre" onblur="setAthleteName('${uid}',this.value)" onkeydown="if(event.key==='Enter')this.blur()"></label>
       <div class="pf-f pf-wide"><span>Físico</span><div class="pf-row">
         ${[['age','Edad','años'],['height','Altura','cm'],['weight','Peso','kg']].map(([k,l,u])=>`<label class="basic-f"><span>${l}</span><input id="basic-${k}-${uid}" type="text" inputmode="decimal" value="${a[k]??''}" placeholder="—" onblur="setAthleteBasic('${uid}','${k}',this.value)" onkeydown="if(event.key==='Enter')this.blur()"><i>${u}</i></label>`).join('')}
       </div></div>
@@ -11709,7 +11717,7 @@ function renderAtletaRutina(a) {
         ${(a.routineAssignmentHistory||[]).length>=2 ? `<div style="margin-bottom:4px"><span style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${phaseColor(a.routineAssignmentHistory.length)};padding:2px 8px;border-radius:20px">Planificación ${a.routineAssignmentHistory.length}</span> <span style="font-size:11px;font-weight:700;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Actual</span></div>` : ''}
         <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
       </div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${routine.ownerUid===a.uid ? `<button class="abtn abtn-p" onclick="editPersonalRoutine('${routine.id}')" title="Seguir armando o cambiar esta rutina propia">✎ Editar rutina</button>` : ''}
         <button class="abtn ${(S._atletaRoutineCicloView||'micro')==='micro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('micro')">Vista microciclo</button>
         <button class="abtn ${S._atletaRoutineCicloView==='macro'?'abtn-p':''}" onclick="setAtletaRoutineCicloView('macro')">Vista macrociclo</button>
@@ -11809,15 +11817,15 @@ function renderAtletaRutina(a) {
                     </div>`;
                     })()}
                     ${doneData.athleteNote?`<div style="margin-top:6px;background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--rxs);padding:8px 10px;font-size:12px;color:var(--text)">
-                      <span style="font-weight:700;color:var(--amber)">📝 Nota del atleta:</span> ${doneData.athleteNote}
+                      <span style="font-weight:700;color:var(--amber)">📝 Nota del atleta:</span> ${escHtml(doneData.athleteNote)}
                     </div>`:''}
                     </div>
                   </div>`;}).join('')}
               `).join('')}
             </div>
           </div>`;
-        }).join('') : `<div style="padding:0 16px 12px;font-size:12px;color:var(--text3)">${hiddenByPosition ? `Este día tiene bloques cargados, pero ninguno está habilitado para el puesto de ${a.name||a.email||'este atleta'} (${a.position||'sin puesto asignado'}). Revisá el filtro de puestos en la asignación de rutina del equipo.` : 'Sin ejercicios cargados'}</div>`)}
-        ${dayCollapsed ? '' : `<div style="padding:0 16px 12px"><button class="abtn" style="font-size:11px" onclick="openPersonalExtraLib('${a.uid}','${sName.replace(/'/g,"\\'")}')" title="Se lo agrega SOLO a ${a.name||a.email}, no afecta a sus compañeros">+ Ejercicio personal para ${(a.name||a.email||'').split(' ')[0]}</button></div>`}
+        }).join('') : `<div style="padding:0 16px 12px;font-size:12px;color:var(--text3)">${hiddenByPosition ? `Este día tiene bloques cargados, pero ninguno está habilitado para el puesto de ${escHtml(a.name||a.email||'este atleta')} (${a.position||'sin puesto asignado'}). Revisá el filtro de puestos en la asignación de rutina del equipo.` : 'Sin ejercicios cargados'}</div>`)}
+        ${dayCollapsed ? '' : `<div style="padding:0 16px 12px"><button class="abtn" style="font-size:11px" onclick="openPersonalExtraLib('${a.uid}','${sName.replace(/'/g,"\\'")}')" title="Se lo agrega SOLO a ${escHtml(a.name||a.email)}, no afecta a sus compañeros">+ Ejercicio personal para ${escHtml((a.name||a.email||'').split(' ')[0])}</button></div>`}
       </div>`;
     }).join('')}
   </div>`;
@@ -12139,7 +12147,7 @@ function renderSettings() {
     <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Apariencia</div>
     <div class="settings-item">
       <div><div class="settings-lbl">Modo oscuro</div></div>
-      <div class="theme-switch ${darkOn?'on':''}" onclick="toggleTheme()"><div class="theme-switch-knob"></div></div>
+      <div class="theme-switch ${darkOn?'on':''}" onclick="toggleTheme()" role="switch" aria-checked="${darkOn}" aria-label="Modo oscuro" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleTheme()}"><div class="theme-switch-knob"></div></div>
     </div>
     <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
       <div class="settings-lbl" style="margin-bottom:8px">Tipografía</div>
@@ -12166,7 +12174,7 @@ function renderSettings() {
         </div>
       </div>
       <div style="min-width:0">
-        <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.name||'—'}</div>
+        <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(u.name||'—')}</div>
         
       </div>
       <input type="file" id="profile-photo-inp" accept="image/*" style="display:none" onchange="handleProfilePhotoUpload(this)">
@@ -12174,7 +12182,7 @@ function renderSettings() {
     ${S.isAdmin ? '' : `
     <div class="settings-item">
       <div class="settings-lbl">Nombre</div>
-      <input class="abtn" style="text-align:right;flex:1;max-width:200px" value="${u.name||''}" onblur="saveMyProfileField('name',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+      <input class="abtn" style="text-align:right;flex:1;max-width:200px" value="${escHtml(u.name||'')}" onblur="saveMyProfileField('name',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>
     <div class="settings-item">
       <div class="settings-lbl">Edad</div>
@@ -12509,7 +12517,7 @@ function renderWellnessDetail() {
 
   let html = `<div class="team-detail-header">
     <button class="back-btn" onclick="S.adminView='${S._wellnessDetailReturnView||'athlete_detail'}';renderMain()">‹</button>
-    <div class="team-detail-title">Wellness · ${a.name||a.email}</div>
+    <div class="team-detail-title">Wellness · ${escHtml(a.name||a.email)}</div>
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <button class="abtn" onclick="shiftWellnessDetailDate(-1)">‹ Día anterior</button>
@@ -12698,7 +12706,7 @@ function renderTrainedTodayScreen() {
     ${rows.length ? rows.map(({a,logs,markedToday})=>`
       <div class="admin-item" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:6px" onclick="adminOpenAthleteDash('${a.uid}')">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div class="admin-item-lbl">${a.name||a.email}</div>
+          <div class="admin-item-lbl">${escHtml(a.name||a.email)}</div>
           ${markedToday?`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">${craftIconSvg('alert','var(--red)',10)} molestia/lesión</span>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -12763,7 +12771,7 @@ function renderReminderScreen() {
   </div>`:''}
   <div class="admin-section" style="margin-top:12px">
     <div class="admin-section-title" style="color:var(--green)">✓ Completaron todo (${done.length})</div>
-    ${done.length?done.map(a=>`<div class="admin-item" style="cursor:pointer" onclick="adminOpenAthleteDash('${a.uid}')"><div class="admin-item-lbl">${a.name||a.email}</div></div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Nadie completó todo todavía.</div>`}
+    ${done.length?done.map(a=>`<div class="admin-item" style="cursor:pointer" onclick="adminOpenAthleteDash('${a.uid}')"><div class="admin-item-lbl">${escHtml(a.name||a.email)}</div></div>`).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Nadie completó todo todavía.</div>`}
   </div>`;
   return html;
 }
@@ -12833,9 +12841,9 @@ function renderAdminMain() {
   return `
   <div style="font-size:16px;font-weight:700;margin-bottom:14px">Panel admin</div>
   <div class="admin-section">
-    <div class="admin-section-title">Alumnos</div>
+    <div class="admin-section-title">Atletas</div>
     <div class="admin-item">
-      <div><div class="admin-item-lbl">Ver alumnos</div></div>
+      <div><div class="admin-item-lbl">Ver atletas</div></div>
       <button class="abtn abtn-p" onclick="adminGoAthletes()">Ver →</button>
     </div>
     <div class="admin-item">
@@ -12881,7 +12889,7 @@ window.resetBlocks=resetBlocks;
 async function adminGoAthletes() {
   S.adminView='athletes';
   S.currentView='admin';
-  document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando alumnos…</div>`;
+  document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando atletas…</div>`;
   try {
     const snap = await getDocs(collection(db,'users'));
     S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
@@ -12957,7 +12965,7 @@ function renderAthletesListBody() {
       return `<div style="display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name||a.email}</div>
+          <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.name||a.email)}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <span style="font-size:11px;color:${status.color};flex-shrink:0;white-space:nowrap">${status.label}</span>
@@ -13499,7 +13507,7 @@ function renderWeeklyReport() {
   <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:720px;margin:0 auto;font-family:inherit">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px">
       <div>
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${a.name||a.email}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${escHtml(a.name||a.email)}</div>
         <div style="font-size:12px;color:#555;margin-top:2px">${myTeam?myTeam.name+' · ':''}${a.position||''}</div>
       </div>
       <div style="text-align:right">
@@ -15371,7 +15379,7 @@ function renderEvals() {
       + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
       + ((S.teamView && S.teamSubview==='evals' && teamEvalAthleteIds().length>1)
           ? '<div class="an-inline">'+athleteNavBar(teamEvalAthleteIds(), S.evalAthleteId, 'goToEvalAthlete', currentAthleteName)+'</div>'
-          : athleteSel + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>')
+          : (S._inAthleteDetail ? '<div style="font-size:15px;font-weight:700;color:var(--text)">'+escHtml(currentAthleteName)+'</div>' : athleteSel))
       + '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>'
       + '</div>';
   }
@@ -15416,7 +15424,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
       + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
       + ((S.teamView && S.teamSubview==='evals' && teamEvalAthleteIds().length>1)
           ? '<div class="an-inline">'+athleteNavBar(teamEvalAthleteIds(), S.evalAthleteId, 'goToEvalAthlete', currentAthleteName)+'</div>'
-          : athleteSel + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+currentAthleteName+'</div>')
+          : (S._inAthleteDetail ? '<div style="font-size:15px;font-weight:700;color:var(--text)">'+escHtml(currentAthleteName)+'</div>' : athleteSel))
       + '<button class="abtn" style="margin-left:auto" onclick="openAxonImport()">Importar del Axon</button>'
       + '</div>';
   }
@@ -16900,7 +16908,7 @@ function getMatchMinutesSummary(sessionLogs) {
   const minutosTotales = matchLogs.reduce((s,l)=>s+(l.mins||0),0);
   const promedioPorPartido = partidosJugados ? Math.round(minutosTotales/partidosJugados) : 0;
   const lastMatchDate = matchLogs.length ? matchLogs.reduce((max,l)=>l.date>max?l.date:max, matchLogs[0].date) : null;
-  const daysSinceLastMatch = lastMatchDate ? Math.floor((new Date()-new Date(lastMatchDate))/(1000*60*60*24)) : null;
+  const daysSinceLastMatch = lastMatchDate ? daysAgoLocal(lastMatchDate) : null;
   return { partidosJugados, minutosTotales, promedioPorPartido, lastMatchDate, daysSinceLastMatch, matchLogs };
 }
 window.getMatchMinutesSummary = getMatchMinutesSummary;
@@ -16912,6 +16920,10 @@ function getExposureHours(sessionLogs) {
 }
 window.getExposureHours = getExposureHours;
 
+// Días enteros entre hoy y una fecha "AAAA-MM-DD", contados en la hora local.
+function daysAgoLocal(ds) { return Math.round((new Date(todayLocal()+'T12:00:00') - new Date(String(ds).slice(0,10)+'T12:00:00'))/86400000); }
+window.daysAgoLocal = daysAgoLocal;
+
 function calcLoadMetrics(sessionLogs) {
   // sessionLogs = array of {date, week, session, rpe, mins, ua}
   if(!sessionLogs || !sessionLogs.length) return null;
@@ -16921,17 +16933,16 @@ function calcLoadMetrics(sessionLogs) {
   const fourWeeksAgo = new Date(now); fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
   
   // Acute load: last 7 days
-  const acuteLogs = sessionLogs.filter(l=>new Date(l.date)>=weekAgo);
+  const acuteLogs = sessionLogs.filter(l=>daysAgoLocal(l.date)<=6);
   const acuteUA = acuteLogs.reduce((a,l)=>a+l.ua, 0);
   
   // Chronic load: average of last 4 weeks
-  const chronicLogs = sessionLogs.filter(l=>new Date(l.date)>=fourWeeksAgo);
+  const chronicLogs = sessionLogs.filter(l=>daysAgoLocal(l.date)<=27);
   // Split into 4 weeks
   const weeklyUA = [0,0,0,0];
   chronicLogs.forEach(l=>{
-    const daysAgo = Math.floor((now-new Date(l.date))/(1000*60*60*24));
-    const wIdx = Math.floor(daysAgo/7);
-    if(wIdx<4) weeklyUA[wIdx]+=l.ua;
+    const wIdx = Math.floor(daysAgoLocal(l.date)/7);
+    if(wIdx>=0 && wIdx<4) weeklyUA[wIdx]+=l.ua;
   });
   const chronicUA = weeklyUA.reduce((a,v)=>a+v,0)/4;
 
@@ -16971,7 +16982,7 @@ function calcLoadMetrics(sessionLogs) {
   const GAP_MAX_NEW = 10;
   const GAP_MAX_ESTABLISHED = 21;
   const wideAgo = new Date(now); wideAgo.setDate(wideAgo.getDate()-WIDE_LOOKBACK_DAYS);
-  const wideDistinctDays = new Set(sessionLogs.filter(l=>new Date(l.date)>=wideAgo).map(l=>l.date)).size;
+  const wideDistinctDays = new Set(sessionLogs.filter(l=>daysAgoLocal(l.date)<WIDE_LOOKBACK_DAYS).map(l=>l.date)).size;
   const isEstablished = wideDistinctDays >= ESTABLISHED_MIN_DAYS;
   const GAP_MAX_DAYS = isEstablished ? GAP_MAX_ESTABLISHED : GAP_MAX_NEW;
 
@@ -17010,9 +17021,9 @@ window.calcLoadMetrics=calcLoadMetrics;
 function acwrBreakdown(logs) {
   const m = calcLoadMetrics(logs||[]); if(!m) return null;
   const now = new Date();
-  const ago = l => Math.floor((now - new Date(l.date))/86400000);
+  const ago = l => daysAgoLocal(l.date);
   const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate()-7);
-  const acuteLogs = (logs||[]).filter(l=>new Date(l.date)>=weekAgo);
+  const acuteLogs = (logs||[]).filter(l=>daysAgoLocal(l.date)<=6);
   const weeks = [0,0,0,0];
   (logs||[]).forEach(l=>{ const w=Math.floor(ago(l)/7); if(w>=0 && w<4) weeks[w]+=(+l.ua||0); });
   const chronicAvg = weeks.reduce((s,v)=>s+v,0)/4;
@@ -17777,6 +17788,164 @@ async function adminOpenAthleteDash(uid) {
 window.adminOpenAthleteDash=adminOpenAthleteDash;
 
 // Athlete home (non-admin) — brief summary
+// ── Objetivos del atleta (hasta 4) ──
+// Lista fija (más "Otro"). Los medibles avanzan solos con los datos que ya
+// están en la app (tests, RM, sesiones, wellness, peso); el resto lo marca el
+// atleta o el profe. Se guardan en personal/{uid}.goals.
+const GOALS_MAX = 4;
+const GOAL_GROUPS = ['Rendimiento', 'Cuerpo y salud', 'Competencia'];
+const GOAL_TYPES = [
+  {id:'cmj', g:0, label:'Saltar más (CMJ)', unit:'cm', dec:1, cur:c=>{ const r=sortEvalRecsByDate((c.evals.cmj||[]).filter(x=>x&&x.height!=null)); return r.length ? r[r.length-1].height : null; }},
+  {id:'rm_sentadilla', g:0, label:'Más fuerza: sentadilla', unit:'kg', dec:1, cur:c=>c.oneRM.sentadilla_barra ?? null},
+  {id:'rm_press', g:0, label:'Más fuerza: press de banca', unit:'kg', dec:1, cur:c=>c.oneRM.press_plano ?? null},
+  {id:'rm_peso_muerto', g:0, label:'Más fuerza: peso muerto', unit:'kg', dec:1, cur:c=>c.oneRM.peso_muerto ?? null},
+  {id:'rm_cargada', g:0, label:'Más fuerza: cargada', unit:'kg', dec:1, cur:c=>c.oneRM.cargada_potencia ?? null},
+  {id:'frecuencia', g:0, label:'Entrenar más seguido', unit:'por semana', dec:0, perWeek:true, cur:c=>{ const mon=goalWeekStart(); return new Set(c.logs.filter(l=>l.date>=mon).map(l=>l.date)).size; }},
+  {id:'wellness_diario', g:0, label:'Completar el wellness todos los días', unit:'días esta semana', dec:0, perWeek:true, fixedTarget:7, cur:c=>{ const mon=goalWeekStart(), td=todayLocal(); return Object.keys(c.wellness).filter(d=>d>=mon&&d<=td&&getWellnessScore(c.wellness[d]).allFilled).length; }},
+  {id:'bajar_peso', g:1, label:'Bajar de peso', unit:'kg', dec:1, lower:true, cur:c=>c.weight},
+  {id:'subir_peso', g:1, label:'Subir de peso', unit:'kg', dec:1, cur:c=>c.weight},
+  {id:'masa_muscular', g:1, label:'Ganar masa muscular', manual:true},
+  {id:'dormir', g:1, label:'Dormir mejor', unit:'h por noche', dec:1, perWeek:true, cur:c=>{ const v=[]; for(let i=0;i<7;i++){ const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-i); const w=c.wellness[toLocalDateStr(d)]; const h=parseFloat(String(w?.['sueño_horas']??'').replace(',','.')); if(isFinite(h)&&h>0) v.push(h); } return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length*10)/10 : null; }},
+  {id:'lesion', g:1, label:'Volver de una lesión', manual:true},
+  {id:'sin_dolor', g:1, label:'Jugar sin dolor', manual:true},
+  {id:'movilidad', g:1, label:'Mejorar la movilidad', manual:true},
+  {id:'fecha', g:2, label:'Llegar en forma a una fecha', manual:true, date:true},
+  {id:'puesto', g:2, label:'Ganarme el puesto', manual:true},
+  {id:'otro', g:3, label:'Otro', manual:true, text:true},
+];
+window.GOAL_TYPES = GOAL_TYPES;
+function goalNum(v) { const n = parseDecimal(v); return isFinite(n) ? n : null; }
+function goalWeekStart() { const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-((d.getDay()+6)%7)); return toLocalDateStr(d); }
+// Datos de un atleta para calcular objetivos: 'self' (el atleta en su app) o un uid (el profe).
+function goalCtx(uid) {
+  if(uid==='self') return {evals:S.evals||{}, oneRM:S.oneRM||{}, logs:S.history?._sessionLogs||[], wellness:S.wellness||{}, weight:goalNum(S.userData?.weight), goals:S.goals||[]};
+  const a = (S.adminAthletes||[]).find(x=>x.uid===uid) || {};
+  const p = a._personal || {};
+  const cached = getAthleteEvals(uid);
+  return {evals:(cached&&Object.keys(cached).length?cached:p.evals)||{}, oneRM:p.oneRM||{}, logs:p.history?._sessionLogs||[], wellness:p.wellness||{}, weight:goalNum(a.weight), goals:p.goals||[]};
+}
+function goalFmt(v, dec) { return v==null||!isFinite(v) ? '—' : cmpFmt(v, dec).replace(/,0$/,''); }
+// Avance de un objetivo: {cur, pct, txt}
+function goalProgress(g, c) {
+  const t = GOAL_TYPES.find(x=>x.id===g.type); if(!t) return {pct:0, txt:''};
+  if(t.manual) {
+    if(t.date && g.date) { const days=Math.round((new Date(g.date+'T12:00:00')-new Date(todayLocal()+'T12:00:00'))/86400000); return {pct:g.pct||0, txt: days>0 ? 'faltan '+days+' día'+(days===1?'':'s') : days===0 ? '¡es hoy!' : 'ya pasó'}; }
+    return {pct:g.pct||0, txt:(g.pct||0)>=100 ? 'logrado' : (g.pct||0)+'%'};
+  }
+  const cur = t.cur(c), target = t.fixedTarget || goalNum(g.target);
+  if(cur==null || !target) return {cur, pct:0, txt: cur==null ? 'sin datos todavía' : goalFmt(cur,t.dec)+' '+t.unit};
+  let pct;
+  if(t.perWeek) pct = cur/target*100;
+  else {
+    const start = goalNum(g.start);
+    const from = start!=null ? start : cur;
+    pct = t.lower ? (from-cur)/(from-target)*100 : (cur-from)/(target-from)*100;
+    if(t.lower ? cur<=target : cur>=target) pct = 100;
+    if(!isFinite(pct)) pct = 0;
+  }
+  return {cur, pct:Math.max(0, Math.min(100, Math.round(pct))), txt:`<b>${goalFmt(cur,t.dec)}</b> / ${goalFmt(target,t.dec)} ${t.unit}`};
+}
+window.goalProgress = goalProgress;
+function goalLabel(g) { const t=GOAL_TYPES.find(x=>x.id===g.type); return t?.text ? (g.text||'Otro') : (t?.label||''); }
+// Lista de objetivos con su barra (inicio del atleta y ficha del profe)
+function goalsListHtml(uid) {
+  const c = goalCtx(uid), esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  return `<div class="gl-list">${c.goals.map(g=>{ const p=goalProgress(g,c);
+    return `<div class="gl-it"><div class="gl-h"><b>${esc(goalLabel(g))}</b><span>${p.txt}</span></div><div class="gl-bar"><i style="width:${p.pct}%;${p.pct>=100?'background:var(--green)':''}"></i></div></div>`; }).join('')}</div>`;
+}
+window.goalsListHtml = goalsListHtml;
+function goalsCardHtml(uid) {
+  const c = goalCtx(uid);
+  const who = uid==='self' ? 'Mis objetivos' : 'Objetivos';
+  if(!c.goals.length) return `<div class="home-row gl-empty" onclick="openGoalsEditor('${uid}')"><span class="home-ic gl-ic">${GOAL_SVG}</span><div class="home-row-m"><b>${uid==='self'?'Elegí tus objetivos':'Sin objetivos cargados'}</b><small>${uid==='self'?'Hasta 4':'Cargalos por él'}</small></div><span class="home-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span></div>`;
+  return `<section class="gl-card"><div class="gl-top"><span class="gl-k">${who}</span><button class="gl-edit" onclick="openGoalsEditor('${uid}')">Editar</button></div>${goalsListHtml(uid)}</section>`;
+}
+window.goalsCardHtml = goalsCardHtml;
+const GOAL_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>';
+
+// Editor (atleta o profe): lista agrupada, hasta 4, con la meta de cada uno.
+function openGoalsEditor(uid) {
+  const c = goalCtx(uid);
+  S._goalsEdit = {uid, list: JSON.parse(JSON.stringify(c.goals||[]))};
+  renderGoalsEditor();
+}
+function renderGoalsEditor() {
+  const st = S._goalsEdit; if(!st) return;
+  const c = goalCtx(st.uid), esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const sel = id=>st.list.find(g=>g.type===id);
+  const full = st.list.length>=GOALS_MAX;
+  const row = t=>{
+    const g = sel(t.id), on = !!g, dis = !on && full;
+    let extra = '';
+    if(on && !t.manual && !t.fixedTarget) {
+      const cur = t.cur(c);
+      extra = `<div class="ge-meta">Hoy <b>${goalFmt(cur,t.dec)}${cur!=null?' '+t.unit:''}</b> → meta <input type="text" inputmode="decimal" value="${esc(g.target??'')}" placeholder="—" onclick="event.stopPropagation()" oninput="setGoalField('${t.id}','target',this.value)"> ${t.unit}</div>`;
+    } else if(on && t.date) extra = `<div class="ge-meta">Fecha <input type="date" value="${esc(g.date||'')}" onclick="event.stopPropagation()" onchange="setGoalField('${t.id}','date',this.value)"></div>`;
+    else if(on && t.text) extra = `<div class="ge-meta"><input class="ge-txt" type="text" maxlength="60" value="${esc(g.text||'')}" placeholder="Escribilo acá" onclick="event.stopPropagation()" oninput="setGoalField('${t.id}','text',this.value)"></div>`;
+    if(on && t.manual) extra += `<div class="ge-pct" onclick="event.stopPropagation()">${[0,25,50,75,100].map(p=>`<button class="${(g.pct||0)===p?'on':''}" onclick="setGoalField('${t.id}','pct',${p})">${p===100?'Logrado':p+'%'}</button>`).join('')}</div>`;
+    return `<div class="ge-opt${on?' on':''}${dis?' dis':''}" onclick="toggleGoal('${t.id}')"><span class="ge-ck">${on?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':''}</span><div class="ge-m"><b>${t.label}</b>${extra}</div></div>`;
+  };
+  const groups = [0,1,2,3].map(gi=>{ const ts=GOAL_TYPES.filter(t=>t.g===gi); return (GOAL_GROUPS[gi]?`<div class="ge-grp">${GOAL_GROUPS[gi]}</div>`:'')+ts.map(row).join(''); }).join('');
+  let o = document.getElementById('goals-overlay');
+  const scroll = o?.querySelector('.ge-body')?.scrollTop || 0;
+  if(!o) { o = document.createElement('div'); o.id = 'goals-overlay'; o.className = 'video-modal open'; o.onclick = e=>{ if(e.target===o) closeGoalsEditor(); }; document.body.appendChild(o); }
+  o.innerHTML = `<div class="video-modal-box ge-box"><div class="ge-head"><div class="video-modal-title" style="margin:0">${st.uid==='self'?'Mis objetivos':'Objetivos'}</div><span class="ge-cnt">${st.list.length} de ${GOALS_MAX}</span></div>
+    <div class="ge-body">${groups}</div>
+    <div class="ge-foot"><button class="abtn" onclick="closeGoalsEditor()">Cancelar</button><button class="abtn abtn-p" onclick="saveGoals()">Guardar</button></div></div>`;
+  o.querySelector('.ge-body').scrollTop = scroll;
+}
+function toggleGoal(id) {
+  const st = S._goalsEdit; if(!st) return;
+  const i = st.list.findIndex(g=>g.type===id);
+  if(i>=0) st.list.splice(i,1);
+  else {
+    if(st.list.length>=GOALS_MAX) { showToast('Hasta '+GOALS_MAX+' objetivos'); return; }
+    const t = GOAL_TYPES.find(x=>x.id===id), c = goalCtx(st.uid);
+    const cur = t && !t.manual ? t.cur(c) : null;
+    st.list.push({type:id, start: cur!=null && !t.perWeek ? cur : null, startDate: todayLocal(), target: t?.fixedTarget || null, pct: t?.manual ? 0 : null});
+  }
+  renderGoalsEditor();
+}
+// Cambia un campo sin volver a dibujar mientras se escribe (no pierde el foco).
+function setGoalField(id, k, v) {
+  const g = S._goalsEdit?.list.find(x=>x.type===id); if(!g) return;
+  g[k] = v;
+  if(k==='pct') renderGoalsEditor();
+}
+function closeGoalsEditor() { S._goalsEdit = null; const o=document.getElementById('goals-overlay'); if(o) o.remove(); }
+async function saveGoals() {
+  const st = S._goalsEdit; if(!st) return;
+  const list = st.list.map(g=>{ const t=GOAL_TYPES.find(x=>x.id===g.type)||{}; return {type:g.type, start:g.start??null, startDate:g.startDate||todayLocal(), target: t.manual ? null : (goalNum(g.target) ?? null), pct: t.manual ? (+g.pct||0) : null, date: t.date ? (g.date||null) : null, text: t.text ? String(g.text||'').trim().slice(0,60) : null}; });
+  const uid = st.uid==='self' ? S.user?.uid : st.uid;
+  if(!uid) return;
+  try {
+    await updateDocSafe(doc(db,'personal',uid), {goals:list});
+    if(st.uid==='self') S.goals = list;
+    else {
+      const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
+      if(a) { if(!a._personal) a._personal = {}; a._personal.goals = list; }
+      // releer para confirmar que quedó en el documento del atleta
+      const snap = await getDoc(doc(db,'personal',uid));
+      if(JSON.stringify(snap.data()?.goals||[])!==JSON.stringify(list)) throw new Error('no se confirmó el guardado');
+    }
+    closeGoalsEditor(); renderMain(); showToast('Objetivos guardados');
+  } catch(e) { console.error('Guardar objetivos', e); showToast('No se pudo guardar: '+(e?.message||e)); }
+}
+window.openGoalsEditor = openGoalsEditor; window.toggleGoal = toggleGoal; window.setGoalField = setGoalField; window.closeGoalsEditor = closeGoalsEditor; window.saveGoals = saveGoals; window.goalCtx = goalCtx;
+
+// Racha: días seguidos con el wellness completo. Si hoy todavía no lo hizo,
+// cuenta hasta ayer (la racha sigue viva hasta que termine el día).
+function wellnessStreak(wellness) {
+  const done = ds=>getWellnessScore(wellness?.[ds]).allFilled;
+  const d = new Date(); d.setHours(12,0,0,0);
+  if(!done(toLocalDateStr(d))) d.setDate(d.getDate()-1);
+  let n = 0;
+  while(n<1000 && done(toLocalDateStr(d))) { n++; d.setDate(d.getDate()-1); }
+  return n;
+}
+window.wellnessStreak = wellnessStreak;
+const FLAME_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1 3.5 5 6 5 11a5 5 0 0 1-10 0c0-2.5 1.2-4 2.5-5.5C10 9.5 11 11 12 11c0-3-1-5.5 0-9z"/></svg>';
+
 function renderAthleteHome() {
   const today = todayLocal();
   const logs = S.history?._sessionLogs||[];
@@ -17833,6 +18002,14 @@ function renderAthleteHome() {
   }).join('');
   const wIc = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>';
   const wScore = getWellnessScore(S.wellness[today]).pct;
+  const streak = wellnessStreak(S.wellness);
+  // Sin wellness hoy: es lo primero que ve, arriba de la sesión.
+  const wellnessHero = `<div class="home-card home-wl" onclick="switchView('wellness')">
+      <div class="home-top" style="align-items:center;justify-content:flex-start"><span class="home-ic home-wl-ic">${wIc}</span>
+        <div class="home-main"><div class="home-wl-t">Todavía no hiciste tu wellness</div>${streak?`<div class="home-wl-s">No cortes tu racha de ${streak} día${streak===1?'':'s'}</div>`:''}</div></div>
+      <div class="home-cta home-wl-cta">Completar wellness${arrow}</div>
+    </div>`;
+  const streakChip = streak>=2 ? `<span class="home-streak" title="Días seguidos con el wellness completo">${FLAME_SVG}${streak} días</span>` : '';
   const wellnessCard = `<div class="home-row ${hasTodayWellness?'done':'pending'}" onclick="switchView('wellness')">
       <span class="home-ic">${wIc}</span>
       <div class="home-row-m"><b>${hasTodayWellness?'Wellness hecho':'Completá tu wellness'}</b><small>${hasTodayWellness?wScore+'%':'Pendiente'}</small></div>
@@ -17840,9 +18017,9 @@ function renderAthleteHome() {
     </div>`;
   return `<div class="page-header home-head">
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
-    <div class="page-title">Hola${S.userData?.name?', '+esc(S.userData.name.trim().split(/\s+/).slice(-1)[0]):''}!</div>
+    <div class="page-title home-hi"><span>¡Hola${S.userData?.name?', '+esc(S.userData.name.trim().split(/\s+/).slice(-1)[0]):''}!</span>${streakChip}</div>
   </div>
-  <div class="home-cards">${sessionCard}<div class="home-week">${weekStrip}</div>${wellnessCard}</div>
+  <div class="home-cards">${hasTodayWellness?'':wellnessHero}${sessionCard}<div class="home-week">${weekStrip}</div>${hasTodayWellness?wellnessCard:''}${goalsCardHtml('self')}</div>
 
   ${metrics?`<div class="wellness-card" style="margin-bottom:14px">
     <div class="wellness-title">Control de carga</div>

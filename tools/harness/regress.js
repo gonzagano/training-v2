@@ -800,6 +800,26 @@
     const lastSun = new Date(nextMon); lastSun.setDate(nextMon.getDate()-1);
     ok(new Date(anc+'T00:00:00').getDay()===1, 'marcar semana: el ancla es un lunes ('+anc+')');
     ok(computeWeekFromDate(anc)===9 && computeWeekOfDate(anc, toLocalDateStr(lastSun))===9 && computeWeekOfDate(anc, toLocalDateStr(nextMon))===10, 'marcada la 9: sigue en 9 hasta el domingo y el lunes pasa a la 10'); }
+  // ── objetivos desde la ficha: el profe los carga por el atleta, en el documento del atleta ──
+  { S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(500); openTeam('t1'); await wait(1500); adminOpenAthlete('u2'); await wait(1800); setAtletaSubview('perfil'); await wait(500);
+    ok(/Sin objetivos cargados/.test(document.getElementById('main').innerText),'ficha: muestra que no tiene objetivos');
+    openGoalsEditor('u2'); await wait(200); toggleGoal('cmj'); toggleGoal('otro'); setGoalField('cmj','target','45'); setGoalField('otro','text','Jugar en primera'); await saveGoals(); await wait(900);
+    const D=JSON.parse(localStorage.getItem('__db'));
+    ok((D.personal.u2?.goals||[]).length===2&&D.personal.u2.goals.find(g=>g.type==='otro')?.text==='Jugar en primera','ficha: objetivos guardados en personal/u2');
+    ok(!(D.personal.admin1?.goals)&&!(D.personal.u1?.goals||[]).some(g=>g.text==='Jugar en primera'),'ficha: no se guardan en el profe ni en otro atleta');
+    ok(/Jugar en primera/.test(document.querySelector('.gl-card')?.innerText||''),'ficha: se ven en el perfil del atleta');
+    txtBad('ficha con objetivos'); goBackFromAthleteDetail(); await wait(400); }
+  // ── revisión general: carga semanal sin depender de la hora, y texto de atletas escapado ──
+  { const dAgo=n=>{const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-n); return toLocalDateStr(d);};
+    const m=calcLoadMetrics([{date:dAgo(0),ua:100},{date:dAgo(6),ua:200},{date:dAgo(7),ua:400},{date:dAgo(27),ua:50},{date:dAgo(28),ua:999}]);
+    ok(m&&m.acuteUA===300,'carga: la semana son hoy y los 6 días anteriores, a cualquier hora ('+(m&&m.acuteUA)+')');
+    ok(daysAgoLocal(dAgo(3))===3&&daysAgoLocal(todayLocal())===0,'carga: días hacia atrás contados en hora local');
+    const a=S.adminAthletes.find(x=>x.uid==='u1'), keep=a.name; a.name='<img src=x onerror="window.__xss=1">Meier';
+    for(const v of ['trained_today','reminders','wellness_detail']){ try{ S.atletaView=null; S._inAthleteDetail=false; switchView('admin'); S.adminView=v; renderMain(); await wait(400); }catch(e){} }
+    S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(300); openTeam('t1'); await wait(1200); adminOpenAthlete('u1'); await wait(1500); setAtletaSubview('rutina'); await wait(700);
+    ok(!window.__xss&&!document.querySelector('#main img[src="x"]'),'seguridad: el nombre del atleta no ejecuta código en la pantalla del profe');
+    ok(escHtml('<b a="1">\'')==='&lt;b a=&quot;1&quot;&gt;&#39;','seguridad: escHtml escapa < > " \'');
+    a.name=keep; goBackFromAthleteDetail(); await wait(400); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

@@ -33,13 +33,17 @@ const quick = process.argv.includes('--quick');
   console.log('Build de prueba OK (' + b.bytes + ' bytes)');
   const {srv, port} = await start(0);
   // Edge/Chrome se lanzan a mano (el método por pipe de puppeteer falla con Edge) y nos conectamos por puerto.
-  const dbgPort = 9400 + Math.floor(Math.random() * 400);
-  const profile = path.join(os.tmpdir(), 'gm-test-profile-' + Date.now());
-  const proc = spawn(EDGE, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=' + dbgPort, '--user-data-dir=' + profile, 'about:blank'], {stdio: 'ignore'});
+  let profile, proc, browser, dbgPort;
+  const launch = async () => {
+  dbgPort = 9400 + Math.floor(Math.random() * 400);
+  profile = path.join(os.tmpdir(), 'gm-test-profile-' + Date.now());
+  proc = spawn(EDGE, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=' + dbgPort, '--user-data-dir=' + profile, 'about:blank'], {stdio: 'ignore'});
   const ready = async () => { for (let i = 0; i < 60; i++) { const ok = await new Promise(r => http.get('http://127.0.0.1:' + dbgPort + '/json/version', x => { x.resume(); r(x.statusCode === 200); }).on('error', () => r(false))); if (ok) return true; await new Promise(r => setTimeout(r, 500)); } return false; };
   if (!(await ready())) { console.error('El navegador de prueba no arrancó.'); proc.kill(); process.exit(2); }
   // protocolTimeout mayor que el timeout de 7 min de waitForFunction: si no, una prueba de más de 3 min cae con "Runtime.callFunctionOn timed out"
-  const browser = await puppeteer.connect({browserURL: 'http://127.0.0.1:' + dbgPort, defaultViewport: null, protocolTimeout: 480000});
+  browser = await puppeteer.connect({browserURL: 'http://127.0.0.1:' + dbgPort, defaultViewport: null, protocolTimeout: 480000});
+  };
+  await launch();
   const killBrowser = () => {
     // Edge deja procesos hijos sueltos: se cierran TODOS los que usan el perfil temporal de esta corrida.
     try {
@@ -52,11 +56,15 @@ const quick = process.argv.includes('--quick');
   const report = [];
   let failed = false;
   for (const sc of (quick ? SCENARIOS.slice(0, 1) : SCENARIOS)) {
+    // Un navegador nuevo por tamaño: con muchas pruebas seguidas Edge se cerraba solo antes de la última.
+    if (sc !== SCENARIOS[0]) { try { await browser.disconnect(); } catch (e) {} killBrowser(); await launch(); }
     for (const script of SCRIPTS) {
       const code = fs.readFileSync(path.join(__dirname, 'harness', script), 'utf8');
       const key = '__' + script.replace('.js', '');
-      const ctx = await browser.createBrowserContext();
-      const page = await ctx.newPage();
+      // Edge a veces se cierra solo después de varias pruebas: se lo vuelve a abrir y se sigue.
+      let ctx, page;
+      try { ctx = await browser.createBrowserContext(); page = await ctx.newPage(); }
+      catch (e) { console.log('    (el navegador de prueba se cerró solo; lo vuelvo a abrir)'); killBrowser(); await launch(); ctx = await browser.createBrowserContext(); page = await ctx.newPage(); }
       await page.setViewport({width: sc.width, height: sc.height, isMobile: !!sc.mobile, hasTouch: !!sc.mobile, deviceScaleFactor: 1});
       const consoleErrs = [];
       // con la ubicación del error (función y línea), para encontrarlo rápido

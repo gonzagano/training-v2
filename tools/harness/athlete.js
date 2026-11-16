@@ -118,6 +118,41 @@
     ok(!document.getElementById('exrow-x1'),'atleta: el bloque que empieza la semana que viene no aparece en esta');
     browseRoutineWeek(1); await wait(400); ok(!!document.getElementById('exrow-x1'),'atleta: en la semana siguiente sí aparece');
     resetRoutineWeekView(); delete blk.fromWeek; renderMain(); await wait(200); txtBad('semanas de bloques (atleta)'); }
+  // ── inicio: sin wellness hoy, "Completar wellness" arriba de todo; racha de días seguidos ──
+  { const td=todayLocal(), keep=S.wellness[td]; const dAgo=n=>{const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-n); return toLocalDateStr(d);};
+    const full=JSON.parse(JSON.stringify(Object.values(S.wellness).find(w=>getWellnessScore(w).allFilled)||null));
+    if(full){ for(let i=1;i<=3;i++) if(!getWellnessScore(S.wellness[dAgo(i)]).allFilled) S.wellness[dAgo(i)]=JSON.parse(JSON.stringify(full)); }
+    delete S.wellness[td]; switchView('dashboard'); await wait(500);
+    const first=document.querySelector('.home-cards')?.firstElementChild;
+    ok(first&&first.classList.contains('home-wl')&&/Completar wellness/.test(first.innerText),'inicio: sin wellness hoy, "Completar wellness" es lo primero');
+    ok(!full||(wellnessStreak(S.wellness)>=3&&/\d+ días/.test(document.querySelector('.home-streak')?.innerText||'')),'inicio: se ve la racha de días seguidos ('+wellnessStreak(S.wellness)+')');
+    if(full){ S.wellness[td]=JSON.parse(JSON.stringify(full)); renderMain(); await wait(300);
+      ok(!document.querySelector('.home-wl')&&/Wellness hecho/.test(document.querySelector('.home-cards')?.innerText||''),'inicio: hecho el wellness, queda la fila chica con el tilde'); }
+    if(keep) S.wellness[td]=keep; else delete S.wellness[td]; renderMain(); txtBad&&txtBad('inicio con racha'); }
+  // ── objetivos: el atleta elige hasta 4 de la lista, con meta; se guardan en SU documento ──
+  { S.goals=[]; switchView('dashboard'); await wait(400);
+    ok(/Elegí tus objetivos/.test(document.querySelector('.home-cards')?.innerText||''),'inicio: invita a elegir objetivos');
+    openGoalsEditor('self'); await wait(200);
+    ok(document.querySelectorAll('#goals-overlay .ge-opt').length===GOAL_TYPES.length&&/Otro$/.test([...document.querySelectorAll('#goals-overlay .ge-opt b')].pop()?.textContent||''),'objetivos: lista fija con "Otro" al final');
+    S.oneRM=S.oneRM||{}; const keepRM=S.oneRM.sentadilla_barra; S.oneRM.sentadilla_barra=100;
+    ['rm_sentadilla','frecuencia','lesion','dormir','movilidad'].forEach(id=>toggleGoal(id)); await wait(150);
+    ok(S._goalsEdit.list.length===4,'objetivos: no deja elegir más de 4');
+    setGoalField('rm_sentadilla','target','120'); setGoalField('frecuencia','target','4'); setGoalField('lesion','pct',50);
+    await saveGoals(); await wait(500);
+    const D=JSON.parse(localStorage.getItem('__db')); const gs=D.personal.u1?.goals||[];
+    ok(gs.length===4&&gs.find(g=>g.type==='rm_sentadilla')?.target===120&&gs.find(g=>g.type==='lesion')?.pct===50,'objetivos: quedan guardados en personal/u1');
+    S.oneRM.sentadilla_barra=110; renderMain(); await wait(300);
+    const it=[...document.querySelectorAll('.gl-card .gl-it')].find(x=>/sentadilla/i.test(x.innerText));
+    ok(it&&/110/.test(it.innerText)&&/120/.test(it.innerText)&&it.querySelector('.gl-bar i').style.width==='50%','objetivos: la sentadilla avanza sola con el RM (100 → 110 de 120 = 50%)');
+    txtBad('inicio con objetivos');
+    if(keepRM==null) delete S.oneRM.sentadilla_barra; else S.oneRM.sentadilla_barra=keepRM; }
+  // ── revisión: con rutina propia y equipo, el Calendario muestra el equipo ──
+  { switchView('calendar'); await wait(500);
+    ok(!/no estás vinculado/.test(document.getElementById('main').innerText)&&/Handball/.test(document.querySelector('.page-subtitle')?.innerText||''),'calendario: el atleta con rutina propia ve el calendario de su equipo');
+    switchView('stats'); await wait(400);
+    const act=[...document.querySelectorAll('#main div')].find(d=>/Actividad — últimos 7 días/.test(d.textContent)&&d.children.length>=2);
+    ok(!act||act.querySelectorAll('div[style*="var(--accent)"]').length>0||!(S.history?._sessionLogs||[]).length,'estadísticas: los días entrenados (prácticas y partidos) cuentan como activos');
+    switchView('wellness'); await wait(400); ok(!/\d{4}-\d{2}-\d{2}/.test(document.querySelector('.page-header')?.innerText||''),'wellness: sin la fecha cruda AAAA-MM-DD arriba'); }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();
