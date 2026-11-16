@@ -820,6 +820,14 @@
     ok(!window.__xss&&!document.querySelector('#main img[src="x"]'),'seguridad: el nombre del atleta no ejecuta código en la pantalla del profe');
     ok(escHtml('<b a="1">\'')==='&lt;b a=&quot;1&quot;&gt;&#39;','seguridad: escHtml escapa < > " \'');
     a.name=keep; goBackFromAthleteDetail(); await wait(400); }
+  // ── diseño: ficha con los datos en una línea y Panel admin en tarjetas ──
+  { S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(300); openTeam('t1'); await wait(1200); adminOpenAthlete('u1'); await wait(1500);
+    const fl=document.querySelector('.af-line'); ok(!!fl&&/Equipo/i.test(fl.innerText)&&/Edad/i.test(fl.innerText)&&/21 años/.test(fl.innerText),'ficha: datos del atleta en una línea, cada uno con su nombre');
+    ok(document.documentElement.scrollWidth<=innerWidth+1,'ficha: la línea de datos no se sale de la pantalla');
+    goBackFromAthleteDetail(); await wait(400); switchView('admin'); S.adminView='main'; renderMain(); await wait(300);
+    ok(document.querySelectorAll('.ap-grid .ap-tile').length===6&&/Panel admin/.test(document.getElementById('main').innerText),'panel admin: 6 tarjetas');
+    document.querySelector('.ap-tile[onclick="adminGoRoutines()"]').click(); await wait(600); ok(S.adminView==='routines','panel admin: la tarjeta Rutinas abre Gestión de rutinas');
+    S.adminView='main'; renderMain(); await wait(200); txtBad('panel admin en tarjetas'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';

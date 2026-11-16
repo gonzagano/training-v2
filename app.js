@@ -10697,6 +10697,19 @@ async function saveProxyForm() {
 }
 window.saveProxyForm = saveProxyForm;
 
+// Datos del atleta en una línea, cada uno con su nombre (los que no están cargados no se muestran).
+function athleteFactsLine(a, myTeam, sportLabel) {
+  const items = [
+    ['Equipo', myTeam ? myTeam.name+(myTeam.category?' · '+myTeam.category:'') : 'Individual'+(sportLabel?' · '+sportLabel:'')],
+    ['Puesto', a.position],
+    ['Edad', a.age ? a.age+' años' : ''],
+    ['Talla', a.height ? a.height+' cm' : ''],
+    ['Peso', a.weight ? a.weight+' kg' : ''],
+  ].filter(([,v])=>v);
+  return `<div class="af-line">${items.map(([k,v])=>`<span class="af-i"><small>${k}</small><b>${escHtml(v)}</b></span>`).join('')}</div>`;
+}
+window.athleteFactsLine = athleteFactsLine;
+
 function renderAtletaDetail(a) {
   const sub = S.atletaSubview || 'perfil';
   const myTeam = getAthleteTeam(a);
@@ -10719,19 +10732,7 @@ function renderAtletaDetail(a) {
     <button class="abtn" onclick="openWeeklyReport('${a.uid}')" title="Reporte semanal">📄<span class="hs"> Reporte</span></button>
   </div>
   ${sibNav}
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-    ${myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text)">${myTeam.name}</span>`:''}
-    ${a.position?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${a.position}</span>`:''}
-    ${sportLabel&&!myTeam?`<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${sportLabel}</span>`:''}
-  </div>
-  <div class="card" style="padding:14px 16px;margin-bottom:14px">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:10px">
-      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Equipo</div><div style="font-size:13px;font-weight:600">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}</div></div>
-      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Edad</div><div style="font-size:13px;font-weight:600">${a.age?a.age+' años':'—'}</div></div>
-      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Talla</div><div style="font-size:13px;font-weight:600">${a.height?a.height+' cm':'—'}</div></div>
-      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Peso</div><div style="font-size:13px;font-weight:600">${a.weight?a.weight+' kg':'—'}</div></div>
-    </div>
-  </div>
+  ${athleteFactsLine(a, myTeam, sportLabel)}
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub === 'perfil' ? 'active' : ''}" onclick="setAtletaSubview('perfil')">Perfil</button>
     <button class="snav-tab ${sub === 'rutina' ? 'active' : ''}" onclick="setAtletaSubview('rutina')">Rutina</button>
@@ -12838,42 +12839,17 @@ function renderAdmin() {
 }
 
 function renderAdminMain() {
-  return `
-  <div style="font-size:16px;font-weight:700;margin-bottom:14px">Panel admin</div>
-  <div class="admin-section">
-    <div class="admin-section-title">Atletas</div>
-    <div class="admin-item">
-      <div><div class="admin-item-lbl">Ver atletas</div></div>
-      <button class="abtn abtn-p" onclick="adminGoAthletes()">Ver →</button>
-    </div>
-    <div class="admin-item">
-      <div><div class="admin-item-lbl">Comparar atletas</div></div>
-      <button class="abtn abtn-p" onclick="adminGoCompare()">Comparar →</button>
-    </div>
-  </div>
-  <div class="admin-section">
-    <div class="admin-section-title">Rutinas</div>
-    <div class="admin-item">
-      <div><div class="admin-item-lbl">Gestionar rutinas</div><div class="admin-item-sub">${getTemplateRoutines().length} rutina${getTemplateRoutines().length!==1?'s':''} creada${getTemplateRoutines().length!==1?'s':''}</div></div>
-      <button class="abtn abtn-p" onclick="adminGoRoutines()">Gestionar →</button>
-    </div>
-  </div>
-  <div class="admin-section">
-    <div class="admin-section-title">Sistema</div>
-    <div class="admin-item">
-      <div><div class="admin-item-lbl">Equipos</div><div class="admin-item-sub">${S.teams.length} equipo${S.teams.length!==1?'s':''}</div></div>
-      <button class="abtn abtn-p" onclick="switchView('teams')">Ver →</button>
-    </div>
-    <div class="admin-item">
-      <div><div class="admin-item-lbl">Biblioteca de ejercicios</div><div class="admin-item-sub">${S.library.length} ejercicios guardados</div></div>
-      <button class="abtn abtn-p" onclick="switchView('library')">Gestionar →</button>
-    </div>
-  </div>
-  <div class="admin-section" style="border-color:rgba(195,58,44,0.3)">
-    <div class="admin-item" style="border-bottom:none">
-      <div><div class="admin-item-lbl" style="color:var(--red)">Cerrar sesión</div></div>
-      <button class="abtn abtn-d" onclick="signOut()">Cerrar sesión</button>
-    </div>
+  const nR = getTemplateRoutines().length, nA = (S.adminAthletes||[]).length;
+  const ic = d => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const tile = (onclick, d, t, sub, cls) => `<button class="ap-tile${cls?' '+cls:''}" onclick="${onclick}"><span class="ap-ic">${ic(d)}</span><b>${t}</b>${sub?`<small>${sub}</small>`:''}</button>`;
+  return `<div class="page-header"><div class="page-title">Panel admin</div></div>
+  <div class="ap-grid">
+    ${tile('adminGoAthletes()', '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-7 7-7s7 3 7 7"/>', 'Atletas', nA ? nA+' atleta'+(nA!==1?'s':'') : 'Ver todos')}
+    ${tile('adminGoCompare()', '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', 'Comparar atletas', 'De 2 a 6')}
+    ${tile('adminGoRoutines()', '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>', 'Rutinas', nR+' rutina'+(nR!==1?'s':'')+' creada'+(nR!==1?'s':''))}
+    ${tile("switchView('teams')", '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20c0-3 3-5 6-5M22 20c0-3-3-5-6-5"/>', 'Equipos', S.teams.length+' equipo'+(S.teams.length!==1?'s':''))}
+    ${tile("switchView('library')", '<path d="M4 6h16M4 12h16M4 18h10"/>', 'Biblioteca de ejercicios', S.library.length+' ejercicios')}
+    ${tile('signOut()', '<path d="M9 21H5V3h4M16 17l5-5-5-5M21 12H9"/>', 'Cerrar sesión', '', 'ap-out')}
   </div>`;
 }
 

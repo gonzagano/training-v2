@@ -1852,3 +1852,20 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 :focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
 .toast{white-space:normal;max-width:min(92vw,440px);text-align:center}
 .gl-empty .home-row-m small{color:var(--text3)}
+
+/* Ficha del atleta: datos en una línea */
+.af-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 20px;margin:0 0 14px;padding:10px 14px;background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--r);box-shadow:var(--sh-card)}
+.af-i{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap;min-width:0}
+.af-i small{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)}
+.af-i b{font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis}
+/* Panel admin en tarjetas */
+.ap-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:700px){.ap-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ap-tile{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:16px;min-height:120px;text-align:left;background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--r);box-shadow:var(--sh-card);cursor:pointer;font-family:inherit;color:var(--text);transition:transform .12s,border-color .12s}
+.ap-tile:hover{transform:translateY(-1px);border-color:var(--accent-text)}
+.ap-ic{width:40px;height:40px;border-radius:11px;background:var(--accent-dim);color:var(--accent-text);display:flex;align-items:center;justify-content:center}
+.ap-tile b{font-size:15px;font-weight:800}
+.ap-tile small{font-size:12.5px;color:var(--text3)}
+.ap-out{border-color:rgba(195,58,44,.3)}
+.ap-out .ap-ic{background:var(--red-dim);color:var(--red)}
+.ap-out b{color:var(--red)}
