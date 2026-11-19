@@ -956,6 +956,38 @@ window.closeConfirmModal = closeConfirmModal;
 function closeConfirmModalIfOutside(e) { if(e.target===document.getElementById('confirm-modal-overlay')) closeConfirmModal(); }
 window.closeConfirmModalIfOutside = closeConfirmModalIfOutside;
 
+// Diálogo propio para pedir texto: reemplaza el prompt() del navegador (que en
+// el celular se ve como una ventana del sistema, fuera de la app).
+// fields: [{label, value, placeholder, type, options}] → devuelve los valores, o null si cancela.
+function askText({title, fields, confirmLabel='Aceptar'}) {
+  const esc = escHtml;
+  return new Promise(resolve => {
+    document.getElementById('ask-overlay')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'ask-overlay'; ov.className = 'video-modal';
+    ov.innerHTML = `<div class="video-modal-box" role="dialog" aria-modal="true" aria-labelledby="ask-title">
+      <div class="video-modal-title" id="ask-title">${esc(title)}</div>
+      ${fields.map((f,i)=>`<label class="ask-l" for="ask-f${i}">${esc(f.label)}</label>${f.options
+        ? `<select class="ask-i" id="ask-f${i}">${f.options.map(o=>`<option value="${esc(o)}" ${o===f.value?'selected':''}>${esc(o||'Sin elegir')}</option>`).join('')}</select>`
+        : `<input class="ask-i" id="ask-f${i}" type="${f.type||'text'}" value="${esc(f.value||'')}" placeholder="${esc(f.placeholder||'')}" autocomplete="${f.type==='password'?'current-password':'off'}">`}`).join('')}
+      <div class="video-modal-btns"><button class="abtn" id="ask-cancel">Cancelar</button><button class="abtn abtn-p" id="ask-ok">${esc(confirmLabel)}</button></div>
+    </div>`;
+    const done = v => { ov.classList.remove('open'); setTimeout(()=>ov.remove(), 180); resolve(v); };
+    const ok = () => {
+      const vals = fields.map((_,i)=>ov.querySelector('#ask-f'+i).value);
+      if(!String(vals[0]).trim()) { ov.querySelector('#ask-f0').focus(); return; } // el primer campo es obligatorio
+      done(vals);
+    };
+    ov.addEventListener('click', e => { if(e.target===ov) done(null); });
+    ov.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.tagName==='INPUT') ok(); if(e.key==='Escape') done(null); });
+    ov.querySelector('#ask-cancel').onclick = () => done(null);
+    ov.querySelector('#ask-ok').onclick = ok;
+    document.body.appendChild(ov);
+    requestAnimationFrame(()=>{ ov.classList.add('open'); ov.querySelector('#ask-f0')?.focus(); });
+  });
+}
+window.askText = askText;
+
 // ── STATE ─────────────────────────────────────────────────────
 let S = {
   user: null, isAdmin: false, userData: null,
@@ -1761,6 +1793,10 @@ function capitalizeName(s) {
   return (s||'').trim().split(/\s+/).filter(Boolean)
     .map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
 }
+// Solo la primera letra en mayúscula: "jueves, 19 de noviembre" → "Jueves, 19 de noviembre"
+// (el text-transform:capitalize de CSS dejaba "19 De Noviembre").
+function capFirst(s) { s = s||''; return s.charAt(0).toUpperCase()+s.slice(1); }
+window.capFirst = capFirst;
 window.capitalizeName=capitalizeName;
 
 // Ordena nombres de sesión/día ("Día 1","Día 2"...) de forma numérica en vez
@@ -2600,6 +2636,9 @@ function switchView(v) {
   renderBottomBar();
   renderAll();
   window.scrollTo(0,0);
+  // Entrada suave de la pantalla nueva (solo al cambiar de sección, no en cada re-dibujo)
+  const mainEl = document.getElementById('main');
+  if(mainEl) { mainEl.classList.remove('view-in'); void mainEl.offsetWidth; mainEl.classList.add('view-in'); }
 }
 window.switchView = switchView;
 
@@ -6711,8 +6750,8 @@ function renderStats() {
 function renderTeams() {
   if(S._teamViewLoadingId) return `<div style="text-align:center;padding:40px;color:var(--text3)">Cargando equipo…</div>`;
   if(S.teamView) return renderTeamDetail(S.teamView);
-  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-    <div style="font-size:17px;font-weight:700">Equipos</div>
+  let html=`<div class="pg-head">
+    <div class="pg-head-t">Equipos</div>
     <button class="abtn abtn-p" onclick="createTeam()">+ Nuevo equipo</button>
   </div>`;
   if(!S.teams.length) html+=`<div class="empty-state">No hay equipos creados.</div>`;
@@ -7096,13 +7135,13 @@ function renderCalendarMonthView(team) {
   const firstDay = new Date(y,m,1);
   const daysInMonth = new Date(y,m+1,0).getDate();
   const startWeekday = mondayIndex(firstDay);
-  const monthLabel = firstDay.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  const monthLabel = capFirst(firstDay.toLocaleDateString('es-AR',{month:'long'}))+' '+y;
   const today = todayLocal();
   const selected = S.calendarSelectedDate||null;
 
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
-    <div style="font-weight:700;font-size:15px;text-transform:capitalize">${monthLabel}</div>
+    <div style="font-weight:700;font-size:15px">${monthLabel}</div>
     <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
@@ -7118,7 +7157,7 @@ function renderCalendarMonthView(team) {
       const events = getCalendarEvents(team,dateStr);
       const isToday = dateStr===today, isSelected = dateStr===selected;
       return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:64px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:2px;font-size:13px;padding:4px 2px;
-        background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
+        background:${isSelected?'var(--accent-dim)':'var(--bg2)'};border:1px solid ${isToday?'var(--accent-text)':'transparent'}">
         <span style="color:${isToday?'var(--accent-text)':'var(--text)'}">${day}</span>
         ${renderCalendarEventChips(events, 3)}
       </div>`;
@@ -7153,7 +7192,7 @@ function renderCalendarWeekView(team) {
       const events=getCalendarEvents(team,dateStr);
       const isToday=dateStr===today, isSelected=dateStr===selected;
       return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:88px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:3px;padding:4px 2px;
-        background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
+        background:${isSelected?'var(--accent-dim)':'var(--bg2)'};border:1px solid ${isToday?'var(--accent-text)':'transparent'}">
         <span style="font-size:11px;color:var(--text3);font-weight:600">${dayInitials[i]}</span>
         <span style="font-size:15px;color:${isToday?'var(--accent-text)':'var(--text)'}">${d.getDate()}</span>
         ${renderCalendarEventChips(events, 4)}
@@ -7228,8 +7267,8 @@ function renderCalendarDayEditor(team, dateStr) {
   const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   const isDirty = S._calDirtyDates?.has(dateStr);
   return `<div class="admin-section">
-    <div class="admin-section-title" style="text-transform:capitalize;display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>${dateLabel}</span>
+    <div class="admin-section-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>${capFirst(dateLabel)}</span>
       ${isDirty?'<span style="font-size:11px;font-weight:700;color:var(--amber)">● cambios sin guardar</span>':''}
     </div>
     ${events.length?events.map((e,i)=>{
@@ -8251,9 +8290,12 @@ function runCountUps(containerId) {
 window.runCountUps=runCountUps;
 
 async function createTeam() {
-  const name=prompt('Nombre del equipo:'); if(!name) return;
-  const sport=canonicalSport(prompt('Deporte ('+SPORTS.join(', ')+'):','')||'');
-  const category=prompt('Categoría (ej: Liga de Honor):','');
+  const v = await askText({title:'Nuevo equipo', confirmLabel:'Crear equipo', fields:[
+    {label:'Nombre', placeholder:'Ej: Handball-EDLP'},
+    {label:'Deporte', options:['', ...SPORTS], value:''},
+    {label:'Categoría', placeholder:'Ej: Liga de Honor'}]});
+  if(!v) return;
+  const name = v[0].trim(), sport = canonicalSport(v[1]||''), category = v[2].trim();
   // institution = mismo valor que el nombre — es lo que el onboarding de un
   // atleta de equipo usa para encontrar este equipo y no crear uno duplicado.
   const team={id:genId(),name,institution:name,sport:sport||'',category:category||'',players:[],memberUids:[],trainingDays:[],calendar:{},color:'',createdAt:new Date().toISOString()};
@@ -10294,7 +10336,7 @@ window.BODY_ZONES = BODY_ZONES;
 function renderAtletas() {
   if (S.atletaView) return renderAtletaDetail(S.atletaView);
 
-  let html = `<div class="pg-head"><div class="pg-head-t">Atletas</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="abtn" onclick="openAxonImport()">Importar del Axon</button><button class="abtn" onclick="adminGoCompare('ind')">Comparar atletas</button><button class="abtn abtn-p" onclick="openNewAthleteModal()">Crear nuevo atleta +</button></div></div>`;
+  let html = `<div class="pg-head"><div class="pg-head-t">Atletas</div><button class="abtn abtn-p" onclick="openNewAthleteModal()">+ Nuevo atleta</button><div class="pg-head-x"><button class="abtn" onclick="openAxonImport()">Importar del Axon</button><button class="abtn" onclick="adminGoCompare('ind')">Comparar atletas</button></div></div>`;
 
   if (!S.adminAthletesLoaded) {
     ensureAdminAthletes().then(renderMain);
@@ -11583,7 +11625,7 @@ async function sendPersonalRoutineToTemplates(uid, routineId) {
   // "Fuerza · Germán" → "Fuerza" (el agregado de "Personalizar para…" no va en la plantilla)
   const m = /^(.*\S)\s*·\s*([^·]+)$/.exec(String(src.name||''));
   const base = (m && normTxt(a.name||'').includes(normTxt(m[2]))) ? m[1] : src.name;
-  const name = prompt('Nombre en Gestión de rutinas:', base);
+  const name = (await askText({title:'Pasar a Gestión de rutinas', confirmLabel:'Copiar', fields:[{label:'Nombre de la plantilla', value:base}]}))?.[0];
   if(!name || !name.trim()) return;
   try {
     const newId = genId();
@@ -12334,7 +12376,7 @@ async function deleteMyAccount() {
           showToast('✓ Cuenta eliminada');
         } catch(e) {
           if(e.code==='auth/requires-recent-login') {
-            const pass = prompt('Por seguridad, Firebase te pide confirmar tu contraseña antes de eliminar la cuenta:');
+            const pass = (await askText({title:'Confirmá tu contraseña para eliminar la cuenta', confirmLabel:'Eliminar cuenta', fields:[{label:'Contraseña', type:'password'}]}))?.[0];
             if(!pass) { showToast('Cancelado'); return; }
             try {
               const cred = EmailAuthProvider.credential(S.user.email, pass);
@@ -13765,8 +13807,8 @@ function renderWeekdayAssignBody() {
     <div style="margin-bottom:14px">
       <label style="font-size:11px;color:var(--text3);font-weight:600;display:block;margin-bottom:6px">¿Cuándo arranca esta planificación?</label>
       ${renderStartDateCalendar(st)}
-      <div style="font-size:13px;color:var(--accent-text);font-weight:700;text-align:center;margin-top:8px;text-transform:capitalize">
-        ${dateLabel}${st.trainingStartDate?' · Semana '+computedWeek:''}
+      <div style="font-size:13px;color:var(--accent-text);font-weight:700;text-align:center;margin-top:8px">
+        ${capFirst(dateLabel)}${st.trainingStartDate?' · Semana '+computedWeek:''}
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px">
@@ -14139,13 +14181,14 @@ window.saveRoutineListName = saveRoutineListName;
 // lleva ownerUid y no se ofrece como plantilla a nadie más. Nada se guarda
 // hasta tocar Guardar en el editor (si volvés atrás, se descarta); al guardar
 // se pasa directo a elegir los días de gimnasio para asignársela.
-function createPersonalRoutine(uid) {
+async function createPersonalRoutine(uid) {
   const a = S.adminAthletes?.find(x=>x.uid===uid) || S.atletaView;
   if(!a) return;
   const first = (a.name||a.email||'').split(' ')[0];
-  const name = prompt('Nombre de la rutina de '+(first||'este atleta')+':', 'Rutina de '+first);
-  if(!name) return;
-  const sessionsRaw = prompt('Nombres de los días separados por coma\n(ej: Lunes,Miércoles,Viernes)','Día 1,Día 2,Día 3');
+  const v = await askText({title:'Rutina propia de '+(first||'este atleta'), confirmLabel:'Crear', fields:[
+    {label:'Nombre', value:'Rutina de '+first}, {label:'Días, separados por coma', value:'Día 1,Día 2,Día 3'}]});
+  if(!v) return;
+  const name = v[0], sessionsRaw = v[1];
   if(!sessionsRaw) return;
   const sessionNames = sessionsRaw.split(',').map(x=>x.trim()).filter(Boolean);
   if(!sessionNames.length) return;
@@ -14159,9 +14202,10 @@ function createPersonalRoutine(uid) {
 window.createPersonalRoutine = createPersonalRoutine;
 
 async function createRoutine() {
-  const name = prompt('Nombre de la rutina (ej: Fuerza Base Baloncesto):');
-  if(!name) return;
-  const sessionsRaw = prompt('Nombres de las sesiones separadas por coma\n(ej: Lunes,Miércoles,Viernes)','Lunes,Miércoles,Viernes');
+  const v = await askText({title:'Nueva rutina', confirmLabel:'Crear', fields:[
+    {label:'Nombre', placeholder:'Ej: Fuerza base básquet'}, {label:'Sesiones, separadas por coma', value:'Lunes,Miércoles,Viernes'}]});
+  if(!v) return;
+  const name = v[0].trim(), sessionsRaw = v[1];
   if(!sessionsRaw) return;
   const sessionNames = sessionsRaw.split(',').map(s=>s.trim()).filter(Boolean);
   const sessions = {};
@@ -14222,7 +14266,7 @@ window.editRoutine=editRoutine;
 async function duplicateRoutine(id) {
   const r = S.routines.find(x=>x.id===id);
   if(!r) return;
-  const name = prompt('Nombre de la copia:', r.name+' (copia)');
+  const name = (await askText({title:'Duplicar rutina', confirmLabel:'Duplicar', fields:[{label:'Nombre de la copia', value:r.name+' (copia)'}]}))?.[0];
   if(!name) return;
   const newId = genId();
   const copy = JSON.parse(JSON.stringify(r));
@@ -14687,8 +14731,8 @@ window.getRBlock=getRBlock;
 function routineSelectSession(s) { S._routineEditSession=s; renderMain(); }
 window.routineSelectSession=routineSelectSession;
 
-function addRoutineSession() {
-  const name=prompt('Nombre de la sesión (ej: Martes):'); if(!name) return;
+async function addRoutineSession() {
+  const name=(await askText({title:'Nueva sesión', confirmLabel:'Agregar', fields:[{label:'Nombre', placeholder:'Ej: Martes'}]}))?.[0]; if(!name) return;
   if(!S.editingRoutine.sessions[name]) {
     S.editingRoutine.sessions[name]=[];
     S._routineEditSession=name;
@@ -18132,8 +18176,8 @@ function renderLibViewBody() {
           <div class="ex-icon-btn ${hasV?'has-video':''}" data-videokey="${ex.id}" onclick="openVideoModal('${ex.id}','${ex.name}',true)" title="Video">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </div>
-          <button class="abtn" onclick="editLibraryExercise('${ex.id}')" style="font-size:11px">Editar</button>
-          <button class="abtn abtn-d" onclick="deleteLibraryExercise('${ex.id}')" style="font-size:11px">×</button>
+          <button class="abtn ic-btn" onclick="editLibraryExercise('${ex.id}')" title="Editar" aria-label="Editar ${ex.name}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+          <button class="abtn abtn-d ic-btn" onclick="deleteLibraryExercise('${ex.id}')" title="Borrar" aria-label="Borrar ${ex.name}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
         </div>
       </div>`;}).join('')}
   </div>`:`<div class="empty-state">Sin ejercicios que coincidan.</div>`}`;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gmetrics-20261119-635be9d';
+const CACHE_NAME = 'gmetrics-20261119-db75639';
 const APP_SHELL = [
   './',
   './index.html',

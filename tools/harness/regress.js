@@ -595,8 +595,11 @@
     ok(document.documentElement.scrollWidth<=innerWidth+1,'rutinas por deporte: sin scroll horizontal'); txtBad('rutinas por deporte');
     switchView('atletas'); await wait(600); openAtleta('u5'); await wait(1800); setAtletaSubview('rutina'); await wait(600);
     const b=[...document.querySelectorAll('#main button')].find(x=>/Pasar a Gestión de rutinas/.test(x.textContent)); ok(!!b,'ficha: rutina propia tiene "Pasar a Gestión de rutinas"');
-    const keepP=window.prompt; let def=''; window.prompt=(m,d)=>{def=d; return 'Fuerza Básquet base';};
-    if(b){ b.click(); await wait(900); } window.prompt=keepP;
+    // el nombre se pide con el diálogo propio de la app (ya no con prompt() del navegador)
+    let def='';
+    if(b){ b.click(); await wait(400); const inp=document.getElementById('ask-f0'); ok(!!inp&&document.getElementById('ask-overlay').classList.contains('open'),'pasar a Gestión: abre el diálogo propio para el nombre');
+      if(inp){ def=inp.value; inp.value='Fuerza Básquet base'; document.getElementById('ask-ok').click(); } await wait(900); }
+    ok(!document.getElementById('ask-overlay')||!document.getElementById('ask-overlay').classList.contains('open'),'pasar a Gestión: el diálogo se cierra al aceptar');
     ok(def==='Rutina de Prueba','propone el nombre sin el del atleta ('+def+')');
     const D2=JSON.parse(localStorage.getItem('__db')); const cp=Object.values(D2.routines).find(x=>x.fromPersonalRoutineId==='rown5');
     ok(cp&&!cp.ownerUid&&cp.name==='Fuerza Básquet base'&&cp.sport==='Básquet','copia en Gestión: sin dueño, con el nombre elegido y el deporte del atleta');
@@ -830,6 +833,15 @@
     S.adminView='main'; renderMain(); await wait(200); txtBad('panel admin en tarjetas'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
+  // ── diálogo propio en vez de prompt(): crear equipo (dos escenarios: cancelar y crear) ──
+  { const n0=S.teams.length; switchView('teams'); await wait(500);
+    ok(/Equipos/.test(document.querySelector('.pg-head-t')?.textContent||''),'equipos: título de pantalla con el mismo estilo que el resto');
+    createTeam(); await wait(300); ok(!!document.getElementById('ask-f0'),'nuevo equipo: abre el diálogo propio');
+    document.getElementById('ask-cancel')?.click(); await wait(400); ok(S.teams.length===n0,'nuevo equipo: cancelar no crea nada');
+    createTeam(); await wait(300);
+    const f0=document.getElementById('ask-f0'), f1=document.getElementById('ask-f1'), f2=document.getElementById('ask-f2');
+    if(f0){ f0.value='Prueba Dialogo'; f1.value='Handball'; f2.value='Cadetes'; document.getElementById('ask-ok').click(); } await wait(900);
+    const nt=S.teams.find(t=>t.name==='Prueba Dialogo'); ok(nt&&nt.sport==='Handball'&&nt.category==='Cadetes','nuevo equipo: se crea con nombre, deporte y categoría del diálogo'); }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
   window.__regress=R;
 })();

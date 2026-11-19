@@ -1916,6 +1916,26 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .bb-btn svg{padding:4px 14px;border-radius:999px;box-sizing:content-box;transition:background .2s ease}
 .bb-btn.active{background:none;color:var(--text);font-weight:700}
 .bb-btn.active svg{background:var(--accent);color:#fff}
+/* Títulos de pantalla: todos con la misma letra y tamaño */
+.pg-head-t{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.pg-head-x{display:flex;gap:8px;flex-wrap:wrap;width:100%}
+/* Botón de solo ícono (editar, borrar): cuadrado */
+.abtn.ic-btn{padding:0;width:36px;min-height:36px;height:36px;display:inline-flex;align-items:center;justify-content:center}
+/* Selector segmentado con textos largos: el texto baja de renglón dentro de su parte, no se sale */
+#main div:has(> .snav-tab):not(:has(> .snav-tab:nth-child(4))) > .snav-tab{white-space:normal;line-height:1.2;padding:6px 8px;min-width:0}
+/* Diálogo para pedir texto (askText) */
+.ask-l{display:block;font-size:13px;font-weight:600;color:var(--text2);margin:12px 0 6px}
+.ask-i{display:block;width:100%;box-sizing:border-box;font:17px var(--font-body);color:var(--text);background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;outline:none}
+.ask-i:focus{border-color:var(--accent-text)}
+#ask-overlay .video-modal-btns{margin-top:20px}
+/* Sensación de app: respuesta al tocar y entrada suave al cambiar de pantalla */
+html{-webkit-tap-highlight-color:transparent}
+:is(.home-row,.home-card,.ap-tile,.abtn,.chip-btn,.snav-tab,.bb-btn){transition:transform .12s ease,background-color .15s ease}
+:is(.home-row,.home-card,.ap-tile):active{transform:scale(.985)}
+:is(.abtn,.chip-btn):active{transform:scale(.97)}
+#main.view-in{animation:gmViewIn .2s ease-out}
+@keyframes gmViewIn{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){#main.view-in{animation:none}:is(.home-row,.home-card,.ap-tile,.abtn,.chip-btn):active{transform:none}}
 /* Estado vacío: un solo mensaje que dice qué va a aparecer */
 .gm-empty{background:var(--bg2);border-radius:16px;padding:32px 24px;text-align:center}
 .gm-empty svg{width:40px;height:40px;color:var(--accent-text);margin-bottom:12px}
