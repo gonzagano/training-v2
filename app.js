@@ -840,7 +840,7 @@ const INFO_LEGENDS = {
   },
   rpe: { title:'RPE — Esfuerzo percibido (escala de Foster)', html:
     `<p style="margin-bottom:10px">Cuánto esfuerzo sentiste — de 0 (reposo) a 10 (máximo). Es la misma escala tanto para calificar una sesión completa como un ejercicio puntual.</p>
-     <table style="width:100%;border-collapse:collapse;font-size:12px">
+     <table style="width:100%;border-collapse:collapse;font-size:13px">
        <tr><td style="padding:4px 8px;font-weight:700">0-1</td><td style="padding:4px 8px">Reposo / muy, muy suave</td></tr>
        <tr><td style="padding:4px 8px;font-weight:700">2-3</td><td style="padding:4px 8px">Suave</td></tr>
        <tr><td style="padding:4px 8px;font-weight:700">4-5</td><td style="padding:4px 8px">Moderado</td></tr>
@@ -851,7 +851,7 @@ const INFO_LEGENDS = {
   },
   rir: { title:'RIR — Repeticiones en Reserva', html:
     `<p style="margin-bottom:10px">Cuántas repeticiones más podrías haber hecho en esa serie antes de fallar.</p>
-     <table style="width:100%;border-collapse:collapse;font-size:12px">
+     <table style="width:100%;border-collapse:collapse;font-size:13px">
        <tr><td style="padding:4px 8px;font-weight:700">0</td><td style="padding:4px 8px">Fallo — no podrías hacer una repetición más</td></tr>
        <tr><td style="padding:4px 8px;font-weight:700">1</td><td style="padding:4px 8px">Podrías hacer 1 repetición más</td></tr>
        <tr><td style="padding:4px 8px;font-weight:700">2</td><td style="padding:4px 8px">Podrías hacer 2 repeticiones más</td></tr>
@@ -1579,7 +1579,7 @@ function setSyncBanner(show) {
   if(!el) {
     el = document.createElement('div');
     el.id = 'sync-banner';
-    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:600;max-width:92vw;background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber);border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;text-align:center;box-shadow:var(--sh-card);backdrop-filter:blur(6px)';
+    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:600;max-width:92vw;background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber);border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;text-align:center;box-shadow:var(--sh-card);backdrop-filter:blur(6px)';
     el.textContent = '⚠ Hay datos sin subir — se guardan en tu celular y se reintenta solo. No borres la app.';
     document.body.appendChild(el);
   }
@@ -2329,11 +2329,11 @@ function renderOnboardingStep2(d) {
     <div class="wellness-title">¿Qué tipo de atleta sos?</div>
         <div style="padding:16px;display:flex;gap:10px">
       <div onclick="selectAthleteType('individual')" style="flex:1;cursor:pointer;border:2px solid ${d.athleteType==='individual'?'var(--accent)':'var(--border2)'};border-radius:var(--r);padding:16px;text-align:center;background:${d.athleteType==='individual'?'var(--bg3)':'transparent'}">
-        <div style="font-size:14px;font-weight:700">Atleta individual</div>
+        <div style="font-size:15px;font-weight:700">Atleta individual</div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">No pertenezco a ningún equipo</div>
       </div>
       <div onclick="selectAthleteType('team')" style="flex:1;cursor:pointer;border:2px solid ${d.athleteType==='team'?'var(--accent)':'var(--border2)'};border-radius:var(--r);padding:16px;text-align:center;background:${d.athleteType==='team'?'var(--bg3)':'transparent'}">
-        <div style="font-size:14px;font-weight:700">Atleta de equipo</div>
+        <div style="font-size:15px;font-weight:700">Atleta de equipo</div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Formo parte de un equipo</div>
       </div>
     </div>`;
@@ -2355,7 +2355,7 @@ function renderOnboardingStep2(d) {
           ${instNames.map(inst=>`<option value="${inst}" ${d.institution===inst?'selected':''}>${inst}</option>`).join('')}
         </select>
       </div>
-      ${!instNames.length?`<div style="font-size:12px;color:var(--text3)">Todavía no hay ningún equipo cargado — pedile a tu entrenador que cree uno primero.</div>`:''}
+      ${!instNames.length?`<div style="font-size:13px;color:var(--text3)">Todavía no hay ningún equipo cargado — pedile a tu entrenador que cree uno primero.</div>`:''}
       ${d.institution ? `<div><label class="eval-lbl">Categoría</label>
         <select class="auth-inp" style="margin:0" onchange="onboardingCategoryChange(this.value)">
           <option value="">Seleccionar...</option>
@@ -2415,7 +2415,7 @@ function renderOnboardingStep4(d) {
       <div><b>Perfil:</b> ${typeLabel}</div>
       <div><b>Lesiones registradas:</b> ${injCount ? injCount : 'Ninguna'}</div>
     </div>
-    <div id="onboarding-err" style="color:var(--red);font-size:12px;padding:0 16px 8px;text-align:center"></div>
+    <div id="onboarding-err" style="color:var(--red);font-size:13px;padding:0 16px 8px;text-align:center"></div>
     <div style="padding:0 16px 16px;display:flex;gap:10px">
       <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
       <button class="wellness-submit" style="flex:2" id="onboarding-finish-btn" onclick="finishOnboarding()">Finalizar y entrar</button>
@@ -2647,7 +2647,7 @@ window.goHome=goHome;
 // Qué sección queda marcada en el menú: en una ficha (o el editor abierto desde
 // ella), la sección de la que se vino, no "Panel Admin" donde vive por dentro.
 function activeNavTab() {
-  if(!S.isAdmin) return S.currentView;
+  if(!S.isAdmin) return S.currentView==='stats' ? 'dashboard' : S.currentView;
   const ctx = S._athleteDetailReturnCtx;
   if(S._inAthleteDetail && ctx && ctx.currentView) return ctx.currentView;
   if(S.currentView==='admin' && (S.adminView==='trained_today' || S.adminView==='reminders')) return 'dashboard';
@@ -2801,7 +2801,7 @@ function renderBottomBar() {
     ...(isTeamAthlete() ? [{id:'calendar', label:'Calendario', section:null, svg:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><circle cx="8" cy="15" r="1"/><circle cx="12" cy="15" r="1"/><circle cx="16" cy="15" r="1"/>'}] : []),
     {id:'wellness', label:'Wellness',    section:null, svg:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'},
     {id:'evals',    label:'Mis Tests',   section:null, svg:'<path d="M6 3v4l-3 8a3 3 0 0 0 3 4h12a3 3 0 0 0 3-4l-3-8V3"/><line x1="6" y1="3" x2="18" y2="3"/><line x1="8" y1="12" x2="16" y2="12"/>'},
-    {id:'stats',    label:'Stats',       section:null, svg:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>'},
+    // Estadísticas no va en la barra: se entra desde Inicio → "Control de carga" (pedido del usuario).
   ];
 
   // Mobile bottom bar
@@ -3254,15 +3254,15 @@ function currentRMCalcValue(lift) {
 function rmCalcInputsHtml(lift, s) {
   if(s.mode==='loaded') {
     const rmVal = S.oneRM?.[lift.liftId];
-    if(rmVal) return `<div style="font-size:12px;color:var(--text3)">Tu 1RM cargado: <b style="color:var(--text2)">${rmVal} kg</b></div>`;
-    return `<div style="font-size:12px;color:var(--amber)">Todavía no tenés un RM cargado para ${lift.short} — cargalo en Ajustes, o estimalo con Repeticiones o Velocidad.</div>`;
+    if(rmVal) return `<div style="font-size:13px;color:var(--text3)">Tu 1RM cargado: <b style="color:var(--text2)">${rmVal} kg</b></div>`;
+    return `<div style="font-size:13px;color:var(--amber)">Todavía no tenés un RM cargado para ${lift.short} — cargalo en Ajustes, o estimalo con Repeticiones o Velocidad.</div>`;
   }
   const fld = (label,f,val,placeholder,step) => `<div style="flex:1">
-      <label style="display:block;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">${label}</label>
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.03em;margin-bottom:4px">${label}</label>
       <input class="field-inp" style="width:100%" type="number" inputmode="decimal" ${step?`step="${step}"`:''} value="${val??''}" placeholder="${placeholder}" onchange="setRMCalcField('${lift.liftId}','${f}',this.value)">
     </div>`;
   if(s.mode==='rpe') {
-    const sel = (label,f,val,opts) => `<div style="flex:1"><label style="display:block;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">${label}</label><select class="field-inp" style="width:100%" onchange="setRMCalcField('${lift.liftId}','${f}',this.value)"><option value="">—</option>${opts.map(o=>`<option value="${o}" ${val==o?'selected':''}>${String(o).replace('.',',')}</option>`).join('')}</select></div>`;
+    const sel = (label,f,val,opts) => `<div style="flex:1"><label style="display:block;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.03em;margin-bottom:4px">${label}</label><select class="field-inp" style="width:100%" onchange="setRMCalcField('${lift.liftId}','${f}',this.value)"><option value="">—</option>${opts.map(o=>`<option value="${o}" ${val==o?'selected':''}>${String(o).replace('.',',')}</option>`).join('')}</select></div>`;
     return `<div style="display:flex;gap:8px">${fld('Peso (kg)','rpeKg',s.rpeKg,'ej. 140')}${sel('Repeticiones','rpeReps',s.rpeReps,[1,2,3,4,5,6,7,8,9,10,11,12])}${sel('RPE','rpeRpe',s.rpeRpe,RPE_LEVELS)}</div>`;
   }
   if(s.mode==='epley') {
@@ -3282,16 +3282,16 @@ function rmCalcTableHtml(rm) {
   const rows = RM_CALC_PCTS.map(p=>({ pct:p, kg: fmtKg(roundPlate(rm*p/100)) }));
   return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">
     <thead><tr>
-      <th style="text-align:left;font-size:11px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">%RM</th>
-      <th style="text-align:right;font-size:11px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Kg</th>
-      <th style="text-align:right;font-size:11px;text-transform:uppercase;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Reps aprox.</th>
+      <th style="text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">%RM</th>
+      <th style="text-align:right;font-size:11px;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Kg</th>
+      <th style="text-align:right;font-size:11px;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border2);padding-bottom:6px">Reps aprox.</th>
     </tr></thead>
     <tbody>
       ${rows.map(r=>{
         const zoneColor = r.pct>=85?'var(--red)':r.pct>=65?'var(--amber)':'var(--green)';
         const zoneDim = r.pct>=85?'var(--red-dim)':r.pct>=65?'var(--amber-dim)':'var(--green-dim)';
         return `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:7px 0"><span style="display:inline-block;min-width:34px;padding:2px 6px;border-radius:5px;font-size:11px;font-weight:700;color:${zoneColor};background:${zoneDim}">${r.pct}%</span></td>
+          <td style="padding:7px 0"><span style="display:inline-block;min-width:34px;padding:2px 6px;border-radius:10px;font-size:11px;font-weight:700;color:${zoneColor};background:${zoneDim}">${r.pct}%</span></td>
           <td style="text-align:right;font-weight:700;font-size:13px;padding:7px 0">${r.kg}</td>
           <td style="text-align:right;font-size:11px;color:var(--text3);padding:7px 0">${rmCalcRepHint(r.pct)}</td>
         </tr>`;
@@ -3320,8 +3320,8 @@ function renderRMCalcSection(standalone) {
     </div>
     ${rmCalcInputsHtml(lift, s)}
     <div style="display:flex;align-items:baseline;gap:6px;background:var(--accent-dim);border-radius:var(--rsm);padding:10px 12px;margin:12px 0">
-      <span style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--accent-text)">${rm!=null?Math.round(rm*10)/10:'—'}</span>
-      <span style="font-size:12px;color:var(--text2);font-weight:600">kg · 1RM estimado</span>
+      <span style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--accent-text)">${rm!=null?Math.round(rm*10)/10:'—'}</span>
+      <span style="font-size:13px;color:var(--text2);font-weight:600">kg · 1RM estimado</span>
     </div>
     ${s.mode==='rpe' ? rmCalcRepsTableHtml(rm) : rmCalcTableHtml(rm)}`;
 
@@ -3363,14 +3363,14 @@ function renderSession() {
   // cambia qué semana se está mirando en esta pantalla.
   const weekBrowser = (!S.isAdmin && !isTeamAthlete()) ? `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:-6px 0 16px">
     <button class="abtn" onclick="browseRoutineWeek(-1)" title="Semana anterior">‹</button>
-    <span style="font-size:12px;font-weight:700;color:${isBrowsingWeek?'var(--accent-text)':'var(--text3)'}">Semana ${getRoutineWeek()}${isBrowsingWeek?' · repasando':''}</span>
+    <span style="font-size:13px;font-weight:700;color:${isBrowsingWeek?'var(--accent-text)':'var(--text3)'}">Semana ${getRoutineWeek()}${isBrowsingWeek?' · repasando':''}</span>
     <button class="abtn" onclick="browseRoutineWeek(1)" title="Semana siguiente">›</button>
     ${isBrowsingWeek?`<button class="abtn" onclick="resetRoutineWeekView()">Volver a hoy</button>`:''}
   </div>` : '';
   if (!blocks.length) {
     if (!S.isAdmin) {
       return header + weekBrowser + `<div class="empty-state" style="padding:40px 20px">
-        <div style="font-size:16px;font-weight:600;margin-bottom:8px">Sin rutina asignada</div>
+        <div style="font-size:17px;font-weight:600;margin-bottom:8px">Sin rutina asignada</div>
         <div style="font-size:13px;color:var(--text3);line-height:1.6">Tu entrenador está preparando tu planificación.<br>Pronto vas a ver tu rutina acá.</div>
       </div>`;
     }
@@ -3513,7 +3513,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
       ${(prescPct && ex.rmLift && !rmValue)?`<span class="dose-warn">Cargá tu RM de ${RM_LIFTS.find(r=>r.id===ex.rmLift)?.label||''} en Ajustes</span>`:''}
       ${prescRpe?infoBtn('intensity'):''}
     </div>` : '';
-  const prescNoteRow = prescNote ? `<div style="font-size:12px;color:var(--text3);font-style:italic;margin:2px 0 6px">${prescNote}</div>` : '';
+  const prescNoteRow = prescNote ? `<div style="font-size:13px;color:var(--text3);font-style:italic;margin:2px 0 6px">${prescNote}</div>` : '';
   // El tipo de intensidad (RPE o RIR) lo define la rutina por ejercicio — acá
   // solo lo leemos para que la etiqueta, el rango del campo y el color
   // reflejen cuál es, en vez de asumir siempre RPE. Van en escalas opuestas:
@@ -4492,7 +4492,7 @@ function renderLibFilters() {
   const open = !!S._libFilterOpen;
   const label = filters.size ? [...filters].join(' · ') : 'Todas las categorías';
   let html = `<div onclick="toggleLibFilterDropdown()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 12px;cursor:pointer">
-    <span style="font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+    <span style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
       ${filters.size?`<span onclick="event.stopPropagation();setFilter('null')" style="font-size:11px;color:var(--text3);font-weight:600">Limpiar</span>`:''}
       <span style="color:var(--text3);font-size:11px;transition:transform .15s;display:inline-block;transform:rotate(${open?'180':'0'}deg)">▾</span>
@@ -4743,7 +4743,7 @@ function renderTagChipPicker(containerId, setKey) {
   if(!S[setKey]) S[setKey] = new Set();
   const selected = S[setKey];
   const main = getExerciseMainCategory([...selected]);
-  let html = '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Categoría principal</div>'
+  let html = '<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">Categoría principal</div>'
     + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
     + LIB_MAIN_CATEGORIES.map(c=>`<span class="lib-filter ${main===c?'active':''}" onclick="selectMainCategoryChip('${containerId}','${setKey}','${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
     + '</div>';
@@ -4761,7 +4761,7 @@ function renderTagChipPicker(containerId, setKey) {
   // enterarse recién con el toast de error al tocar "Guardar".
   const missing = getMissingLibRules([...selected]);
   if(missing.length) {
-    html += `<div style="font-size:12px;color:var(--red);margin-top:6px">⚠ Falta elegir: ${missing.map(m=>m.label).join(' · ')}</div>`;
+    html += `<div style="font-size:13px;color:var(--red);margin-top:6px">⚠ Falta elegir: ${missing.map(m=>m.label).join(' · ')}</div>`;
   }
   el.innerHTML = html;
 }
@@ -5210,8 +5210,8 @@ function buildWeeklyProgressionTable(lastWeek, currentWeek, getWeekData, editCtx
     const txt = hasData ? (d.load?fmtLoadTxt(d.load):'')+(d.load&&d.rpe?' · ':'')+(d.rpe?(rowsOf[i].wp.intensityType||'RPE')+' '+d.rpe:'') : (d.checked?'✓ sin datos':'—');
     return `<td class="${w===currentWeek?'cur':''} ${cls}">${txt}</td>`;
   }).join('');
-  const rowNote = anyNote ? `<tr><td>Nota</td>${weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}" style="white-space:normal;max-width:140px;font-size:11.5px;color:var(--text3)">${rowsOf[i].wp.note||''}</td>`).join('')}</tr>` : '';
-  const athleteNoteRows = rowsOf.map((r,i)=>r.d.athleteNote?`<div style="font-size:12px;color:var(--amber);margin-top:6px"><b>S${weeks[i]}:</b> 📝 ${r.d.athleteNote}</div>`:'').filter(Boolean).join('');
+  const rowNote = anyNote ? `<tr><td>Nota</td>${weeks.map((w,i)=>`<td class="${w===currentWeek?'cur':''}" style="white-space:normal;max-width:140px;font-size:11px;color:var(--text3)">${rowsOf[i].wp.note||''}</td>`).join('')}</tr>` : '';
+  const athleteNoteRows = rowsOf.map((r,i)=>r.d.athleteNote?`<div style="font-size:13px;color:var(--amber);margin-top:6px"><b>S${weeks[i]}:</b> 📝 ${r.d.athleteNote}</div>`:'').filter(Boolean).join('');
   return `<div class="prog-table-wrap"><table class="prog-table"><thead><tr><th>Semana</th>${head}</tr></thead><tbody>
     ${rowExName}
     <tr><td>Series</td>${rowSeries}</tr>
@@ -5353,7 +5353,7 @@ function loadChartHtml(userData, history, currentRoutine, currentWeek, ex) {
   if(el.s==='no') { S._lc = null; return ''; }
   if(el.s==='wait') {
     S._lc = null;
-    return `<div style="font-size:12px;color:var(--text3);margin-bottom:12px">Gráfico de carga: ${el.have} de ${el.need} semanas con carga — aparece solo al llegar.</div>`;
+    return `<div style="font-size:13px;color:var(--text3);margin-bottom:12px">Gráfico de carga: ${el.have} de ${el.need} semanas con carga — aparece solo al llegar.</div>`;
   }
   S._lcHist = userData?.routineAssignmentHistory || [];
   const nPlans = Math.max(1, S._lcHist.length);
@@ -5379,7 +5379,7 @@ function loadChartInner() {
     <div class="lc-chips">${chips([[4,'4 sem'],[8,'8 sem'],[12,'12 sem'],[0,'Todo']], lc.period, 'setLoadChartPeriod')}</div>
   </div>`;
   if(pts.length<2) {
-    return h + `<div style="padding:26px 0;text-align:center;font-size:12px;color:var(--text3)">No hay suficientes semanas con dato en este período.</div>`;
+    return h + `<div style="padding:26px 0;text-align:center;font-size:13px;color:var(--text3)">No hay suficientes semanas con dato en este período.</div>`;
   }
   const W=620, H=250, L=40, R=14, T=34, B=30;
   const vals = pts.map(p=>p[key]);
@@ -5427,7 +5427,7 @@ function loadChartInner() {
       ${stat((delta>=0?'+':'')+(Math.round(delta*2)/2)+' kg','desde S'+first.w+(first[key]?' ('+Math.round(delta/first[key]*100)+'%)':''),'var(--green)')}
       ${stat(pts.length+'/'+nWeeks,'semanas con dato')}
     </div>
-    <div style="font-size:11.5px;color:var(--text3);margin-top:10px;line-height:1.5"><b style="color:var(--text)">S${sel.w}</b>${lc.nPlans>1?' · Planificación '+sel.plan:''} · ${sel[key]} kg${sel.rpe?' · RPE '+esc(sel.rpe):''}${sel.reps?' · '+sel.reps+' rep prescriptas':''} · el atleta escribió «${esc(sel.raw)}»${lc.metric==='e1'?'<br>RM estimado = carga × (1 + repeticiones ÷ 30).':''}</div>`;
+    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5"><b style="color:var(--text)">S${sel.w}</b>${lc.nPlans>1?' · Planificación '+sel.plan:''} · ${sel[key]} kg${sel.rpe?' · RPE '+esc(sel.rpe):''}${sel.reps?' · '+sel.reps+' rep prescriptas':''} · el atleta escribió «${esc(sel.raw)}»${lc.metric==='e1'?'<br>RM estimado = carga × (1 + repeticiones ÷ 30).':''}</div>`;
   return h;
 }
 // semana absoluta → número de planificación (para las bandas)
@@ -5550,8 +5550,8 @@ function renderWellnessDayStrip(wKey) {
     const fg = submitted ? 'var(--green)' : partial ? 'var(--amber)' : 'var(--text3)';
     const border = isSel ? 'var(--accent)' : 'var(--border2)';
     return `<div onclick="goToWellnessDate('${d.key}')" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;min-width:0">
-      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase">${d.dow}</div>
-      <div style="width:100%;aspect-ratio:1;max-width:38px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:${isSel ? '2px' : '1px'} solid ${border};transition:all .15s">${d.num}</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text3);">${d.dow}</div>
+      <div style="width:100%;aspect-ratio:1;max-width:38px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:${isSel ? '2px' : '1px'} solid ${border};transition:all .15s">${d.num}</div>
     </div>`;
   }).join('');
   return `<div style="display:flex;gap:5px;margin-bottom:10px">${cells}</div>`;
@@ -5653,7 +5653,7 @@ function renderWellness() {
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:6px;border-top:1px solid var(--border)">
     <button class="abtn" onclick="shiftWellnessDate(-1)" ${canGoBack?'':'disabled style="opacity:.3;cursor:not-allowed"'}>‹</button>
     <div style="text-align:center">
-      <div style="font-size:14px;font-weight:700;">${(dateLabel||'').charAt(0).toUpperCase()+(dateLabel||'').slice(1)}</div>
+      <div style="font-size:15px;font-weight:700;">${(dateLabel||'').charAt(0).toUpperCase()+(dateLabel||'').slice(1)}</div>
       ${!isToday?`<div style="font-size:11px;color:var(--accent-text);cursor:pointer" onclick="goToTodayWellness()">Volver a hoy →</div>`:''}
     </div>
     <button class="abtn" onclick="shiftWellnessDate(1)" ${canGoForward?'':'disabled style="opacity:.3;cursor:not-allowed"'}>›</button>
@@ -5681,7 +5681,7 @@ function renderWellness() {
     html+=`<div class="hooper-item">
       <div class="hooper-label">
         <span>${item.label}</span>
-        <span style="color:${selColor};font-size:12px;font-weight:700">${selOpt?selOpt.label:'—'}</span>
+        <span style="color:${selColor};font-size:13px;font-weight:700">${selOpt?selOpt.label:'—'}</span>
       </div>
       <div class="hooper-scale">
         ${item.options.map(o=>{
@@ -5699,7 +5699,7 @@ function renderWellness() {
   html+=`<div class="hooper-item">
     <div class="hooper-label">
       <span>Horas de sueño</span>
-      <span style="color:${sleepCat?sleepCat.color:'var(--text3)'};font-size:12px;font-weight:700">${hours!==null?`${hours}h · ${sleepCat.label}`:'—'}</span>
+      <span style="color:${sleepCat?sleepCat.color:'var(--text3)'};font-size:13px;font-weight:700">${hours!==null?`${hours}h · ${sleepCat.label}`:'—'}</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin:4px 0 2px">
       <span style="font-size:11px;color:var(--text3);white-space:nowrap">0h</span>
@@ -5713,7 +5713,7 @@ function renderWellness() {
   html+=`<div id="wellness-score-section-${wKey}">
   <div class="hooper-score-box">
     <div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Score de hoy</div>
       <div class="hooper-score-val" style="color:${wState.color}" ${allFilled?`data-countup="${pct}" data-suffix="%"`:''}>${allFilled?pct+'%':'—'}</div>
           </div>
     <div style="text-align:right">
@@ -5744,7 +5744,7 @@ function renderWellness() {
              ${renderLoadItemRow(extraAct, wKey, mySport())}
            </div>`
         : `<div style="text-align:center;padding:2px 0 12px">
-             <button class="abtn" style="font-size:12px" onclick="toggleExtraGym()">+ Agregar entrenamiento individual (fuera del club)</button>
+             <button class="abtn" style="font-size:13px" onclick="toggleExtraGym()">+ Agregar entrenamiento individual (fuera del club)</button>
            </div>`;
     }
   });
@@ -5795,11 +5795,11 @@ function renderZoneDetail() {
   }).join('');
   const typeBtns=Object.entries(INJURY_TYPES).map(([k,label])=>{
     const active=inj.type===k;
-    return `<button onclick="setInjuryType('${zid}','${k}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?'var(--accent)':'var(--border2)'};background:${active?'var(--bg3)':'transparent'};color:${active?'var(--text)':'var(--text3)'};font-size:12px;cursor:pointer">${label}</button>`;
+    return `<button onclick="setInjuryType('${zid}','${k}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?'var(--accent)':'var(--border2)'};background:${active?'var(--bg3)':'transparent'};color:${active?'var(--text)':'var(--text3)'};font-size:13px;cursor:pointer">${label}</button>`;
   }).join('');
   const sevBtns=SEVERITY_LEVELS.map(s=>{
     const active=(inj.severity||'')===s.id;
-    return `<button onclick="setInjurySeverity('${zid}','${s.id}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?s.color:'var(--border2)'};background:${active?s.dim:'transparent'};color:${active?s.color:'var(--text3)'};font-weight:${active?'700':'400'};font-size:12px;cursor:pointer">${s.label}</button>`;
+    return `<button onclick="setInjurySeverity('${zid}','${s.id}')" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${active?s.color:'var(--border2)'};background:${active?s.dim:'transparent'};color:${active?s.color:'var(--text3)'};font-weight:${active?'700':'400'};font-size:13px;cursor:pointer">${s.label}</button>`;
   }).join('');
   const isInjury = inj.isInjury===true;
   const isExisting = !!S.injuries[zid];
@@ -5808,27 +5808,27 @@ function renderZoneDetail() {
       <span class="zone-close" onclick="S.selectedZone=null;renderMain()">×</span>
     </div>
         <div style="display:flex;gap:6px;margin-bottom:10px">
-      <button onclick="setIsInjury('${zid}',false)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${!isInjury?'var(--accent)':'var(--border2)'};background:${!isInjury?'var(--bg3)':'transparent'};color:${!isInjury?'var(--text)':'var(--text3)'};font-weight:${!isInjury?'700':'400'};font-size:12px;cursor:pointer">Molestia</button>
-      <button onclick="setIsInjury('${zid}',true)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${isInjury?'var(--red)':'var(--border2)'};background:${isInjury?'var(--red-dim)':'transparent'};color:${isInjury?'var(--red)':'var(--text3)'};font-weight:${isInjury?'700':'400'};font-size:12px;cursor:pointer">Lesión (esguince, edema, luxación...)</button>
+      <button onclick="setIsInjury('${zid}',false)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${!isInjury?'var(--accent)':'var(--border2)'};background:${!isInjury?'var(--bg3)':'transparent'};color:${!isInjury?'var(--text)':'var(--text3)'};font-weight:${!isInjury?'700':'400'};font-size:13px;cursor:pointer">Molestia</button>
+      <button onclick="setIsInjury('${zid}',true)" style="flex:1;padding:8px;border-radius:var(--rsm);border:1px solid ${isInjury?'var(--red)':'var(--border2)'};background:${isInjury?'var(--red-dim)':'transparent'};color:${isInjury?'var(--red)':'var(--text3)'};font-weight:${isInjury?'700':'400'};font-size:13px;cursor:pointer">Lesión (esguince, edema, luxación...)</button>
     </div>
     ${isInjury?`
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Tipo de lesión</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:6px">Tipo de lesión</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">${typeBtns}</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Gravedad</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:6px">Gravedad</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">${sevBtns}</div>
     `:''}
-    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dolor de HOY 0–10</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:6px">Dolor de HOY 0–10</div>
     <div class="pain-scale" style="display:flex;gap:4px;margin:8px 0;flex-wrap:wrap">${painBtns}</div>
-    <div style="font-size:12px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px dashed var(--border)">Cuestionario rápido</div>
+    <div style="font-size:13px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px dashed var(--border)">Cuestionario rápido</div>
     ${OSTRC_QUESTIONS.map(q=>{
       const cur = inj.ostrc?.[q.id];
       const opts = q.options.map(o=>`<button onclick="setOstrcAnswer('${zid}','${q.id}',${o.v})" style="flex:1;min-width:70px;padding:6px 4px;border-radius:var(--rxs);border:1px solid ${cur===o.v?'var(--accent)':'var(--border2)'};background:${cur===o.v?'var(--accent-dim)':'transparent'};color:${cur===o.v?'var(--accent-text)':'var(--text3)'};font-weight:${cur===o.v?'700':'400'};font-size:11px;cursor:pointer">${o.label}</button>`).join('');
       return `<div style="margin-bottom:10px">
-        <div style="font-size:11.5px;color:var(--text3);margin-bottom:5px">${q.label}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:5px">${q.label}</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">${opts}</div>
       </div>`;
     }).join('')}
-    ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:12px;font-weight:700;color:var(--accent-text);margin-bottom:10px">Puntaje: ${sc}/100</div>`:''; })()}
+    ${(()=>{ const sc=ostrcTotal(inj); return sc!=null?`<div style="font-size:13px;font-weight:700;color:var(--accent-text);margin-bottom:10px">Puntaje: ${sc}/100</div>`:''; })()}
     <textarea class="pain-note-inp" placeholder="Observaciones..." onchange="setPainNote('${zid}',this.value)">${inj.note||''}</textarea>
     ${renderInjuryStudies(zid, inj)}
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -5842,7 +5842,7 @@ function renderInjuryList() {
   const allZones=[...BODY_ZONES.front,...BODY_ZONES.back];
   const active=Object.entries(S.injuries).filter(([,v])=>v.pain>0);
   const activeHtml = !active.length
-    ? `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Sin molestias activas</div>`
+    ? `<div style="font-size:13px;color:var(--text3);text-align:center;padding:12px">Sin molestias activas</div>`
     : `<div class="injury-list">${active.map(([id,inj])=>{
         const zone=allZones.find(z=>z.id===id);
         const sev = severityInfo(inj.severity) || severityInfo('leve');
@@ -5870,10 +5870,10 @@ function renderResolvedInjuries() {
   if(!arch.length) return '';
   const sorted = [...arch].sort((a,b)=> (b.resolvedDate||'').localeCompare(a.resolvedDate||''));
   return `<div style="margin-top:10px">
-    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 4px">Historial (resueltas)</div>
+    <div style="font-size:11px;color:var(--text3);padding:8px 0 4px">Historial (resueltas)</div>
     ${sorted.map(r=>{
       const typeLbl = r.type?(INJURY_TYPES[r.type]||''):'';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:1px solid var(--border);font-size:12px">
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:1px solid var(--border);font-size:13px">
         <div>
           <div style="font-weight:600">${r.zoneLabel}${typeLbl?` · ${typeLbl}`:''}</div>
           <div style="color:var(--text3)">${r.startDate} → ${r.resolvedDate} · pico ${r.peakPain}/10</div>
@@ -5985,13 +5985,13 @@ function renderInjuryStudies(zid, inj, ownerUid) {
   const addFn = isAdmin ? `adminAddInjuryStudy('${ownerUid}','${zid}',this)` : `addInjuryStudy('${zid}',this)`;
   const rmFn = (sid) => isAdmin ? `adminRemoveInjuryStudy('${ownerUid}','${zid}','${sid}')` : `removeInjuryStudy('${zid}','${sid}')`;
   return `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
-    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Estudios</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:8px">Estudios</div>
     ${studies.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${studies.map(s=>`
       <div style="position:relative">
         ${(s.type||'').startsWith('image/')
           ? `<img src="${s.url}" onclick="window.open('${s.url}','_blank')" style="width:64px;height:64px;object-fit:cover;border-radius:var(--rxs);border:1px solid var(--border2);cursor:pointer">`
           : `<a href="${s.url}" target="_blank" style="width:64px;height:64px;display:flex;align-items:center;justify-content:center;border-radius:var(--rxs);border:1px solid var(--border2);background:var(--bg3);font-size:11px;text-align:center;padding:4px;color:var(--text3);text-decoration:none;overflow:hidden">${(s.name||'Archivo').slice(0,16)}</a>`}
-        <span onclick="${rmFn(s.id)}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;font-size:12px;line-height:18px;text-align:center;cursor:pointer">×</span>
+        <span onclick="${rmFn(s.id)}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;font-size:13px;line-height:18px;text-align:center;cursor:pointer">×</span>
       </div>`).join('')}</div>`:''}
     <label class="abtn" style="cursor:pointer;font-size:11px;display:inline-block">+ Subir estudio<input type="file" accept="image/*,.pdf" style="display:none" onchange="${addFn}"></label>
   </div>`;
@@ -6065,7 +6065,7 @@ function refreshWellnessScoreSection(wKey) {
   el.innerHTML = `
     <div class="hooper-score-box">
       <div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Score de hoy ${infoBtn('wellness')}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Score de hoy ${infoBtn('wellness')}</div>
         <div class="hooper-score-val" style="color:${wState.color}" ${allFilled?`data-countup="${pct}" data-suffix="%"`:''}>${allFilled?pct+'%':'—'}</div>
               </div>
       <div style="text-align:right">
@@ -6280,14 +6280,14 @@ window.toggleIllnessForm = toggleIllnessForm;
 function renderIllnessSection() {
   const active = getActiveIllness(S.illnesses);
   if(active) {
-    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);font-size:12px">
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm);font-size:13px">
       <span style="color:var(--text3)">🤒 Enfermedad activa desde ${active.startDate}${active.note?' · '+active.note:''}</span>
       <button class="abtn" style="font-size:11px;padding:4px 8px" onclick="resolveIllness('${active.id}')">Marcar recuperado</button>
     </div>`;
   }
   if(S._showIllnessForm) {
     return `<div style="padding:10px 12px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rsm)">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Registrar enfermedad</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:6px">Registrar enfermedad</div>
       <input type="text" id="illness-note-inp" placeholder="Ej: Gripe" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box">
       <div style="display:flex;gap:8px">
         <button class="abtn abtn-p" style="flex:1" onclick="addIllness(document.getElementById('illness-note-inp').value)">Guardar</button>
@@ -6536,7 +6536,7 @@ function renderProgress() {
 
   let html=`<div class="week-nav">
     <button class="week-nav-btn" onclick="progWeek(-1)" ${w<=1?'disabled':''}>‹</button>
-    <div class="week-nav-label">Semana ${w} · <span style="color:var(--text3);font-size:12px">${weekLabel(w)}</span></div>
+    <div class="week-nav-label">Semana ${w} · <span style="color:var(--text3);font-size:13px">${weekLabel(w)}</span></div>
     <button class="week-nav-btn" onclick="progWeek(1)" ${w>=S.currentWeek?'disabled':''}>›</button>
   </div>`;
 
@@ -6627,22 +6627,22 @@ function renderStats() {
   // Metric cards — 2x2 grid, no emojis, proper card styling
   html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Semanas</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:8px">Semanas</div>
       <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${S.currentWeek}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">ciclo actual</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Sesiones</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:8px">Sesiones</div>
       <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${totalS}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">de la rutina</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Racha semanal</div>
-      <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;line-height:1;color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}<span style="font-size:16px;font-weight:400;color:var(--text3)">/7</span></div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:8px">Racha semanal</div>
+      <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;line-height:1;color:${streak>=5?'var(--green)':streak>=3?'var(--amber)':'var(--text)'}">${streak}<span style="font-size:17px;font-weight:400;color:var(--text3)">/7</span></div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">días activos</div>
     </div>
     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Ejerc./sesión</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:8px">Ejerc./sesión</div>
       <div style="font-size:30px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--text);line-height:1">${totalS>0?Math.round(totalC/totalS):0}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">promedio</div>
     </div>
@@ -6650,13 +6650,13 @@ function renderStats() {
 
   // Last 7 days activity strip
   html+=`<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px 14px;margin-bottom:16px">
-    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.06em">Actividad — últimos 7 días</div>
+    <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:12px;">Actividad — últimos 7 días</div>
     <div style="display:flex;gap:4px;justify-content:space-between">
       ${last7.map(d=>{
         const day=new Date(d+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short'}).replace('.','');
         const done=doneDs.has(d);
         return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
-          <div style="width:34px;height:34px;border-radius:50%;background:${done?'var(--accent)':'var(--bg3)'};border:1px solid ${done?'var(--accent)':'var(--border2)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:${done?'#fff':'var(--text3)'}">${done?'✓':''}</div>
+          <div style="width:34px;height:34px;border-radius:50%;background:${done?'var(--accent)':'var(--bg3)'};border:1px solid ${done?'var(--accent)':'var(--border2)'};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:${done?'#fff':'var(--text3)'}">${done?'✓':''}</div>
           <div style="font-size:11px;color:var(--text3);text-transform:capitalize;text-align:center">${day.slice(0,2)}</div>
         </div>`;
       }).join('')}
@@ -6668,7 +6668,7 @@ function renderStats() {
 
   // Top exercises
   if(topEx.length) html+=`<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);margin-bottom:16px;overflow:hidden">
-    <div style="font-size:14px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Ejercicios más frecuentes</div>
+    <div style="font-size:15px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Ejercicios más frecuentes</div>
     <div style="padding:8px 16px 14px">
       ${topEx.map(([id,f],i)=>`
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
@@ -6678,7 +6678,7 @@ function renderStats() {
             <div style="flex:1;height:4px;border-radius:2px;background:var(--bg3)">
               <div style="height:100%;border-radius:2px;background:var(--accent);width:${Math.round(f/maxF*100)}%"></div>
             </div>
-            <span style="font-size:12px;font-weight:600;color:var(--accent-text);min-width:24px;text-align:right">${f}x</span>
+            <span style="font-size:13px;font-weight:600;color:var(--accent-text);min-width:24px;text-align:right">${f}x</span>
           </div>
         </div>`).join('')}
     </div>
@@ -6691,7 +6691,7 @@ function renderStats() {
       ${wScores.map(({date,pct})=>{
         const st=getWellnessState(pct);
         return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
-          <div style="font-size:12px;color:var(--text3);min-width:52px;text-transform:capitalize">${new Date(date+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric'}).replace('.','')}</div>
+          <div style="font-size:13px;color:var(--text3);min-width:52px;text-transform:capitalize">${new Date(date+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric'}).replace('.','')}</div>
           <div style="flex:1;height:6px;border-radius:3px;background:var(--bg3)">
             <div style="height:100%;border-radius:3px;background:${st.color};width:${pct}%;transition:width .3s"></div>
           </div>
@@ -6701,7 +6701,7 @@ function renderStats() {
       }).join('')}
     </div>
   </div>`;
-  else html+=`<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);margin-bottom:16px"><div style="font-size:14px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Bienestar semanal</div><div class="empty-state" style="padding:24px">Sin registros de wellness aún.</div></div>`;
+  else html+=`<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);margin-bottom:16px"><div style="font-size:15px;font-weight:600;padding:14px 16px;border-bottom:1px solid var(--border)">Bienestar semanal</div><div class="empty-state" style="padding:24px">Sin registros de wellness aún.</div></div>`;
 
   if(isDesktop) html+=`</div>`;
   return html;
@@ -6712,7 +6712,7 @@ function renderTeams() {
   if(S._teamViewLoadingId) return `<div style="text-align:center;padding:40px;color:var(--text3)">Cargando equipo…</div>`;
   if(S.teamView) return renderTeamDetail(S.teamView);
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-    <div style="font-size:16px;font-weight:700">Equipos</div>
+    <div style="font-size:17px;font-weight:700">Equipos</div>
     <button class="abtn abtn-p" onclick="createTeam()">+ Nuevo equipo</button>
   </div>`;
   if(!S.teams.length) html+=`<div class="empty-state">No hay equipos creados.</div>`;
@@ -6974,18 +6974,18 @@ function renderCalendarRepeatTool(team) {
   let html = `<div class="admin-section" style="margin-bottom:14px">
     <div class="admin-item" style="cursor:pointer" onclick="toggleCalendarRepeat()">
       <div class="admin-section-title" style="margin:0">🔁 Repetir actividad semanalmente</div>
-      <span style="color:var(--text3);font-size:12px">${open?'▲ cerrar':'▼ abrir'}</span>
+      <span style="color:var(--text3);font-size:13px">${open?'▲ cerrar':'▼ abrir'}</span>
     </div>`;
   if(open) {
     const types = S._calRepeatTypes||new Set();
     const dows = S._calRepeatDows||new Set();
     const dowLabels=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
     html += `<div style="padding:12px 16px">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Actividad a repetir</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:8px">Actividad a repetir</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
         ${CALENDAR_TYPES.map(t=>`<button class="lib-filter ${types.has(t.id)?'active':''}" onclick="toggleCalendarRepeatType('${t.id}')">${t.label}</button>`).join('')}
       </div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Días de la semana</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:8px">Días de la semana</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
         ${dowLabels.map((lbl,i)=>`<button class="lib-filter ${dows.has(i)?'active':''}" onclick="toggleCalendarRepeatDow(${i})">${lbl}</button>`).join('')}
       </div>
@@ -7082,7 +7082,7 @@ function renderCalendarEventChips(events, maxChips) {
       const t = CALENDAR_TYPES.find(x=>x.id===e.type);
       const color = t?t.color:'var(--text3)';
       const label = t?t.label:e.type;
-      return `<div style="background:${color}26;color:${color};border-radius:3px;padding:1px 3px;font-size:8.5px;font-weight:700;line-height:1.5;width:100%;box-sizing:border-box;overflow:hidden;text-align:center;white-space:nowrap;text-overflow:ellipsis">${label}</div>`;
+      return `<div style="background:${color}26;color:${color};border-radius:3px;padding:1px 3px;font-size:11px;font-weight:700;line-height:1.5;width:100%;box-sizing:border-box;overflow:hidden;text-align:center;white-space:nowrap;text-overflow:ellipsis">${label}</div>`;
     }).join('')}
     ${extraOthers>0?`<div style="font-size:11px;color:var(--text3);text-align:center">+${extraOthers}</div>`:''}
   </div>` : '';
@@ -7117,7 +7117,7 @@ function renderCalendarMonthView(team) {
       const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
       const events = getCalendarEvents(team,dateStr);
       const isToday = dateStr===today, isSelected = dateStr===selected;
-      return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:64px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:2px;font-size:12px;padding:4px 2px;
+      return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:64px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:2px;font-size:13px;padding:4px 2px;
         background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
         <span style="color:${isToday?'var(--accent-text)':'var(--text)'}">${day}</span>
         ${renderCalendarEventChips(events, 3)}
@@ -7141,7 +7141,7 @@ function renderCalendarWeekView(team) {
 
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
-    <div style="font-weight:700;font-size:14px">${weekLabel}</div>
+    <div style="font-weight:700;font-size:15px">${weekLabel}</div>
     <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
@@ -7155,7 +7155,7 @@ function renderCalendarWeekView(team) {
       return `<div onclick="selectCalendarDay('${dateStr}')" style="min-height:88px;border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;cursor:pointer;gap:3px;padding:4px 2px;
         background:${isSelected?'var(--accent-dim)':'var(--bg3)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'}">
         <span style="font-size:11px;color:var(--text3);font-weight:600">${dayInitials[i]}</span>
-        <span style="font-size:14px;color:${isToday?'var(--accent-text)':'var(--text)'}">${d.getDate()}</span>
+        <span style="font-size:15px;color:${isToday?'var(--accent-text)':'var(--text)'}">${d.getDate()}</span>
         ${renderCalendarEventChips(events, 4)}
       </div>`;
     }).join('')}
@@ -7170,7 +7170,7 @@ function renderCalendarDayView(team) {
   const dateLabel = new Date(refDate+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <button class="abtn" onclick="shiftCalendarRef(-1)">‹</button>
-    <div style="font-weight:700;font-size:14px;">${(dateLabel||'').charAt(0).toUpperCase()+(dateLabel||'').slice(1)}</div>
+    <div style="font-weight:700;font-size:15px;">${(dateLabel||'').charAt(0).toUpperCase()+(dateLabel||'').slice(1)}</div>
     <button class="abtn" onclick="shiftCalendarRef(1)">›</button>
   </div>`;
   html += S.isAdmin ? renderCalendarDayEditor(team, refDate) : renderCalendarDayReadOnly(team, refDate);
@@ -7244,8 +7244,8 @@ function renderCalendarDayEditor(team, dateStr) {
           <button class="abtn abtn-d" onclick="removeCalendarEvent('${team.id}','${dateStr}',${i})">Quitar</button>
         </div>
         ${e.type==='partido'?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-left:16px">
-          <input value="${e.opponent||''}" placeholder="Rival" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:12px;outline:none" onblur="setCalendarEventField('${team.id}','${dateStr}',${i},'opponent',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
-          <select style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:12px;outline:none" onchange="setCalendarEventField('${team.id}','${dateStr}',${i},'homeAway',this.value)">
+          <input value="${e.opponent||''}" placeholder="Rival" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onblur="setCalendarEventField('${team.id}','${dateStr}',${i},'opponent',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+          <select style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 10px;color:var(--text);font-size:13px;outline:none" onchange="setCalendarEventField('${team.id}','${dateStr}',${i},'homeAway',this.value)">
             <option value="local" ${e.homeAway==='local'?'selected':''}>Local</option>
             <option value="visitante" ${e.homeAway==='visitante'?'selected':''}>Visitante</option>
           </select>
@@ -7255,7 +7255,7 @@ function renderCalendarDayEditor(team, dateStr) {
       </div>`;
     }).join(''):`<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin actividades este día.</div>`}
     <div style="padding:14px 16px;border-top:1px solid var(--border)">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Agregar actividad</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:8px">Agregar actividad</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${CALENDAR_TYPES.map(t=>`<button class="lib-filter" onclick="addCalendarEvent('${team.id}','${dateStr}','${t.id}')">+ ${t.label}</button>`).join('')}
       </div>
@@ -7758,7 +7758,7 @@ function renderTeamRoutineAssignWizard() {
     sessionNames.forEach(sName=>{
       const blocks = routine.sessions[sName]||[];
       if(!blocks.length) return;
-      html += `<div style="font-size:11px;font-weight:700;color:var(--accent-text);text-transform:uppercase;margin:10px 0 4px">${sName}</div>`;
+      html += `<div style="font-size:11px;font-weight:700;color:var(--accent-text);margin:10px 0 4px">${sName}</div>`;
       blocks.forEach(b=>{
         const sel = st.blockPositions[b.id] || [];
         html += `<div style="padding:8px 0;border-top:1px solid var(--border)">
@@ -7772,7 +7772,7 @@ function renderTeamRoutineAssignWizard() {
     });
     const need = sessionNames.length;
     const sortedSel = [...st.selectedWeekdays].sort((a,b)=>a-b);
-    html += `<div style="font-size:12px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border)">¿Qué días reales de la semana entrena el equipo? (elegí ${need})</div>
+    html += `<div style="font-size:13px;color:var(--text3);margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border)">¿Qué días reales de la semana entrena el equipo? (elegí ${need})</div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
         ${WEEKDAY_LABELS.map((label,dow)=>{
           const checked = st.selectedWeekdays.includes(dow);
@@ -7914,18 +7914,18 @@ function renderTeamRutina(team) {
     html += !blocks.length ? `<div class="pc-na" style="margin-bottom:10px">Sin ejercicios aún.</div>` : blocks.map(b=>{
       const exList = b.categories.flatMap(c=>c.exercises);
       return `<div class="card" style="padding:12px;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:600;color:var(--purple);margin-bottom:6px">${b.label} — ${b.title}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--purple);margin-bottom:6px">${b.label} — ${b.title}</div>
         ${exList.map(ex=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
           <span style="font-size:13px;font-weight:500">${ex.name}</span>
-          <span style="color:var(--accent-text);font-size:12px;font-weight:600;background:var(--accent-dim);padding:3px 8px;border-radius:20px;white-space:nowrap">${formatExSummary(ex)||'—'}</span>
+          <span style="color:var(--accent-text);font-size:13px;font-weight:600;background:var(--accent-dim);padding:3px 8px;border-radius:999px;white-space:nowrap">${formatExSummary(ex)||'—'}</span>
         </div>`).join('')}
       </div>`;
     }).join('');
     html += `<div class="tp-k" style="margin:12px 0 6px">Notas por jugador</div>
       <div class="player-note"><span class="player-note-name">+ Nota</span>
-        <input style="flex:1;background:transparent;border:none;outline:none;font-size:12px;color:var(--text)" placeholder="Jugador: nota específica..." onkeydown="if(event.key==='Enter')addPlayerNote('${team.id}',${di},this)">
+        <input style="flex:1;background:transparent;border:none;outline:none;font-size:13px;color:var(--text)" placeholder="Jugador: nota específica..." onkeydown="if(event.key==='Enter')addPlayerNote('${team.id}',${di},this)">
       </div>
-      ${(day.playerNotes||[]).map((n,ni)=>`<div class="player-note"><span class="player-note-name">${escHtml(n.player)}</span><span class="player-note-text">${escHtml(n.note)}</span><span style="cursor:pointer;color:var(--text3);font-size:14px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span></div>`).join('')}
+      ${(day.playerNotes||[]).map((n,ni)=>`<div class="player-note"><span class="player-note-name">${escHtml(n.player)}</span><span class="player-note-text">${escHtml(n.note)}</span><span style="cursor:pointer;color:var(--text3);font-size:15px;margin-left:8px" onclick="deletePlayerNote('${team.id}',${di},${ni})">×</span></div>`).join('')}
     </section>`;
   }
 
@@ -8623,30 +8623,30 @@ function renderTeamMetricsCard(title,members,showLoad) {
     <div class="admin-section-title">${title} · ${members.length} atleta${members.length!==1?'s':''}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wState.color}" ${avgW!==null?`data-countup="${avgW}" data-suffix="%"`:''}>${avgW!==null?avgW+'%':'—'}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Wellness sem. ${infoBtn('wellness')}</div>
+        <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${wState.color}" ${avgW!==null?`data-countup="${avgW}" data-suffix="%"`:''}>${avgW!==null?avgW+'%':'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Wellness sem. ${infoBtn('wellness')}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}" ${avgAcwr!==null?`data-countup="${avgAcwr}" data-decimals="2"`:''}>${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">ACWR ${infoBtn('acwr')}</div>
+        <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}" ${avgAcwr!==null?`data-countup="${avgAcwr}" data-decimals="2"`:''}>${avgAcwr!==null?avgAcwr.toFixed(2):'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">ACWR ${infoBtn('acwr')}</div>
         <div style="font-size:11px;color:${acwrSt.color}">${acwrSt.label}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:18px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}" ${avgMono!==null?`data-countup="${avgMono}" data-decimals="1"`:''}>${avgMono!==null?avgMono.toFixed(1):'—'}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
+        <div style="font-size:17px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${monSt.color}" ${avgMono!==null?`data-countup="${avgMono}" data-decimals="1"`:''}>${avgMono!==null?avgMono.toFixed(1):'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Monotonía ${infoBtn('monotony')}</div>
         <div style="font-size:11px;color:${monSt.color}">${monSt.label}</div>
       </div>
       ${showLoad?`<div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:16px;font-weight:700" ${avgToday!==null?`data-countup="${Math.round(avgToday)}"`:''}>${avgToday!==null?Math.round(avgToday):'—'}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga hoy (UA) ${infoBtn('ua')}</div>
+        <div style="font-size:17px;font-weight:700" ${avgToday!==null?`data-countup="${Math.round(avgToday)}"`:''}>${avgToday!==null?Math.round(avgToday):'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Carga hoy (UA) ${infoBtn('ua')}</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:16px;font-weight:700" ${avgAcute!==null?`data-countup="${Math.round(avgAcute)}"`:''}>${avgAcute!==null?Math.round(avgAcute):'—'}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
+        <div style="font-size:17px;font-weight:700" ${avgAcute!==null?`data-countup="${Math.round(avgAcute)}"`:''}>${avgAcute!==null?Math.round(avgAcute):'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Carga semana (UA)</div>
       </div>
       <div style="background:var(--bg2);padding:12px;text-align:center">
-        <div style="font-size:16px;font-weight:700" ${avgChronic!==null?`data-countup="${Math.round(avgChronic)}"`:''}>${avgChronic!==null?Math.round(avgChronic):'—'}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:2px">Carga crónica (UA)</div>
+        <div style="font-size:17px;font-weight:700" ${avgChronic!==null?`data-countup="${Math.round(avgChronic)}"`:''}>${avgChronic!==null?Math.round(avgChronic):'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Carga crónica (UA)</div>
       </div>`:''}
     </div>
   </div>`;
@@ -8675,7 +8675,7 @@ function renderAthleteSummaryCard(a) {
       const dt = new Date(d+'T00:00:00');
       const initial = dt.toLocaleDateString('es-AR',{weekday:'narrow'});
       return `<div style="flex:1;text-align:center" title="${d}${sc!=null?' · Wellness '+sc+'%':' · sin wellness'}">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:2px;text-transform:uppercase">${initial}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px;">${initial}</div>
         <div style="height:14px;border-radius:3px;background:${sc!=null?st.color:'var(--bg3)'}"></div>
       </div>`;
     }).join('')}
@@ -8684,12 +8684,12 @@ function renderAthleteSummaryCard(a) {
   return `<div class="card" style="padding:14px;cursor:pointer" onclick="adminOpenAthlete('${a.uid}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div>
-        <div style="font-size:14px;font-weight:600">${escHtml(a.name || a.email)}</div>
+        <div style="font-size:15px;font-weight:600">${escHtml(a.name || a.email)}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${a.sport || ''}${a.position ? ' · ' + a.position : ''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         ${score !== null
-          ? `<div style="font-size:18px;font-weight:700;color:${scoreColor}">${score}%</div><div style="font-size:11px;color:var(--text3)">Wellness</div>`
+          ? `<div style="font-size:17px;font-weight:700;color:${scoreColor}">${score}%</div><div style="font-size:11px;color:var(--text3)">Wellness</div>`
           : `<div style="font-size:11px;color:var(--text3)">Sin wellness hoy</div>`}
       </div>
     </div>
@@ -8764,7 +8764,7 @@ function renderGroupWellness(memberUids, opts) {
   // espacio vacío para lo poco que mostraba cada una — mismo criterio que ya
   // usamos en el Dashboard (alertas / lesiones recientes en paralelo).
   const isDesktopWellness = window.innerWidth >= 900;
-  html += `<div style="margin:14px 0 12px;font-size:12px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
+  html += `<div style="margin:14px 0 12px;font-size:13px;color:var(--text3)">${doneCount}/${members.length} completaron el wellness de hoy</div>
     <div class="ar-list">${athleteRowsHead()}${members.map(a=>athleteRowHtml(a,{onclick:members.length>1?"adminOpenAthlete('"+a.uid+"')":'', status:getDashAthleteStatus(a)})).join('')}</div>`;
   return html;
 }
@@ -9288,7 +9288,7 @@ function renderTriageTable(members) {
     });
 
     const arrow = (k) => sortKey===k ? (sortDir==='asc'?' ↑':' ↓') : '';
-    html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="border-bottom:1px solid var(--border)">
         <th style="text-align:left;padding:8px 10px;cursor:pointer;white-space:nowrap;color:var(--text2)" onclick="setTriageSort('name')">Atleta${arrow('name')}</th>
         <th style="text-align:center;padding:8px 10px;cursor:pointer;white-space:nowrap;color:var(--text2)" onclick="setTriageSort('wellness')">Wellness${arrow('wellness')}</th>
@@ -9308,7 +9308,7 @@ function renderTriageTable(members) {
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${acwrSt.color}">${summary.acwr!=null?summary.acwr.toFixed(2):'—'}</td>
           <td style="padding:8px 10px;text-align:center;font-weight:700;color:${monSt.color}">${summary.monotony!=null?summary.monotony.toFixed(1):'—'}</td>
           <td style="padding:8px 10px">
-            ${worst?`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${worstSev.dim};color:${worstSev.color};margin-right:4px;white-space:nowrap">🩹 ${worst.zoneLabel}</span>`:''}
+            ${worst?`<span style="font-size:11px;padding:2px 8px;border-radius:999px;background:${worstSev.dim};color:${worstSev.color};margin-right:4px;white-space:nowrap">🩹 ${worst.zoneLabel}</span>`:''}
             ${lowFlags.map(f=>`<span style="font-size:11px;color:var(--text3);margin-right:6px;white-space:nowrap">${f}</span>`).join('')}
             ${(!worst && !lowFlags.length)?'<span style="color:var(--text3)">—</span>':''}
           </td>
@@ -10195,8 +10195,8 @@ function renderAdminBodyMap() {
       <div class="abm-lbl">Dolor de hoy 0–10</div>
       <div class="pain-scale" style="display:flex;gap:4px;margin:6px 0 10px;flex-wrap:wrap">${Array.from({length:11},(_,i)=>`<button class="${d.pain===i?(i>=8?'pain-btn p-high':i>=4?'pain-btn p-med':'pain-btn p-low'):'pain-btn'}" onclick="abmSet('pain',${i})">${i}</button>`).join('')}</div>
       <div class="abm-lbl" style="border-top:1px dashed var(--border);padding-top:10px">Cuestionario rápido</div>
-      ${OSTRC_QUESTIONS.map(q=>`<div style="margin-bottom:8px"><div style="font-size:11.5px;color:var(--text3);margin-bottom:4px">${q.label}</div><div class="abm-row" style="flex-wrap:wrap;margin-bottom:0">${q.options.map(o=>tog(d.ostrc?.[q.id]===o.v,`abmSetOstrc('${q.id}',${o.v})`,o.label)).join('')}</div></div>`).join('')}
-      ${(()=>{ const sc=ostrcTotal(d); return sc!=null?`<div style="font-size:12px;font-weight:700;color:var(--accent-text);margin-bottom:8px">Puntaje: ${sc}/100</div>`:''; })()}
+      ${OSTRC_QUESTIONS.map(q=>`<div style="margin-bottom:8px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">${q.label}</div><div class="abm-row" style="flex-wrap:wrap;margin-bottom:0">${q.options.map(o=>tog(d.ostrc?.[q.id]===o.v,`abmSetOstrc('${q.id}',${o.v})`,o.label)).join('')}</div></div>`).join('')}
+      ${(()=>{ const sc=ostrcTotal(d); return sc!=null?`<div style="font-size:13px;font-weight:700;color:var(--accent-text);margin-bottom:8px">Puntaje: ${sc}/100</div>`:''; })()}
       <textarea class="pain-note-inp" id="abm-note" placeholder="Observaciones..." oninput="abmNote(this.value)">${esc(d.note||'')}</textarea>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="wellness-submit" id="abm-save" style="flex:2" onclick="abmSave(false)">Guardar ${isInjury?'lesión':'molestia'}</button>
@@ -11114,12 +11114,12 @@ function renderPerfilTab(a) {
           </div>
           <button class="abtn" onclick="openAdminBodyMap('${uid}','${id}')" title="Actualizar dolor, tipo, observaciones o quitarla">Actualizar</button>
         </div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Gravedad clínica</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:5px">Gravedad clínica</div>
         <div style="display:flex;gap:6px">
           ${SEVERITY_LEVELS.map(s=>`<button onclick="adminSetInjurySeverity('${uid}','${id}','${s.id}')" style="flex:1;padding:6px;border-radius:var(--rxs);border:1px solid ${sev.id===s.id?s.color:'var(--border2)'};background:${sev.id===s.id?s.dim:'transparent'};color:${sev.id===s.id?s.color:'var(--text3)'};font-weight:${sev.id===s.id?'700':'400'};font-size:11px;cursor:pointer">${s.label}</button>`).join('')}
         </div>
         ${isRealInjury(inj)?`
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 5px">Fase de retorno al juego</div>
+        <div style="font-size:11px;color:var(--text3);margin:10px 0 5px">Fase de retorno al juego</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${RTP_PHASES.map(p=>`<button onclick="adminSetInjuryRtpPhase('${uid}','${id}','${p.id}')" style="flex:1;min-width:80px;padding:6px;border-radius:var(--rxs);border:1px solid ${inj.rtpPhase===p.id?'var(--accent)':'var(--border2)'};background:${inj.rtpPhase===p.id?'var(--accent-dim)':'transparent'};color:${inj.rtpPhase===p.id?'var(--accent-text)':'var(--text3)'};font-weight:${inj.rtpPhase===p.id?'700':'400'};font-size:11px;cursor:pointer">${p.label}</button>`).join('')}
         </div>`:''}
@@ -11198,7 +11198,7 @@ function renderPerfilTab(a) {
                 <button class="abtn" onclick="toggleAdminIllnessForm()">Cancelar</button>
               </div>
             </div>`
-          : `<span style="font-size:12px;color:var(--text3);cursor:pointer" onclick="toggleAdminIllnessForm()">Sin enfermedad activa · + Registrar</span>`)
+          : `<span style="font-size:13px;color:var(--text3);cursor:pointer" onclick="toggleAdminIllnessForm()">Sin enfermedad activa · + Registrar</span>`)
       }
       ${pastIllnesses.length ? `<div style="font-size:11px;color:var(--text3);margin-top:10px">Historial: ${pastIllnesses.map(x=>x.startDate+'→'+x.endDate+(x.note?' ('+x.note+')':'')).join(' · ')}</div>` : ''}
     </div>
@@ -11306,18 +11306,18 @@ function renderPastRoutinePhases(a) {
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
           <div style="min-width:0">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
-              <span style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${color};padding:2px 8px;border-radius:20px">Planificación ${n}</span>
-              <span style="font-size:11px;font-weight:700;color:var(--text3);background:var(--bg3);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Finalizada</span>
+              <span style="font-size:11px;font-weight:800;color:#fff;background:${color};padding:2px 8px;border-radius:999px">Planificación ${n}</span>
+              <span style="font-size:11px;font-weight:700;color:var(--text3);background:var(--bg3);padding:2px 8px;border-radius:999px;">Finalizada</span>
               ${phase.continuesFromRoutineId?'<span style="font-size:11px;color:var(--text3)">· continuación</span>':''}
             </div>
             <div style="font-size:15px;font-weight:700;line-height:1.25">${esc(phase.routineName||'Rutina')}</div>
-            <div style="font-size:12px;color:var(--text3);margin-top:3px">${nWeeks>1?'Semanas':'Semana'} ${phase.startWeek}${nWeeks>1?'–'+realEndWeek:''} · ${nWeeks} ${nWeeks===1?'semana':'semanas'}</div>
-            <div style="font-size:12px;color:var(--text3)">${fmtPhaseDate(phase.startDate)}${endDate?' → '+fmtPhaseDate(endDate):''}${doneN?` · ${doneN} ${doneN===1?'sesión completada':'sesiones completadas'}`:''}</div>
+            <div style="font-size:13px;color:var(--text3);margin-top:3px">${nWeeks>1?'Semanas':'Semana'} ${phase.startWeek}${nWeeks>1?'–'+realEndWeek:''} · ${nWeeks} ${nWeeks===1?'semana':'semanas'}</div>
+            <div style="font-size:13px;color:var(--text3)">${fmtPhaseDate(phase.startDate)}${endDate?' → '+fmtPhaseDate(endDate):''}${doneN?` · ${doneN} ${doneN===1?'sesión completada':'sesiones completadas'}`:''}</div>
           </div>
-          <span style="color:var(--text3);font-size:18px;flex-shrink:0;transition:transform .15s;transform:rotate(${open?'90':'0'}deg)">›</span>
+          <span style="color:var(--text3);font-size:17px;flex-shrink:0;transition:transform .15s;transform:rotate(${open?'90':'0'}deg)">›</span>
         </div>
       </div>
-      ${open ? `<div style="border-top:1px solid var(--border);padding:10px 14px 12px">${snap ? renderPhaseSnapshotDetail(a, phase, snap, shownEndWeek, key, color, idx) : '<div style="font-size:12px;color:var(--text3)">Sin detalle guardado para esta planificación (asignada antes de que existiera este historial).</div>'}</div>` : ''}
+      ${open ? `<div style="border-top:1px solid var(--border);padding:10px 14px 12px">${snap ? renderPhaseSnapshotDetail(a, phase, snap, shownEndWeek, key, color, idx) : '<div style="font-size:13px;color:var(--text3)">Sin detalle guardado para esta planificación (asignada antes de que existiera este historial).</div>'}</div>` : ''}
     </div>`;
   });
   // La más reciente primero: es la que más se consulta.
@@ -11359,11 +11359,11 @@ function renderPhaseSnapshotDetail(a, phase, snap, endWeek, key, color, phaseIdx
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const sessionNames = getOrderedSessionNames(snap).filter(sn=>
     (snap.sessions?.[sn]||[]).some(b=>(b.categories||[]).some(c=>(c.exercises||[]).length)));
-  if(!sessionNames.length) return '<div style="font-size:12px;color:var(--text3)">Sin sesiones.</div>';
+  if(!sessionNames.length) return '<div style="font-size:13px;color:var(--text3)">Sin sesiones.</div>';
   const sel = S._pastPhaseDay?.[key];
   const tabs = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch">${sessionNames.map((sn,i)=>{
     const on = sel===i;
-    return `<button onclick="setPastPhaseDay('${key}',${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;border-radius:20px;border:1.5px solid ${on?color:'var(--border2)'};background:${on?color:'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${esc(sn)}</button>`;
+    return `<button onclick="setPastPhaseDay('${key}',${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;padding:7px 12px;border-radius:999px;border:1.5px solid ${on?color:'var(--border2)'};background:${on?color:'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${esc(sn)}</button>`;
   }).join('')}</div>`;
   if(sel==null || !sessionNames[sel]) {
     return tabs;
@@ -11500,17 +11500,17 @@ function renderLoadsAudit(a, routine, previewWeek) {
   });
   const wList = Object.keys(weeks).map(Number).sort((x,y)=>x-y);
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  const chips = wList.map(w=>`<button class="abtn ${w===previewWeek?'abtn-p':''}" style="padding:4px 10px;font-size:12px" onclick="jumpRoutineWeekPreview('${a.uid}',${w})" title="Ir a la Semana ${w}">S${w} · ${weeks[w].size} ${weeks[w].size===1?'día':'días'}</button>`).join('');
+  const chips = wList.map(w=>`<button class="abtn ${w===previewWeek?'abtn-p':''}" style="padding:4px 10px;font-size:13px" onclick="jumpRoutineWeekPreview('${a.uid}',${w})" title="Ir a la Semana ${w}">S${w} · ${weeks[w].size} ${weeks[w].size===1?'día':'días'}</button>`).join('');
   const orphanHtml = orphans.length ? `<div style="margin-top:10px;background:var(--amber-dim);border:1px solid var(--amber);border-radius:var(--rxs);padding:10px 12px">
-      <div style="font-size:12px;font-weight:700;color:var(--amber);margin-bottom:6px">⚠ Hay ${orphans.length} ${orphans.length===1?'carga guardada que no se muestra':'cargas guardadas que no se muestran'} en la rutina de abajo</div>
+      <div style="font-size:13px;font-weight:700;color:var(--amber);margin-bottom:6px">⚠ Hay ${orphans.length} ${orphans.length===1?'carga guardada que no se muestra':'cargas guardadas que no se muestran'} en la rutina de abajo</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:6px">El atleta las registró, pero el ejercicio o el día ya no está en la rutina.</div>
-      ${orphans.slice(0,40).map(o=>`<div style="font-size:12px;padding:3px 0;border-top:1px solid var(--border)"><b>S${o.w}</b> · ${esc(o.sn)} · ${esc(o.e.exname||('ejercicio '+o.id))} — <b>${o.e.load?esc(o.e.load)+'kg':'sin kg'}</b>${o.e.rpe?' · RPE '+esc(o.e.rpe):''}${o.e.series?' · '+esc(o.e.series)+' series':''} <span style="color:var(--text3)">(${o.sessionKnown?'ese ejercicio ya no está en el día':'ese día ya no existe en la rutina'})</span></div>`).join('')}
+      ${orphans.slice(0,40).map(o=>`<div style="font-size:13px;padding:3px 0;border-top:1px solid var(--border)"><b>S${o.w}</b> · ${esc(o.sn)} · ${esc(o.e.exname||('ejercicio '+o.id))} — <b>${o.e.load?esc(o.e.load)+'kg':'sin kg'}</b>${o.e.rpe?' · RPE '+esc(o.e.rpe):''}${o.e.series?' · '+esc(o.e.series)+' series':''} <span style="color:var(--text3)">(${o.sessionKnown?'ese ejercicio ya no está en el día':'ese día ya no existe en la rutina'})</span></div>`).join('')}
     </div>` : '';
   return `<div class="admin-section">
     <div class="admin-section-title">Cargas registradas por el atleta</div>
     <div class="admin-item" style="flex-direction:column;align-items:stretch;gap:6px">
       ${wList.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>`
-        : '<div style="font-size:12px;color:var(--text3)">El atleta todavía no registró cargas en esta planificación.</div>'}
+        : '<div style="font-size:13px;color:var(--text3)">El atleta todavía no registró cargas en esta planificación.</div>'}
       ${orphanHtml}
     </div>
   </div>`;
@@ -11715,7 +11715,7 @@ function renderAtletaRutina(a) {
   <div class="admin-section">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
       <div>
-        ${(a.routineAssignmentHistory||[]).length>=2 ? `<div style="margin-bottom:4px"><span style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:${phaseColor(a.routineAssignmentHistory.length)};padding:2px 8px;border-radius:20px">Planificación ${a.routineAssignmentHistory.length}</span> <span style="font-size:11px;font-weight:700;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em">Actual</span></div>` : ''}
+        ${(a.routineAssignmentHistory||[]).length>=2 ? `<div style="margin-bottom:4px"><span style="font-size:11px;font-weight:800;color:#fff;background:${phaseColor(a.routineAssignmentHistory.length)};padding:2px 8px;border-radius:999px">Planificación ${a.routineAssignmentHistory.length}</span> <span style="font-size:11px;font-weight:700;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:999px;">Actual</span></div>` : ''}
         <div class="admin-section-title" style="margin-bottom:0">${routine.name}</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -11730,7 +11730,7 @@ function renderAtletaRutina(a) {
       const on = sn===selDay;
       const isTodayTab = sn===todaySession && isViewingReal;
       const doneTab = !!(getPhaseSessionRecord(a, a._personal?.history, previewWeek, sn)?.done);
-      return `<button onclick="setAtletaRoutineDay(${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;border-radius:20px;border:1.5px solid ${on?'var(--accent)':(isTodayTab?'var(--accent)':'var(--border2)')};background:${on?'var(--accent)':'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${sn.replace(/&/g,'&amp;').replace(/</g,'&lt;')}${doneTab?' ✓':''}${isTodayTab?` <span style="font-size:11px;font-weight:800;opacity:.9">· HOY</span>`:''}</button>`;
+      return `<button onclick="setAtletaRoutineDay(${i})" style="flex-shrink:0;white-space:nowrap;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;padding:7px 12px;border-radius:999px;border:1.5px solid ${on?'var(--accent)':(isTodayTab?'var(--accent)':'var(--border2)')};background:${on?'var(--accent)':'var(--bg3)'};color:${on?'#fff':'var(--text2)'}">${sn.replace(/&/g,'&amp;').replace(/</g,'&lt;')}${doneTab?' ✓':''}${isTodayTab?` <span style="font-size:11px;font-weight:800;opacity:.9">· HOY</span>`:''}</button>`;
     }).join('')}</div>
     ${sessionNames.map(sName => {
       if(sName!==selDay || S._atletaRoutineCicloView==='horiz') return '';
@@ -11780,7 +11780,7 @@ function renderAtletaRutina(a) {
                   if (S._atletaRoutineCicloView === 'macro') {
                     return `
                     <div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
-                      <div style="font-size:14px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${ex.name}</span>${personalizarBtn}</div>
+                      <div style="font-size:15px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${ex.name}</span>${personalizarBtn}</div>
                       ${buildWeeklyProgressionTable(lastWeekEx, previewWeek, (w) => ({
                         wp: (activeInWeek(b, toRoutineRelativeWeek(w, a)) && activeInWeek(ex, toRoutineRelativeWeek(w, a))) ? getExDisplayForWeek(ex, w, toRoutineRelativeWeek(w, a), override) : {series:'',reps:'',pct:'',rpe:'',note:'',intensityType:''},
                         d: getPhaseSessionRecord(a, a._personal?.history, w, sName)?.exercises?.[ex.id] || {}
@@ -11791,7 +11791,7 @@ function renderAtletaRutina(a) {
                   <div class="vt-card" style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--rsm);padding:12px;margin-bottom:8px">
                     ${exVideoThumbHtml(exVideoKey(ex, wp), wp.name||ex.name)}
                     <div class="vt-body">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${trendChipHtml(a, a._personal?.history, routine, previewWeek>realWeek?previewWeek:realWeek, ex, "openAdminProgressionModal('"+a.uid+"','"+ex.id+"','"+ex.name.replace(/'/g,"\'")+"','"+sName.replace(/'/g,"\'")+"')").replace('class="trend-chip"','class="trend-chip" style="float:right;margin-left:8px"')}${wp.name}${override?` <span style="font-size:11px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);padding:1px 6px;border-radius:8px;text-transform:none;letter-spacing:0">personalizado desde S${override.fromWeek}</span>`:''} <span style="font-size:11px;color:var(--accent-text);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span> ${personalizarBtn}${isPersonalBlock?`<span style="float:right;font-size:11px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
+                    <div style="font-size:15px;font-weight:600;margin-bottom:8px">${trendChipHtml(a, a._personal?.history, routine, previewWeek>realWeek?previewWeek:realWeek, ex, "openAdminProgressionModal('"+a.uid+"','"+ex.id+"','"+ex.name.replace(/'/g,"\'")+"','"+sName.replace(/'/g,"\'")+"')").replace('class="trend-chip"','class="trend-chip" style="float:right;margin-left:8px"')}${wp.name}${override?` <span style="font-size:11px;font-weight:700;color:var(--accent-text);background:var(--accent-dim);padding:1px 6px;border-radius:10px;text-transform:none;letter-spacing:0">personalizado desde S${override.fromWeek}</span>`:''} <span style="font-size:11px;color:var(--accent-text);font-weight:600;cursor:pointer" onclick="openAdminProgressionModal('${a.uid}','${ex.id}','${ex.name.replace(/'/g,"\\'")}','${sName.replace(/'/g,"\\'")}')" title="Ver todas las semanas">· Semana ${previewWeek} · Ver todas ▤</span> ${personalizarBtn}${isPersonalBlock?`<span style="float:right;font-size:11px;color:var(--red);font-weight:600;cursor:pointer" onclick="removePersonalExtraExercise('${a.uid}','${sName.replace(/'/g,"\\'")}','${ex.id}')">Quitar</span>`:''}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                       <div class="field-box"><span class="field-lbl">Series</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.series||'—'}</div></div>
                       <div class="field-box"><span class="field-lbl">Reps</span><div style="font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rxs);padding:6px 7px;text-align:center;min-width:44px">${wp.reps||'—'}</div></div>
@@ -11806,7 +11806,7 @@ function renderAtletaRutina(a) {
                       const rpeTxt = intensityLbl+' '+(doneData.rpe!=null&&doneData.rpe!==''?doneData.rpe:'—');
                       const txtColor = hasCompletion ? 'var(--green)' : 'var(--text3)';
                       return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                      <span style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Completó</span>
+                      <span style="font-size:11px;color:var(--text3);font-weight:600">Completó</span>
                       <span class="done-field-wrap">
                         <span class="done-field-txt" style="color:${txtColor}" ondblclick="editAthleteDoneField(event)">${loadTxt}</span>
                         <input class="done-field-inp wide" type="text" inputmode="decimal" value="${attrVal(doneData.load)}" placeholder="kg" onblur="saveAthleteDoneField('${a.uid}',${previewWeek},'${sNameEsc}','${ex.id}','load',null,this)" onkeydown="if(event.key==='Enter')this.blur()">
@@ -11817,7 +11817,7 @@ function renderAtletaRutina(a) {
                       </span>
                     </div>`;
                     })()}
-                    ${doneData.athleteNote?`<div style="margin-top:6px;background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--rxs);padding:8px 10px;font-size:12px;color:var(--text)">
+                    ${doneData.athleteNote?`<div style="margin-top:6px;background:var(--amber-dim);border:1px solid rgba(198,124,15,0.3);border-radius:var(--rxs);padding:8px 10px;font-size:13px;color:var(--text)">
                       <span style="font-weight:700;color:var(--amber)">📝 Nota del atleta:</span> ${escHtml(doneData.athleteNote)}
                     </div>`:''}
                     </div>
@@ -11825,7 +11825,7 @@ function renderAtletaRutina(a) {
               `).join('')}
             </div>
           </div>`;
-        }).join('') : `<div style="padding:0 16px 12px;font-size:12px;color:var(--text3)">${hiddenByPosition ? `Este día tiene bloques cargados, pero ninguno está habilitado para el puesto de ${escHtml(a.name||a.email||'este atleta')} (${a.position||'sin puesto asignado'}). Revisá el filtro de puestos en la asignación de rutina del equipo.` : 'Sin ejercicios cargados'}</div>`)}
+        }).join('') : `<div style="padding:0 16px 12px;font-size:13px;color:var(--text3)">${hiddenByPosition ? `Este día tiene bloques cargados, pero ninguno está habilitado para el puesto de ${escHtml(a.name||a.email||'este atleta')} (${a.position||'sin puesto asignado'}). Revisá el filtro de puestos en la asignación de rutina del equipo.` : 'Sin ejercicios cargados'}</div>`)}
         ${dayCollapsed ? '' : `<div style="padding:0 16px 12px"><button class="abtn" style="font-size:11px" onclick="openPersonalExtraLib('${a.uid}','${sName.replace(/'/g,"\\'")}')" title="Se lo agrega SOLO a ${escHtml(a.name||a.email)}, no afecta a sus compañeros">+ Ejercicio personal para ${escHtml((a.name||a.email||'').split(' ')[0])}</button></div>`}
       </div>`;
     }).join('')}
@@ -12145,7 +12145,7 @@ function renderSettings() {
   const curScale = getFontScale();
   return `
   <div class="card">
-    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Apariencia</div>
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);">Apariencia</div>
     <div class="settings-item">
       <div><div class="settings-lbl">Modo oscuro</div></div>
       <div class="theme-switch ${darkOn?'on':''}" onclick="toggleTheme()" role="switch" aria-checked="${darkOn}" aria-label="Modo oscuro" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleTheme()}"><div class="theme-switch-knob"></div></div>
@@ -12159,14 +12159,14 @@ function renderSettings() {
     <div style="padding:14px 16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div class="settings-lbl">Tamaño de fuente</div>
-        <span id="font-scale-val" style="font-size:12px;color:var(--text3);font-weight:600">${curScale}%</span>
+        <span id="font-scale-val" style="font-size:13px;color:var(--text3);font-weight:600">${curScale}%</span>
       </div>
       <input type="range" min="90" max="130" step="5" value="${curScale}" style="width:100%;accent-color:var(--accent);cursor:pointer"
         oninput="document.getElementById('font-scale-val').textContent=this.value+'%';setFontScale(this.value)">
     </div>
   </div>
   <div class="card">
-    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mi perfil</div>
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);">Mi perfil</div>
     <div style="padding:16px;display:flex;align-items:center;gap:14px;${S.isAdmin?'':'border-bottom:1px solid var(--border)'}">
       <div style="position:relative;cursor:pointer;flex-shrink:0" onclick="document.getElementById('profile-photo-inp').click()">
         ${avatarHtml(u.name||S.user?.email, u.color, 64, u.photoUrl)}
@@ -12175,7 +12175,7 @@ function renderSettings() {
         </div>
       </div>
       <div style="min-width:0">
-        <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(u.name||'—')}</div>
+        <div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(u.name||'—')}</div>
         
       </div>
       <input type="file" id="profile-photo-inp" accept="image/*" style="display:none" onchange="handleProfilePhotoUpload(this)">
@@ -12213,7 +12213,7 @@ function renderSettings() {
     })()}`}
   </div>
   <div class="card">
-    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Notificaciones</div>
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);">Notificaciones</div>
     <div class="settings-item">
       <div><div class="settings-lbl">Avisos en el celular</div><div class="settings-sub">${(()=>{
         if(typeof Notification==='undefined') return 'Tu navegador no soporta notificaciones.';
@@ -12226,14 +12226,14 @@ function renderSettings() {
     </div>
   </div>
   ${S.isAdmin ? '' : `<div class="card">
-    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Mis marcas (1RM)</div>
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);">Mis marcas (1RM)</div>
         ${RM_LIFTS.map(rm=>`<div class="settings-item">
       <div class="settings-lbl">${rm.label}</div>
       <input class="abtn" type="number" style="text-align:right;width:80px" value="${S.oneRM?.[rm.id]||''}" placeholder="kg" onblur="saveOneRM('${rm.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
     </div>`).join('')}
   </div>`}
   ${isTeamAthlete() ? '' : `<div class="card">
-    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Semana actual</div>
+    <div class="admin-section-title" style="padding:12px 14px;font-size:11px;font-weight:600;color:var(--text3);">Semana actual</div>
     <div class="settings-item">
       <div><div class="settings-lbl">Semana ${S.currentWeek}</div><div class="settings-sub">${weekLabel(S.currentWeek)}</div></div>
       <div style="display:flex;gap:6px">
@@ -12546,8 +12546,8 @@ function renderWellnessDetail() {
     const opt = item.options.find(o=>o.v===val);
     const c = wellnessValColor(val);
     html += `<div style="background:${c?c.dim:'var(--bg3)'};border-radius:var(--rsm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
-      <span style="font-size:12.5px;font-weight:600;color:var(--text2)">${item.label}</span>
-      <span style="font-size:14px;font-weight:800;color:${c?c.solid:'var(--text3)'}">${opt?opt.label:'— sin dato'}</span>
+      <span style="font-size:13px;font-weight:600;color:var(--text2)">${item.label}</span>
+      <span style="font-size:15px;font-weight:800;color:${c?c.solid:'var(--text3)'}">${opt?opt.label:'— sin dato'}</span>
     </div>`;
   });
   const hours = w.sueño_horas;
@@ -12557,8 +12557,8 @@ function renderWellnessDetail() {
   // app, no pegándole un sufijo de alpha a un var() (eso no es CSS válido).
   const catDim = cat ? cat.color.replace(')', '-dim)') : 'var(--bg3)';
   html += `<div style="background:${catDim};border-radius:var(--rsm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
-    <span style="font-size:12.5px;font-weight:600;color:var(--text2)">Horas de sueño</span>
-    <span style="font-size:14px;font-weight:800;color:${cat?cat.color:'var(--text3)'}">${cat?hours+'h · '+cat.label:'— sin dato'}</span>
+    <span style="font-size:13px;font-weight:600;color:var(--text2)">Horas de sueño</span>
+    <span style="font-size:15px;font-weight:800;color:${cat?cat.color:'var(--text3)'}">${cat?hours+'h · '+cat.label:'— sin dato'}</span>
   </div>
   </div>`;
   }
@@ -12576,7 +12576,7 @@ function renderWellnessDetail() {
           <span style="font-size:13px;font-weight:600">${display?display.emoji+' '+display.label:l.activity}</span>
           <span style="font-size:13px;font-weight:700;color:var(--accent-text)">${l.ua} UA</span>
         </div>
-        <div style="font-size:12px;color:var(--text3)">${l.mins} min · RPE ${l.rpe}${l.note?' · '+l.note:''}</div>
+        <div style="font-size:13px;color:var(--text3)">${l.mins} min · RPE ${l.rpe}${l.note?' · '+l.note:''}</div>
       </div>`;
     }).join('') : `<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Sin carga registrada este día.</div>`}
   </div>`;
@@ -12708,10 +12708,10 @@ function renderTrainedTodayScreen() {
       <div class="admin-item" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:6px" onclick="adminOpenAthleteDash('${a.uid}')">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div class="admin-item-lbl">${escHtml(a.name||a.email)}</div>
-          ${markedToday?`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">${craftIconSvg('alert','var(--red)',10)} molestia/lesión</span>`:''}
+          ${markedToday?`<span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--red-dim);color:var(--red);font-weight:700;white-space:nowrap">${craftIconSvg('alert','var(--red)',10)} molestia/lesión</span>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${logs.map(l=>`<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);color:var(--text2);white-space:nowrap">${l.session||l.activity} · ${l.mins}min · RPE ${l.rpe}</span>`).join('')}
+          ${logs.map(l=>`<span style="font-size:11px;padding:3px 9px;border-radius:999px;background:var(--bg3);color:var(--text2);white-space:nowrap">${l.session||l.activity} · ${l.mins}min · RPE ${l.rpe}</span>`).join('')}
         </div>
       </div>`).join('') : `<div style="padding:12px 16px;font-size:13px;color:var(--text3)">Todavía nadie entrenó hoy.</div>`}
   </div>`;
@@ -12888,7 +12888,7 @@ function renderAdminAthletes() {
   const routineFilter = S._athletesRoutineFilter||'todos';
   html += `<div style="margin-bottom:var(--sp-3)">
     <input id="athletes-search-inp" value="${S._athletesSearch||''}" placeholder="Buscar atleta..."
-      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:var(--sp-2) var(--sp-3);color:var(--text);font-size:14px;outline:none;font-family:inherit"
+      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:var(--sp-2) var(--sp-3);color:var(--text);font-size:15px;outline:none;font-family:inherit"
       oninput="setAthletesSearch(this.value)">
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--sp-4)">
@@ -12941,11 +12941,11 @@ function renderAthletesListBody() {
       return `<div style="display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="adminOpenAthlete('${a.uid}')" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.name||a.email)}</div>
+          <div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.name||a.email)}</div>
           <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <span style="font-size:11px;color:${status.color};flex-shrink:0;white-space:nowrap">${status.label}</span>
-        <span style="color:var(--text3);font-size:18px;flex-shrink:0">›</span>
+        <span style="color:var(--text3);font-size:17px;flex-shrink:0">›</span>
       </div>`;
     }).join('')}
   </div>`;
@@ -13480,37 +13480,37 @@ function renderWeeklyReport() {
     <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
   </div>
 
-  <div class="print-report" style="background:#fff;color:#111;border-radius:8px;padding:28px;max-width:720px;margin:0 auto;font-family:inherit">
+  <div class="print-report" style="background:#fff;color:#111;border-radius:10px;padding:28px;max-width:720px;margin:0 auto;font-family:inherit">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px">
       <div>
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${escHtml(a.name||a.email)}</div>
-        <div style="font-size:12px;color:#555;margin-top:2px">${myTeam?myTeam.name+' · ':''}${a.position||''}</div>
+        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${escHtml(a.name||a.email)}</div>
+        <div style="font-size:13px;color:#555;margin-top:2px">${myTeam?myTeam.name+' · ':''}${a.position||''}</div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.05em">G-Metrics Performance Lab</div>
-        <div style="font-size:12px;color:#555;margin-top:2px">${rangeLabel}</div>
+        <div style="font-size:11px;color:#555;">G-Metrics Performance Lab</div>
+        <div style="font-size:13px;color:#555;margin-top:2px">${rangeLabel}</div>
       </div>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#ddd;border:1px solid #ddd;margin-bottom:20px">
       <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-        <div style="font-size:11px;color:#555;text-transform:uppercase;margin-top:2px">ACWR</div>
+        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
+        <div style="font-size:11px;color:#555;margin-top:2px">ACWR</div>
         <div style="font-size:11px;color:#555">${acwrSt.label}</div>
       </div>
       <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.monotony!=null?m.monotony.toFixed(1):'—'}</div>
-        <div style="font-size:11px;color:#555;text-transform:uppercase;margin-top:2px">Monotonía</div>
+        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.monotony!=null?m.monotony.toFixed(1):'—'}</div>
+        <div style="font-size:11px;color:#555;margin-top:2px">Monotonía</div>
         <div style="font-size:11px;color:#555">${monSt.label}</div>
       </div>
       <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:20px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acuteUA??'—'}</div>
-        <div style="font-size:11px;color:#555;text-transform:uppercase;margin-top:2px">Carga semana (UA)</div>
+        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acuteUA??'—'}</div>
+        <div style="font-size:11px;color:#555;margin-top:2px">Carga semana (UA)</div>
       </div>
     </div>
 
     <div style="font-size:13px;font-weight:700;margin-bottom:8px">Wellness y carga diaria</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
       <thead><tr style="background:#f2f2f2">
         <th style="padding:6px 10px;text-align:left">Fecha</th>
         <th style="padding:6px 10px;text-align:center">Wellness</th>
@@ -13522,8 +13522,8 @@ function renderWeeklyReport() {
 
     <div style="font-size:13px;font-weight:700;margin-bottom:8px">Molestias activas</div>
     ${injuries.length
-      ? `<ul style="font-size:12px;margin:0 0 10px;padding-left:18px">${injuries.map(([id,inj])=>`<li>${id} — ${severityInfo(inj.severity)?.label||'Leve'} · dolor de hoy ${inj.pain}/10${inj.note?' · '+inj.note:''}</li>`).join('')}</ul>`
-      : `<div style="font-size:12px;color:#777;margin-bottom:10px">Sin molestias registradas.</div>`}
+      ? `<ul style="font-size:13px;margin:0 0 10px;padding-left:18px">${injuries.map(([id,inj])=>`<li>${id} — ${severityInfo(inj.severity)?.label||'Leve'} · dolor de hoy ${inj.pain}/10${inj.note?' · '+inj.note:''}</li>`).join('')}</ul>`
+      : `<div style="font-size:13px;color:#777;margin-bottom:10px">Sin molestias registradas.</div>`}
 
     <div style="font-size:11px;color:#999;text-align:right;margin-top:24px">Generado el ${todayLocal()}</div>
   </div>`;
@@ -13714,8 +13714,8 @@ function renderStartDateCalendar(st) {
       const isToday = curStr===todayStr;
       const wk = st.trainingStartDate ? computeWeekOfDate(st.trainingStartDate, curStr) : null;
       html += `<div onclick="pickWeekdayAssignStartDate('${curStr}')" style="cursor:pointer;text-align:center;padding:5px 2px;border-radius:var(--rxs);background:${isSel?'var(--accent)':(isToday?'var(--accent-dim)':'transparent')};border:1px solid ${isSel?'var(--accent)':'var(--border)'}">
-        <div style="font-size:12px;font-weight:${isSel?'700':'500'};color:${isSel?'#fff':'var(--text)'}">${cur.getDate()}</div>
-        ${wk!=null?`<div style="font-size:8.5px;color:${isSel?'rgba(255,255,255,0.85)':'var(--text3)'};margin-top:1px">S${wk}</div>`:''}
+        <div style="font-size:13px;font-weight:${isSel?'700':'500'};color:${isSel?'#fff':'var(--text)'}">${cur.getDate()}</div>
+        ${wk!=null?`<div style="font-size:11px;color:${isSel?'rgba(255,255,255,0.85)':'var(--text3)'};margin-top:1px">S${wk}</div>`:''}
       </div>`;
     }
     html += `</div>`;
@@ -13755,17 +13755,17 @@ function renderWeekdayAssignBody() {
   const computedWeek = st.trainingStartDate ? computeWeekOfDate(st.trainingStartDate, st.startDate) : 1;
   const dateLabel = new Date(st.startDate+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   const html = `
-    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+    <div style="font-size:13px;color:var(--text3);margin-bottom:12px">
       Elegí <strong>${need}</strong> día${need===1?'':'s'} de la semana (${st.sessionNames.join(' · ')})
     </div>
     ${st.hasExistingRoutine ? `<div class="settings-item" style="padding:0 0 12px">
-      <div class="settings-lbl" style="font-size:12px">¿Es continuación de la rutina actual?</div>
+      <div class="settings-lbl" style="font-size:13px">¿Es continuación de la rutina actual?</div>
       <div class="theme-switch ${st.isContinuation?'on':''}" onclick="toggleWeekdayAssignContinuation()"><div class="theme-switch-knob"></div></div>
     </div>` : ''}
     <div style="margin-bottom:14px">
-      <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600;display:block;margin-bottom:6px">¿Cuándo arranca esta planificación?</label>
+      <label style="font-size:11px;color:var(--text3);font-weight:600;display:block;margin-bottom:6px">¿Cuándo arranca esta planificación?</label>
       ${renderStartDateCalendar(st)}
-      <div style="font-size:12px;color:var(--accent-text);font-weight:700;text-align:center;margin-top:8px;text-transform:capitalize">
+      <div style="font-size:13px;color:var(--accent-text);font-weight:700;text-align:center;margin-top:8px;text-transform:capitalize">
         ${dateLabel}${st.trainingStartDate?' · Semana '+computedWeek:''}
       </div>
     </div>
@@ -13780,7 +13780,7 @@ function renderWeekdayAssignBody() {
         </button>`;
       }).join('')}
     </div>
-    <div style="font-size:12px;color:${got===need?'var(--green)':'var(--text3)'};margin-top:12px;text-align:center">
+    <div style="font-size:13px;color:${got===need?'var(--green)':'var(--text3)'};margin-top:12px;text-align:center">
       ${got}/${need} día${need===1?'':'s'} seleccionado${need===1?'':'s'}
     </div>`;
   document.getElementById('weekday-assign-body').innerHTML = html;
@@ -13997,11 +13997,11 @@ window.routineSelectOptions = routineSelectOptions;
 
 function renderRoutineCard(r, weekLabel, depth) {
   return `<div class="card" style="padding:14px;${depth>0?'margin-left:22px;border-left:2px solid var(--accent-dim)':''}">
-    ${depth>0?`<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">↳ Continuación</div>`:''}
+    ${depth>0?`<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">↳ Continuación</div>`:''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
       <div style="min-width:0">
-        <span id="routine-name-span-${r.id}" ondblclick="editRoutineListName(event,'${r.id}')" title="Doble click para renombrar" style="font-size:14px;font-weight:600;cursor:text">${r.name}</span>
-        <input id="routine-name-inp-${r.id}" style="display:none;font-size:14px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:4px 8px;color:var(--text);outline:none;font-family:inherit;width:100%" onblur="saveRoutineListName('${r.id}',this)" onkeydown="if(event.key==='Enter')this.blur()">
+        <span id="routine-name-span-${r.id}" ondblclick="editRoutineListName(event,'${r.id}')" title="Doble click para renombrar" style="font-size:15px;font-weight:600;cursor:text">${r.name}</span>
+        <input id="routine-name-inp-${r.id}" style="display:none;font-size:15px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:4px 8px;color:var(--text);outline:none;font-family:inherit;width:100%" onblur="saveRoutineListName('${r.id}',this)" onkeydown="if(event.key==='Enter')this.blur()">
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         <button class="abtn abtn-p" onclick="editRoutine('${r.id}')">Editar</button>
@@ -14009,7 +14009,7 @@ function renderRoutineCard(r, weekLabel, depth) {
         <button class="abtn abtn-d" onclick="deleteRoutine('${r.id}')">×</button>
       </div>
     </div>
-    <div style="font-size:12px;color:var(--text3)">
+    <div style="font-size:13px;color:var(--text3)">
       ${sortSessionNames(Object.keys(r.sessions||{})).join(' · ')||'Sin sesiones'} · <span style="color:var(--accent-text);font-weight:600">${weekLabel}</span>
     </div>
     <div style="font-size:11px;color:var(--text3);margin-top:4px">
@@ -14499,7 +14499,7 @@ function renderRoutineEditor() {
 
   const sessionTabs = sessionNames.map((s,i)=>'<span style="display:inline-flex;align-items:center;gap:2px">'
     +(S._renamingSession===s
-      ? '<input id="rsess-inp" value="'+s.replace(/"/g,'&quot;')+'" style="width:130px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--accent);border-radius:20px;padding:6px 12px;color:var(--text);outline:none;font-family:inherit" onblur="commitRenameRoutineSession(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){S._renamingSession=null;renderMain();}">'
+      ? '<input id="rsess-inp" value="'+s.replace(/"/g,'&quot;')+'" style="width:130px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--accent);border-radius:999px;padding:6px 12px;color:var(--text);outline:none;font-family:inherit" onblur="commitRenameRoutineSession(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){S._renamingSession=null;renderMain();}">'
       : '<button class="snav-tab '+(curSession===s?'active':'')+'" onclick="routineSelectSession(\''+s+'\')">'+s+'</button>')
     +(canReorderManually?(
       '<button class="ex-icon-btn" style="'+(i===0?'opacity:.3;pointer-events:none':'')+'" onclick="moveRoutineDay(\''+s+'\',-1)" title="Mover antes"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="15 18 9 12 15 6"/></svg></button>'
@@ -14519,12 +14519,12 @@ function renderRoutineEditor() {
     <button class="abtn abtn-p" onclick="saveRoutineToFirestore()">Guardar</button>
   </div>
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 14px;background:var(--accent-dim);border-radius:var(--rsm)">
-    <span style="font-size:12px;font-weight:600;color:var(--accent-text)">Duración de esta planificación</span>
+    <span style="font-size:13px;font-weight:600;color:var(--accent-text)">Duración de esta planificación</span>
     <input type="number" min="1" max="52" value="${getRoutineDurationWeeks(r)}" style="width:56px;text-align:center;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px;color:var(--text);font-size:13px" onchange="setRoutineDuration(this.value)">
-    <span style="font-size:12px;color:var(--text3)">semanas</span>
+    <span style="font-size:13px;color:var(--text3)">semanas</span>
   </div>
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--bg3);border-radius:var(--rsm);flex-wrap:wrap">
-    <span style="font-size:12px;font-weight:600;color:var(--text2)">¿Es continuación de otra rutina?</span>
+    <span style="font-size:13px;font-weight:600;color:var(--text2)">¿Es continuación de otra rutina?</span>
     <select style="flex:1;min-width:160px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rxs);padding:5px 8px;color:var(--text);font-size:13px" onchange="setRoutineContinuesFrom(this.value)">
       <option value="">— No, es independiente —</option>
       ${getTemplateRoutines().filter(x=>x.id!==r.id).map(x=>`<option value="${x.id}" ${r.continuesFromRoutineId===x.id?'selected':''}>${x.name}</option>`).join('')}
@@ -15230,7 +15230,7 @@ window.getJumpLevel = getJumpLevel;
 function jumpLevelTagHtml(testId, value) {
   const lv = getJumpLevel(testId, value);
   if(!lv) return '';
-  return `<span onclick="event.stopPropagation();openInfoModal('jumpTable')" style="cursor:pointer;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${lv.bg};color:${lv.c};white-space:nowrap">${lv.level}</span>`;
+  return `<span onclick="event.stopPropagation();openInfoModal('jumpTable')" style="cursor:pointer;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${lv.bg};color:${lv.c};white-space:nowrap">${lv.level}</span>`;
 }
 window.jumpLevelTagHtml = jumpLevelTagHtml;
 
@@ -15315,7 +15315,7 @@ function renderEvals() {
         ? '<select class="eval-inp" onchange="selectEvalAthlete(this.value)" style="cursor:pointer;max-width:220px">'
           + registeredOpts + pendingOpts
           + '</select>'
-        : '<div style="font-size:12px;color:var(--text3)">Sin atletas en este grupo todavía</div>';
+        : '<div style="font-size:13px;color:var(--text3)">Sin atletas en este grupo todavía</div>';
     } else if (S.adminAthletes.length) {
       const opts = ['<option value="self">Yo mismo</option>']
         .concat(S.adminAthletes.map(a=>'<option value="'+a.uid+'" '+(S.evalAthleteId===a.uid?'selected':'')+'>'+(a.name||a.email)+'</option>'));
@@ -15352,7 +15352,7 @@ function renderEvals() {
 
   if(S.isAdmin) {
     html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
-      + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
+      + '<div style="font-size:13px;font-weight:600;color:var(--accent-text);white-space:nowrap">Atleta seleccionado</div>'
       + ((S.teamView && S.teamSubview==='evals' && teamEvalAthleteIds().length>1)
           ? '<div class="an-inline">'+athleteNavBar(teamEvalAthleteIds(), S.evalAthleteId, 'goToEvalAthlete', currentAthleteName)+'</div>'
           : (S._inAthleteDetail ? '<div style="font-size:15px;font-weight:700;color:var(--text)">'+escHtml(currentAthleteName)+'</div>' : athleteSel))
@@ -15397,7 +15397,7 @@ function renderStrengthEvals(edata, athleteSel, catSwitcherHtml, isDesktop) {
 
   if(S.isAdmin) {
     html += '<div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
-      + '<div style="font-size:12px;font-weight:600;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Atleta seleccionado</div>'
+      + '<div style="font-size:13px;font-weight:600;color:var(--accent-text);white-space:nowrap">Atleta seleccionado</div>'
       + ((S.teamView && S.teamSubview==='evals' && teamEvalAthleteIds().length>1)
           ? '<div class="an-inline">'+athleteNavBar(teamEvalAthleteIds(), S.evalAthleteId, 'goToEvalAthlete', currentAthleteName)+'</div>'
           : (S._inAthleteDetail ? '<div style="font-size:15px;font-weight:700;color:var(--text)">'+escHtml(currentAthleteName)+'</div>' : athleteSel))
@@ -15508,7 +15508,7 @@ function renderEvalEntry(edata, lCMJ, lSJ, lAbal, lDer, lIzq, ice, coord, asym, 
     const fullWidth = (t.id==='saltoH'||t.id==='abalakov') ? 'full' : '';
     html += '<div class="eval-field '+fullWidth+'">'
       + '<label class="eval-lbl">'+t.label+' ('+t.unit+')</label>'
-      + '<input class="eval-inp" type="number" step="0.1" placeholder="—" id="einp-height-'+t.id+'" value="'+(last?last.height:'')+'" style="text-align:center;font-size:18px;font-weight:700;padding:10px"></div>';
+      + '<input class="eval-inp" type="number" step="0.1" placeholder="—" id="einp-height-'+t.id+'" value="'+(last?last.height:'')+'" style="text-align:center;font-size:17px;font-weight:700;padding:10px"></div>';
   });
 
   html += '<div class="eval-field full" style="margin-top:4px"><label class="eval-lbl">Fecha</label>'
@@ -15543,7 +15543,7 @@ function metricCardHtml(label, icon, value, color, sub, infoKey) {
   // exactamente 2 items (space-between), y el "?" nunca queda flotando
   // suelto entre el texto y el ícono en pantallas angostas.
   return '<div class="metric-card"><div class="metric-card-label"><span class="metric-card-label-txt">'+label+(infoKey?' '+infoBtn(infoKey):'')+'</span><span class="metric-card-icon">'+icon+'</span></div>'
-    + '<div class="metric-card-value" style="font-size:28px;color:'+color+'">'+value+'</div>'
+    + '<div class="metric-card-value" style="font-size:30px;color:'+color+'">'+value+'</div>'
     + (sub?'<div class="metric-card-sub">'+sub+'</div>':'')+'</div>';
 }
 
@@ -15731,6 +15731,14 @@ function renderEvalHistory(edata, isDesktop, testList) {
     ? testList
     : EVAL_TESTS.concat([{id:'asym', label:'Asimetría unilateral', unit:'%', desc:'% diferencia entre CMJ pierna derecha e izquierda'}]);
   const rangeId = S.evalRange||'all';
+
+  // Sin ningún registro: un solo mensaje en vez de una tarjeta "Sin datos" por test.
+  if(histTests.every(t => t.id==='asym' ? !evalAsymSeries(edata).length : !(edata[t.id]||[]).length)) {
+    const what = includeAsym ? 'saltos medidos' : 'tests de fuerza';
+    return `<div class="gm-empty" id="eval-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="M7 16v-4"/><path d="M12 16V8"/><path d="M17 16V5"/></svg>
+      <b>${S.isAdmin?'Todavía no hay '+what:'Todavía no tenés '+what}</b>
+      <p>${S.isAdmin?'Cuando cargues el primero, acá vas a ver la mejor marca y cómo evoluciona.':'Cuando tu profe cargue el primero, acá vas a ver tu mejor marca y cómo evolucionás.'}</p></div>`;
+  }
 
   let html = `<div class="ev-range" role="group" aria-label="Período">${EVAL_RANGES.map(r=>`<button class="chip-btn ${rangeId===r.id?'on':''}" onclick="setEvalRange('${r.id}')">${r.label}</button>`).join('')}</div>`;
   if(includeAsym) html += renderEvalIndexTiles(edata);
@@ -15983,7 +15991,7 @@ window.renderEvalCompare = renderEvalCompare;
 function renderAthleteTeamCompare(myData) {
   const myTeam = (S.teams||[]).find(t=>(t.players||[]).some(p=>p===S.userData?.name || p===S.userData?.email));
   let html = '<div style="background:var(--bg2);border:1.5px solid var(--border2);box-shadow:0 1px 3px rgba(18,21,28,0.06);border-radius:var(--r);padding:16px;margin-bottom:16px">'
-    + '<div style="font-size:14px;font-weight:600;margin-bottom:4px">Comparación con el equipo</div>';
+    + '<div style="font-size:15px;font-weight:600;margin-bottom:4px">Comparación con el equipo</div>';
 
   if(!myTeam) {
     html += '<div class="eval-no-data">No estás registrado en ningún equipo.</div></div>';
@@ -15992,7 +16000,7 @@ function renderAthleteTeamCompare(myData) {
 
   const teamAvgs = myTeam.evalAverages || {};
   if(!Object.keys(teamAvgs).length) {
-    html += '<div style="font-size:12px;color:var(--text3);margin-bottom:4px">'+myTeam.name+'</div>'
+    html += '<div style="font-size:13px;color:var(--text3);margin-bottom:4px">'+myTeam.name+'</div>'
       + '<div class="eval-no-data">Todavía no hay un promedio del equipo calculado. Se actualiza solo la próxima vez que tu entrenador abra las estadísticas del equipo.</div></div>';
     return html;
   }
@@ -16007,7 +16015,7 @@ function renderAthleteTeamCompare(myData) {
   const avgs = posAvgs || teamAvgs;
   const avgLabel = posAvgs ? ('promedio de '+myPosition) : 'promedio del equipo';
 
-  html += '<div style="font-size:12px;color:var(--text3);margin-bottom:14px">'+myTeam.name+(posAvgs?' · '+myPosition:'')+'</div>';
+  html += '<div style="font-size:13px;color:var(--text3);margin-bottom:14px">'+myTeam.name+(posAvgs?' · '+myPosition:'')+'</div>';
 
   html += '<div style="height:250px;position:relative;margin-bottom:8px"><canvas id="player-team-radar-chart"></canvas></div>'
     + '';
@@ -16026,14 +16034,14 @@ function renderAthleteTeamCompare(myData) {
     const myPct = myBest!=null ? Math.min(100, (myBest/ceiling)*100) : 0;
     const avgPct = avg!=null ? Math.min(100, (avg/ceiling)*100) : 0;
     html += '<div style="margin-bottom:14px">'
-      + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px">'
+      + '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">'
       + '<span style="font-weight:500">'+t.label+'</span>'
       + '<span style="color:var(--text3)">'+(avg!=null?avgLabel+' '+avg+t.unit:'sin promedio')+'</span></div>'
       + '<div style="position:relative;height:8px;background:var(--bg3);border-radius:4px;overflow:visible;margin-bottom:2px">'
       + '<div style="height:100%;background:var(--accent);border-radius:4px;width:'+myPct+'%"></div>'
       + (avg!=null?'<div style="position:absolute;top:-3px;left:'+avgPct+'%;width:2px;height:14px;background:var(--text2)" title="'+avgLabel+'"></div>':'')
       + '</div>'
-      + '<div style="text-align:right;font-size:12px;font-weight:700;color:var(--accent-text)">'+(myBest!=null?myBest+t.unit:'sin datos')+'</div>'
+      + '<div style="text-align:right;font-size:13px;font-weight:700;color:var(--accent-text)">'+(myBest!=null?myBest+t.unit:'sin datos')+'</div>'
       + '</div>';
   });
 
@@ -16857,7 +16865,7 @@ function renderDaySummaryChips(personal, date, sport) {
     const text = isMatch ? `${display.emoji} ${l.mins}' · RPE ${l.rpe}` : `${display.emoji} ${display.label} · RPE ${l.rpe}`;
     const bg = isMatch ? 'var(--accent-dim)' : 'var(--bg3)';
     const color = isMatch ? 'var(--accent-text)' : 'var(--text2)';
-    return `<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;background:${bg};color:${color};white-space:nowrap">${text}</span>`;
+    return `<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:${bg};color:${color};white-space:nowrap">${text}</span>`;
   });
 
   const allZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
@@ -16870,7 +16878,7 @@ function renderDaySummaryChips(personal, date, sport) {
     const zone = allZones.find(z=>z.id===zid);
     const sev = entry.pain>=7 ? 'var(--red)' : entry.pain>=4 ? 'var(--amber)' : 'var(--green)';
     const sevDim = entry.pain>=7 ? 'var(--red-dim)' : entry.pain>=4 ? 'var(--amber-dim)' : 'var(--green-dim)';
-    injuryChips.push(`<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;background:${sevDim};color:${sev};border:1px solid ${sev};white-space:nowrap">${isFirstEver?'🆕 ':'🩹 '}${zone?.label||zid} ${entry.pain}/10</span>`);
+    injuryChips.push(`<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:${sevDim};color:${sev};border:1px solid ${sev};white-space:nowrap">${isFirstEver?'🆕 ':'🩹 '}${zone?.label||zid} ${entry.pain}/10</span>`);
   });
 
   if(!cargaChips.length && !injuryChips.length) return '';
@@ -17180,7 +17188,7 @@ function renderDashboard() {
   </div>
   <div id="dashboard-content">
     <div class="empty-state" style="padding:30px">
-      <div style="font-size:24px;margin-bottom:8px">⏳</div>
+      <div style="font-size:22px;margin-bottom:8px">⏳</div>
       Cargando atletas...
     </div>
   </div>`;
@@ -17346,9 +17354,9 @@ function teamBadgeHtml(a) {
   const team = getAthleteTeam(a);
   const label = getAthleteCategoryLabel(a);
   if(team?.color) {
-    return `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${team.color}22;color:${team.color};white-space:nowrap">${label}</span>`;
+    return `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${team.color}22;color:${team.color};white-space:nowrap">${label}</span>`;
   }
-  return `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--bg4);color:var(--text2);white-space:nowrap">${label}</span>`;
+  return `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--bg4);color:var(--text2);white-space:nowrap">${label}</span>`;
 }
 window.teamBadgeHtml = teamBadgeHtml;
 
@@ -17359,9 +17367,9 @@ function injuryBadgesHtml({severity, zoneLabel, pain, athlete}) {
   const sevInfo = severityInfo(severity) || severityInfo('leve');
   const painC = getPainColor(pain);
   return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
-    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${sevInfo.dim};color:${sevInfo.color};white-space:nowrap">${sevInfo.label}</span>
-    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--blue-dim);color:var(--blue);white-space:nowrap">${zoneLabel}</span>
-    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:${painC.bg};color:${painC.color};white-space:nowrap">dolor ${pain}/10</span>
+    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${sevInfo.dim};color:${sevInfo.color};white-space:nowrap">${sevInfo.label}</span>
+    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--blue-dim);color:var(--blue);white-space:nowrap">${zoneLabel}</span>
+    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${painC.bg};color:${painC.color};white-space:nowrap">dolor ${pain}/10</span>
     ${athlete?teamBadgeHtml(athlete):''}
   </div>`;
 }
@@ -17600,22 +17608,22 @@ function renderDashboardContent() {
   let html = filterHtml;
   html += `<div class="metric-grid metric-grid4">
     <div class="metric-card" style="cursor:pointer" onclick="scrollToDashAthleteList()">
-      <div class="metric-card-label">ATLETAS <span class="metric-card-icon">${metricIconSvg('atletas')}</span></div>
+      <div class="metric-card-label">Atletas <span class="metric-card-icon">${metricIconSvg('atletas')}</span></div>
       <div class="metric-card-value" data-countup="${totalAthletes}">${totalAthletes}</div>
       <div class="metric-card-sub">${splitTxt}</div>
     </div>
     <div class="metric-card" style="cursor:pointer" onclick="openTrainedTodayScreen()">
-      <div class="metric-card-label">ENTRENARON HOY <span class="metric-card-icon">${metricIconSvg('entrenaron')}</span></div>
+      <div class="metric-card-label">Entrenaron hoy <span class="metric-card-icon">${metricIconSvg('entrenaron')}</span></div>
       <div class="mc-row"><div class="metric-card-value" data-countup="${trainedToday}">${trainedToday}</div><span class="mc-of">de ${totalAthletes}</span></div>
       ${bar(trainedToday)}
     </div>
     <div class="metric-card" style="cursor:pointer" onclick="openReminderScreen()">
-      <div class="metric-card-label">WELLNESS HOY <span class="metric-card-icon">${metricIconSvg('wellness')}</span></div>
+      <div class="metric-card-label">Wellness hoy <span class="metric-card-icon">${metricIconSvg('wellness')}</span></div>
       <div class="mc-row"><div class="metric-card-value" data-countup="${wellnessToday}">${wellnessToday}</div><span class="mc-of">de ${totalAthletes}</span>${avgWell!=null?`<span class="mc-avg">promedio <b style="color:${getWellnessState(avgWell).color}">${avgWell}%</b></span>`:''}</div>
       ${bar(wellnessToday)}
     </div>
     <div class="metric-card${attCount?' mc-alert':''}" style="cursor:pointer" onclick="scrollToDashAtt()">
-      <div class="metric-card-label" style="color:${attCount?'var(--red)':'var(--text2)'}">ALERTAS <span class="metric-card-icon">${craftIconSvg('alert',attCount?'var(--red)':'currentColor',14)}</span></div>
+      <div class="metric-card-label" style="color:${attCount?'var(--red)':'var(--text2)'}">Alertas <span class="metric-card-icon">${craftIconSvg('alert',attCount?'var(--red)':'currentColor',14)}</span></div>
       <div class="metric-card-value" style="color:${attCount?'var(--red)':'var(--text)'}" data-countup="${attCount}">${attCount}</div>
       ${attSplit?`<div class="metric-card-sub" style="color:var(--red)">${attSplit}</div>`:''}
     </div>
@@ -17998,26 +18006,30 @@ function renderAthleteHome() {
   <div class="home-cards">${hasTodayWellness?'':wellnessHero}${sessionCard}<div class="home-week">${weekStrip}</div>${hasTodayWellness?wellnessCard:''}${goalsCardHtml('self')}</div>
 
   ${metrics?`<div class="wellness-card" style="margin-bottom:14px">
-    <div class="wellness-title">Control de carga</div>
+    <div class="wellness-title sec-head">Control de carga<button class="sec-more" id="home-stats-link" onclick="navMenu('stats')">Ver estadísticas</button></div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:14px 0">
       <div class="ax-tap" style="text-align:center;padding:10px;border-right:1px solid var(--border)" onclick="openAcwrExplain('self')" title="Por qué está así">
-        <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:4px">ACWR ${infoBtn('acwr')}</div>
+        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:${acwrSt.color}">${metrics.acwr?.toFixed(2)||'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">ACWR ${infoBtn('acwr')}</div>
         <div style="font-size:11px;color:${acwrSt.color};margin-top:2px">${acwrSt.label}</div>
       </div>
       <div style="text-align:center;padding:10px;border-right:1px solid var(--border)">
-        <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round((metrics.monotony||0)*10)/10}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:4px">Monotonía ${infoBtn('monotony')}</div>
+        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${Math.round((metrics.monotony||0)*10)/10}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Monotonía ${infoBtn('monotony')}</div>
         <div style="font-size:11px;color:${getMonotonyStatus(metrics.monotony).color};margin-top:2px">${getMonotonyStatus(metrics.monotony).label}</div>
       </div>
       <div style="text-align:center;padding:10px">
-        <div style="font-size:24px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${metrics.acuteUA}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-top:4px">UA semana ${infoBtn('ua')}</div>
+        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${metrics.acuteUA}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">UA semana ${infoBtn('ua')}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${metrics.sessions} sesiones</div>
       </div>
     </div>
-  </div>`:''}
-  
+  </div>`:`<div class="home-row" id="home-stats-link" onclick="navMenu('stats')">
+      <span class="home-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+      <div class="home-row-m"><b>Mis estadísticas</b></div>
+      <span class="home-go">${chev}</span>
+    </div>`}
+
 `;
 }
 
@@ -18037,7 +18049,7 @@ function renderLibraryView() {
   <!-- Search + filter -->
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
     <input id="lib-view-search" value="${S._libViewSearch||''}" placeholder="Buscar ejercicio..."
-      style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit"
+      style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rsm);padding:9px 13px;color:var(--text);font-size:15px;outline:none;font-family:inherit"
       oninput="S._libViewSearch=this.value;updateLibViewResults()"
       onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
     <button class="abtn abtn-p" onclick="addLibraryExercise()">+ Nuevo ejercicio</button>
@@ -18111,9 +18123,9 @@ function renderLibViewBody() {
            onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
         ${libThumbnailHtml(S.videos[ex.id])}
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:500" id="libname-${ex.id}">${ex.name}${missing.length?` <span style="font-size:11px;color:var(--amber);font-weight:700">${craftIconSvg('alert','var(--amber)',10)} sin categorizar</span>`:''}</div>
+          <div style="font-size:15px;font-weight:500" id="libname-${ex.id}">${ex.name}${missing.length?` <span style="font-size:11px;color:var(--amber);font-weight:700">${craftIconSvg('alert','var(--amber)',10)} sin categorizar</span>`:''}</div>
           <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-            ${(ex.tags||[]).map(t=>`<span style="font-size:11px;padding:2px 7px;border-radius:20px;background:var(--accent-dim);color:var(--accent-text);border:1px solid var(--border2)">${t}</span>`).join('')}
+            ${(ex.tags||[]).map(t=>`<span style="font-size:11px;padding:2px 7px;border-radius:999px;background:var(--accent-dim);color:var(--accent-text);border:1px solid var(--border2)">${t}</span>`).join('')}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
@@ -18294,7 +18306,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   // Pull-to-refresh
   const ptr = document.createElement('div');
   ptr.id='ptr-indicator';
-  ptr.style.cssText='position:fixed;top:0;left:0;right:0;display:flex;justify-content:center;align-items:center;height:0;overflow:hidden;transition:height .15s;z-index:600;color:var(--text3,#7a90b8);font-size:12px;background:var(--bg2,#111827);pointer-events:none';
+  ptr.style.cssText='position:fixed;top:0;left:0;right:0;display:flex;justify-content:center;align-items:center;height:0;overflow:hidden;transition:height .15s;z-index:600;color:var(--text3,#7a90b8);font-size:13px;background:var(--bg2,#111827);pointer-events:none';
   document.body.appendChild(ptr);
 
   let pStartY=0, pulling=false;

@@ -149,7 +149,16 @@
   // ── revisión: con rutina propia y equipo, el Calendario muestra el equipo ──
   { switchView('calendar'); await wait(500);
     ok(!/no estás vinculado/.test(document.getElementById('main').innerText)&&/Handball/.test(document.querySelector('.page-subtitle')?.innerText||''),'calendario: el atleta con rutina propia ve el calendario de su equipo');
-    switchView('stats'); await wait(400);
+    // Mis Tests sin ningún test: un solo mensaje, no 4 tarjetas "Sin datos"
+    if(!Object.values(S.evalData||{}).some(a=>Array.isArray(a)&&a.length)){ switchView('evals'); await wait(600);
+      ok(!!document.getElementById('eval-empty')&&!document.querySelector('.ev-tile'),'mis tests: sin datos muestra un solo mensaje'); }
+    // Stats salió de la barra de abajo: se entra desde Inicio → "Ver estadísticas"
+    ok(!document.getElementById('bb-stats')&&!/Stats/.test(document.getElementById('bottombar').innerText),'barra de abajo: ya no tiene Stats');
+    switchView('dashboard'); await wait(500);
+    const sl=document.getElementById('home-stats-link'); ok(!!sl,'inicio: hay acceso a estadísticas desde Control de carga');
+    if(sl){ sl.click(); await wait(600); }
+    ok(S.currentView==='stats','inicio: "Ver estadísticas" abre Estadísticas');
+    ok(document.querySelector('#bottombar .bb-btn.active')?.id==='bb-dashboard','estadísticas: la barra marca Inicio como sección activa');
     const act=[...document.querySelectorAll('#main div')].find(d=>/Actividad — últimos 7 días/.test(d.textContent)&&d.children.length>=2);
     ok(!act||act.querySelectorAll('div[style*="var(--accent)"]').length>0||!(S.history?._sessionLogs||[]).length,'estadísticas: los días entrenados (prácticas y partidos) cuentan como activos');
     switchView('wellness'); await wait(400); ok(!/\d{4}-\d{2}-\d{2}/.test(document.querySelector('.page-header')?.innerText||''),'wellness: sin la fecha cruda AAAA-MM-DD arriba'); }

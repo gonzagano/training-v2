@@ -70,6 +70,30 @@ try {
 if (/\bdebugger\b/.test(app)) err('app.js contiene "debugger"');
 if (/__testUser|__db\b/.test(app) || /__testUser|__db\b/.test(html)) err('app.js/index.html mencionan el Firestore falso de pruebas (__db/__testUser)');
 
+// 7) sistema de diseño (ver el bloque "SISTEMA DE DISEÑO v1" al final de styles.css):
+//    solo tamaños de letra de la escala, redondeos permitidos, sin MAYÚSCULAS forzadas
+//    y ningún color hex nuevo fuera de la lista tools/design-colors.txt.
+{
+  const FS = new Set([11, 13, 15, 17, 22, 30, 44]);
+  const css = read('styles.css'), files = {'styles.css': css, 'app.js': app, 'index.html': html};
+  const colorsFile = path.join(__dirname, 'design-colors.txt');
+  const hexes = s => [...s.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(m => m[0].toLowerCase());
+  if (process.argv.includes('--baseline-colors')) {
+    const all = [...new Set(Object.values(files).flatMap(hexes))].sort();
+    fs.writeFileSync(colorsFile, '# Colores permitidos (hex). Uno nuevo: mejor usar una variable de styles.css (--accent, --text2, --red…)\n' + all.join('\n') + '\n');
+    console.log('design-colors.txt: ' + all.length + ' colores');
+  }
+  const allowed = fs.existsSync(colorsFile) ? new Set(read('tools/design-colors.txt').split('\n').map(l => l.trim()).filter(l => /^#[0-9a-f]{3,8}$/.test(l))) : null;
+  for (const [f, s] of Object.entries(files)) {
+    const badFs = [...new Set([...s.matchAll(/font-size:\s*([0-9.]+)px/g)].map(m => +m[1]).filter(v => !FS.has(v)))];
+    if (badFs.length) err(f + ': tamaños de letra fuera de la escala 11/13/15/17/22/30/44 → ' + badFs.join(', ') + ' px');
+    const badR = [...new Set([...s.matchAll(/border-radius:\s*([0-9.]+)px(?=[\s;}"'!])/g)].map(m => +m[1]).filter(v => v > 4 && v !== 10 && v !== 16 && v !== 999))];
+    if (badR.length) err(f + ': redondeos fuera del sistema (10/16/999, o ≤4 en barritas) → ' + badR.join(', ') + ' px');
+    if (/text-transform:\s*uppercase/.test(s)) err(f + ': text-transform:uppercase (el sistema no usa etiquetas en MAYÚSCULAS)');
+    if (allowed) { const nuevos = [...new Set(hexes(s).filter(h => !allowed.has(h)))]; if (nuevos.length) err(f + ': colores nuevos fuera del sistema → ' + nuevos.join(', ') + ' (usar una variable de styles.css)'); }
+  }
+}
+
 warns.forEach(w => console.log('  aviso:', w));
 if (errors.length) { console.log('CHECK: ' + errors.length + ' problema(s):'); errors.forEach(e => console.log('  ✗ ' + e)); process.exit(1); }
 console.log('CHECK: revisión estática OK (' + names.size + ' funciones de botones verificadas)');
