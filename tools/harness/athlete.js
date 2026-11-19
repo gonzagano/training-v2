@@ -152,6 +152,33 @@
     // Mis Tests sin ningún test: un solo mensaje, no 4 tarjetas "Sin datos"
     if(!Object.values(S.evalData||{}).some(a=>Array.isArray(a)&&a.length)){ switchView('evals'); await wait(600);
       ok(!!document.getElementById('eval-empty')&&!document.querySelector('.ev-tile'),'mis tests: sin datos muestra un solo mensaje'); }
+    // Deslizar: pasa a la sección de al lado (y vuelve), también con un gesto real del dedo
+    { switchView('dashboard'); await wait(400);
+      swipeNav(1); await wait(500); ok(document.querySelector('#bottombar .bb-btn.active')?.id==='bb-session','deslizar: de Inicio pasa a Mi Rutina');
+      swipeNav(-1); await wait(500); ok(document.querySelector('#bottombar .bb-btn.active')?.id==='bb-dashboard','deslizar: vuelve a Inicio');
+      ok(swipeNav(-1)===false,'deslizar: en la primera sección no hace nada');
+      if(innerWidth<900){ const m=document.getElementById('main'); const T=(x)=>new Touch({identifier:7,target:m,clientX:x,clientY:420});
+        try{ m.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,touches:[T(300)],changedTouches:[T(300)]})); document.dispatchEvent(new TouchEvent('touchend',{bubbles:true,touches:[],changedTouches:[T(140)]})); }catch(e){ fails.push('deslizar: no se pudo simular el dedo: '+e.message); }
+        await wait(500); ok(document.querySelector('#bottombar .bb-btn.active')?.id==='bb-session','deslizar con el dedo (celular): de Inicio a Mi Rutina');
+        switchView('dashboard'); await wait(300); } }
+    // Contraseña = DNI: al primer ingreso pide una propia y no deja seguir sin ella
+    { S.userData.mustChangePassword=true; localStorage.removeItem('__lastPasswordSet');
+      const p=requirePasswordChange(); await wait(300);
+      const fill=(a,b)=>{ document.getElementById('ask-f0').value=a; document.getElementById('ask-f1').value=b; document.getElementById('ask-ok').click(); };
+      ok(!!document.getElementById('ask-f1'),'contraseña: al entrar pide elegir una nueva');
+      fill('corta','corta'); await wait(400); ok(!!document.getElementById('ask-f0')&&!localStorage.getItem('__lastPasswordSet'),'contraseña: corta no se acepta y vuelve a pedir');
+      document.getElementById('ask-cancel').click(); await wait(400); ok(!!document.getElementById('ask-f0'),'contraseña: cancelar no la saltea');
+      fill('Handball2026','Handball2027'); await wait(400); ok(!localStorage.getItem('__lastPasswordSet'),'contraseña: si no coinciden no se guarda');
+      fill('Handball2026','Handball2026'); await p; await wait(300);
+      const ls=JSON.parse(localStorage.getItem('__lastPasswordSet')||'null');
+      ok(ls&&ls.uid==='u1'&&ls.pass==='Handball2026','contraseña: se guarda la nueva para este atleta');
+      ok(!S.userData.mustChangePassword&&!(db().users?.u1||{}).mustChangePassword,'contraseña: ya no la vuelve a pedir (marca borrada en su usuario)'); localStorage.removeItem('gm-pw-ok-u1'); }
+    // Notificaciones sin nada: mensaje del sistema (no el texto suelto de antes)
+    switchView('notifications'); await wait(500);
+    const hasN=document.querySelectorAll('#main .wellness-card').length>0;
+    ok(hasN||!!document.getElementById('notif-empty'),'notificaciones: sin avisos muestra el estado vacío del sistema');
+    // Esqueleto de carga: se dibuja con la forma de la pantalla y se anuncia como "Cargando"
+    { const d=document.createElement('div'); d.innerHTML=skelHtml('dash'); ok(d.querySelectorAll('.sk-tile').length===4&&d.firstElementChild.getAttribute('aria-label')==='Cargando','esqueleto de carga: 4 contadores + lista, con aviso para lectores de pantalla'); }
     // Stats salió de la barra de abajo: se entra desde Inicio → "Ver estadísticas"
     ok(!document.getElementById('bb-stats')&&!/Stats/.test(document.getElementById('bottombar').innerText),'barra de abajo: ya no tiene Stats');
     switchView('dashboard'); await wait(500);

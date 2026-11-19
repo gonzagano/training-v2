@@ -236,7 +236,8 @@
     const d2=JSON.parse(localStorage.getItem('__db')); const nu=Object.entries(d2.users).find(([,u])=>u.email==='maria.g@mail.com');
     ok(!!nu,'crear atleta: quedó su perfil guardado');
     if(nu){ const u=nu[1]; ok(u.name==='González María'&&u.sport==='Pádel'&&u.age===22&&u.height===168&&u.weight===61&&u.role==='athlete'&&u.onboardingComplete===true&&u.athleteType==='individual','crear atleta: datos correctos ('+JSON.stringify(u).slice(0,160)+')');
-      ok(!JSON.stringify(u).includes('40123456'),'crear atleta: el DNI no se guarda en la base'); }
+      ok(!JSON.stringify(u).includes('40123456'),'crear atleta: el DNI no se guarda en la base');
+      ok(u.mustChangePassword===true,'crear atleta: queda marcado para elegir contraseña propia al primer ingreso'); }
     ok(JSON.parse(localStorage.getItem('__authAccounts')||'{}')['maria.g@mail.com']?.pass==='40123456','crear atleta: contraseña = DNI (solo números)');
     ok(JSON.parse(localStorage.getItem('__testUser')||'{}').uid==='admin1'&&S.isAdmin===true,'crear atleta: el profe sigue logueado');
     ok(!document.getElementById('newath-overlay').classList.contains('open'),'crear atleta: se cierra el formulario');
@@ -450,6 +451,11 @@
       const sh=document.querySelector('.rp-sheet'); ok(!!sh&&document.querySelectorAll('.rp-sheet').length===1&&new RegExp(kind,'i').test(sh.querySelector('.rp-kind').innerText)&&!!sh.querySelector('.rp-foot'),'informe '+sub+': hoja con encabezado y pie');
       ok(!!sh&&getComputedStyle(sh).backgroundColor==='rgb(255, 255, 255)','informe '+sub+': hoja blanca también en modo oscuro');
       txtBad('informe '+sub); }
+    { const tabs=[...document.querySelectorAll('.rp-bar .rp-tabs .chip-btn')].map(b=>b.textContent.trim());
+      ok(tabs.join(',')==='Resumen,Staff,Médico,Partido'&&!!document.querySelector('.rp-sheet .rp-pdf'),'informe: hojas con nombres cortos y botón PDF en la hoja ('+tabs.join(',')+')');
+      const last=document.querySelector('.rp-bar .chip-btn:last-child'); ok(!!last&&last.getBoundingClientRect().right<=innerWidth,'informe: las 4 hojas entran en la pantalla');
+      ok(document.documentElement.scrollWidth<=innerWidth+1,'informe: la fila de hojas no hace scroll horizontal de la página');
+      const td=document.querySelector('.rp-t td:first-child'); ok(!td||getComputedStyle(td).position==='sticky','informe: el nombre del atleta queda fijo al deslizar la tabla'); }
     setTeamReportSubview('resumen'); await wait(900);
     ok(!!document.getElementById('report-well-chart')&&!!document.querySelector('#report-acwr-chart, .rp-two .rp-empty')&&!document.getElementById('report-quadrant-chart'),'informe: wellness y ACWR en gráficos separados');
     ok(!/[_](der|izq)\b/.test(document.querySelector('.rp-sheet').innerText),'informe: zonas con su nombre, no el código');
@@ -617,6 +623,16 @@
     const uD=S.userData.pushSubscription; S.userData.pushSubscription={endpoint:'https://x',p256dh:'a',auth:'b'}; switchView('settings'); await wait(300);
     ok([...document.querySelectorAll('#main button')].some(b=>b.textContent.trim()==='Probar'),'ajustes: con notificaciones activas está "Probar"'); txtBad('ajustes con notificaciones');
     if(uD) S.userData.pushSubscription=uD; else delete S.userData.pushSubscription; }
+  // ── seguridad del envío de avisos: va la lista de uids (el servidor lee las suscripciones
+  //    con la sesión del profe), nunca suscripciones ni una "clave" fija ──
+  { await ensureAdminAthletes(); const a=(S.adminAthletes||[])[0], keepSub=a&&a.pushSubscription, keepF=window.fetch; let req=null;
+    if(a){ a.pushSubscription={endpoint:'https://push.test/'+a.uid,p256dh:'k',auth:'x'};
+      window.fetch=async(u,o)=>{ if(String(u).includes('/api/send-push')){ req={h:o.headers,b:JSON.parse(o.body)}; return new Response(JSON.stringify({results:[{ok:true,uid:a.uid,endpoint:a.pushSubscription.endpoint}]}),{status:200,headers:{'Content-Type':'application/json'}}); } return keepF(u,o); };
+      const r=await sendPushToUids([a.uid,'sin-suscripcion'],{title:'Prueba'}); window.fetch=keepF;
+      ok(req&&JSON.stringify(req.b.uids)===JSON.stringify([a.uid])&&!req.b.subscriptions,'avisos: se manda la lista de uids con suscripción, no las suscripciones');
+      ok(req&&!Object.keys(req.h).some(k=>/secret/i.test(k)),'avisos: ya no viaja una clave fija en el pedido');
+      ok(r.sent===1&&r.attempted===1,'avisos: cuenta bien enviados e intentados');
+      if(keepSub) a.pushSubscription=keepSub; else delete a.pushSubscription; } }
   // ── personalizar un ejercicio eligiendo otro de la biblioteca ──
   { const lib2=S.library.find(l=>l.id!=='lsq'&&!/sentadilla/i.test(l.name)); S.videos[lib2.id]='https://youtu.be/abc123';
     openExerciseOverrideModal('u1','r1','Día 1','x1',1); await wait(200);
@@ -828,11 +844,29 @@
     const fl=document.querySelector('.af-line'); ok(!!fl&&/Equipo/i.test(fl.innerText)&&/Edad/i.test(fl.innerText)&&/21 años/.test(fl.innerText),'ficha: datos del atleta en una línea, cada uno con su nombre');
     ok(document.documentElement.scrollWidth<=innerWidth+1,'ficha: la línea de datos no se sale de la pantalla');
     goBackFromAthleteDetail(); await wait(400); switchView('admin'); S.adminView='main'; renderMain(); await wait(300);
-    ok(document.querySelectorAll('.ap-grid .ap-tile').length===6&&/Panel admin/.test(document.getElementById('main').innerText),'panel admin: 6 tarjetas');
+    ok(document.querySelectorAll('.ap-grid .ap-tile').length===7&&/Panel admin/.test(document.getElementById('main').innerText),'panel admin: 7 tarjetas (con "Descargar copia de todo")');
     document.querySelector('.ap-tile[onclick="adminGoRoutines()"]').click(); await wait(600); ok(S.adminView==='routines','panel admin: la tarjeta Rutinas abre Gestión de rutinas');
     S.adminView='main'; renderMain(); await wait(200); txtBad('panel admin en tarjetas'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
+  // ── deslizar en la ficha: pasa de pestaña sin salir del atleta ──
+  { switchView('atletas'); await wait(500); adminOpenAthlete('u2'); await wait(1500); setAtletaSubview('perfil'); await wait(600);
+    const act=()=>document.querySelector('#main .snav-tab.active')?.textContent.trim();
+    swipeNav(1); await wait(900); ok(act()==='Rutina','deslizar en la ficha: de Perfil a Rutina ('+act()+')');
+    swipeNav(-1); await wait(900); ok(act()==='Perfil'&&S._inAthleteDetail,'deslizar en la ficha: vuelve a Perfil y sigue en el atleta');
+    ok(swipeNav(-1)===false&&S._inAthleteDetail,'deslizar en la ficha: en la primera pestaña no se va del atleta'); }
+  // ── copia de seguridad: un .json con todo lo que el profe puede leer ──
+  { const keepU=URL.createObjectURL; let blob=null; URL.createObjectURL=b=>{ blob=b; return keepU.call(URL, new Blob([''])); };
+    switchView('admin'); await wait(400);
+    const t=[...document.querySelectorAll('.ap-tile')].find(x=>/Descargar copia/.test(x.textContent)); ok(!!t,'panel admin: está "Descargar copia de todo"');
+    if(t){ t.click(); for(let i=0;i<30&&!blob;i++) await wait(200); }
+    URL.createObjectURL=keepU;
+    let bk=null; try{ bk=JSON.parse(await blob.text()); }catch(e){}
+    const D=JSON.parse(localStorage.getItem('__db'));
+    ok(bk&&Object.keys(bk.colecciones.users||{}).length===Object.keys(D.users||{}).length,'copia: trae todos los usuarios');
+    ok(bk&&bk.colecciones.personal&&bk.colecciones.personal.u1&&bk.colecciones.teams&&bk.colecciones.teams.t1&&bk.colecciones.routines,'copia: trae datos personales, equipos y rutinas');
+    ok(bk&&JSON.stringify(bk.colecciones.personal.u1)===JSON.stringify(D.personal.u1),'copia: los datos del atleta salen completos e iguales a la base');
+    await wait(300); ok(/Última:/.test(document.querySelector('#main')?.innerText||''),'panel admin: muestra la fecha de la última copia'); }
   // ── diálogo propio en vez de prompt(): crear equipo (dos escenarios: cancelar y crear) ──
   { const n0=S.teams.length; switchView('teams'); await wait(500);
     ok(/Equipos/.test(document.querySelector('.pg-head-t')?.textContent||''),'equipos: título de pantalla con el mismo estilo que el resto');

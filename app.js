@@ -1,5 +1,5 @@
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail }
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, deleteUser, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail, updatePassword }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where, orderBy, serverTimestamp, arrayUnion, FieldPath }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -988,6 +988,35 @@ function askText({title, fields, confirmLabel='Aceptar'}) {
 }
 window.askText = askText;
 
+// Primera entrada de un atleta creado por el profe: la contraseña es su DNI (la
+// sabe cualquiera que tenga sus datos), así que no lo deja seguir sin elegir una propia.
+async function requirePasswordChange() {
+  if (S._pwChanging) return; S._pwChanging = true;
+  try {
+    for (;;) {
+      const v = await askText({title:'Elegí tu contraseña', confirmLabel:'Guardar', fields:[
+        {label:'Contraseña nueva (mínimo 8 caracteres)', type:'password'}, {label:'Repetila', type:'password'}]});
+      if (!v) { showToast('Para seguir, elegí una contraseña nueva'); continue; }
+      const [p1, p2] = v;
+      if (p1.length < 8) { showToast('Tiene que tener al menos 8 caracteres'); continue; }
+      if (p1 !== p2) { showToast('Las dos contraseñas no coinciden'); continue; }
+      try {
+        await updatePassword(auth.currentUser, p1);
+        delete S.userData.mustChangePassword;
+        // Si borrar la marca fallara (sin conexión, reglas), la contraseña ya cambió: no volver a pedirla en este equipo.
+        try { localStorage.setItem('gm-pw-ok-'+S.user.uid, '1'); } catch(e) {}
+        await setDoc(doc(db,'users',S.user.uid), {mustChangePassword:deleteField()}, {merge:true}).catch(()=>{});
+        showToast('✓ Contraseña guardada');
+        return;
+      } catch (e) {
+        showToast(e?.code==='auth/requires-recent-login' ? 'Por seguridad, cerrá sesión y volvé a entrar' : 'No se pudo guardar. Probá de nuevo.');
+        if (e?.code==='auth/requires-recent-login') return;
+      }
+    }
+  } finally { S._pwChanging = false; }
+}
+window.requirePasswordChange = requirePasswordChange;
+
 // ── STATE ─────────────────────────────────────────────────────
 let S = {
   user: null, isAdmin: false, userData: null,
@@ -1385,6 +1414,9 @@ onAuthStateChanged(auth, async (user) => {
 
   renderBottomBar();
   renderAll();
+  // Cuenta creada por el profe con el DNI como contraseña: antes de seguir, una propia.
+  let pwOk = false; try { pwOk = localStorage.getItem('gm-pw-ok-'+S.user.uid)==='1'; } catch(e) {}
+  if (!S.isAdmin && S.userData.mustChangePassword && !pwOk) requirePasswordChange();
    syncPushSubscription();
 });
 
@@ -1797,6 +1829,13 @@ function capitalizeName(s) {
 // (el text-transform:capitalize de CSS dejaba "19 De Noviembre").
 function capFirst(s) { s = s||''; return s.charAt(0).toUpperCase()+s.slice(1); }
 window.capFirst = capFirst;
+// Esqueleto de carga: la forma de lo que va a aparecer, en vez de un "Cargando…" suelto.
+// kind: 'list' (filas de atletas), 'dash' (contadores + lista), 'profile' (ficha)
+function skelHtml(kind='list', n=4) {
+  const row = '<div class="sk-row"><i class="sk sk-av"></i><div class="sk-col"><i class="sk sk-l"></i><i class="sk sk-s"></i></div></div>';
+  return `<div class="sk-wrap" role="status" aria-label="Cargando">${kind==='dash'?'<div class="sk-tiles">'+'<i class="sk sk-tile"></i>'.repeat(4)+'</div>':''}${kind==='profile'?'<i class="sk sk-hero"></i>':''}<div class="sk-list">${row.repeat(n)}</div></div>`;
+}
+window.skelHtml = skelHtml;
 window.capitalizeName=capitalizeName;
 
 // Ordena nombres de sesión/día ("Día 1","Día 2"...) de forma numérica en vez
@@ -2641,6 +2680,57 @@ function switchView(v) {
   if(mainEl) { mainEl.classList.remove('view-in'); void mainEl.offsetWidth; mainEl.classList.add('view-in'); }
 }
 window.switchView = switchView;
+
+// ── Deslizar el dedo de costado (celular/tablet) ───────────────
+// Con pestañas en pantalla (ficha, equipo: 4 o más) pasa a la de al lado, sin
+// salir de esa pantalla. Con pestañas arriba (los días de Mi Rutina) pasa al día
+// de al lado y, en la punta, a la sección siguiente. Si no, a la sección de al
+// lado de la barra de abajo. No se activa al arrastrar un gráfico, un campo, una
+// fila que se desliza, con un diálogo abierto, ni desde el borde (el "atrás" del celular).
+function swipeTarget(dir) {
+  const pick = (btns, active) => { const i = btns.indexOf(active); return i<0 ? null : btns[i+dir] || null; };
+  const row = [...document.querySelectorAll('#main div')].find(d => d.querySelectorAll(':scope > .snav-tab').length>=4 && d.querySelector(':scope > .snav-tab.active'));
+  if(row) { const b=[...row.querySelectorAll(':scope > .snav-tab')]; return {btn: pick(b, row.querySelector(':scope > .snav-tab.active')), kind:'tab'}; }
+  const bar = [...document.querySelectorAll('#bottombar .bb-btn')];
+  const nextSection = pick(bar, document.querySelector('#bottombar .bb-btn.active'));
+  const sub = [...document.querySelectorAll('#subnav .snav-tab')];
+  const subAct = document.querySelector('#subnav .snav-tab.active');
+  if(sub.length>=2 && subAct) return {btn: pick(sub, subAct) || nextSection, kind: pick(sub, subAct) ? 'tab' : 'section'};
+  return {btn: nextSection, kind:'section'};
+}
+function swipeNav(dir) {
+  const {btn} = swipeTarget(dir);
+  if(!btn) return false;
+  btn.click();
+  const m = document.getElementById('main');
+  if(m) { m.classList.remove('slide-next','slide-prev','view-in'); void m.offsetWidth; m.classList.add(dir>0?'slide-next':'slide-prev'); }
+  return true;
+}
+window.swipeNav = swipeNav;
+(function initSwipeNav(){
+  let x0=null, y0=0, t0=0;
+  const blocked = el => {
+    for(let e=el; e && e.id!=='main'; e=e.parentElement) {
+      if(/^(INPUT|TEXTAREA|SELECT|CANVAS)$/.test(e.tagName) || e.isContentEditable) return true;
+      const ox = getComputedStyle(e).overflowX;
+      if((ox==='auto'||ox==='scroll') && e.scrollWidth > e.clientWidth+2) return true;
+    }
+    return false;
+  };
+  document.addEventListener('touchstart', e => {
+    x0 = null;
+    if(e.touches.length!==1 || innerWidth>=900) return;
+    const t = e.touches[0], m = document.getElementById('main');
+    if(!m || !m.contains(e.target) || t.clientX<24 || t.clientX>innerWidth-24 || document.querySelector('.video-modal.open') || blocked(e.target)) return;
+    x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+  }, {passive:true});
+  document.addEventListener('touchend', e => {
+    if(x0==null) return;
+    const t = e.changedTouches[0], dx = t.clientX-x0, dy = t.clientY-y0; x0 = null;
+    if(Math.abs(dx)<70 || Math.abs(dx)<Math.abs(dy)*2 || Date.now()-t0>800) return;
+    swipeNav(dx<0 ? 1 : -1);
+  }, {passive:true});
+})();
 
 // Tocar una sección del menú te lleva a la pantalla principal de esa sección,
 // estés donde estés: nada queda abierto (ficha, equipo, editor) ni se recuerda
@@ -6748,7 +6838,7 @@ function renderStats() {
 
 // ── TEAMS ─────────────────────────────────────────────────────
 function renderTeams() {
-  if(S._teamViewLoadingId) return `<div style="text-align:center;padding:40px;color:var(--text3)">Cargando equipo…</div>`;
+  if(S._teamViewLoadingId) return skelHtml('profile', 3);
   if(S.teamView) return renderTeamDetail(S.teamView);
   let html=`<div class="pg-head">
     <div class="pg-head-t">Equipos</div>
@@ -7404,9 +7494,9 @@ window.saveCalendarDay = saveCalendarDay;
 // Cómo llegamos al partido. Todo anidado por equipo, no como sección aparte.
 const TEAM_REPORT_TABS = [
   {id:'resumen', label:'Resumen'},
-  {id:'staff', label:'Reunión de staff'},
+  {id:'staff', label:'Staff'},
   {id:'medico', label:'Médico'},
-  {id:'partido', label:'Cómo llegamos al partido'},
+  {id:'partido', label:'Partido'},
 ];
 
 function setTeamReportSubview(v) {
@@ -7430,12 +7520,9 @@ function renderTeamReport(team) {
   if(!members.length) return `<div class="empty-state">No hay atletas en este equipo todavía.</div>`;
 
   const sub = S.teamReportSubview || 'resumen';
-  const tabsHtml = `<div class="no-print" style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
-    <div style="font-size:15px;font-weight:700;flex:1;min-width:160px">Informe del equipo</div>
-    <button class="abtn abtn-p" onclick="window.print()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg>Imprimir / PDF</button>
-  </div>
-  <div class="no-print" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
-    ${TEAM_REPORT_TABS.map(t=>`<button class="snav-tab ${sub===t.id?'active':''}" onclick="setTeamReportSubview('${t.id}')">${t.label}</button>`).join('')}
+  // Qué hoja (Resumen / Staff / Médico / Partido); el botón de PDF va en la esquina de la hoja (rpSheet).
+  const tabsHtml = `<div class="no-print rp-bar">
+    <div class="rp-tabs">${TEAM_REPORT_TABS.map(t=>`<button class="chip-btn ${sub===t.id?'on':''}" onclick="setTeamReportSubview('${t.id}')">${t.label}</button>`).join('')}</div>
   </div>`;
 
   if(sub==='staff') return tabsHtml + renderStaffMeetingReport(team, members);
@@ -7454,6 +7541,7 @@ const rpEsc = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;
 const rpDate = d => { const m = String(d||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[3])+' '+EVAL_MONTHS[+m[2]-1].slice(0,3).toLowerCase()+' '+m[1] : ''; };
 function rpSheet(team, members, kind, title, period, body) {
   return `<div class="rp-sheet">
+    <button class="abtn abtn-p no-print rp-pdf" onclick="window.print()" title="Imprimir o guardar en PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg>PDF</button>
     <div class="rp-head">
       <div><div class="rp-kind">${kind}</div><div class="rp-title">${title}</div>
         <div class="rp-sub">${rpEsc(team.name)}${team.category?' · '+rpEsc(team.category):''} · ${members.length} atleta${members.length!==1?'s':''}</div></div>
@@ -9270,10 +9358,11 @@ function drawTeamReportTrendChart(members) {
   const mk = (id, data, yOpts, fmtV, band) => {
     const cv = document.getElementById(id); if(!cv) return;
     try{ S['_rp_'+id]?.destroy(); }catch(e){}
-    if(!data.some(v=>v!=null)) { cv.parentElement.innerHTML = '<div class="rp-empty">Sin datos en el período.</div>'; return; }
+    if(!data.some(v=>v!=null)) { cv.parentElement.style.height = 'auto'; cv.parentElement.innerHTML = '<div class="rp-empty">Sin datos en el período.</div>'; return; }
     const plugins = band ? [{ id:'acwrBand', beforeDatasetsDraw(ch){ const y=ch.scales.y, x=ch.scales.x; const t=y.getPixelForValue(1.3), b=y.getPixelForValue(0.8); ch.ctx.save(); ch.ctx.fillStyle='rgba(31,122,77,0.10)'; ch.ctx.fillRect(x.left, t, x.right-x.left, b-t); ch.ctx.restore(); } }] : [];
     S['_rp_'+id] = new Chart(cv, { type:'line',
-      data:{ labels:s.labels, datasets:[{ data, borderColor:RP_C.accent, backgroundColor:RP_C.accent, borderWidth:2, pointRadius:0, pointHoverRadius:4, spanGaps:true, tension:.3 }] },
+      // Con pocos días cargados la línea sola no se ve (un día = un punto sin línea): se marcan los puntos.
+      data:{ labels:s.labels, datasets:[{ data, borderColor:RP_C.accent, backgroundColor:RP_C.accent, borderWidth:2, pointRadius: data.filter(v=>v!=null).length<10 ? 3 : 0, pointHoverRadius:4, spanGaps:true, tension:.3 }] },
       options: rpChartOpts(yOpts, ctx=>' '+fmtV(ctx.parsed.y)), plugins });
   };
   mk('report-well-chart', s.well, {suggestedMin:50, suggestedMax:100}, v=>Math.round(v)+' %');
@@ -10113,8 +10202,10 @@ async function saveNewAthlete() {
     uid = cred.user.uid;
     // El perfil lo escribe la cuenta recién creada (igual que cuando un atleta
     // se registra solo) — así no depende de permisos especiales del profe.
-    try { await setDoc(doc(getFirestore(secApp),'users',uid), {...data, createdAt:serverTimestamp()}); }
-    catch(e1) { await setDoc(doc(db,'users',uid), {...data, createdAt:serverTimestamp()}); }
+    // mustChangePassword: la contraseña inicial es el DNI (fácil de adivinar), así que
+    // la primera vez que entra la app le pide elegir una propia (requirePasswordChange).
+    try { await setDoc(doc(getFirestore(secApp),'users',uid), {...data, mustChangePassword:true, createdAt:serverTimestamp()}); }
+    catch(e1) { await setDoc(doc(db,'users',uid), {...data, mustChangePassword:true, createdAt:serverTimestamp()}); }
     try { await fbSignOut(secAuth); } catch(e) {}
   } catch(e) {
     console.error('Crear atleta', e);
@@ -10141,7 +10232,7 @@ async function saveNewAthlete() {
   if(Array.isArray(S.dashAthletes) && S.dashAthletes.length) S.dashAthletes.push(local);
   closeNewAthleteModal();
   renderMain();
-  showConfirmModal({title:'Atleta creado', message:`${name} ya puede entrar a la app. Usuario: ${email} · Contraseña: su DNI (${dni}).`});
+  showConfirmModal({title:'Atleta creado', message:`${name} ya puede entrar a la app. Usuario: ${email} · Contraseña: su DNI (${dni}). La primera vez que entre, la app le va a pedir que elija una contraseña propia.`});
 }
 window.openNewAthleteModal=openNewAthleteModal; window.closeNewAthleteModal=closeNewAthleteModal; window.closeNewAthleteIfOutside=closeNewAthleteIfOutside; window.naSet=naSet; window.saveNewAthlete=saveNewAthlete;
 
@@ -10340,7 +10431,7 @@ function renderAtletas() {
 
   if (!S.adminAthletesLoaded) {
     ensureAdminAthletes().then(renderMain);
-    return html + `<div class="empty-state">Cargando...</div>`;
+    return html + skelHtml('list');
   }
 
   const individuals = (S.adminAthletes || []).filter(a => a.athleteType === 'individual');
@@ -10354,7 +10445,7 @@ function renderAtletas() {
       S._atletasPersonalState = 'loading';
       ensureGroupPersonalData(individuals.map(a=>a.uid)).catch(()=>{}).finally(()=>{ S._atletasPersonalState='done'; renderMain(); });
     }
-    return html + `<div class="empty-state">Cargando...</div>`;
+    return html + skelHtml('list', Math.min(individuals.length, 6));
   }
 
   // Búsqueda + filtro por deporte con cantidad (se oculta si hay un solo deporte)
@@ -10833,7 +10924,7 @@ function renderAthleteStatsTab(a) {
   if(need.length) {
     if(!S._astLoading) S._astLoading = {};
     if(!S._astLoading[a.uid]) { S._astLoading[a.uid] = true; ensureGroupPersonalData(need.map(x=>x.uid)).catch(()=>{}).finally(()=>{ S._astLoading[a.uid] = false; renderMain(); }); }
-    return `<div class="empty-state">Cargando…</div>`;
+    return skelHtml('list', 3);
   }
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const mode = S.astMode==='last' ? 'last' : 'best';
@@ -11944,10 +12035,11 @@ function renderNotifications() {
   const order = notifs.map((_,i)=>i).sort((ai,bi)=>(notifs[bi].date||'').localeCompare(notifs[ai].date||''));
   let html = `<div class="page-header">
     <div class="page-title">Notificaciones</div>
-    <div class="page-subtitle">${order.length?notifs.filter(n=>!n.read).length+' sin leer':'Nada nuevo por acá'}</div>
+    ${order.length?`<div class="page-subtitle">${notifs.filter(n=>!n.read).length} sin leer</div>`:''}
   </div>`;
   if(!order.length) {
-    html += `<div class="empty-state">No tenés notificaciones todavía.</div>`;
+    html += `<div class="gm-empty" id="notif-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <b>No tenés notificaciones</b><p>${S.isAdmin?'Acá vas a ver los avisos de tus atletas.':'Acá vas a ver los mensajes y recordatorios de tu profe.'}</p></div>`;
     return html;
   }
   html += `<div class="wellness-card">
@@ -11992,11 +12084,15 @@ window.markAllNotificationsRead = markAllNotificationsRead;
 // mandarle y se la pasa a /api/send-push (función serverless de Vercel) —
 // el cifrado y el envío real no se pueden hacer desde el navegador del admin
 // porque los servidores push de Apple/Google no responden con CORS.
-// Igual que en la guía de la que sale este patrón: no es un secreto
-// criptográfico, solo evita que cualquiera le pegue a /api/send-push desde
-// afuera. Tiene que ser EXACTAMENTE el mismo string que la variable de
-// entorno PUSH_API_SECRET en Vercel.
-const PUSH_API_SECRET = 'ea0345e39a0b8631223fe3d23ebf8af5cb00264b6d9881b5';
+// Seguridad: se manda la sesión de Firebase (ID token) y la lista de uids; el
+// servidor lee las suscripciones de Firestore con esa sesión, así que solo
+// puede avisar a quien las reglas dejan leer (el profe a sus atletas, cada uno
+// a sí mismo). Antes iba una "clave" fija escrita acá, visible para cualquiera.
+async function pushHeaders() {
+  const h = {'Content-Type':'application/json'};
+  try { const t = await auth.currentUser?.getIdToken?.(); if(t) h.Authorization = 'Bearer '+t; } catch(e) {}
+  return h;
+}
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -12060,8 +12156,8 @@ async function probarNotificacion() {
   try {
     const resp = await fetch('/api/send-push', {
       method:'POST',
-      headers:{'Content-Type':'application/json', 'X-Push-Secret': PUSH_API_SECRET},
-      body: JSON.stringify({subscriptions:[sub], title:'G-Metrics', body:'Aviso de prueba: las notificaciones funcionan.', url:location.origin})
+      headers: await pushHeaders(),
+      body: JSON.stringify({uids:[S.user.uid], title:'G-Metrics', body:'Aviso de prueba: las notificaciones funcionan.', url:location.origin})
     });
     let data = {}; try { data = await resp.json(); } catch(e) {}
     const r = (data.results||[])[0];
@@ -12134,8 +12230,8 @@ async function sendPushToUids(uids, {title, body, url} = {}) {
   try {
     const resp = await fetch('/api/send-push', {
       method:'POST',
-      headers:{'Content-Type':'application/json', 'X-Push-Secret': PUSH_API_SECRET},
-      body: JSON.stringify({subscriptions:subs, title:title||'G-Metrics', body:body||'', url:url||location.origin})
+      headers: await pushHeaders(),
+      body: JSON.stringify({uids:(uids||[]).filter(uid=>(S.adminAthletes||[]).find(a=>a.uid===uid)?.pushSubscription), title:title||'G-Metrics', body:body||'', url:url||location.origin})
     });
     if(!resp.ok) {
       // Antes esto descartaba el cuerpo de la respuesta y siempre mostraba
@@ -12891,9 +12987,46 @@ function renderAdminMain() {
     ${tile('adminGoRoutines()', '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>', 'Rutinas', nR+' rutina'+(nR!==1?'s':'')+' creada'+(nR!==1?'s':''))}
     ${tile("switchView('teams')", '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20c0-3 3-5 6-5M22 20c0-3-3-5-6-5"/>', 'Equipos', S.teams.length+' equipo'+(S.teams.length!==1?'s':''))}
     ${tile("switchView('library')", '<path d="M4 6h16M4 12h16M4 18h10"/>', 'Biblioteca de ejercicios', S.library.length+' ejercicios')}
+    ${tile('downloadFullBackup()', '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>', 'Descargar copia de todo', S._lastBackup ? 'Última: '+S._lastBackup : 'Guardala en tu compu o en Drive')}
     ${tile('signOut()', '<path d="M9 21H5V3h4M16 17l5-5-5-5M21 12H9"/>', 'Cerrar sesión', '', 'ap-out')}
   </div>`;
 }
+
+// Copia de seguridad: baja TODO lo que el profe puede leer (atletas, sus datos
+// personales, equipos, rutinas, biblioteca…) en un solo archivo .json. Gratis y a
+// mano — las copias automáticas de Firebase son pagas. Si alguna colección no se
+// puede leer, sigue con las demás y lo anota en el archivo.
+async function downloadFullBackup() {
+  if(!S.isAdmin) return;
+  showToast('Armando la copia…');
+  const plain = v => JSON.parse(JSON.stringify(v, (k, x) => (x && typeof x.toDate === 'function') ? x.toDate().toISOString() : x));
+  const out = {app:'G-Metrics', creada:new Date().toISOString(), colecciones:{}, errores:[]};
+  for(const name of ['users','personal','teams','routines','shared','pendingAthletes']) {
+    try {
+      const snap = await getDocs(collection(db, name));
+      out.colecciones[name] = {}; snap.docs.forEach(d => { out.colecciones[name][d.id] = plain(d.data()); });
+    } catch(e) { out.errores.push(name+': '+(e.code||e.message||e)); }
+  }
+  // Si no se pudo listar "personal" de una, se lee atleta por atleta.
+  if(!out.colecciones.personal) {
+    out.colecciones.personal = {};
+    for(const uid of Object.keys(out.colecciones.users||{})) {
+      try { const s = await getDoc(doc(db,'personal',uid)); if(s.exists()) out.colecciones.personal[uid] = plain(s.data()); }
+      catch(e) { out.errores.push('personal/'+uid+': '+(e.code||e.message||e)); }
+    }
+  }
+  const fecha = todayLocal();
+  const blob = new Blob([JSON.stringify(out, null, 1)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'gmetrics-copia-'+fecha+'.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  S._lastBackup = fecha;
+  const n = Object.keys(out.colecciones.users||{}).length;
+  showToast(out.errores.length ? '✓ Copia descargada ('+n+' usuarios) — faltó: '+out.errores.length : '✓ Copia descargada ('+n+' usuarios)');
+  if(S.currentView==='admin') renderMain();
+}
+window.downloadFullBackup = downloadFullBackup;
 
 function resetBlocks() {
   showConfirmModal({message:'¿Restaurar bloques por defecto?', danger:true, confirmLabel:'Restaurar', onConfirm: () => {
@@ -12907,7 +13040,7 @@ window.resetBlocks=resetBlocks;
 async function adminGoAthletes() {
   S.adminView='athletes';
   S.currentView='admin';
-  document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando atletas…</div>`;
+  document.getElementById('main').innerHTML=skelHtml('list');
   try {
     const snap = await getDocs(collection(db,'users'));
     S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
@@ -13016,7 +13149,7 @@ async function adminGoCompare(scope) {
   S.adminView='compare_athletes';
   S.currentView='admin';
   S.teamView=null;
-  document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando atletas…</div>`;
+  document.getElementById('main').innerHTML=skelHtml('list');
   await ensureAdminAthletes();
   if(!Array.isArray(S.compareUids)) S.compareUids = [S.compareA, S.compareB].filter(Boolean);
   // Entrando desde un equipo o desde Atletas, quedan solo los elegidos de ese grupo.
@@ -13401,7 +13534,7 @@ async function adminOpenAthlete(uid, sub) {
   S._pastPhaseBlocksOpen = null;
   S._routineWeekPreview = null;
   S._perfilWellnessDay = null; S._hs = null;
-  document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--text3)">Cargando perfil…</div>`;
+  document.getElementById('main').innerHTML=skelHtml('profile', 3);
   try {
     await ensureAdminAthletes();
     let a = S.adminAthletes.find(x=>x.uid===uid);
@@ -13519,7 +13652,7 @@ function renderWeeklyReport() {
   return `<div class="no-print" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
     <button class="back-btn" onclick="closeWeeklyReport()">‹</button>
     <div style="font-size:15px;font-weight:700;flex:1">Reporte semanal</div>
-    <button class="abtn abtn-p" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+    <button class="abtn abtn-p" onclick="window.print()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Imprimir / Guardar PDF</button>
   </div>
 
   <div class="print-report" style="background:#fff;color:#111;border-radius:10px;padding:28px;max-width:720px;margin:0 auto;font-family:inherit">
@@ -17230,12 +17363,7 @@ function renderDashboard() {
     </div>
     <button class="abtn dash-refresh" onclick="loadDashboard()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>Actualizar</button>
   </div>
-  <div id="dashboard-content">
-    <div class="empty-state" style="padding:30px">
-      <div style="font-size:22px;margin-bottom:8px">⏳</div>
-      Cargando atletas...
-    </div>
-  </div>`;
+  <div id="dashboard-content">${skelHtml('dash')}</div>`;
 }
 window.renderDashboard=renderDashboard;
 

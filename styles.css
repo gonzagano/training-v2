@@ -1935,7 +1935,46 @@ html{-webkit-tap-highlight-color:transparent}
 :is(.abtn,.chip-btn):active{transform:scale(.97)}
 #main.view-in{animation:gmViewIn .2s ease-out}
 @keyframes gmViewIn{from{opacity:0}to{opacity:1}}
+/* Al deslizar: la pantalla nueva entra desde el lado hacia donde se movió el dedo */
+#main.slide-next{animation:gmSlideNext .22s ease-out}
+#main.slide-prev{animation:gmSlidePrev .22s ease-out}
+@keyframes gmSlideNext{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes gmSlidePrev{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#main.slide-next,#main.slide-prev{animation:none}}
 @media (prefers-reduced-motion:reduce){#main.view-in{animation:none}:is(.home-row,.home-card,.ap-tile,.abtn,.chip-btn):active{transform:none}}
+/* Informe del equipo: hojas en una fila de chips + botón PDF a la derecha */
+.rp-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.rp-tabs{display:flex;gap:8px;flex:1;min-width:0}
+.rp-sheet{position:relative}
+.rp-pdf{position:absolute;top:14px;right:14px;z-index:2;display:inline-flex;align-items:center;gap:6px}
+@media screen{.rp-head{padding-right:84px}}
+/* En pantalla chica: encabezado de la hoja más corto (marca y fecha de generado solo en el papel) */
+@media screen and (max-width:600px){
+  .rp-head{flex-direction:column;align-items:flex-start;gap:4px}
+  .rp-meta{text-align:left}
+  .rp-meta .rp-brand,.rp-meta .rp-gen{display:none}
+}
+/* Tablas anchas: el nombre del atleta queda fijo al deslizar la tabla de costado */
+.rp-t th:first-child,.rp-t td:first-child{position:sticky;left:0;background:#fff;z-index:1}
+/* Esqueleto de carga (skelHtml): la forma de lo que viene, con un brillo que pasa */
+.sk-wrap{display:grid;gap:12px}
+.sk{display:block;background:var(--bg3);border-radius:10px;position:relative;overflow:hidden}
+.sk::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);animation:gmSkShine 1.3s ease-in-out infinite}
+@keyframes gmSkShine{to{transform:translateX(100%)}}
+.sk-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(min-width:900px){.sk-tiles{grid-template-columns:repeat(4,1fr)}}
+.sk-tile{height:96px;border-radius:16px}
+.sk-hero{height:140px;border-radius:16px}
+.sk-list{background:var(--bg2);border-radius:16px;padding:4px 16px}
+.sk-row{display:flex;gap:12px;align-items:center;padding:12px 0}
+.sk-row + .sk-row{border-top:1px solid var(--border)}
+.sk-av{width:40px;height:40px;border-radius:50%;flex-shrink:0}
+.sk-col{flex:1;display:grid;gap:8px}
+.sk-l{height:13px;width:58%}
+.sk-s{height:11px;width:34%}
+@media (prefers-reduced-motion:reduce){.sk::after{animation:none}}
+/* Inicio del atleta en pantallas anchas: todo el contenido con el mismo ancho */
+.home-head,.home-cards ~ :is(.wellness-card,.home-row){max-width:560px}
 /* Estado vacío: un solo mensaje que dice qué va a aparecer */
 .gm-empty{background:var(--bg2);border-radius:16px;padding:32px 24px;text-align:center}
 .gm-empty svg{width:40px;height:40px;color:var(--accent-text);margin-bottom:12px}

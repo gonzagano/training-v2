@@ -4,7 +4,7 @@
 // cuenta nueva en el auth que se le pase — si el código usa el auth principal
 // para crear un atleta, el admin queda deslogueado y el test lo detecta.
 let _cb = null;
-const main = { get currentUser(){ try{return JSON.parse(localStorage.getItem('__testUser')||'null');}catch(e){return null;} } };
+const main = { get currentUser(){ try{ const u=JSON.parse(localStorage.getItem('__testUser')||'null'); if(u) u.getIdToken=async()=>'test-id-token-'+u.uid; return u; }catch(e){return null;} } };
 const secondaries = new WeakMap();
 export function getAuth(app){
   if(!app || app.name === '[DEFAULT]') return main;
@@ -36,3 +36,5 @@ export async function deleteUser(){}
 export const EmailAuthProvider = { credential(){ return {}; } };
 export async function reauthenticateWithCredential(){}
 export async function sendPasswordResetEmail(){}
+// Cambiar contraseña: queda registrada para que las pruebas la puedan revisar.
+export async function updatePassword(user, pass){ if(String(pass||'').length < 6) throw {code:'auth/weak-password'}; localStorage.setItem('__lastPasswordSet', JSON.stringify({uid:user&&user.uid, pass:String(pass)})); }
