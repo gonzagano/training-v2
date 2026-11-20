@@ -811,6 +811,10 @@
     // crear ejercicio: el formulario se desplaza y el botón no desaparece
     openLib(null,null); showLibNewExerciseForm(); await wait(100);
     ok(getComputedStyle(document.getElementById('lib-new-wrap')).overflowY==='auto'&&getComputedStyle(document.querySelector('.lib-new-btn')).position==='sticky','crear ejercicio: "+ Agregar" queda siempre a la vista');
+    selectMainCategoryChip('lib-new-tags-picker','_newExTags','Movilidad'); await wait(400);
+    { const r=document.querySelector('.lib-new-btn').getBoundingClientRect();
+      ok(r.bottom<=innerHeight&&r.top>=0&&getComputedStyle(document.getElementById('lib-list')).display==='none','crear ejercicio: con Movilidad (muchas opciones) "+ Agregar" sigue en pantalla ('+Math.round(r.bottom)+'/'+innerHeight+')'); }
+    hideLibNewExerciseForm(); ok(getComputedStyle(document.getElementById('lib-list')).display!=='none','crear ejercicio: al ocultar el formulario vuelve la lista');
     closeLib(); S.editingRoutine=null; S.adminView='main'; txtBad('planificar con tab'); }
   // ── "Marcar como actual": la semana cambia el lunes, no el día en que se marcó ──
   { await ensureAdminAthletes(); await adminSetRealRoutineWeek('u2', 9); await wait(300);

@@ -4526,6 +4526,7 @@ function showLibNewExerciseForm() {
   const btn = document.getElementById('lib-new-toggle-btn');
   if(wrap) wrap.style.display='flex';
   if(btn) btn.textContent='− Ocultar formulario';
+  document.getElementById('lib-sheet')?.classList.add('lib-creating');
 }
 window.showLibNewExerciseForm = showLibNewExerciseForm;
 
@@ -4534,6 +4535,7 @@ function hideLibNewExerciseForm() {
   const btn = document.getElementById('lib-new-toggle-btn');
   if(wrap) wrap.style.display='none';
   if(btn) btn.textContent='+ Crear ejercicio nuevo';
+  document.getElementById('lib-sheet')?.classList.remove('lib-creating');
 }
 window.hideLibNewExerciseForm = hideLibNewExerciseForm;
 
@@ -18014,7 +18016,7 @@ function goalsCardHtml(uid) {
   const c = goalCtx(uid);
   const who = uid==='self' ? 'Mis objetivos' : 'Objetivos';
   if(!c.goals.length) return `<div class="home-row gl-empty" onclick="openGoalsEditor('${uid}')"><span class="home-ic gl-ic">${GOAL_SVG}</span><div class="home-row-m"><b>${uid==='self'?'Elegí tus objetivos':'Sin objetivos cargados'}</b><small>${uid==='self'?'Hasta 4':'Cargalos por él'}</small></div><span class="home-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span></div>`;
-  return `<section class="gl-card"><div class="gl-top"><span class="gl-k">${who}</span><button class="gl-edit" onclick="openGoalsEditor('${uid}')">Editar</button></div>${goalsListHtml(uid)}</section>`;
+  return `<section class="gl-card"><div class="gl-top"><span class="gl-k"><span class="gl-kic">${GOAL_SVG}</span>${who}</span><button class="gl-edit" onclick="openGoalsEditor('${uid}')">Editar</button></div>${goalsListHtml(uid)}</section>`;
 }
 window.goalsCardHtml = goalsCardHtml;
 const GOAL_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>';

@@ -1795,6 +1795,12 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 /* Crear ejercicio: el formulario se desplaza y "+ Agregar" queda siempre a la vista */
 .lib-new-wrap{max-height:62vh;overflow-y:auto}
 .lib-new-wrap .lib-new-btn{position:sticky;bottom:0;z-index:2}
+/* Con el formulario abierto, ocupa todo el panel (sin lista) y "+ Agregar" queda abajo a la vista en celus bajos */
+.lib-sheet{max-height:80dvh}
+.lib-creating .lib-search-wrap,.lib-creating .lib-filters,.lib-creating .lib-list{display:none!important}
+.lib-creating .lib-new-wrap{flex:1 1 auto;min-height:0;max-height:none}
+.lib-creating #lib-new-tags-picker{max-height:none!important;overflow:visible!important}
+.lib-creating .lib-new-btn{padding:11px 14px;font-size:15px;box-shadow:0 0 0 10px var(--bg2)}
 .dup-box{max-height:132px;overflow-y:auto}
 
 /* Inicio del atleta: wellness pendiente arriba y racha */
@@ -1811,13 +1817,24 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .gl-card{background:var(--bg2);border:1.5px solid var(--border2);border-radius:16px;box-shadow:var(--sh-card);padding:14px 16px;margin-bottom:14px}
 .home-cards .gl-card{margin-bottom:0}
 .gl-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.gl-k{font-size:11px;font-weight:800;color:var(--text3)}
+.gl-k{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:800;color:var(--text)}
+.gl-kic{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;background:var(--accent-dim);color:var(--accent-text)}
+[data-theme="dark"] .gl-kic{color:var(--text)}
 .gl-edit{border:0;background:transparent;color:var(--accent-text);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:4px 2px}
 [data-theme="dark"] .gl-edit{color:var(--text)}
-.gl-list{display:flex;flex-direction:column;gap:13px}
-.gl-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
-.gl-h b{font-size:15px;font-weight:700;color:var(--text)}
-.gl-h span{font-size:13px;color:var(--text3);white-space:nowrap}
+.gl-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.gl-it{display:flex;flex-direction:column;background:var(--bg3);border-radius:10px;padding:11px 12px 12px;min-width:0}
+.gl-h{display:flex;flex-direction:column;gap:3px;margin-bottom:9px;flex:1}
+.gl-h b{font-size:15px;font-weight:700;color:var(--text);line-height:1.25}
+.gl-h span{font-size:13px;color:var(--text3)}
+.gl-it .gl-bar{background:var(--bg2)}
+@media (max-width:600px){ /* celular: lista, no islas */
+  .gl-list{display:flex;flex-direction:column;gap:13px}
+  .gl-it{background:none;padding:0;border-radius:0}
+  .gl-h{flex-direction:row;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+  .gl-h span{white-space:nowrap}
+  .gl-it .gl-bar{background:var(--bg3)}
+}
 .gl-h span b{font-size:13px}
 .gl-bar{height:7px;border-radius:4px;background:var(--bg3);overflow:hidden}
 .gl-bar i{display:block;height:100%;border-radius:4px;background:var(--accent);transition:width .3s}
