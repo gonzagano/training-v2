@@ -911,6 +911,14 @@
     const f0=document.getElementById('ask-f0'), f1=document.getElementById('ask-f1'), f2=document.getElementById('ask-f2');
     if(f0){ f0.value='Prueba Dialogo'; f1.value='Handball'; f2.value='Cadetes'; document.getElementById('ask-ok').click(); } await wait(900);
     const nt=S.teams.find(t=>t.name==='Prueba Dialogo'); ok(nt&&nt.sport==='Handball'&&nt.category==='Cadetes','nuevo equipo: se crea con nombre, deporte y categoría del diálogo'); }
+  // ── el logo tapa la espera: no se va mientras quede algo "cargando" (esqueleto gris) ──
+  { const L=document.getElementById('loading');
+    ok(L.style.display==='none','logo de carga: ya cargado, no queda tapando la app');
+    switchView('dashboard'); showLoading(); document.getElementById('main').insertAdjacentHTML('beforeend', skelHtml('list',2)); hideLoadingWhenReady(); await wait(600);
+    ok(L.style.display!=='none'&&!L.classList.contains('gm-out'),'logo de carga: sigue mientras hay esqueletos de carga');
+    document.querySelectorAll('#main .sk-wrap').forEach(e=>e.remove()); await wait(700);
+    ok(L.style.display==='none','logo de carga: se va apenas termina de cargar');
+    renderAll(); }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight; R.theme=document.documentElement.getAttribute('data-theme')||'light';
   window.__regress=R;
 })();

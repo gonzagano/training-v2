@@ -1208,9 +1208,38 @@ const EMOJI_ICONS = {
   if(document.readyState!=='loading') { obs.observe(document.body,{childList:true,subtree:true,characterData:true}); convert(document.body); }
 })();
 
+// ── PANTALLA DEL LOGO ─────────────────────────────────────────
+// Pedido del usuario (2026-11-21): la espera se hace con el logo, no con la pantalla
+// principal en gris "titilando". El logo se va recién cuando el inicio está dibujado
+// sin esqueletos de carga (.sk-wrap). Tope de 15 s por si algo falla: nunca queda trabado.
+let loadingSince = 0;
+function showLoading() {
+  const el = document.getElementById('loading');
+  el.classList.remove('gm-out'); el.style.display = '';
+  const me = loadingSince = Date.now();
+  setTimeout(() => { if (loadingSince === me) hideLoading(); }, 15000);
+}
+function hideLoading() {
+  loadingSince = 0;
+  const el = document.getElementById('loading');
+  if (el.style.display === 'none') return;
+  el.classList.add('gm-out');
+  setTimeout(() => { if (!loadingSince) { el.style.display = 'none'; el.classList.remove('gm-out'); } }, 260);
+}
+function hideLoadingWhenReady() {
+  const me = loadingSince;
+  const tick = () => {
+    if (!me || loadingSince !== me) return;
+    if (document.querySelector('#main .sk-wrap')) return setTimeout(tick, 80);
+    hideLoading();
+  };
+  tick();
+}
+window.showLoading = showLoading; window.hideLoadingWhenReady = hideLoadingWhenReady; // las usa el testing
+
 // ── AUTH STATE ────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
-  document.getElementById('loading').style.display = 'none';
+  if (user) showLoading(); else hideLoading();
   if (!user) {
     document.getElementById('auth-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
@@ -1433,6 +1462,7 @@ onAuthStateChanged(auth, async (user) => {
 
   renderBottomBar();
   renderAll();
+  hideLoadingWhenReady();
   // Cuenta creada por el profe con el DNI como contraseña: antes de seguir, una propia.
   let pwOk = false; try { pwOk = localStorage.getItem('gm-pw-ok-'+S.user.uid)==='1'; } catch(e) {}
   if (!S.isAdmin && S.userData.mustChangePassword && !pwOk) requirePasswordChange();

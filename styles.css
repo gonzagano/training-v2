@@ -614,7 +614,8 @@ canvas.eval-chart{width:100%!important;display:block}
 .pain-dot:hover{background:var(--bg4);border-color:var(--accent-text);color:var(--text)}
 .pain-dot.active{border-color:transparent;color:#fff;font-weight:700}
 /* ── LOADING ─────────────────────────────────── */
-#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:600}
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:600;transition:opacity .25s ease}
+#loading.gm-out{opacity:0;pointer-events:none}
 .loading-logo{font-size:30px;font-weight:800;letter-spacing:-.03em;color:var(--text)}
 .loading-logo span{color:var(--accent-text)}
 
