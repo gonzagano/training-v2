@@ -1692,12 +1692,13 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 @media (max-width:600px){.an-side span{display:none}.an-cur span{max-width:44vw}}
 
 /* ── Pestaña Plantel del equipo ── */
-.tdh-set{display:inline-flex;align-items:center;gap:7px;flex-shrink:0}
-.tdh-set svg{width:14px;height:14px;flex-shrink:0}
-.tdh-set.on{background:var(--accent);border-color:var(--accent);color:#fff}
-@media (max-width:600px){.team-detail-header:has(.tdh-set) .tdh-cmp{width:auto;flex:1}.tdh-set{order:10;flex:1;justify-content:center}}
-.tp-k{font-size:11px;font-weight:800;color:var(--text3)}
-.tp-settings{display:flex;align-items:center;gap:12px 24px;flex-wrap:wrap;background:var(--bg2);border:1.5px solid var(--border2);border-radius:var(--r);box-shadow:var(--sh-card);padding:12px 16px;margin-bottom:14px}
+.tdh-set{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;flex-shrink:0}
+.tdh-set svg{width:18px;height:18px;flex-shrink:0}
+.tp-k{font-size:11px;font-weight:800;color:var(--text3);min-width:56px}
+.tp-settings{display:flex;flex-direction:column;align-items:stretch;gap:16px}
+.tp-settings .video-modal-title{margin-bottom:0}
+.tp-settings .tp-del{align-self:flex-start;margin:0}
+.tp-settings .tp-colors{gap:4px}
 .tp-set-row{display:flex;align-items:center;gap:10px}
 .tp-colors{display:flex;gap:6px;flex-wrap:wrap}
 .tp-color{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
@@ -2003,7 +2004,7 @@ html{-webkit-tap-highlight-color:transparent}
 .ob-sum dt{color:var(--text2);font-size:15px}
 .ob-sum dd{margin:0;font-weight:700;font-size:15px;text-align:right;min-width:0;overflow-wrap:anywhere}
 /* Escudo de equipo (teamCrestHtml): imagen entera, sin recortar; si no hay, el punto de color */
-.tm-crest{object-fit:contain;flex-shrink:0;display:block}
+.tm-crest{object-fit:contain;flex-shrink:0;display:block;box-sizing:border-box;border-radius:50%;background:var(--bg3);border:1px solid var(--border2)}
 .tm-dot{display:inline-block;border-radius:50%;flex-shrink:0}
 .tp-crest{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .tp-crest label.abtn{cursor:pointer}
@@ -2011,16 +2012,22 @@ html{-webkit-tap-highlight-color:transparent}
 .rp-team-crest{width:56px;height:56px;object-fit:contain;flex-shrink:0}
 @media screen and (max-width:600px){.rp-head-l{flex-direction:column;align-items:flex-start;gap:8px}.rp-team-crest{width:44px;height:44px}}
 /* Portada del profe (shared/branding): arriba del inicio de cada atleta, como un perfil */
-.coach-card{background:var(--bg2);border-radius:16px;overflow:hidden;margin-bottom:16px;max-width:560px}
-.coach-cover{height:110px;background:linear-gradient(135deg,#243B6B,#2F4A85) center/cover no-repeat}
-.coach-card.no-cover .coach-cover{height:56px}
+/* Bienvenida con la marca del profe (al abrir la app) y su vista previa en "Tu portada" */
+.br-splash{position:fixed;inset:0;z-index:700;background:rgb(13,20,36);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;animation:gmViewIn .25s ease-out;transition:opacity .5s ease,transform .5s ease}
+.br-splash.out{opacity:0;transform:scale(1.04);pointer-events:none}
+.br-splash-bg{position:absolute;inset:0;background:center/cover no-repeat;opacity:.8}
+.br-splash-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,20,36,0) 0%,rgba(13,20,36,.55) 40%,rgb(13,20,36) 72%)}
+.br-splash-mid{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 24px}
+.br-splash-mid img{width:112px;height:112px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.85);box-shadow:0 8px 30px rgba(0,0,0,.5);margin-bottom:16px}
+.br-splash-mid b{font-size:30px;font-weight:800;line-height:1.15}
+.br-splash-mid small{font-size:17px;opacity:.75;margin-top:6px}
+.br-splash-foot{position:absolute;bottom:42px;font:700 13px 'Chakra Petch',sans-serif;letter-spacing:2px;color:rgba(255,255,255,.55)}
+.br-preview{position:relative;width:195px;height:347px;border-radius:16px;overflow:hidden;margin:0 auto 12px;box-shadow:var(--sh-card)}
+.br-preview .br-splash{position:absolute;inset:auto;left:0;top:0;width:390px;height:694px;transform:scale(.5);transform-origin:0 0;animation:none;cursor:default}
+.br-play{display:block;margin:0 auto 16px}
+.home-hi-n{display:inline-flex;align-items:center;gap:12px;min-width:0}
+.home-me{width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--border2)}
 /* Solo la foto se mete sobre la portada; el texto arranca debajo de ella */
-.coach-row{display:flex;align-items:flex-start;gap:12px;padding:0 16px 14px;margin-top:-30px}
-.coach-photo{width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid var(--bg2);flex-shrink:0;background:var(--bg3)}
-.coach-ph{display:flex;align-items:center;justify-content:center;font:700 22px 'Barlow Condensed',sans-serif;color:var(--text)}
-.coach-txt{display:flex;flex-direction:column;min-width:0;padding-top:36px}
-.coach-txt b{font-size:17px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.coach-txt small{font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .br-lead{color:var(--text2);font-size:15px;margin:0 0 12px}
 .br-form{padding:16px;max-width:560px}
 .br-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}

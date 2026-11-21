@@ -168,10 +168,19 @@
       txtBad('primer uso');
       S.userData.onboardingComplete=keepOC; S.onboardingData=keepD; S.onboardingStep=keepStep; switchView('dashboard'); await wait(300); }
     // Portada del profe arriba del inicio (sin portada cargada no aparece nada)
-    { const keepB=S.branding; S.branding={}; switchView('dashboard'); await wait(400); ok(!document.getElementById('coach-card'),'inicio: sin portada del profe no se muestra el recuadro');
-      S.branding={name:'Gonzalo Ganora',role:'Preparador físico'}; renderMain(); await wait(300);
-      const cc=document.getElementById('coach-card'); ok(!!cc&&/Gonzalo Ganora/.test(cc.innerText)&&/Preparador físico/.test(cc.innerText),'inicio: el atleta ve la portada, el nombre y el rol de su profe');
-      ok(document.documentElement.scrollWidth<=innerWidth+1,'inicio con portada: sin scroll horizontal'); S.branding=keepB; renderMain(); }
+    { const keepB=S.branding; S.branding={}; switchView('dashboard'); await wait(400);
+      ok(playBrandingSplash()===false&&!document.getElementById('br-splash'),'bienvenida: si el profe no configuró nada, no aparece nada');
+      S.branding={name:'Gonzalo Ganora',role:'Preparador físico'}; ok(playBrandingSplash()===true,'bienvenida: con nombre del profe, aparece'); await wait(300);
+      const sp=document.getElementById('br-splash'); ok(!!sp&&/Gonzalo Ganora/.test(sp.innerText)&&/Preparador físico/.test(sp.innerText)&&!sp.querySelector('img'),'bienvenida: muestra nombre y subtítulo (sin foto si no la subió)');
+      await wait(2200); ok(!document.getElementById('br-splash'),'bienvenida: se va sola');
+      showLoading(); hideLoadingWhenReady(()=>playBrandingSplash()); await wait(450);
+      ok(document.getElementById('loading').style.display==='none'&&!!document.getElementById('br-splash'),'apertura: se va el logo de carga y entra la bienvenida');
+      await wait(2200); ok(!document.getElementById('br-splash'),'apertura: después de la bienvenida queda el inicio');
+      ok(!document.querySelector('#main .br-splash'),'inicio: la portada ya no ocupa lugar en el inicio');
+      const keepP=S.userData.photoUrl; S.userData.photoUrl=null; renderMain(); await wait(200); ok(!document.querySelector('.home-hi .home-me'),'inicio: sin foto propia, no aparece nada al lado del saludo');
+      S.userData.photoUrl='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='; renderMain(); await wait(200);
+      ok(!!document.querySelector('.home-hi .home-hi-n img.home-me'),'inicio: su foto aparece a la derecha del "Hola"');
+      ok(document.documentElement.scrollWidth<=innerWidth+1,'inicio con foto: sin scroll horizontal'); S.userData.photoUrl=keepP; S.branding=keepB; renderMain(); }
     // Logo nuevo (mancuerna con el gráfico que sube): encabezado e íconos de la app
     { ok(document.querySelector('#topbar .gm-word')?.textContent.trim()==='G-METRICS'&&!!document.querySelector('#topbar .app-logo img[src="logo-icon.svg"]'),'logo: encabezado con el ícono y "G-METRICS"');
       const man=await (await fetch('manifest.json')).json(); const mk=man.icons.find(i=>i.purpose==='maskable');

@@ -1226,12 +1226,13 @@ function hideLoading() {
   el.classList.add('gm-out');
   setTimeout(() => { if (!loadingSince) { el.style.display = 'none'; el.classList.remove('gm-out'); } }, 260);
 }
-function hideLoadingWhenReady() {
+function hideLoadingWhenReady(then) {
   const me = loadingSince;
   const tick = () => {
     if (!me || loadingSince !== me) return;
     if (document.querySelector('#main .sk-wrap')) return setTimeout(tick, 80);
     hideLoading();
+    then?.(); // p. ej. la bienvenida del profe, que entra mientras el logo se va
   };
   tick();
 }
@@ -1462,7 +1463,7 @@ onAuthStateChanged(auth, async (user) => {
 
   renderBottomBar();
   renderAll();
-  hideLoadingWhenReady();
+  hideLoadingWhenReady(() => { if (!S.isAdmin && S.currentView !== 'onboarding') playBrandingSplash(); });
   // Cuenta creada por el profe con el DNI como contraseña: antes de seguir, una propia.
   let pwOk = false; try { pwOk = localStorage.getItem('gm-pw-ok-'+S.user.uid)==='1'; } catch(e) {}
   if (!S.isAdmin && S.userData.mustChangePassword && !pwOk) requirePasswordChange();
@@ -6923,7 +6924,7 @@ function renderTeams() {
     <div class="team-card" onclick="openTeam('${t.id}')" style="border-left:3px solid ${t.color||'var(--purple)'}">
       <div class="team-card-header">
         <div style="display:flex;align-items:center;gap:10px">
-          ${teamCrestHtml(t, 32)}
+          ${teamCrestHtml(t, 48)}
           <div class="team-name">${t.name}${t.category?` / ${t.category}`:''}</div>
         </div>
         <span class="team-sport-badge">${sportIconHtml(t.sport,13)}${canonicalSport(t.sport)||'Sin deporte'}</span>
@@ -6941,12 +6942,12 @@ function renderTeamDetail(team) {
   let html=`<div class="team-detail-header">
     <button class="back-btn" data-back="team-list">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:10px">
-      ${teamCrestHtml(team, 36)}
+      ${teamCrestHtml(team, 44)}
       ${team.name}${team.category?` / ${team.category}`:''}
     </div>
     ${team.sport?`<span class="team-sport-badge">${sportIconHtml(team.sport,13)}${canonicalSport(team.sport)}</span>`:''}
     <button class="abtn tdh-cmp" onclick="adminGoCompare('${team.id}')">Comparar atletas</button>
-    <button class="abtn tdh-set${S._teamSettingsOpen===team.id?' on':''}" onclick="toggleTeamSettings()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Ajustes del equipo</button>
+    <button class="abtn tdh-set" onclick="toggleTeamSettings()" aria-label="Ajustes del equipo" title="Ajustes del equipo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Plantel</button>
@@ -6956,7 +6957,7 @@ function renderTeamDetail(team) {
     <button class="snav-tab ${sub==='stats'?'active':''}" onclick="setTeamSubview('stats')">Estadísticas</button>
     <button class="snav-tab ${sub==='reporte'?'active':''}" onclick="setTeamSubview('reporte')">Informe</button>
   </div>`;
-  if(S._teamSettingsOpen===team.id) html += renderTeamSettings(team);
+  if(S._teamSet?.id===team.id) html += renderTeamSettings(team);
 
   if(sub==='wellness') html += renderGroupWellness(getTeamStatsMemberUids(team));
   else if(sub==='stats') html += renderGroupStats(getTeamStatsMemberUids(team));
@@ -8225,17 +8226,42 @@ function removeTeamPlayer(teamId, pi) {
   showConfirmModal({message:`¿Quitar a ${name} del plantel de ${t.name}?`, danger:true, confirmLabel:'Quitar', onConfirm:()=>deletePlayer(teamId, pi)});
 }
 window.removeTeamPlayer = removeTeamPlayer;
+// Ajustes del equipo en una ventana aparte (ruedita): los cambios quedan en borrador
+// (S._teamSet) hasta tocar Guardar; Cancelar o tocar afuera los descarta.
 function renderTeamSettings(team) {
-  return `<section class="tp-settings">
-    <div class="tp-set-row"><span class="tp-k">Deporte</span><select class="abtn" onchange="setTeamSport('${team.id}',onSportSelect(this))">${sportOptionsHtml(team.sport)}</select></div>
-    <div class="tp-set-row"><span class="tp-k">Escudo</span><div class="tp-crest">${teamCrestHtml(team, 44)}<label class="abtn" id="crest-upload-btn">${team.crestUrl?'Cambiar':'Subir escudo'}<input type="file" accept="image/*" hidden id="crest-file" onchange="uploadTeamCrest(this,'${team.id}')"></label>${team.crestUrl?`<button class="abtn" onclick="removeTeamCrest('${team.id}')">Quitar</button>`:''}</div></div>
-    <div class="tp-set-row"><span class="tp-k">Color</span><div class="tp-colors">${TEAM_COLORS.map(c=>`<button class="tp-color${team.color===c?' on':''}" style="background:${c}" onclick="setTeamColor('${team.id}','${c}')" aria-label="Color"></button>`).join('')}</div></div>
+  const v = {...team, ...S._teamSet};
+  return `<div class="video-modal open" id="team-set-ov" onclick="if(event.target===this)toggleTeamSettings()">
+  <div class="video-modal-box tp-settings" role="dialog" aria-modal="true" aria-labelledby="tp-set-title">
+    <div class="video-modal-title" id="tp-set-title">Ajustes del equipo</div>
+    <div class="tp-set-row"><span class="tp-k">Deporte</span><select class="abtn" onchange="teamSetDraft('sport',onSportSelect(this))">${sportOptionsHtml(v.sport)}</select></div>
+    <div class="tp-set-row"><span class="tp-k">Escudo</span><div class="tp-crest">${teamCrestHtml(v, 44)}<label class="abtn" id="crest-upload-btn">${v.crestUrl?'Cambiar':'Subir escudo'}<input type="file" accept="image/*" hidden id="crest-file" onchange="uploadTeamCrest(this)"></label>${v.crestUrl?`<button class="abtn" onclick="teamSetDraft('crestUrl','')">Quitar</button>`:''}</div></div>
+    <div class="tp-set-row"><span class="tp-k">Color</span><div class="tp-colors">${TEAM_COLORS.map(c=>`<button class="tp-color${v.color===c?' on':''}" style="background:${c}" onclick="teamSetDraft('color','${c}')" aria-label="Color"></button>`).join('')}</div></div>
     <button class="abtn abtn-d tp-del" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>
-  </section>`;
+    <div class="video-modal-btns"><button class="abtn" onclick="toggleTeamSettings()">Cancelar</button><button class="abtn abtn-p" id="tp-save" onclick="saveTeamSettings()">Guardar</button></div>
+  </div></div>`;
 }
 window.renderTeamSettings = renderTeamSettings;
-function toggleTeamSettings() { const id = S.teamView?.id; S._teamSettingsOpen = S._teamSettingsOpen===id ? null : id; renderMain(); }
+function toggleTeamSettings() {
+  const t = S.teamView; if(!t) return;
+  S._teamSet = S._teamSet?.id===t.id ? null : {id:t.id, sport:t.sport||'', color:t.color||'', crestUrl:t.crestUrl||''};
+  renderMain();
+}
 window.toggleTeamSettings = toggleTeamSettings;
+function teamSetDraft(k, v) { if(!S._teamSet) return; S._teamSet[k] = v; renderMain(); }
+window.teamSetDraft = teamSetDraft;
+async function saveTeamSettings() {
+  const d = S._teamSet, t = (S.teams||[]).find(x=>x.id===d?.id); if(!t) return;
+  const patch = {}, changed = {};
+  ['sport','color','crestUrl'].forEach(k => { if((t[k]||'') !== d[k]) { patch[k] = d[k] || deleteField(); changed[k] = d[k]; } });
+  if(Object.keys(patch).length) {
+    try { await setDoc(doc(db,'teams',t.id), patch, {merge:true}); }
+    catch(e) { showToast('No se pudo guardar'); return; }
+    [t, S.teamView?.id===t.id ? S.teamView : null].forEach(o => o && Object.entries(changed).forEach(([k,v]) => { if(v) o[k] = v; else delete o[k]; }));
+    showToast('✓ Ajustes guardados');
+  }
+  S._teamSet = null; renderMain();
+}
+window.saveTeamSettings = saveTeamSettings;
 function toggleTeamDay(i) { S.teamDayIdx = S.teamDayIdx===i ? null : i; renderMain(); }
 window.toggleTeamDay = toggleTeamDay;
 function setTeamQuick(v) { S.teamQuick = v; renderMain(); }
@@ -8467,17 +8493,6 @@ async function createTeam() {
   renderMain(); showToast('✓ Equipo creado');
 }
 window.createTeam=createTeam;
-async function setTeamColor(teamId, color) {
-  const t = S.teams.find(x=>x.id===teamId);
-  if(!t) return;
-  t.color = color;
-  if(S.teamView?.id===teamId) S.teamView.color=color;
-  try {
-    await setDoc(doc(db,'teams',teamId),{color},{merge:true});
-    renderMain();
-  } catch(e){ showToast('Error'); }
-}
-window.setTeamColor=setTeamColor;
 async function setAthleteColor(uid, color) {
   try {
     await setDoc(doc(db,'users',uid),{color},{merge:true});
@@ -9932,7 +9947,7 @@ window.saveTeamDayBlocks=saveTeamDayBlocks;
 
 
 async function openTeam(id) {
-  S.teamSubview='rutina';
+  S.teamSubview='rutina'; S._teamSet=null;
   S.currentView='teams';
   // Mostramos "Cargando…" en vez del equipo viejo cacheado mientras se trae
   // la versión fresca de Firestore. Antes se mostraba la copia vieja YA
@@ -10183,16 +10198,7 @@ async function setAthleteSport(uid, sport) {
     renderMain();
   } catch(e) { showToast('Error'); }
 }
-async function setTeamSport(teamId, sport) {
-  const t = (S.teams||[]).find(x=>x.id===teamId); if(!t) return;
-  try {
-    await setDoc(doc(db,'teams',teamId),{sport},{merge:true});
-    t.sport = sport; if(S.teamView?.id===teamId) S.teamView.sport = sport;
-    showToast('✓ Deporte guardado');
-    renderMain();
-  } catch(e) { showToast('Error'); }
-}
-window.setAthleteSport=setAthleteSport; window.setTeamSport=setTeamSport;
+window.setAthleteSport=setAthleteSport;
 
 // ── CREAR ATLETA (desde Atletas) ───────────────────────────────
 // El profe carga los datos y la cuenta queda lista: usuario = mail, contraseña
@@ -12659,7 +12665,7 @@ window.handleCrestUpload = handleCrestUpload;
 // Lee una imagen elegida y la achica en el celular antes de guardarla (mismo criterio
 // que la foto de perfil: dataURL en Firestore, sin Storage). mode 'cover' recorta para
 // llenar; 'contain' la entra entera con fondo transparente (escudos, que no son cuadrados).
-function readImageScaled(file, {w, h, mode='cover', type='image/jpeg', quality=0.78, maxLen=600000}) {
+function readImageScaled(file, {w, h, mode='cover', type='image/jpeg', quality=0.78, maxLen=600000, clearBg=false}) {
   return new Promise((resolve, reject) => {
     if(!file || !file.type.startsWith('image/')) return reject(new Error('Elegí un archivo de imagen'));
     const reader = new FileReader();
@@ -12673,6 +12679,7 @@ function readImageScaled(file, {w, h, mode='cover', type='image/jpeg', quality=0
         const sc = mode==='cover' ? Math.max(w/img.width, h/img.height) : Math.min(w/img.width, h/img.height);
         const dw = img.width*sc, dh = img.height*sc;
         ctx.drawImage(img, (w-dw)/2, (h-dh)/2, dw, dh);
+        if(clearBg) clearEdgeBackground(ctx, w, h);
         const url = c.toDataURL(type, quality);
         if(url.length > maxLen) return reject(new Error('La imagen es muy pesada, probá con otra'));
         resolve(url);
@@ -12683,54 +12690,68 @@ function readImageScaled(file, {w, h, mode='cover', type='image/jpeg', quality=0
   });
 }
 window.readImageScaled = readImageScaled;
+// Escudo con fondo blanco: se vuelve transparente el blanco que toca los bordes
+// (no el blanco de adentro del escudo), para que en modo oscuro no parezca un recorte pegado.
+function clearEdgeBackground(ctx, w, h) {
+  const im = ctx.getImageData(0, 0, w, h), p = im.data, seen = new Uint8Array(w*h), st = [];
+  for(let x=0; x<w; x++) st.push(x, (h-1)*w+x);
+  for(let y=0; y<h; y++) st.push(y*w, y*w+w-1);
+  while(st.length) {
+    const i = st.pop(); if(seen[i]) continue; seen[i] = 1;
+    const r = p[i*4], g = p[i*4+1], b = p[i*4+2], lo = Math.min(r,g,b);
+    if(p[i*4+3] >= 16 && !(lo >= 225 && Math.max(r,g,b)-lo <= 25)) continue; // ni transparente ni blanco: es el escudo
+    p[i*4+3] = 0;
+    const x = i % w;
+    if(x > 0) st.push(i-1); if(x < w-1) st.push(i+1); if(i >= w) st.push(i-w); if(i < w*(h-1)) st.push(i+w);
+  }
+  ctx.putImageData(im, 0, 0);
+}
 
 // ── Escudo del equipo (teams/{id}.crestUrl) ──
 // Sin escudo cargado se ve el punto de color de siempre.
 function teamCrestHtml(team, size) {
-  if(team?.crestUrl) return `<img class="tm-crest" src="${team.crestUrl}" width="${size}" height="${size}" alt="">`;
+  if(team?.crestUrl) return `<img class="tm-crest" src="${team.crestUrl}" width="${size}" height="${size}" style="padding:${Math.round(size*0.12)}px" alt="">`;
   const d = Math.max(10, Math.round(size*0.4));
   return `<span class="tm-dot" style="width:${d}px;height:${d}px;background:${team?.color||'var(--purple)'}"></span>`;
 }
 window.teamCrestHtml = teamCrestHtml;
-async function uploadTeamCrest(input, teamId) {
-  const t = S.teams.find(x=>x.id===teamId); if(!t) return;
-  try {
-    const url = await readImageScaled(input.files[0], {w:160, h:160, mode:'contain', type:'image/png', maxLen:300000});
-    await setDoc(doc(db,'teams',teamId), {crestUrl:url}, {merge:true});
-    t.crestUrl = url; if(S.teamView?.id===teamId) S.teamView.crestUrl = url;
-    showToast('✓ Escudo guardado'); renderMain();
-  } catch(e) { showToast(e.message||'No se pudo guardar el escudo'); }
+// Queda en el borrador de Ajustes del equipo; se guarda con "Guardar".
+async function uploadTeamCrest(input) {
+  try { teamSetDraft('crestUrl', await readImageScaled(input.files[0], {w:160, h:160, mode:'contain', type:'image/png', maxLen:300000, clearBg:true})); }
+  catch(e) { showToast(e.message||'No se pudo leer el escudo'); }
   input.value = '';
 }
 window.uploadTeamCrest = uploadTeamCrest;
-async function removeTeamCrest(teamId) {
-  const t = S.teams.find(x=>x.id===teamId); if(!t) return;
-  try {
-    await setDoc(doc(db,'teams',teamId), {crestUrl:deleteField()}, {merge:true});
-    delete t.crestUrl; if(S.teamView?.id===teamId) delete S.teamView.crestUrl;
-    showToast('Escudo quitado'); renderMain();
-  } catch(e) { showToast('No se pudo quitar el escudo'); }
-}
-window.removeTeamCrest = removeTeamCrest;
 
 // ── Portada y foto del profe (shared/branding: lo leen todos los atletas) ──
-// Se ve arriba del inicio de cada atleta, como el encabezado de un perfil.
+// Se ve como bienvenida al abrir la app (después del logo de carga), 1,6 s, y se va sola.
+// Si el profe no configuró nada (ni portada, ni foto, ni nombre, ni subtítulo), no aparece nada.
 async function loadBranding() {
   try { const s = await getDoc(doc(db,'shared','branding')); S.branding = s.exists() ? s.data() : {}; }
   catch(e) { S.branding = S.branding || {}; }
 }
 window.loadBranding = loadBranding;
-function coachCardHtml(editing) {
-  const b = S.branding || {};
-  if(!editing && !b.coverUrl && !b.photoUrl && !b.name) return '';
-  const name = b.name || (editing ? 'Tu nombre' : '');
-  return `<div class="coach-card${b.coverUrl?'':' no-cover'}" id="coach-card">
-    <div class="coach-cover"${b.coverUrl?` style="background-image:url('${b.coverUrl}')"`:''}></div>
-    <div class="coach-row">${b.photoUrl ? `<img class="coach-photo" src="${b.photoUrl}" alt="">` : `<span class="coach-photo coach-ph">${escHtml((name||'P').trim().charAt(0).toUpperCase())}</span>`}
-      <div class="coach-txt"><b>${escHtml(name)}</b>${b.role?`<small>${escHtml(b.role)}</small>`:''}</div></div>
-  </div>`;
+function brandingHasContent(b) { return !!(b && (b.coverUrl || b.photoUrl || (b.name||'').trim() || (b.role||'').trim())); }
+function brandingSplashHtml(b, editing) {
+  const name = (b.name||'').trim() || (editing ? 'Tu nombre' : ''), role = (b.role||'').trim();
+  return `${b.coverUrl?`<div class="br-splash-bg" style="background-image:url('${b.coverUrl}')"></div>`:''}<div class="br-splash-shade"></div>
+    <div class="br-splash-mid">${b.photoUrl?`<img src="${b.photoUrl}" alt="">`:''}${name?`<b>${escHtml(name)}</b>`:''}${role?`<small>${escHtml(role)}</small>`:''}</div>
+    <div class="br-splash-foot">G-METRICS</div>`;
 }
-window.coachCardHtml = coachCardHtml;
+// Tocar la pantalla la saltea.
+function playBrandingSplash() {
+  const b = S.branding;
+  if(!brandingHasContent(b)) return false;
+  document.getElementById('br-splash')?.remove();
+  const el = document.createElement('div');
+  el.id = 'br-splash'; el.className = 'br-splash'; el.innerHTML = brandingSplashHtml(b);
+  const out = () => { if(el.classList.contains('out')) return; el.classList.add('out'); setTimeout(() => el.remove(), 550); };
+  el.onclick = out;
+  document.body.appendChild(el);
+  setTimeout(out, 1600);
+  return true;
+}
+window.playBrandingSplash = playBrandingSplash;
 async function saveBranding(fields) {
   S.branding = {...(S.branding||{}), ...fields};
   try { await setDoc(doc(db,'shared','branding'), fields, {merge:true}); return true; }
@@ -12763,8 +12784,9 @@ function renderBrandingEditor() {
     <button class="back-btn" data-back="admin-main">‹</button>
     <div class="team-detail-title">Tu portada</div>
   </div>
-  <p class="br-lead">Así te ven tus atletas arriba de su inicio.</p>
-  ${coachCardHtml(true)}
+  <p class="br-lead">Así te ven tus atletas al abrir la app.</p>
+  <div class="br-preview"><div class="br-splash">${brandingSplashHtml(b, true)}</div></div>
+  <button class="abtn br-play" onclick="playBrandingSplash()"${brandingHasContent(b)?'':' disabled'}>Ver como lo ven</button>
   <div class="card br-form">
     <div class="br-row"><span>Portada</span><div class="br-acts"><label class="abtn">${b.coverUrl?'Cambiar':'Subir'}<input type="file" accept="image/*" hidden id="br-cover" onchange="uploadBrandingImage(this,'cover')"></label>${b.coverUrl?`<button class="abtn" onclick="removeBrandingImage('cover')">Quitar</button>`:''}</div></div>
     <div class="br-row"><span>Foto de perfil</span><div class="br-acts"><label class="abtn">${b.photoUrl?'Cambiar':'Subir'}<input type="file" accept="image/*" hidden id="br-photo" onchange="uploadBrandingImage(this,'photo')"></label>${b.photoUrl?`<button class="abtn" onclick="removeBrandingImage('photo')">Quitar</button>`:''}</div></div>
@@ -18371,9 +18393,9 @@ function renderAthleteHome() {
       <div class="home-row-m"><b>${hasTodayWellness?'Wellness hecho':'Completá tu wellness'}</b><small>${hasTodayWellness?wScore+'%':'Pendiente'}</small></div>
       ${hasTodayWellness?`<span class="home-ck">${check}</span>`:`<span class="home-go">${chev}</span>`}
     </div>`;
-  return `${coachCardHtml()}<div class="page-header home-head">
+  return `<div class="page-header home-head">
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
-    <div class="page-title home-hi"><span>¡Hola${S.userData?.name?', '+esc(S.userData.name.trim().split(/\s+/).slice(-1)[0]):''}!</span>${streakChip}</div>
+    <div class="page-title home-hi"><span class="home-hi-n">¡Hola${S.userData?.name?', '+esc(S.userData.name.trim().split(/\s+/).slice(-1)[0]):''}!${S.userData?.photoUrl?`<img class="home-me" src="${S.userData.photoUrl}" alt="">`:''}</span>${streakChip}</div>
   </div>
   <div class="home-cards">${hasTodayWellness?'':wellnessHero}${sessionCard}<div class="home-week">${weekStrip}</div>${hasTodayWellness?wellnessCard:''}${goalsCardHtml('self')}</div>
 

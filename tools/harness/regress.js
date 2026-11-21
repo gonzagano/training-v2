@@ -884,23 +884,37 @@
   { const img=async(w,h,col)=>{ const cv=document.createElement('canvas'); cv.width=w; cv.height=h; const c=cv.getContext('2d'); c.fillStyle=col; c.fillRect(0,0,w,h); const b=await new Promise(r=>cv.toBlob(r,'image/png')); return new File([b],'img.png',{type:'image/png'}); };
     const DB=()=>JSON.parse(localStorage.getItem('__db'));
     S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(500); openTeam('t1'); await wait(1500);
-    toggleTeamSettings(); await wait(300); ok(!!document.getElementById('crest-file'),'equipo: en Ajustes del equipo se puede subir el escudo');
-    await uploadTeamCrest({files:[await img(300,200,'#c33')],value:''},'t1'); await wait(500);
-    ok(/^data:image\/png/.test(DB().teams.t1.crestUrl||''),'escudo: queda guardado en el equipo');
+    toggleTeamSettings(); await wait(300); ok(!!document.getElementById('crest-file')&&!!document.querySelector('#team-set-ov .tp-settings'),'equipo: la ruedita abre la ventana de Ajustes, con el escudo');
+    // escudo con fondo blanco (como los que se bajan de internet): el blanco del borde se vuelve transparente
+    const wf=await (async()=>{ const cv=document.createElement('canvas'); cv.width=300; cv.height=200; const c=cv.getContext('2d'); c.fillStyle='#fff'; c.fillRect(0,0,300,200); c.fillStyle='#c33'; c.fillRect(100,50,100,100); const b=await new Promise(r=>cv.toBlob(r,'image/png')); return new File([b],'esc.png',{type:'image/png'}); })();
+    await uploadTeamCrest({files:[wf],value:''}); await wait(400);
+    ok(!DB().teams.t1.crestUrl&&/^data:image\/png/.test(S._teamSet?.crestUrl||''),'escudo: queda en la ventana, sin guardar hasta tocar Guardar');
+    { const px=await new Promise(r=>{ const im=new Image(); im.onload=()=>{ const c=document.createElement('canvas'); c.width=c.height=160; const g=c.getContext('2d'); g.drawImage(im,0,0); r([g.getImageData(2,80,1,1).data[3],[...g.getImageData(80,80,1,1).data]]); }; im.src=S._teamSet.crestUrl; });
+      ok(px[0]===0&&px[1][3]===255&&px[1][0]>180&&px[1][1]<90,'escudo: el fondo blanco queda transparente y el escudo no se toca ('+px[0]+' / '+px[1]+')'); }
+    document.querySelectorAll('#team-set-ov .tp-color')[2].click(); await wait(200);
+    document.querySelector('#team-set-ov').click(); await wait(300);
+    ok(!document.getElementById('team-set-ov')&&!DB().teams.t1.crestUrl&&!DB().teams.t1.color,'ajustes: tocar afuera cierra y no guarda nada');
+    toggleTeamSettings(); await wait(300); await uploadTeamCrest({files:[wf],value:''}); await wait(300);
+    document.querySelectorAll('#team-set-ov .tp-color')[2].click(); await wait(200); const col=S._teamSet.color;
+    document.getElementById('tp-save').click(); await wait(700);
+    ok(/^data:image\/png/.test(DB().teams.t1.crestUrl||'')&&DB().teams.t1.color===col&&!document.getElementById('team-set-ov'),'ajustes: Guardar guarda escudo y color juntos y cierra la ventana');
     ok(!!document.querySelector('.team-detail-title img.tm-crest'),'escudo: se ve al lado del nombre del equipo');
     setTeamSubview('reporte'); await wait(900); ok(!!document.querySelector('.rp-sheet .rp-team-crest'),'escudo: aparece en la hoja del informe');
     switchView('teams'); await wait(500); ok(!!document.querySelector('.team-card img.tm-crest'),'escudo: se ve en la lista de equipos');
-    openTeam('t1'); await wait(1200); S._teamSettingsOpen='t1'; await removeTeamCrest('t1'); await wait(400);
+    openTeam('t1'); await wait(1200); toggleTeamSettings(); await wait(300);
+    [...document.querySelectorAll('#team-set-ov button')].find(b=>b.textContent.trim()==='Quitar').click(); await wait(200);
+    document.getElementById('tp-save').click(); await wait(700);
     ok(!DB().teams.t1.crestUrl&&!document.querySelector('.team-detail-title img.tm-crest')&&!!document.querySelector('.team-detail-title .tm-dot'),'escudo: se puede quitar y vuelve el punto de color');
-    S._teamSettingsOpen=null;
+    S._teamSet=null;
     switchView('admin'); await wait(300); adminGoBranding(); await wait(300);
-    ok(!!document.getElementById('coach-card')&&!!document.getElementById('br-cover'),'portada: el profe ve cómo lo ven sus atletas y puede subir portada');
+    ok(!!document.querySelector('.br-preview .br-splash')&&!!document.getElementById('br-cover'),'portada: el profe ve la vista previa de la bienvenida y puede subir portada');
     await uploadBrandingImage({files:[await img(1600,900,'#246')],value:''},'cover'); await wait(400);
     await uploadBrandingImage({files:[await img(500,500,'#8ae')],value:''},'photo'); await wait(400);
     document.getElementById('br-name').value='Gonzalo Ganora'; document.getElementById('br-role').value='Preparador físico'; await saveBrandingText(); await wait(400);
     const br=DB().shared?.branding||{};
     ok(/^data:image\/jpeg/.test(br.coverUrl||'')&&/^data:image\/jpeg/.test(br.photoUrl||'')&&br.name==='Gonzalo Ganora'&&br.role==='Preparador físico','portada: queda guardada donde la leen los atletas (shared/branding)');
-    ok(/Gonzalo Ganora/.test(document.getElementById('coach-card')?.innerText||'')&&!!document.querySelector('#coach-card .coach-photo[src]'),'portada: la vista previa muestra foto y nombre');
+    ok(/Gonzalo Ganora/.test(document.querySelector('.br-preview')?.innerText||'')&&!!document.querySelector('.br-preview .br-splash-mid img[src]')&&!!document.querySelector('.br-preview .br-splash-bg'),'portada: la vista previa muestra portada, foto y nombre');
+    document.querySelector('.br-play').click(); await wait(300); ok(!!document.getElementById('br-splash'),'portada: "Ver como lo ven" muestra la bienvenida'); await wait(2200); ok(!document.getElementById('br-splash'),'portada: la bienvenida se va sola');
     txtBad('portada del profe'); switchView('admin'); }
   // ── diálogo propio en vez de prompt(): crear equipo (dos escenarios: cancelar y crear) ──
   { const n0=S.teams.length; switchView('teams'); await wait(500);
