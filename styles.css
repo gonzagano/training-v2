@@ -905,7 +905,6 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
    Superficie del tema; el color de acento solo en la sección activa. */
 @media(min-width:900px){
   #topbar{background:var(--bg2);border-right:1px solid var(--border2);box-shadow:var(--sh-card)}
-  .app-logo img{background:var(--accent);border-radius:10px;padding:4px;box-sizing:content-box}
   .sidebar-item{color:var(--text2)}
   .sidebar-item:hover{background:var(--bg3);color:var(--text)}
   .sidebar-item.active{background:var(--accent-dim);color:var(--accent-text);font-weight:700;box-shadow:inset 3px 0 0 var(--accent-text)}
@@ -1973,6 +1972,19 @@ html{-webkit-tap-highlight-color:transparent}
 }
 /* Tablas anchas: el nombre del atleta queda fijo al deslizar la tabla de costado */
 .rp-t th:first-child,.rp-t td:first-child{position:sticky;left:0;background:#fff;z-index:1}
+/* Logo (2026-11-20): ícono de la mancuerna con el gráfico que sube + "G-METRICS" en Chakra Petch */
+.gm-word{font-family:'Chakra Petch','Barlow Condensed',sans-serif;font-weight:700;font-size:30px;line-height:1;color:var(--text);white-space:nowrap}
+.gm-g{color:var(--accent-text)}
+.gm-word-sm{font-size:17px}
+.gm-tag{font-family:'Chakra Petch',sans-serif;font-weight:500;font-size:11px;letter-spacing:.42em;color:var(--text2);margin-top:8px;padding-top:7px;border-top:1px solid var(--border2);white-space:nowrap}
+.gm-lockup{display:flex;align-items:center;justify-content:center;gap:14px;margin:0 auto 24px}
+/* Ícono de la app: esquinas proporcionales al tamaño (como los íconos del celular) */
+.gm-lockup img,.app-logo img,.gm-loading-ic{border-radius:23%;flex-shrink:0}
+.gm-loading-ic{width:96px;height:96px}
+/* Barra de arriba en celular: siempre oscura (fondo o navy), así que el nombre va en blanco y la G en celeste */
+#topbar .gm-word{color:#fff}
+#topbar .gm-g{color:#8FA8EA}
+@media(min-width:900px){#topbar .gm-word{color:var(--text)}#topbar .gm-g{color:var(--accent-text)}}
 /* Esqueleto de carga (skelHtml): la forma de lo que viene, con un brillo que pasa */
 .sk-wrap{display:grid;gap:12px}
 .sk{display:block;background:var(--bg3);border-radius:10px;position:relative;overflow:hidden}

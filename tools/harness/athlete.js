@@ -149,6 +149,11 @@
   // ── revisión: con rutina propia y equipo, el Calendario muestra el equipo ──
   { switchView('calendar'); await wait(500);
     ok(!/no estás vinculado/.test(document.getElementById('main').innerText)&&/Handball/.test(document.querySelector('.page-subtitle')?.innerText||''),'calendario: el atleta con rutina propia ve el calendario de su equipo');
+    // Logo nuevo (mancuerna con el gráfico que sube): encabezado e íconos de la app
+    { ok(document.querySelector('#topbar .gm-word')?.textContent.trim()==='G-METRICS'&&!!document.querySelector('#topbar .app-logo img[src="logo-icon.svg"]'),'logo: encabezado con el ícono y "G-METRICS"');
+      const man=await (await fetch('manifest.json')).json(); const mk=man.icons.find(i=>i.purpose==='maskable');
+      const rs=await Promise.all(man.icons.map(i=>fetch(i.src)));
+      ok(mk&&mk.src==='icons/icon-512-maskable.png'&&rs.every(r=>r.ok),'logo: los íconos de la app (incluido el adaptable de Android) existen'); }
     // Mis Tests sin ningún test: un solo mensaje, no 4 tarjetas "Sin datos"
     if(!Object.values(S.evalData||{}).some(a=>Array.isArray(a)&&a.length)){ switchView('evals'); await wait(600);
       ok(!!document.getElementById('eval-empty')&&!document.querySelector('.ev-tile'),'mis tests: sin datos muestra un solo mensaje'); }

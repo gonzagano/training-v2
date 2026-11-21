@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <title>G-Metrics Performance Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261120-4a81727">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Barlow+Condensed:wght@500;600;700&family=Chakra+Petch:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=20261121-911b26b">
 <script>(function(){
   var t=localStorage.getItem('gm-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');
   var accents={navy:['#243B6B','#2F4A85'],teal:['#0E7C6B','#159686'],purple:['#5B3E96','#6F4FB2'],wine:['#A83250','#C23F61'],forest:['#256D4B','#2E8560'],orange:['#C1601F','#D97328']};
@@ -36,11 +36,11 @@
 </head>
 <body>
 
-<div id="loading"><img src="logo.svg" alt="G-Metrics" style="width:180px;max-width:70vw"></div>
+<div id="loading"><img src="logo.svg" alt="G-Metrics" class="gm-loading-ic"></div>
 
 <div id="auth-screen" style="display:none">
   <div class="auth-box">
-    <img src="logo.svg" alt="G-Metrics" style="width:200px;max-width:80%;display:block;margin:0 auto 20px">
+    <div class="gm-lockup" role="img" aria-label="G-Metrics Performance Lab"><img src="logo-icon.svg" alt="" width="72" height="72"><div><div class="gm-word"><span class="gm-g">G</span>-METRICS</div><div class="gm-tag">PERFORMANCE LAB</div></div></div>
     <div class="auth-sub" id="auth-sub">Tu sistema de entrenamiento</div>
     <input class="auth-inp" id="auth-email" type="email" placeholder="Email" autocomplete="email">
     <input class="auth-inp" id="auth-pass" type="password" placeholder="Contraseña" autocomplete="current-password">
@@ -57,8 +57,8 @@
   <div id="topbar">
     <!-- Logo -->
     <div class="app-logo" onclick="goHome()">
-      <img src="logo-icon.svg" alt="G-Metrics" width="26" height="26">
-      <span style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.01em">G<span style="color:var(--accent)">-Metrics</span></span>
+      <img src="logo-icon.svg" alt="" width="30" height="30">
+      <span class="gm-word gm-word-sm"><span class="gm-g">G</span>-METRICS</span>
     </div>
     <button class="sb-toggle" id="sb-toggle" onclick="toggleSidebar()" title="Ocultar el panel" aria-label="Ocultar el panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg></button>
     <!-- Desktop sidebar nav (hidden on mobile) -->
@@ -403,6 +403,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <!-- App (JS separado) -->
-<script type="module" src="app.js?v=20261120-4a81727"></script>
+<script type="module" src="app.js?v=20261121-911b26b"></script>
 </body>
 </html>
