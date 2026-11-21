@@ -2028,6 +2028,9 @@ html{-webkit-tap-highlight-color:transparent}
 .br-preview{position:relative;width:195px;height:347px;border-radius:16px;overflow:hidden;margin:0 auto 12px;box-shadow:var(--sh-card)}
 .br-preview .br-splash{position:absolute;inset:auto;left:0;top:0;width:390px;height:694px;transform:scale(.5);transform-origin:0 0;animation:none;cursor:default}
 .br-play{display:block;margin:0 auto 16px}
+/* Tarjeta de récord (imagen para compartir) */
+.rc-box{display:flex;flex-direction:column;align-items:center;gap:14px;max-width:100%}
+.rc-img{display:block;width:auto;height:auto;max-height:min(calc(100vh - 150px),760px);max-width:100%;border-radius:16px;box-shadow:var(--sh-float)}
 .home-hi-n{display:inline-flex;align-items:center;gap:12px;min-width:0}
 .home-me{width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--border2)}
 /* Solo la foto se mete sobre la portada; el texto arranca debajo de ella */

@@ -1416,7 +1416,7 @@ onAuthStateChanged(auth, async (user) => {
       if (rSnap.exists()) {
         S.assignedRoutine = { id: assignedId, ...rSnap.data() };
         S.currentRoutineSessions = getOrderedSessionNames(S.assignedRoutine);
-        if (S.currentRoutineSessions.length) S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, S.userData.routineAssignedDate, S.userData.trainingWeekdays);
+        if (S.currentRoutineSessions.length) S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, S.userData.routineAssignedDate, S.userData.trainingWeekdays, n=>sessionDoneFor(S.userData, S.history, S.currentWeek, n));
         // blocks are read-only from routine; don't overwrite with personal
       }
       if (S.userData.teamId) {
@@ -1944,13 +1944,24 @@ function getWeekdayScheduleMap(sessionNames, trainingWeekdays) {
 }
 window.getWeekdayScheduleMap = getWeekdayScheduleMap;
 
-function getTodaysRoutineSession(sessionNames, assignedDate, trainingWeekdays) {
+// ¿Ya hizo (o empezó a cargar) esa sesión en esa semana?
+function sessionDoneFor(userData, history, w, sName) {
+  const rec = getPhaseSessionRecord(userData, history, w, sName);
+  return !!(rec && (rec.done || Object.values(rec.exercises||{}).some(e=>e && (e.checked || e.load))));
+}
+window.sessionDoneFor = sessionDoneFor;
+
+// isDone(sesión): si se pasa, un día que NO es de gimnasio muestra la primera
+// sesión que falta hacer esta semana (no la del próximo día de gimnasio).
+function getTodaysRoutineSession(sessionNames, assignedDate, trainingWeekdays, isDone) {
   if(!sessionNames || !sessionNames.length) return null;
   // Prioridad 1: días de gimnasio elegidos a mano por el admin al asignar.
   if (trainingWeekdays && trainingWeekdays.length) {
     const map = getWeekdayScheduleMap(sessionNames, trainingWeekdays);
     const todayDow = mondayIndex(new Date()); // lunes=0
     if (map[todayDow] !== undefined) return map[todayDow];
+    const pending = isDone && sessionNames.find(n=>!isDone(n));
+    if (pending) return pending;
     // Hoy no es día de gimnasio: mostramos igual cuál es el próximo que viene.
     const sorted = [...trainingWeekdays].sort((a,b)=>a-b);
     let best = null, bestDiff = 8;
@@ -2146,7 +2157,7 @@ function refreshTodaysTrainingContext() {
   }
   if(!S.isAdmin && S.currentRoutineSessions && S.currentRoutineSessions.length) {
     const assignedDate = S.assignedRoutine?.fromTeam ? null : S.userData.routineAssignedDate;
-    S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, assignedDate, S.userData.trainingWeekdays);
+    S.currentSession = getTodaysRoutineSession(S.currentRoutineSessions, assignedDate, S.userData.trainingWeekdays, n=>sessionDoneFor(S.userData, S.history, S.currentWeek, n));
   }
 }
 window.refreshTodaysTrainingContext = refreshTodaysTrainingContext;
@@ -3852,6 +3863,9 @@ function rpeSelectHtml(val, isRIR, onchange, style) {
 }
 window.rpeSelectHtml = rpeSelectHtml;
 function setField(exId,field,val) {
+  // La carga máxima ANTES de anotar esta, para saber si es récord (tarjeta para compartir).
+  const recEx = field==='load' ? findExInAssignedRoutine(exId) : null, before = recEx ? loadSeriesMax(recEx) : null;
+  if(recEx) checkLoadRecord(recEx, before, val);
   const d=getED(getRoutineWeek(),S.currentSession,exId);
   stampExerciseName(d, exId);
   d[field]=val;
@@ -5242,8 +5256,7 @@ function saveAthleteNote() {
 window.saveAthleteNote = saveAthleteNote;
 
 // ── PROGRESIÓN SEMANAL (prescripto vs completado, semana a semana) ──────
-function findExInAssignedRoutine(exId) {
-  const routine = S.assignedRoutine;
+function findExInAssignedRoutine(exId, routine = S.assignedRoutine) {
   if(!routine || !routine.sessions) return null;
   for(const sName in routine.sessions) {
     for(const b of (routine.sessions[sName]||[])) {
@@ -5281,6 +5294,9 @@ async function adminSetExerciseField(uid, wKey, sName, exId, field, value, noRen
   if(!a._personal) a._personal = {};
   if(!a._personal.history) a._personal.history = {};
   const sk = sessionKey(wKey, sName);
+  // Tarjeta de récord también cuando carga el profe: la máxima del atleta ANTES de esta carga.
+  const recCtx = field==='load' ? adminRecCtx(a, wKey, sName) : null, recEx = recCtx ? findExInAssignedRoutine(exId, recCtx.routine) : null;
+  const recBefore = recEx ? loadSeriesMax(recEx, recCtx) : null;
   // Número puro (incluida la coma: "82,5") → número. Cualquier otra cosa
   // ("50×2-60", "40+10") → se guarda el texto tal cual lo escribió, sin
   // recortarlo a lo que parseFloat alcance a leer.
@@ -5312,6 +5328,7 @@ async function adminSetExerciseField(uid, wKey, sName, exId, field, value, noRen
     if(!a._personal.history[sk].exercises) a._personal.history[sk].exercises = {};
     a._personal.history[sk].exercises[exId] = rec;
     if(field==='load' || field==='rpe') await adminAutoRM(a);
+    if(recEx) checkLoadRecord(recEx, recBefore, value, recCtx);
     showToast('✓ Guardado');
   } catch(e) { showToast('Error al guardar'); if(noRender) return false; }
   if(noRender) return true;
@@ -5534,6 +5551,102 @@ function getChartEligibility(ex, pts) {
   const need = mode==='on' ? 2 : LOAD_CHART_MIN_WEEKS;
   return pts.length>=need ? {s:'yes', cat} : {s:'wait', have:pts.length, need};
 }
+
+// ── Tarjeta de récord ─────────────────────────────────────────
+// El atleta anota una carga más pesada que TODAS las anteriores de ese ejercicio (entre
+// planificaciones, en ejercicios de fuerza) → se arma una imagen de historia (1080×1920)
+// para compartir: récord, su foto y nombre, y la firma del profe si configuró su portada.
+// ctx = de quién es el registro: el atleta logueado, o el atleta de la ficha cuando carga el profe.
+function athleteRecCtx() {
+  return {userData:S.userData, history:S.history, routine:S.assignedRoutine, currentWeek:S.currentWeek, overrides:S.routineOverrides,
+    sName:S.currentSession, week:getRoutineWeek(), name:S.userData?.name||'', photoUrl:S.userData?.photoUrl||null};
+}
+function adminRecCtx(a, wKey, sName) {
+  const routine = (S.routines||[]).find(r=>r.id===a?.assignedRoutine); if(!routine) return null;
+  const cw = Math.max(wKey, computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate)||0);
+  return {userData:a, history:a._personal?.history||{}, routine, currentWeek:cw, overrides:a._personal?.routineOverrides,
+    sName, week:wKey, name:a.name||'', photoUrl:a.photoUrl||null};
+}
+window.adminRecCtx = adminRecCtx;
+function loadSeriesMax(ex, ctx = athleteRecCtx()) {
+  try { const pts = buildLoadSeries(ctx.userData, ctx.history, ctx.routine, ctx.currentWeek, ex); return {pts, max: pts.length ? Math.max(...pts.map(p=>p.kg)) : null}; }
+  catch(e) { return {pts:[], max:null}; }
+}
+window.loadSeriesMax = loadSeriesMax;
+function checkLoadRecord(ex, before, val, ctx = athleteRecCtx()) {
+  const kg = parseLoadKg(val);
+  if(!(kg>0) || !(before?.max>0) || kg<=before.max) return false; // sin carga anterior no hay con qué comparar
+  if(getChartEligibility(ex, before.pts).s==='no') return false;   // solo ejercicios de fuerza
+  const ov = ctx.routine?.id ? getExerciseOverride(ctx.overrides, ctx.routine.id, ctx.sName, ex.id) : null;
+  const exName = getExDisplayForWeek(ex, ctx.week, toRoutineRelativeWeek(ctx.week, ctx.userData), ov)?.name || ex.name;
+  openRecordCard({exName, kg, prev: before.max, name: ctx.name, photoUrl: ctx.photoUrl});
+  return true;
+}
+window.checkLoadRecord = checkLoadRecord;
+const loadImg = src => new Promise(res => { if(!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+async function drawRecordCard({exName, kg, prev, name, photoUrl}) {
+  const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), b = S.branding || {}, fmt = n => String(Math.round(n*10)/10).replace('.',',');
+  try { await Promise.all(['700 80px "Barlow Condensed"','800 40px Manrope','700 40px Manrope','700 40px "Chakra Petch"'].map(f=>document.fonts.load(f))); } catch(e) {}
+  const mark = document.getElementById('gm-mark');
+  const logoSrc = mark ? 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 152 152" style="--lm-g:#fff;--lm-o:#243B6B;--lm-c:#8FA8EA">${mark.innerHTML}</svg>`) : null;
+  const [logo, me, coach] = await Promise.all([loadImg(logoSrc), loadImg(photoUrl), loadImg(b.photoUrl)]);
+  const bg = g.createLinearGradient(0, 0, W*0.6, H); bg.addColorStop(0, '#243B6B'); bg.addColorStop(0.7, 'rgb(15,26,51)'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const text = (t, y, font, color, spacing) => { g.font = font; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; try { g.letterSpacing = spacing||'0px'; } catch(e) {} g.fillText(t, W/2, y); try { g.letterSpacing = '0px'; } catch(e) {} };
+  const circle = (img, cx, cy, r, ring) => { g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.clip(); const s = Math.max(2*r/img.width, 2*r/img.height); g.drawImage(img, cx-img.width*s/2, cy-img.height*s/2, img.width*s, img.height*s); g.restore(); if(ring) { g.lineWidth = ring; g.strokeStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.stroke(); } };
+  // logo + G-METRICS arriba
+  g.font = '700 40px "Chakra Petch"'; try { g.letterSpacing = '8px'; } catch(e) {}
+  const lw = g.measureText('G-METRICS').width, ls = 84, x0 = (W - (ls + 18 + lw))/2;
+  if(logo) g.drawImage(logo, x0, 96, ls, ls);
+  g.fillStyle = 'rgba(255,255,255,.85)'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText('G-METRICS', x0 + ls + 18, 138); try { g.letterSpacing = '0px'; } catch(e) {}
+  // récord
+  text('NUEVO RÉCORD', 400, '800 44px Manrope', 'rgb(240,195,90)', '12px');
+  text(exName, 500, '700 64px Manrope', '#fff');
+  g.font = '700 300px "Barlow Condensed"'; const nw = g.measureText(fmt(kg)).width; g.font = '700 110px "Barlow Condensed"'; const kw = g.measureText(' kg').width;
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = '#fff';
+  g.font = '700 300px "Barlow Condensed"'; g.fillText(fmt(kg), (W-nw-kw)/2, 790); g.font = '700 110px "Barlow Condensed"'; g.fillText(' kg', (W-nw-kw)/2 + nw, 790);
+  const pill = '+'+fmt(kg-prev)+' kg que el anterior'; g.font = '700 44px Manrope'; const pw = g.measureText(pill).width + 80;
+  g.fillStyle = 'rgba(52,201,122,.18)'; g.beginPath(); if(g.roundRect) g.roundRect((W-pw)/2, 840, pw, 84, 42); else g.rect((W-pw)/2, 840, pw, 84); g.fill(); text(pill, 897, '700 44px Manrope', 'rgb(91,227,154)');
+  // atleta
+  let y = 1010;
+  if(me) { circle(me, W/2, y+170, 170, 10); y += 380; }
+  if(name) text(name, y+70, '700 64px Manrope', '#fff');
+  // firma del profe (solo si configuró algo)
+  const cName = (b.name||'').trim(), cRole = (b.role||'').trim();
+  if(cName || coach) {
+    g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(0, H-220, W, 220); g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(0, H-220, W, 3);
+    const tx = coach ? 220 : 80;
+    if(coach) circle(coach, 130, H-110, 62);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = '#fff'; g.font = '800 48px Manrope'; if(cName) g.fillText(cName, tx, cRole ? H-118 : H-95);
+    if(cRole) { g.fillStyle = 'rgba(255,255,255,.7)'; g.font = '500 40px Manrope'; g.fillText(cRole, tx, H-62); }
+  }
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+window.drawRecordCard = drawRecordCard;
+async function openRecordCard(info) {
+  closeRecordCard();
+  const blob = await drawRecordCard(info); if(!blob) return;
+  const url = URL.createObjectURL(blob), file = new File([blob], 'record-'+(info.exName||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.png', {type:'image/png'});
+  const canShare = !!(navigator.canShare && navigator.canShare({files:[file]}));
+  S._recordCard = {url, file};
+  const ov = document.createElement('div'); ov.id = 'record-card'; ov.className = 'video-modal open rc-ov';
+  ov.innerHTML = `<div class="rc-box" role="dialog" aria-modal="true" aria-label="Nuevo récord"><img class="rc-img" src="${url}" alt="Nuevo récord: ${attrEsc(info.exName)} ${String(info.kg).replace('.',',')} kg">
+    <div class="video-modal-btns rc-btns"><button class="abtn" onclick="closeRecordCard()">Cerrar</button><button class="abtn abtn-p" onclick="shareRecordCard()">${canShare?'Compartir':'Descargar imagen'}</button></div></div>`;
+  ov.addEventListener('click', e => { if(e.target===ov) closeRecordCard(); });
+  document.body.appendChild(ov);
+}
+window.openRecordCard = openRecordCard;
+function closeRecordCard() { document.getElementById('record-card')?.remove(); if(S._recordCard) { URL.revokeObjectURL(S._recordCard.url); S._recordCard = null; } }
+window.closeRecordCard = closeRecordCard;
+async function shareRecordCard() {
+  const rc = S._recordCard; if(!rc) return;
+  if(navigator.canShare && navigator.canShare({files:[rc.file]})) {
+    try { await navigator.share({files:[rc.file]}); } catch(e) {} // si cancela el menú del celular, no pasa nada
+    return;
+  }
+  const a = document.createElement('a'); a.href = rc.url; a.download = rc.file.name; document.body.appendChild(a); a.click(); a.remove();
+}
+window.shareRecordCard = shareRecordCard;
 
 // Miniatura de tendencia para la tarjeta del ejercicio: las últimas 6 semanas
 // con carga, el cambio en kg y "PR" si la última carga es récord. Solo en
@@ -11889,7 +12002,7 @@ function renderAtletaRutina(a) {
   const sessionNames = getOrderedSessionNames(routine);
   // Qué día le toca hoy al atleta según su calendario real (días de gimnasio
   // asignados, o el nombre del día si son días de semana reales).
-  const todaySession = getTodaysRoutineSession(sessionNames, a.routineAssignedDate, a.trainingWeekdays);
+  const todaySession = getTodaysRoutineSession(sessionNames, a.routineAssignedDate, a.trainingWeekdays, n=>sessionDoneFor(a, a._personal?.history, realWeek, n));
   // Los días van como pastillas horizontales arriba; nada se abre solo (ni el
   // día ni los bloques) hasta que se toca.
   S._atletaRoutineDayNames = sessionNames;
@@ -14812,7 +14925,7 @@ function renderAtletaRoutineHoriz(a, routine, previewWeek) {
   const q1 = t=>String(t).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const names = getOrderedSessionNames(routine);
   const own = routine.ownerUid===a.uid;
-  const today = getTodaysRoutineSession(names, a.routineAssignedDate, a.trainingWeekdays);
+  const today = getTodaysRoutineSession(names, a.routineAssignedDate, a.trainingWeekdays, n=>sessionDoneFor(a, a._personal?.history, computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate), n));
   const rel = toRoutineRelativeWeek(previewWeek, a);
   const cols = names.map(()=> 'minmax(0,1fr)').join(' ');
   return `<div class="cmp-cols cmp-ath" style="--cmp-cols:${cols};padding:10px 12px 12px">` + names.map(n=>{

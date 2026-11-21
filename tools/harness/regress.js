@@ -877,6 +877,12 @@
     ok(document.querySelectorAll('.ap-grid .ap-tile').length===8&&/Panel admin/.test(document.getElementById('main').innerText),'panel admin: 8 tarjetas (con "Tu portada" y "Descargar copia de todo")');
     document.querySelector('.ap-tile[onclick="adminGoRoutines()"]').click(); await wait(600); ok(S.adminView==='routines','panel admin: la tarjeta Rutinas abre Gestión de rutinas');
     S.adminView='main'; renderMain(); await wait(200); txtBad('panel admin en tarjetas'); }
+  // ── día que no es de gimnasio: muestra la sesión que falta de esta semana ──
+  { const names=['Día 1','Día 2','Día 3','Día 4']; const td=mondayIndex(new Date()); const days=[0,1,2,3,4,5,6].filter(d=>d!==td).slice(0,4);
+    ok(getTodaysRoutineSession(names,null,days,n=>n!=='Día 4')==='Día 4','hoy sin gimnasio y falta el Día 4: muestra el Día 4');
+    const next=getTodaysRoutineSession(names,null,days); ok(getTodaysRoutineSession(names,null,days,()=>true)===next,'si ya hizo todas: la del próximo día de gimnasio');
+    const withToday=[td,...days.slice(0,3)]; const mapped=getWeekdayScheduleMap(names,withToday)[td];
+    ok(getTodaysRoutineSession(names,null,withToday,n=>n!=='Día 4')===mapped,'hoy es día de gimnasio: la de hoy, aunque falte otra'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   // ── deslizar en la ficha: pasa de pestaña sin salir del atleta ──
@@ -933,6 +939,25 @@
     ok(/Gonzalo Ganora/.test(document.querySelector('.br-preview')?.innerText||'')&&!!document.querySelector('.br-preview .br-splash-mid img[src]')&&!!document.querySelector('.br-preview .br-splash-bg'),'portada: la vista previa muestra portada, foto y nombre');
     document.querySelector('.br-play').click(); await wait(300); ok(!!document.getElementById('br-splash'),'portada: "Ver como lo ven" muestra la bienvenida'); await wait(2200); ok(!document.getElementById('br-splash'),'portada: la bienvenida se va sola');
     txtBad('portada del profe'); switchView('admin'); }
+  // ── tarjeta de récord cuando el PROFE carga los kilos desde la ficha del atleta ──
+  { await ensureGroupPersonalData(['u1']); const a=S.adminAthletes.find(x=>x.uid==='u1');
+    const W=Math.max(2,computeWeekFromDate(a.trainingStartDate||a.routineAssignedDate)), sk='w'+W+'-Día 1', sk0='w'+(W-1)+'-Día 1';
+    const keepDb=JSON.stringify(JSON.parse(localStorage.getItem('__db')).personal.u1), keepMem=JSON.stringify({history:a._personal.history, oneRM:a._personal.oneRM, oneRMAuto:a._personal.oneRMAuto});
+    // la primera carga de un ejercicio no es récord (no hay con qué comparar): se anota la semana anterior
+    await adminSetExerciseField('u1',W-1,'Día 1','x1','load','100',true); await wait(800);
+    ok(!document.getElementById('record-card'),'récord (profe): la primera carga del ejercicio no muestra la tarjeta');
+    const ctx=adminRecCtx(a,W,'Día 1'), ex=ctx&&findExInAssignedRoutine('x1',ctx.routine);
+    const m=ex?loadSeriesMax(ex,ctx).max:null; ok(m>=100,'récord (profe): toma la carga anterior del atleta ('+m+')');
+    await adminSetExerciseField('u1',W,'Día 1','x1','load',String(m-10),true); await wait(1200);
+    ok(!document.getElementById('record-card'),'récord (profe): una carga menor no muestra la tarjeta');
+    await adminSetExerciseField('u1',W,'Día 1','x1','load',String(m+5),true); let rc=null; for(let i=0;i<40&&!(rc=document.getElementById('record-card'));i++) await wait(100);
+    const DBp=()=>JSON.parse(localStorage.getItem('__db')).personal;
+    ok(!!rc&&new RegExp(String(m+5).replace('.',',')+' kg').test(rc.querySelector('img.rc-img')?.alt||''),'récord (profe): al cargar una máxima nueva desde la ficha aparece la tarjeta');
+    ok(DBp().u1.history[sk].exercises.x1.load===m+5&&!DBp().admin1?.history?.[sk],'récord (profe): la carga queda en el atleta, no en el profe');
+    closeRecordCard();
+    // deja al atleta exactamente como estaba (en la base falsa y en memoria)
+    { const dbx=JSON.parse(localStorage.getItem('__db')); dbx.personal.u1=JSON.parse(keepDb); localStorage.setItem('__db',JSON.stringify(dbx));
+      const mem=JSON.parse(keepMem); ['history','oneRM','oneRMAuto'].forEach(k=>{ if(mem[k]===undefined) delete a._personal[k]; else a._personal[k]=mem[k]; }); } }
   // ── diálogo propio en vez de prompt(): crear equipo (dos escenarios: cancelar y crear) ──
   { const n0=S.teams.length; switchView('teams'); await wait(500);
     ok(/Equipos/.test(document.querySelector('.pg-head-t')?.textContent||''),'equipos: título de pantalla con el mismo estilo que el resto');
