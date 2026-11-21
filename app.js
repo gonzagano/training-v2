@@ -12288,9 +12288,7 @@ window.desactivarNotificacionesPush = desactivarNotificacionesPush;
 
 // Manda un push real a los uids que tengan pushSubscription guardada (los que
 // no la tengan simplemente no reciben nada acá — igual les queda el aviso
-// adentro de la app vía S.notifications). Se apoya en S.adminAthletes, que ya
-// tiene el documento completo de cada atleta cargado — no hace falta pedirle
-// permiso a Firestore para leer la suscripción de cada uno por separado.
+// adentro de la app vía S.notifications).
 // Motivo de un envío fallido, en palabras. 401/403 del servicio de avisos = esa
 // activación se hizo con una clave anterior: se renueva sola cuando la persona abre la app.
 function pushFailText(r) {
@@ -12300,19 +12298,19 @@ function pushFailText(r) {
 }
 window.pushFailText = pushFailText;
 
+// BUG arreglado 2026-11-21: antes filtraba acá con S.adminAthletes, que solo existe si
+// el profe abrió Atletas. Abriendo la app y yendo Dashboard → Recordatorios, nadie
+// "tenía" suscripción y el push no salía (quedaba solo el aviso adentro de la app).
+// Ahora van todos los uids: el servidor lee de Firestore quién activó los avisos y
+// devuelve un resultado por cada uno (los que no los activaron no aparecen).
 async function sendPushToUids(uids, {title, body, url} = {}) {
-  const subs = (uids||[])
-    .map(uid => (S.adminAthletes||[]).find(a=>a.uid===uid)?.pushSubscription)
-    .filter(Boolean);
-  // attempted = a cuántos se les intentó mandar de verdad (tenían
-  // suscripción guardada) — sin esto, "0 con push" no se podía distinguir
-  // entre "nadie activó notificaciones todavía" y "se intentó y falló".
-  if(!subs.length) return {sent:0, total:(uids||[]).length, attempted:0};
+  uids = uids || [];
+  if(!uids.length) return {sent:0, total:0, attempted:0};
   try {
     const resp = await fetch('/api/send-push', {
       method:'POST',
       headers: await pushHeaders(),
-      body: JSON.stringify({uids:(uids||[]).filter(uid=>(S.adminAthletes||[]).find(a=>a.uid===uid)?.pushSubscription), title:title||'G-Metrics', body:body||'', url:url||location.origin})
+      body: JSON.stringify({uids, title:title||'G-Metrics', body:body||'', url:url||location.origin})
     });
     if(!resp.ok) {
       // Antes esto descartaba el cuerpo de la respuesta y siempre mostraba
@@ -12321,7 +12319,7 @@ async function sendPushToUids(uids, {title, body, url} = {}) {
       // Vercel), se lo mostramos tal cual en vez de adivinar.
       let serverError = null;
       try { serverError = (await resp.json())?.error || null; } catch(e) {}
-      return {sent:0, total:uids.length, attempted:subs.length, error:true,
+      return {sent:0, total:uids.length, attempted:uids.length, error:true,
         errorDetail: serverError || ('HTTP '+resp.status+' de /api/send-push — ¿está desplegada la función serverless y configuradas las variables de entorno en Vercel?')};
     }
     const data = await resp.json();
@@ -12329,28 +12327,24 @@ async function sendPushToUids(uids, {title, body, url} = {}) {
     const sent = results.filter(r=>r.ok).length;
     // Suscripciones vencidas (404/410 — el usuario desinstaló, bloqueó, o
     // cambió de navegador): las limpiamos para no reintentar siempre en vano.
-    const dead = results.filter(r=>!r.ok && (r.status===404||r.status===410)).map(r=>r.endpoint);
-    if(dead.length) {
-      (uids||[]).forEach(uid=>{
-        const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
-        if(a?.pushSubscription && dead.includes(a.pushSubscription.endpoint)) {
-          delete a.pushSubscription;
-          setDoc(doc(db,'users',uid), {pushSubscription:deleteField()}, {merge:true}).catch(()=>{});
-        }
-      });
-    }
+    results.filter(r=>!r.ok && (r.status===404||r.status===410) && r.uid).forEach(r=>{
+      const a = (S.adminAthletes||[]).find(x=>x.uid===r.uid); if(a) delete a.pushSubscription;
+      setDoc(doc(db,'users',r.uid), {pushSubscription:deleteField()}, {merge:true}).catch(()=>{});
+    });
     // Si hubo fallos que NO son "suscripción vencida" (típicamente claves
     // VAPID mal configuradas — mismatch entre la pública de acá y la
     // privada de Vercel), guardamos un ejemplo de la razón real que dio el
     // servidor de push, para poder mostrarla en vez de un "no llegó" mudo.
     const otherFail = results.find(r=>!r.ok && r.status!==404 && r.status!==410);
     const oldKey = results.filter(r=>!r.ok && (r.status===401||r.status===403)).length;
-    return {sent, total:uids.length, attempted:subs.length, oldKey, failReason: otherFail ? pushFailText(otherFail) : null};
+    // attempted = cuántos tenían los avisos activados (el servidor devuelve uno por cada uno):
+    // así "0 con push" distingue "nadie los activó" de "se intentó y falló".
+    return {sent, total:uids.length, attempted:results.length, oldKey, failReason: otherFail ? pushFailText(otherFail) : null};
   } catch(e) {
     // Típicamente esto es que /api/send-push ni existe todavía en el
     // deploy (404 de la propia app, no de la función) — fetch tira acá en
     // vez de darte un response.
-    return {sent:0, total:(uids||[]).length, attempted:subs.length, error:true, errorDetail:e.message};
+    return {sent:0, total:uids.length, attempted:uids.length, error:true, errorDetail:e.message};
   }
 }
 window.sendPushToUids = sendPushToUids;

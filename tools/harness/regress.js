@@ -638,10 +638,27 @@
     if(a){ a.pushSubscription={endpoint:'https://push.test/'+a.uid,p256dh:'k',auth:'x'};
       window.fetch=async(u,o)=>{ if(String(u).includes('/api/send-push')){ req={h:o.headers,b:JSON.parse(o.body)}; return new Response(JSON.stringify({results:[{ok:true,uid:a.uid,endpoint:a.pushSubscription.endpoint}]}),{status:200,headers:{'Content-Type':'application/json'}}); } return keepF(u,o); };
       const r=await sendPushToUids([a.uid,'sin-suscripcion'],{title:'Prueba'}); window.fetch=keepF;
-      ok(req&&JSON.stringify(req.b.uids)===JSON.stringify([a.uid])&&!req.b.subscriptions,'avisos: se manda la lista de uids con suscripción, no las suscripciones');
+      ok(req&&JSON.stringify(req.b.uids)===JSON.stringify([a.uid,'sin-suscripcion'])&&!req.b.subscriptions,'avisos: se manda la lista de uids (el servidor busca las suscripciones), no las suscripciones');
       ok(req&&!Object.keys(req.h).some(k=>/secret/i.test(k)),'avisos: ya no viaja una clave fija en el pedido');
       ok(r.sent===1&&r.attempted===1,'avisos: cuenta bien enviados e intentados');
       if(keepSub) a.pushSubscription=keepSub; else delete a.pushSubscription; } }
+  // ── recordatorio desde el Dashboard SIN haber pasado por Atletas (app recién abierta):
+  //    el push tiene que salir igual. Antes quedaba solo adentro de la app. ──
+  { await loadDashboard(); openReminderScreen(); await wait(300);
+    const uid=(S._reminderPendingUids||[])[0], keepAA=S.adminAthletes, keepF=window.fetch; let req=null;
+    if(uid){ const d=__DB(); d.users[uid].pushSubscription={endpoint:'https://push.test/'+uid,p256dh:'k',auth:'x'}; __seedDB(d);
+      S.adminAthletes=undefined;
+      window.fetch=async(u,o)=>{ if(String(u).includes('/api/send-push')){ req=JSON.parse(o.body); return new Response(JSON.stringify({results:[{ok:true,uid,endpoint:'https://push.test/'+uid}]}),{status:200,headers:{'Content-Type':'application/json'}}); } return keepF(u,o); };
+      await sendInAppReminder(); await wait(300); window.fetch=keepF;
+      ok(req&&req.uids.includes(uid),'recordatorio: sale el push aunque no se haya abierto Atletas antes');
+      ok(/con notificación push real/.test(document.getElementById('toast')?.textContent||''),'recordatorio: el aviso dice que salió el push');
+      const d2=__DB(); delete d2.users[uid].pushSubscription; __seedDB(d2);
+      // segundo escenario: nadie de los pendientes activó los avisos → lo dice, no "push real"
+      window.fetch=async(u,o)=>String(u).includes('/api/send-push')?new Response(JSON.stringify({results:[]}),{status:200,headers:{'Content-Type':'application/json'}}):keepF(u,o);
+      await sendInAppReminder(); await wait(300); window.fetch=keepF;
+      ok(/nadie de estos activó/.test(document.getElementById('toast')?.textContent||''),'recordatorio: si nadie activó los avisos, lo dice');
+      S.adminAthletes=keepAA; }
+    else ok(false,'recordatorio: no hay ningún atleta pendiente para probar'); switchView('dashboard'); }
   // ── personalizar un ejercicio eligiendo otro de la biblioteca ──
   { const lib2=S.library.find(l=>l.id!=='lsq'&&!/sentadilla/i.test(l.name)); S.videos[lib2.id]='https://youtu.be/abc123';
     openExerciseOverrideModal('u1','r1','Día 1','x1',1); await wait(200);
