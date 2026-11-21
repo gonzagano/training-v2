@@ -17,8 +17,10 @@ export function doc(db,col,id){ return {col,id}; }
 export function collection(db,col){ return {col}; }
 export function query(c){ return c; } export function where(){return null;} export function orderBy(){return null;}
 function snap(ref, data){ return { id:ref.id, exists:()=>data!==undefined, data:()=>data===undefined?undefined:JSON.parse(JSON.stringify(data)) }; }
-export async function getDoc(ref){ await net(); const db=load(); return snap(ref, db[ref.col]?.[ref.id]); }
-export async function getDocs(c){ const db=load(); const col=db[c.col]||{}; return { docs:Object.keys(col).map(id=>snap({id},col[id])) }; }
+// window.__NET_DELAY = ms: demora de cada lectura, para medir la velocidad como en un celular (0 en las pruebas)
+const readDelay = () => window.__NET_DELAY ? new Promise(r=>setTimeout(r, window.__NET_DELAY)) : null;
+export async function getDoc(ref){ await readDelay(); await net(); const db=load(); return snap(ref, db[ref.col]?.[ref.id]); }
+export async function getDocs(c){ await readDelay(); const db=load(); const col=db[c.col]||{}; return { docs:Object.keys(col).map(id=>snap({id},col[id])) }; }
 function checkVal(v,path){
   if(v===undefined) throw new Error('Function updateDoc() called with invalid data. Unsupported field value: undefined (found in field '+path+')');
   if(v && typeof v==='object' && !v.__delete && !v.__ts && !v.__arrayUnion){

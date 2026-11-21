@@ -1222,6 +1222,20 @@ onAuthStateChanged(auth, async (user) => {
   S._lastAthleteSync = Date.now();
   S.isAdmin = user.email === ADMIN_EMAIL;
 
+  // VELOCIDAD (2026-11-21): todo lo que no depende del perfil se pide A LA VEZ. Antes iba
+  // de a uno (perfil → datos → portada → biblioteca → equipos → rutina → equipo): 7 esperas
+  // seguidas al servidor, 2-3 s en el celular. Cada resultado se usa más abajo, en el mismo orden.
+  const pre = p => { p.catch(()=>{}); return p; }; // se espera más abajo (ahí se manejan los errores)
+  const pRef = doc(db, 'personal', user.uid);
+  const P = {
+    personal: pre(getDoc(pRef)),
+    branding: loadBranding(),
+    library: pre(getDoc(doc(db, 'shared', 'library'))),
+    teams: pre(getDocs(collection(db, 'teams'))),
+    routines: S.isAdmin ? pre(getDocs(collection(db, 'routines'))) : null,
+    pending: S.isAdmin ? pre(getDocs(collection(db, 'pendingAthletes'))) : null,
+  };
+
   // Load user data from Firestore
   const uRef = doc(db, 'users', user.uid);
   const uSnap = await getDoc(uRef);
@@ -1231,10 +1245,14 @@ onAuthStateChanged(auth, async (user) => {
     S.userData = { name: user.email.split('@')[0], email: user.email, role: 'athlete' };
     await setDoc(uRef, { ...S.userData, createdAt: serverTimestamp() });
   }
+  // Lo del atleta que depende de su perfil (rutina asignada, su equipo), también en paralelo
+  if (!S.isAdmin) {
+    if (S.userData.assignedRoutine) P.routine = pre(getDoc(doc(db, 'routines', S.userData.assignedRoutine)));
+    if (S.userData.teamId) P.myTeam = pre(getDoc(doc(db, 'teams', S.userData.teamId)));
+  }
 
   // Load personal data
-  const pRef = doc(db, 'personal', user.uid);
-  const pSnap = await getDoc(pRef);
+  const pSnap = await P.personal;
   if (pSnap.exists()) {
     const d = pSnap.data();
     if (d.evals) S.evals = d.evals;
@@ -1319,8 +1337,9 @@ onAuthStateChanged(auth, async (user) => {
   // los mismos videos que el admin cargó. Antes vivían en personal/{uid} de
   // cada usuario, por eso nunca le llegaban a ningún atleta.
   try {
+    await P.branding; // portada y foto del profe, antes de dibujar el inicio (si falla, sigue sin ella)
     const sharedRef = doc(db, 'shared', 'library');
-    const sharedSnap = await getDoc(sharedRef);
+    const sharedSnap = await P.library;
     if (sharedSnap.exists()) {
       const sd = sharedSnap.data();
       if (sd.library) S.library = sd.library;
@@ -1343,18 +1362,18 @@ onAuthStateChanged(auth, async (user) => {
   // real, no de una lista fija hardcodeada). Las reglas de Firestore ya
   // permiten que cualquier usuario logueado los lea.
   try {
-    const tSnap = await getDocs(collection(db, 'teams'));
+    const tSnap = await P.teams;
     S.teams = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch(e) { console.error('Error cargando equipos', e); }
 
   if (S.isAdmin) {
     // Load all routines
-    const rSnap = await getDocs(collection(db, 'routines'));
+    const rSnap = await P.routines;
     S.routines = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     // Jugadores cargados de antemano que todavía no se registraron con una
     // cuenta real — pueden tener tests/evaluaciones ya cargados.
     try {
-      const pSnap2 = await getDocs(collection(db, 'pendingAthletes'));
+      const pSnap2 = await P.pending;
       S.pendingAthletes = pSnap2.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch(e) { S.pendingAthletes = []; }
   } else {
@@ -1363,7 +1382,7 @@ onAuthStateChanged(auth, async (user) => {
     // entrenamiento" que el admin armó para ese equipo — son la rutina real.
     const assignedId = S.userData.assignedRoutine || null;
     if (assignedId) {
-      const rSnap = await getDoc(doc(db, 'routines', assignedId));
+      const rSnap = await (P.routine || getDoc(doc(db, 'routines', assignedId)));
       if (rSnap.exists()) {
         S.assignedRoutine = { id: assignedId, ...rSnap.data() };
         S.currentRoutineSessions = getOrderedSessionNames(S.assignedRoutine);
@@ -1371,10 +1390,10 @@ onAuthStateChanged(auth, async (user) => {
         // blocks are read-only from routine; don't overwrite with personal
       }
       if (S.userData.teamId) {
-        try { const tSnap = await getDoc(doc(db, 'teams', S.userData.teamId)); if (tSnap.exists()) S.myTeam = { id: S.userData.teamId, ...tSnap.data() }; } catch (e) { console.error('Equipo del atleta', e); }
+        try { const tSnap = await (P.myTeam || getDoc(doc(db, 'teams', S.userData.teamId))); if (tSnap.exists()) S.myTeam = { id: S.userData.teamId, ...tSnap.data() }; } catch (e) { console.error('Equipo del atleta', e); }
       }
     } else if (S.userData.teamId) {
-      const tSnap = await getDoc(doc(db, 'teams', S.userData.teamId));
+      const tSnap = await (P.myTeam || getDoc(doc(db, 'teams', S.userData.teamId)));
       if (tSnap.exists()) {
         const team = { id: S.userData.teamId, ...tSnap.data() };
         S.myTeam = team;
@@ -6873,8 +6892,8 @@ function renderTeams() {
   else html+=S.teams.map(t=>`
     <div class="team-card" onclick="openTeam('${t.id}')" style="border-left:3px solid ${t.color||'var(--purple)'}">
       <div class="team-card-header">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="width:10px;height:10px;border-radius:50%;background:${t.color||'var(--purple)'};flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${teamCrestHtml(t, 32)}
           <div class="team-name">${t.name}${t.category?` / ${t.category}`:''}</div>
         </div>
         <span class="team-sport-badge">${sportIconHtml(t.sport,13)}${canonicalSport(t.sport)||'Sin deporte'}</span>
@@ -6891,8 +6910,8 @@ function renderTeamDetail(team) {
   const sub = S.teamSubview || 'rutina';
   let html=`<div class="team-detail-header">
     <button class="back-btn" data-back="team-list">‹</button>
-    <div class="team-detail-title" style="display:flex;align-items:center;gap:8px">
-      <div style="width:12px;height:12px;border-radius:50%;background:${team.color||'var(--purple)'}"></div>
+    <div class="team-detail-title" style="display:flex;align-items:center;gap:10px">
+      ${teamCrestHtml(team, 36)}
       ${team.name}${team.category?` / ${team.category}`:''}
     </div>
     ${team.sport?`<span class="team-sport-badge">${sportIconHtml(team.sport,13)}${canonicalSport(team.sport)}</span>`:''}
@@ -7568,8 +7587,8 @@ function rpSheet(team, members, kind, title, period, body) {
   return `<div class="rp-sheet">
     <button class="abtn abtn-p no-print rp-pdf" onclick="window.print()" title="Imprimir o guardar en PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg>PDF</button>
     <div class="rp-head">
-      <div><div class="rp-kind">${kind}</div><div class="rp-title">${title}</div>
-        <div class="rp-sub">${rpEsc(team.name)}${team.category?' · '+rpEsc(team.category):''} · ${members.length} atleta${members.length!==1?'s':''}</div></div>
+      <div class="rp-head-l">${team.crestUrl?`<img class="rp-team-crest" src="${team.crestUrl}" alt="">`:''}<div><div class="rp-kind">${kind}</div><div class="rp-title">${title}</div>
+        <div class="rp-sub">${rpEsc(team.name)}${team.category?' · '+rpEsc(team.category):''} · ${members.length} atleta${members.length!==1?'s':''}</div></div></div>
       <div class="rp-meta"><div class="rp-brand">G-Metrics</div><div>${period}</div><div class="rp-gen">Generado el ${rpDate(todayLocal())}</div></div>
     </div>
     ${body}
@@ -8179,6 +8198,7 @@ window.removeTeamPlayer = removeTeamPlayer;
 function renderTeamSettings(team) {
   return `<section class="tp-settings">
     <div class="tp-set-row"><span class="tp-k">Deporte</span><select class="abtn" onchange="setTeamSport('${team.id}',onSportSelect(this))">${sportOptionsHtml(team.sport)}</select></div>
+    <div class="tp-set-row"><span class="tp-k">Escudo</span><div class="tp-crest">${teamCrestHtml(team, 44)}<label class="abtn" id="crest-upload-btn">${team.crestUrl?'Cambiar':'Subir escudo'}<input type="file" accept="image/*" hidden id="crest-file" onchange="uploadTeamCrest(this,'${team.id}')"></label>${team.crestUrl?`<button class="abtn" onclick="removeTeamCrest('${team.id}')">Quitar</button>`:''}</div></div>
     <div class="tp-set-row"><span class="tp-k">Color</span><div class="tp-colors">${TEAM_COLORS.map(c=>`<button class="tp-color${team.color===c?' on':''}" style="background:${c}" onclick="setTeamColor('${team.id}','${c}')" aria-label="Color"></button>`).join('')}</div></div>
     <button class="abtn abtn-d tp-del" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>
   </section>`;
@@ -12606,6 +12626,129 @@ function handleCrestUpload(input, teamId, dateStr, idx) {
 }
 window.handleCrestUpload = handleCrestUpload;
 
+// Lee una imagen elegida y la achica en el celular antes de guardarla (mismo criterio
+// que la foto de perfil: dataURL en Firestore, sin Storage). mode 'cover' recorta para
+// llenar; 'contain' la entra entera con fondo transparente (escudos, que no son cuadrados).
+function readImageScaled(file, {w, h, mode='cover', type='image/jpeg', quality=0.78, maxLen=600000}) {
+  return new Promise((resolve, reject) => {
+    if(!file || !file.type.startsWith('image/')) return reject(new Error('Elegí un archivo de imagen'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        const sc = mode==='cover' ? Math.max(w/img.width, h/img.height) : Math.min(w/img.width, h/img.height);
+        const dw = img.width*sc, dh = img.height*sc;
+        ctx.drawImage(img, (w-dw)/2, (h-dh)/2, dw, dh);
+        const url = c.toDataURL(type, quality);
+        if(url.length > maxLen) return reject(new Error('La imagen es muy pesada, probá con otra'));
+        resolve(url);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+window.readImageScaled = readImageScaled;
+
+// ── Escudo del equipo (teams/{id}.crestUrl) ──
+// Sin escudo cargado se ve el punto de color de siempre.
+function teamCrestHtml(team, size) {
+  if(team?.crestUrl) return `<img class="tm-crest" src="${team.crestUrl}" width="${size}" height="${size}" alt="">`;
+  const d = Math.max(10, Math.round(size*0.4));
+  return `<span class="tm-dot" style="width:${d}px;height:${d}px;background:${team?.color||'var(--purple)'}"></span>`;
+}
+window.teamCrestHtml = teamCrestHtml;
+async function uploadTeamCrest(input, teamId) {
+  const t = S.teams.find(x=>x.id===teamId); if(!t) return;
+  try {
+    const url = await readImageScaled(input.files[0], {w:160, h:160, mode:'contain', type:'image/png', maxLen:300000});
+    await setDoc(doc(db,'teams',teamId), {crestUrl:url}, {merge:true});
+    t.crestUrl = url; if(S.teamView?.id===teamId) S.teamView.crestUrl = url;
+    showToast('✓ Escudo guardado'); renderMain();
+  } catch(e) { showToast(e.message||'No se pudo guardar el escudo'); }
+  input.value = '';
+}
+window.uploadTeamCrest = uploadTeamCrest;
+async function removeTeamCrest(teamId) {
+  const t = S.teams.find(x=>x.id===teamId); if(!t) return;
+  try {
+    await setDoc(doc(db,'teams',teamId), {crestUrl:deleteField()}, {merge:true});
+    delete t.crestUrl; if(S.teamView?.id===teamId) delete S.teamView.crestUrl;
+    showToast('Escudo quitado'); renderMain();
+  } catch(e) { showToast('No se pudo quitar el escudo'); }
+}
+window.removeTeamCrest = removeTeamCrest;
+
+// ── Portada y foto del profe (shared/branding: lo leen todos los atletas) ──
+// Se ve arriba del inicio de cada atleta, como el encabezado de un perfil.
+async function loadBranding() {
+  try { const s = await getDoc(doc(db,'shared','branding')); S.branding = s.exists() ? s.data() : {}; }
+  catch(e) { S.branding = S.branding || {}; }
+}
+window.loadBranding = loadBranding;
+function coachCardHtml(editing) {
+  const b = S.branding || {};
+  if(!editing && !b.coverUrl && !b.photoUrl && !b.name) return '';
+  const name = b.name || (editing ? 'Tu nombre' : '');
+  return `<div class="coach-card${b.coverUrl?'':' no-cover'}" id="coach-card">
+    <div class="coach-cover"${b.coverUrl?` style="background-image:url('${b.coverUrl}')"`:''}></div>
+    <div class="coach-row">${b.photoUrl ? `<img class="coach-photo" src="${b.photoUrl}" alt="">` : `<span class="coach-photo coach-ph">${escHtml((name||'P').trim().charAt(0).toUpperCase())}</span>`}
+      <div class="coach-txt"><b>${escHtml(name)}</b>${b.role?`<small>${escHtml(b.role)}</small>`:''}</div></div>
+  </div>`;
+}
+window.coachCardHtml = coachCardHtml;
+async function saveBranding(fields) {
+  S.branding = {...(S.branding||{}), ...fields};
+  try { await setDoc(doc(db,'shared','branding'), fields, {merge:true}); return true; }
+  catch(e) { showToast('No se pudo guardar'); return false; }
+}
+async function uploadBrandingImage(input, kind) {
+  try {
+    const url = kind==='cover'
+      ? await readImageScaled(input.files[0], {w:1200, h:400, mode:'cover', quality:0.75, maxLen:600000})
+      : await readImageScaled(input.files[0], {w:320, h:320, mode:'cover', quality:0.8, maxLen:200000});
+    if(await saveBranding(kind==='cover' ? {coverUrl:url} : {photoUrl:url})) { showToast(kind==='cover'?'✓ Portada guardada':'✓ Foto guardada'); renderMain(); }
+  } catch(e) { showToast(e.message||'No se pudo guardar la imagen'); }
+  input.value = '';
+}
+window.uploadBrandingImage = uploadBrandingImage;
+async function removeBrandingImage(kind) {
+  const f = kind==='cover' ? 'coverUrl' : 'photoUrl';
+  delete (S.branding||{})[f];
+  try { await setDoc(doc(db,'shared','branding'), {[f]:deleteField()}, {merge:true}); renderMain(); } catch(e) { showToast('No se pudo quitar'); }
+}
+window.removeBrandingImage = removeBrandingImage;
+async function saveBrandingText() {
+  const name = (document.getElementById('br-name')?.value||'').trim(), role = (document.getElementById('br-role')?.value||'').trim();
+  if(await saveBranding({name, role})) { showToast('✓ Guardado'); renderMain(); }
+}
+window.saveBrandingText = saveBrandingText;
+function renderBrandingEditor() {
+  const b = S.branding || {};
+  return `<div class="team-detail-header">
+    <button class="back-btn" data-back="admin-main">‹</button>
+    <div class="team-detail-title">Tu portada</div>
+  </div>
+  <p class="br-lead">Así te ven tus atletas arriba de su inicio.</p>
+  ${coachCardHtml(true)}
+  <div class="card br-form">
+    <div class="br-row"><span>Portada</span><div class="br-acts"><label class="abtn">${b.coverUrl?'Cambiar':'Subir'}<input type="file" accept="image/*" hidden id="br-cover" onchange="uploadBrandingImage(this,'cover')"></label>${b.coverUrl?`<button class="abtn" onclick="removeBrandingImage('cover')">Quitar</button>`:''}</div></div>
+    <div class="br-row"><span>Foto de perfil</span><div class="br-acts"><label class="abtn">${b.photoUrl?'Cambiar':'Subir'}<input type="file" accept="image/*" hidden id="br-photo" onchange="uploadBrandingImage(this,'photo')"></label>${b.photoUrl?`<button class="abtn" onclick="removeBrandingImage('photo')">Quitar</button>`:''}</div></div>
+    <label class="ask-l" for="br-name">Nombre que ven tus atletas</label>
+    <input class="ask-i" id="br-name" value="${escHtml(b.name||'')}" placeholder="Ej: Gonzalo Ganora">
+    <label class="ask-l" for="br-role">Debajo del nombre</label>
+    <input class="ask-i" id="br-role" value="${escHtml(b.role||'')}" placeholder="Ej: Preparador físico · Handball EDLP">
+    <button class="wellness-submit br-save" onclick="saveBrandingText()">Guardar</button>
+  </div>`;
+}
+window.renderBrandingEditor = renderBrandingEditor;
+function adminGoBranding() { S.adminView='branding'; renderMain(); }
+window.adminGoBranding = adminGoBranding;
+
 function changeWeek(d) {
   const start = new Date(S.startDate+'T00:00:00');
   start.setDate(start.getDate() - d*7);
@@ -12997,6 +13140,7 @@ function renderAdmin() {
     case 'wellness_detail': return renderWellnessDetail();
     case 'reminders': return renderReminderScreen();
     case 'trained_today': return renderTrainedTodayScreen();
+    case 'branding':      return renderBrandingEditor();
     default:               return renderAdminMain();
   }
 }
@@ -13012,6 +13156,7 @@ function renderAdminMain() {
     ${tile('adminGoRoutines()', '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>', 'Rutinas', nR+' rutina'+(nR!==1?'s':'')+' creada'+(nR!==1?'s':''))}
     ${tile("switchView('teams')", '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20c0-3 3-5 6-5M22 20c0-3-3-5-6-5"/>', 'Equipos', S.teams.length+' equipo'+(S.teams.length!==1?'s':''))}
     ${tile("switchView('library')", '<path d="M4 6h16M4 12h16M4 18h10"/>', 'Biblioteca de ejercicios', S.library.length+' ejercicios')}
+    ${tile('adminGoBranding()', '<rect x="3" y="4" width="18" height="10" rx="2"/><circle cx="8" cy="15" r="3"/><path d="M13 18h8"/>', 'Tu portada', (S.branding?.coverUrl||S.branding?.photoUrl) ? 'Lo que ven tus atletas' : 'Portada y foto para tus atletas')}
     ${tile('downloadFullBackup()', '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>', 'Descargar copia de todo', S._lastBackup ? 'Última: '+S._lastBackup : 'Guardala en tu compu o en Drive')}
     ${tile('signOut()', '<path d="M9 21H5V3h4M16 17l5-5-5-5M21 12H9"/>', 'Cerrar sesión', '', 'ap-out')}
   </div>`;
@@ -18196,7 +18341,7 @@ function renderAthleteHome() {
       <div class="home-row-m"><b>${hasTodayWellness?'Wellness hecho':'Completá tu wellness'}</b><small>${hasTodayWellness?wScore+'%':'Pendiente'}</small></div>
       ${hasTodayWellness?`<span class="home-ck">${check}</span>`:`<span class="home-go">${chev}</span>`}
     </div>`;
-  return `<div class="page-header home-head">
+  return `${coachCardHtml()}<div class="page-header home-head">
     <div class="page-subtitle">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
     <div class="page-title home-hi"><span>¡Hola${S.userData?.name?', '+esc(S.userData.name.trim().split(/\s+/).slice(-1)[0]):''}!</span>${streakChip}</div>
   </div>

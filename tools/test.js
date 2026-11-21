@@ -3,6 +3,7 @@
 // con Firebase falso y datos de prueba, en celular/iPad/escritorio, claro y oscuro.
 // Uso:  node tools/test.js            (completo: 3 tamaños)
 //       node tools/test.js --quick    (1 tamaño, para iterar)
+//       node tools/test.js --size=390 --only=regress   (un tamaño y una batería)
 // Sale con código 0 solo si NO hay fallas ni errores de consola. NO toca datos reales.
 const fs = require('fs'), path = require('path'), os = require('os'), http = require('http'), {execSync, spawn, spawnSync} = require('child_process');
 const puppeteer = require('./node_modules/puppeteer-core');
@@ -62,7 +63,10 @@ const quick = process.argv.includes('--quick');
   const seed = fs.readFileSync(path.join(__dirname, 'harness', 'seed_full.js'), 'utf8');
   const report = [];
   let failed = false;
-  for (const sc of (quick ? SCENARIOS.slice(0, 1) : SCENARIOS)) {
+  // --size=390 (o 768 / 1280): un solo tamaño, para reproducir una falla de ese tamaño
+  const sizeArg = (process.argv.find(a => a.startsWith('--size=')) || '').slice(7);
+  const scenarios = sizeArg ? SCENARIOS.filter(s => String(s.width) === sizeArg) : (quick ? SCENARIOS.slice(0, 1) : SCENARIOS);
+  for (const sc of scenarios) {
     // Un navegador nuevo por tamaño: con muchas pruebas seguidas Edge se cerraba solo antes de la última.
     if (sc !== SCENARIOS[0]) { try { await browser.disconnect(); } catch (e) {} killBrowser(); await launch(); }
     for (const script of SCRIPTS) {

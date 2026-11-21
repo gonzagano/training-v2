@@ -167,6 +167,11 @@
       const b=document.querySelector('#main .ob-back'), f=document.getElementById('onboarding-finish-btn'); ok(b&&f&&Math.abs(b.getBoundingClientRect().height-f.getBoundingClientRect().height)<2,'primer uso: Atrás y Finalizar con la misma altura');
       txtBad('primer uso');
       S.userData.onboardingComplete=keepOC; S.onboardingData=keepD; S.onboardingStep=keepStep; switchView('dashboard'); await wait(300); }
+    // Portada del profe arriba del inicio (sin portada cargada no aparece nada)
+    { const keepB=S.branding; S.branding={}; switchView('dashboard'); await wait(400); ok(!document.getElementById('coach-card'),'inicio: sin portada del profe no se muestra el recuadro');
+      S.branding={name:'Gonzalo Ganora',role:'Preparador físico'}; renderMain(); await wait(300);
+      const cc=document.getElementById('coach-card'); ok(!!cc&&/Gonzalo Ganora/.test(cc.innerText)&&/Preparador físico/.test(cc.innerText),'inicio: el atleta ve la portada, el nombre y el rol de su profe');
+      ok(document.documentElement.scrollWidth<=innerWidth+1,'inicio con portada: sin scroll horizontal'); S.branding=keepB; renderMain(); }
     // Logo nuevo (mancuerna con el gráfico que sube): encabezado e íconos de la app
     { ok(document.querySelector('#topbar .gm-word')?.textContent.trim()==='G-METRICS'&&!!document.querySelector('#topbar .app-logo img[src="logo-icon.svg"]'),'logo: encabezado con el ícono y "G-METRICS"');
       const man=await (await fetch('manifest.json')).json(); const mk=man.icons.find(i=>i.purpose==='maskable');

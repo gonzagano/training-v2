@@ -1,9 +1,9 @@
-const CACHE_NAME = 'gmetrics-20261121-b800571';
+const CACHE_NAME = 'gmetrics-20261121-54b36fa';
+// app.js y styles.css NO van acá: se guardan solos la primera vez que se piden, con su
+// ?v= de la versión (bajarlos también sin ?v= era 1,1 MB de más que nunca se usaba).
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css',
-  './app.js',
   './logo.svg',
   './logo-icon.svg',
   './manifest.json',
@@ -46,18 +46,38 @@ self.addEventListener('activate', (event) => {
 // puede romper la conexión en vivo de Firestore de forma intermitente, lo
 // que explicaría wellness que "no sube" sin ningún error visible. Ahora
 // Firestore queda completamente afuera de este service worker.
+//
+// VELOCIDAD (2026-11-21): antes TODO iba primero a internet, así que cada vez que se
+// abría la app se volvían a bajar app.js (1,1 MB) y styles.css aunque no hubieran
+// cambiado — en el celular eran varios segundos por apertura. Ahora:
+//  - archivos con ?v= (app.js, styles.css): el nombre cambia con cada publicación
+//    (release.js), así que si ya está guardado ES la versión correcta → se usa directo.
+//  - la página (index.html): primero internet (para enterarse de una versión nueva),
+//    pero si tarda más de 3 s se usa la guardada; la nueva queda para la próxima vez.
+//  - /api/: nunca se guarda (son respuestas del servidor).
+//  - el resto (íconos, logo): lo guardado al toque y se actualiza por atrás.
+const put = (req, res) => { if (res && res.ok) { const c = res.clone(); caches.open(CACHE_NAME).then((cache) => cache.put(req, c)).catch(() => {}); } return res; };
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  if (new URL(event.request.url).origin !== self.location.origin) return;
-  event.respondWith(
-    fetch(event.request, {cache:'no-store'})
-      .then((res) => {
-        const resClone = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone)).catch(() => {});
-        return res;
-      })
-      .catch(() => caches.match(event.request))
-  );
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;
+  if (url.searchParams.has('v')) {
+    event.respondWith(caches.match(req).then((hit) => hit || fetch(req, {cache:'no-store'}).then((res) => put(req, res))));
+    return;
+  }
+  if (req.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    const net = fetch(req, {cache:'no-store'}).then((res) => put(req, res));
+    event.respondWith(Promise.race([
+      net,
+      new Promise((r) => setTimeout(r, 3000)).then(() => caches.match(req)).then((hit) => hit || net),
+    ]).catch(() => caches.match(req)));
+    return;
+  }
+  const net = fetch(req, {cache:'no-store'}).then((res) => put(req, res));
+  net.catch(() => {}); // sin conexión y con copia guardada: no es un error
+  event.respondWith(caches.match(req).then((hit) => hit || net).catch(() => net));
 });
 
 // ── Web Push (notificaciones reales, aunque la app esté cerrada) ──────

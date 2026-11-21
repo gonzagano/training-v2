@@ -857,7 +857,7 @@
     const fl=document.querySelector('.af-line'); ok(!!fl&&/Equipo/i.test(fl.innerText)&&/Edad/i.test(fl.innerText)&&/21 años/.test(fl.innerText),'ficha: datos del atleta en una línea, cada uno con su nombre');
     ok(document.documentElement.scrollWidth<=innerWidth+1,'ficha: la línea de datos no se sale de la pantalla');
     goBackFromAthleteDetail(); await wait(400); switchView('admin'); S.adminView='main'; renderMain(); await wait(300);
-    ok(document.querySelectorAll('.ap-grid .ap-tile').length===7&&/Panel admin/.test(document.getElementById('main').innerText),'panel admin: 7 tarjetas (con "Descargar copia de todo")');
+    ok(document.querySelectorAll('.ap-grid .ap-tile').length===8&&/Panel admin/.test(document.getElementById('main').innerText),'panel admin: 8 tarjetas (con "Tu portada" y "Descargar copia de todo")');
     document.querySelector('.ap-tile[onclick="adminGoRoutines()"]').click(); await wait(600); ok(S.adminView==='routines','panel admin: la tarjeta Rutinas abre Gestión de rutinas');
     S.adminView='main'; renderMain(); await wait(200); txtBad('panel admin en tarjetas'); }
   // ── menús y modales ──
@@ -880,6 +880,28 @@
     ok(bk&&bk.colecciones.personal&&bk.colecciones.personal.u1&&bk.colecciones.teams&&bk.colecciones.teams.t1&&bk.colecciones.routines,'copia: trae datos personales, equipos y rutinas');
     ok(bk&&JSON.stringify(bk.colecciones.personal.u1)===JSON.stringify(D.personal.u1),'copia: los datos del atleta salen completos e iguales a la base');
     await wait(300); ok(/Última:/.test(document.querySelector('#main')?.innerText||''),'panel admin: muestra la fecha de la última copia'); }
+  // ── escudo del equipo y portada del profe (imágenes reales armadas con canvas, como si las eligiera del celular) ──
+  { const img=async(w,h,col)=>{ const cv=document.createElement('canvas'); cv.width=w; cv.height=h; const c=cv.getContext('2d'); c.fillStyle=col; c.fillRect(0,0,w,h); const b=await new Promise(r=>cv.toBlob(r,'image/png')); return new File([b],'img.png',{type:'image/png'}); };
+    const DB=()=>JSON.parse(localStorage.getItem('__db'));
+    S.atletaView=null; S._inAthleteDetail=false; switchView('teams'); await wait(500); openTeam('t1'); await wait(1500);
+    toggleTeamSettings(); await wait(300); ok(!!document.getElementById('crest-file'),'equipo: en Ajustes del equipo se puede subir el escudo');
+    await uploadTeamCrest({files:[await img(300,200,'#c33')],value:''},'t1'); await wait(500);
+    ok(/^data:image\/png/.test(DB().teams.t1.crestUrl||''),'escudo: queda guardado en el equipo');
+    ok(!!document.querySelector('.team-detail-title img.tm-crest'),'escudo: se ve al lado del nombre del equipo');
+    setTeamSubview('reporte'); await wait(900); ok(!!document.querySelector('.rp-sheet .rp-team-crest'),'escudo: aparece en la hoja del informe');
+    switchView('teams'); await wait(500); ok(!!document.querySelector('.team-card img.tm-crest'),'escudo: se ve en la lista de equipos');
+    openTeam('t1'); await wait(1200); S._teamSettingsOpen='t1'; await removeTeamCrest('t1'); await wait(400);
+    ok(!DB().teams.t1.crestUrl&&!document.querySelector('.team-detail-title img.tm-crest')&&!!document.querySelector('.team-detail-title .tm-dot'),'escudo: se puede quitar y vuelve el punto de color');
+    S._teamSettingsOpen=null;
+    switchView('admin'); await wait(300); adminGoBranding(); await wait(300);
+    ok(!!document.getElementById('coach-card')&&!!document.getElementById('br-cover'),'portada: el profe ve cómo lo ven sus atletas y puede subir portada');
+    await uploadBrandingImage({files:[await img(1600,900,'#246')],value:''},'cover'); await wait(400);
+    await uploadBrandingImage({files:[await img(500,500,'#8ae')],value:''},'photo'); await wait(400);
+    document.getElementById('br-name').value='Gonzalo Ganora'; document.getElementById('br-role').value='Preparador físico'; await saveBrandingText(); await wait(400);
+    const br=DB().shared?.branding||{};
+    ok(/^data:image\/jpeg/.test(br.coverUrl||'')&&/^data:image\/jpeg/.test(br.photoUrl||'')&&br.name==='Gonzalo Ganora'&&br.role==='Preparador físico','portada: queda guardada donde la leen los atletas (shared/branding)');
+    ok(/Gonzalo Ganora/.test(document.getElementById('coach-card')?.innerText||'')&&!!document.querySelector('#coach-card .coach-photo[src]'),'portada: la vista previa muestra foto y nombre');
+    txtBad('portada del profe'); switchView('admin'); }
   // ── diálogo propio en vez de prompt(): crear equipo (dos escenarios: cancelar y crear) ──
   { const n0=S.teams.length; switchView('teams'); await wait(500);
     ok(/Equipos/.test(document.querySelector('.pg-head-t')?.textContent||''),'equipos: título de pantalla con el mismo estilo que el resto');

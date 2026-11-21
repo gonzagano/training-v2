@@ -2001,6 +2001,32 @@ html{-webkit-tap-highlight-color:transparent}
 .ob-sum div:last-child{border-bottom:0}
 .ob-sum dt{color:var(--text2);font-size:15px}
 .ob-sum dd{margin:0;font-weight:700;font-size:15px;text-align:right;min-width:0;overflow-wrap:anywhere}
+/* Escudo de equipo (teamCrestHtml): imagen entera, sin recortar; si no hay, el punto de color */
+.tm-crest{object-fit:contain;flex-shrink:0;display:block}
+.tm-dot{display:inline-block;border-radius:50%;flex-shrink:0}
+.tp-crest{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tp-crest label.abtn{cursor:pointer}
+.rp-head-l{display:flex;align-items:flex-end;gap:14px;min-width:0}
+.rp-team-crest{width:56px;height:56px;object-fit:contain;flex-shrink:0}
+@media screen and (max-width:600px){.rp-head-l{flex-direction:column;align-items:flex-start;gap:8px}.rp-team-crest{width:44px;height:44px}}
+/* Portada del profe (shared/branding): arriba del inicio de cada atleta, como un perfil */
+.coach-card{background:var(--bg2);border-radius:16px;overflow:hidden;margin-bottom:16px;max-width:560px}
+.coach-cover{height:110px;background:linear-gradient(135deg,#243B6B,#2F4A85) center/cover no-repeat}
+.coach-card.no-cover .coach-cover{height:56px}
+/* Solo la foto se mete sobre la portada; el texto arranca debajo de ella */
+.coach-row{display:flex;align-items:flex-start;gap:12px;padding:0 16px 14px;margin-top:-30px}
+.coach-photo{width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid var(--bg2);flex-shrink:0;background:var(--bg3)}
+.coach-ph{display:flex;align-items:center;justify-content:center;font:700 22px 'Barlow Condensed',sans-serif;color:var(--text)}
+.coach-txt{display:flex;flex-direction:column;min-width:0;padding-top:36px}
+.coach-txt b{font-size:17px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.coach-txt small{font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.br-lead{color:var(--text2);font-size:15px;margin:0 0 12px}
+.br-form{padding:16px;max-width:560px}
+.br-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
+.br-row > span{font-weight:600}
+.br-acts{display:flex;gap:8px}
+.br-acts label.abtn{cursor:pointer}
+.br-save{width:100%;margin:18px 0 0}
 /* Esqueleto de carga (skelHtml): la forma de lo que viene, con un brillo que pasa */
 .sk-wrap{display:grid;gap:12px}
 .sk{display:block;background:var(--bg3);border-radius:10px;position:relative;overflow:hidden}

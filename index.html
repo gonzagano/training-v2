@@ -14,7 +14,7 @@
 <title>G-Metrics Performance Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Barlow+Condensed:wght@500;600;700&family=Chakra+Petch:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261121-b800571">
+<link rel="stylesheet" href="styles.css?v=20261121-54b36fa">
 <script>(function(){
   var t=localStorage.getItem('gm-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');
   var accents={navy:['#243B6B','#2F4A85'],teal:['#0E7C6B','#159686'],purple:['#5B3E96','#6F4FB2'],wine:['#A83250','#C23F61'],forest:['#256D4B','#2E8560'],orange:['#C1601F','#D97328']};
@@ -399,10 +399,10 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Chart.js for evaluations -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Chart.js (gráficos). "defer": se baja en paralelo y no frena el arranque; igual corre antes que app.js (va primero) -->
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <!-- App (JS separado) -->
-<script type="module" src="app.js?v=20261121-b800571"></script>
+<script type="module" src="app.js?v=20261121-54b36fa"></script>
 </body>
 </html>
