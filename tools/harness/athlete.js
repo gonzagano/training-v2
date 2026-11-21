@@ -85,10 +85,16 @@
   { switchView('session'); await wait(500); S.currentSession='Día 1'; S.rmCalcTabActive=false; renderMain(); await wait(500);
     const row=document.getElementById('exrow-x1'); ok(!!row,'sesión: está la sentadilla');
     if(row){ const ld=row.querySelector('input.field-inp.load'); ld.value='100'; ld.dispatchEvent(new Event('change',{bubbles:true}));
-      const rp=[...row.querySelectorAll('input.field-inp')].find(i=>/'rpe'/.test(i.getAttribute('onchange')||'')); rp.value='8'; rp.dispatchEvent(new Event('change',{bubbles:true})); await wait(1500);
+      const rp=row.querySelector('select.rpe-sel'); ok(!!rp&&[...rp.options].some(o=>o.value==='8.5'&&o.textContent==='8,5')&&rp.options[1].value==='10','sesión: el RPE es una lista con medios puntos (8,5) y el 10 arriba'); rp.value='8'; rp.dispatchEvent(new Event('change',{bubbles:true})); await wait(1500);
       const pr=prescribedRepsForRM(getExPrescriptionForWeek(S.assignedRoutine.sessions['Día 1'].flatMap(b=>b.categories[0].exercises).find(x=>x.id==='x1'), toRoutineRelativeWeek(getRoutineWeek(),S.userData)).reps).reps;
       const want=Math.round(100/rpePct(pr,8)*2)/2;
-      ok(S.oneRM.sentadilla_barra===want&&JSON.parse(localStorage.getItem('__db')).personal.u1.oneRM.sentadilla_barra===want,'atleta: su RM pasó a '+want+' kg y quedó guardado ('+S.oneRM.sentadilla_barra+')'); } }
+      ok(S.oneRM.sentadilla_barra===want&&JSON.parse(localStorage.getItem('__db')).personal.u1.oneRM.sentadilla_barra===want,'atleta: su RM pasó a '+want+' kg y quedó guardado ('+S.oneRM.sentadilla_barra+')');
+      const rp2=document.getElementById('exrow-x1').querySelector('select.rpe-sel'); rp2.value='8.5'; rp2.dispatchEvent(new Event('change',{bubbles:true})); await wait(1500);
+      const want2=Math.round(100/rpePct(pr,8.5)*2)/2;
+      ok(JSON.parse(localStorage.getItem('__db')).personal.u1.history[Object.keys(JSON.parse(localStorage.getItem('__db')).personal.u1.history).find(k=>/Día 1$/.test(k)&&JSON.parse(localStorage.getItem('__db')).personal.u1.history[k]?.exercises?.x1?.rpe==='8.5')]&&S.oneRM.sentadilla_barra===want2,'atleta: RPE 8,5 desde la lista queda guardado y mueve el RM ('+S.oneRM.sentadilla_barra+' / '+want2+')');
+      { const C=(v,t)=>getIntensityColor(v,t||'RPE'), az='#3b7dd8', na='#f0a030', ro='#e05030';
+        ok(C(4)===az&&C(6)===az&&C(6.5)===az&&C(7)===na&&C(8.5)===na&&C(9)===ro&&C(10)===ro&&C(0,'RIR')===ro&&C(2,'RIR')===na&&C(5,'RIR')===az,'RPE: 4-6 azul, 7-8 naranja, 9-10 rojo (y el RIR al revés)'); }
+      renderMain(); await wait(300); const rp3=document.getElementById('exrow-x1')?.querySelector('select.rpe-sel'); ok(rp3&&rp3.value==='8.5','sesión: al volver a dibujar, la lista muestra el 8,5 elegido'); } }
   // ── el atleta también ve por qué está así su ACWR ──
   { switchView('dashboard'); await wait(600); const tap=document.querySelector('#main .ax-tap'); ok(!!tap,'inicio: el ACWR se puede tocar');
     if(tap){ tap.click(); await wait(300); const t=document.querySelector('#acwr-overlay')?.innerText||''; ok(/Tu carga, explicada/.test(t)&&/Carga por semana/i.test(t)&&!/undefined|NaN/.test(t),'atleta: ve la explicación de su ACWR'); closeAcwrExplain(); } }

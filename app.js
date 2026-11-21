@@ -3238,10 +3238,24 @@ function prescribedRepsForRM(reps) {
   const t = String(reps==null?'':reps).trim();
   let m = /^(\d+)$/.exec(t); if(m) return {reps:+m[1], range:false};
   m = /^(\d+)\s*(?:-|–|—|a)\s*(\d+)$/.exec(t); if(m) return {reps:Math.min(+m[1],+m[2]), range:true};
-  // Por serie ("8/8/6", "10+10", "5, 3, 1"…): se toma la PRIMERA cantidad prescripta.
-  m = /^\D*?(\d+)/.exec(t); if(m && +m[1]>0) return {reps:+m[1], range:false, first:true, txt:t};
+  // Por serie ("8/6/4", "10+10", "5, 3, 1"…): se toma la ÚLTIMA cantidad, la que va con la última carga anotada.
+  const nums = t.match(/\d+/g); if(nums && +nums[nums.length-1]>0) return {reps:+nums[nums.length-1], range:false, last:true, txt:t};
   return null;
 }
+// Lo que el atleta escribe en "carga": "70/80/85" (una carga por serie o tramo) y,
+// si hizo otras reps que las prescriptas, "6x70" o "70x6" (el número chico son las reps).
+function parseLoadSets(t) {
+  const s = String(t==null?'':t).toLowerCase().replace(/kgs?|kilos?/g,' ').replace(/,(?=\s|$)/g,' ').replace(/\s*[x×*]\s*/g,'x').trim();
+  if(!s) return [];
+  return s.split(/[\/;\-–—+]+|\s+/).map(seg=>{
+    const m = /^(\d+(?:[.,]\d+)?)(?:x(\d+(?:[.,]\d+)?))?$/.exec(seg); if(!m) return null;
+    const a = parseFloat(m[1].replace(',','.')), b = m[2]!=null ? parseFloat(m[2].replace(',','.')) : null;
+    if(b==null) return {kg:a, reps:null};
+    const reps = Math.min(a,b);
+    return {kg:Math.max(a,b), reps:Number.isInteger(reps) && reps>0 ? reps : null};
+  }).filter(x=>x && x.kg>0);
+}
+window.parseLoadSets = parseLoadSets;
 function latestRMEstimates(history, routine, userData, overrides) {
   if(!routine || !history) return {};
   const names = getOrderedSessionNames(routine);
@@ -3260,14 +3274,16 @@ function latestRMEstimates(history, routine, userData, overrides) {
       const ov = routine.id ? getExerciseOverride(overrides, routine.id, sName, ex.id) : null;
       const wp = getExDisplayForWeek(ex, week, toRoutineRelativeWeek(week, userData), ov);
       const info = {week, sName, exName:wp.name||ex.name, load:d.load, rpeTxt:d.rpe, repsTxt:wp.reps};
-      const kg = parseLoadKg(d.load); if(!(kg>0)) { skip(ex.rmLift, order, {...info, why:'no tiene kilos'}); return; }
+      // La ÚLTIMA carga anotada, con las reps que anotó junto a ella o, si no, las últimas prescriptas.
+      const sets = parseLoadSets(d.load), lastSet = sets[sets.length-1];
+      const kg = lastSet?.kg; if(!(kg>0)) { skip(ex.rmLift, order, {...info, why:'no tiene kilos'}); return; }
       const raw = parseFloat(String(d.rpe??'').replace(',','.')); if(!isFinite(raw)) { skip(ex.rmLift, order, {...info, why:'no tiene RPE'}); return; }
-      const pr = prescribedRepsForRM(wp.reps); if(!pr) { skip(ex.rmLift, order, {...info, why: wp.reps ? `las reps prescriptas son "${wp.reps}" (no tiene ningún número)` : 'no tiene reps prescriptas esa semana'}); return; }
+      const pr = lastSet.reps ? {reps:lastSet.reps, range:false, manual:true} : prescribedRepsForRM(wp.reps); if(!pr) { skip(ex.rmLift, order, {...info, why: wp.reps ? `las reps prescriptas son "${wp.reps}" (no tiene ningún número)` : 'no tiene reps prescriptas esa semana'}); return; }
       const rpe = (wp.intensityType||ex.intensityType||'RPE')==='RIR' ? 10-raw : raw;
       // Lejos del fallo (RPE menor a 7 / RIR mayor a 3) la tabla extrapola demasiado: no mueve el RM.
       if(rpe < RM_AUTO_MIN_RPE) { skip(ex.rmLift, order, {...info, why:`es RPE ${fmtKg(rpe)}: para estimar el RM tiene que ser RPE ${RM_AUTO_MIN_RPE} o más (RIR ${10-RM_AUTO_MIN_RPE} o menos)`}); return; }
       const e1 = rmFromRpe(kg, pr.reps, rpe); if(!e1) { skip(ex.rmLift, order, {...info, why:'queda fuera de la tabla (1 a 12 reps, RPE 4,5 a 10)'}); return; }
-      const e = {rm:Math.round(e1*2)/2, kg, reps:pr.reps, range:pr.range, first:!!pr.first, repsTxt:pr.txt||'', rpe, week, sName, exName:wp.name||ex.name, date:rec.date||null, order};
+      const e = {rm:Math.round(e1*2)/2, kg, reps:pr.reps, range:pr.range, last:!!pr.last, manual:!!pr.manual, repsTxt:pr.txt||'', rpe, week, sName, exName:wp.name||ex.name, date:rec.date||null, order};
       const cur = cand[ex.rmLift];
       if(!cur || e.order>cur.order || (e.order===cur.order && e.rm>cur.rm)) cand[ex.rmLift] = e;
     })));
@@ -3283,7 +3299,7 @@ function rmAutoChanges(oneRM, oneRMAuto, est) {
   const out = [];
   Object.entries(est||{}).forEach(([lift, e])=>{
     if(oneRMAuto?.[lift]?.sig === e.sig) return;
-    out.push({lift, value:e.rm, meta:{sig:e.sig, rm:e.rm, kg:e.kg, reps:e.reps, range:e.range, first:!!e.first, repsTxt:e.repsTxt||'', rpe:e.rpe, exName:e.exName, sName:e.sName, week:e.week, date:e.date||todayLocal(), prev:(oneRM?.[lift]??null)}});
+    out.push({lift, value:e.rm, meta:{sig:e.sig, rm:e.rm, kg:e.kg, reps:e.reps, range:e.range, last:!!e.last, manual:!!e.manual, repsTxt:e.repsTxt||'', rpe:e.rpe, exName:e.exName, sName:e.sName, week:e.week, date:e.date||todayLocal(), prev:(oneRM?.[lift]??null)}});
   });
   return out;
 }
@@ -3312,7 +3328,7 @@ async function adminAutoRM(a) {
 function rmAutoNote(meta) {
   if(!meta) return '';
   const f = meta.date ? new Date(meta.date+'T00:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'numeric'}) : '';
-  return `Se actualizó solo${f?' el '+f:''}: ${meta.exName} ${fmtKg(meta.kg)} kg × ${meta.reps}${meta.range?' (rango, se toma el menor)':''}${meta.first?` (de "${meta.repsTxt}", se toma la primera)`:''} a RPE ${fmtKg(meta.rpe)}`;
+  return `Se actualizó solo${f?' el '+f:''}: ${meta.exName} ${fmtKg(meta.kg)} kg × ${meta.reps}${meta.range?' (rango, se toma el menor)':''}${meta.manual?' (reps que anotó)':meta.last?` (de "${meta.repsTxt}", se toma la última)`:meta.first?` (de "${meta.repsTxt}", se toma la primera)`:''} a RPE ${fmtKg(meta.rpe)}`;
 }
 window.latestRMEstimates=latestRMEstimates; window.rmAutoChanges=rmAutoChanges; window.athleteAutoRM=athleteAutoRM; window.adminAutoRM=adminAutoRM; window.prescribedRepsForRM=prescribedRepsForRM; window.rmAutoNote=rmAutoNote;
 
@@ -3676,7 +3692,7 @@ function renderExRow(ex,blockId,catIdx,forceReadOnly=false) {
           <div class="field-box"><span class="field-lbl" style="color:var(--green)">Carga real (kg)</span>
             <input class="field-inp load" type="text" placeholder="—" value="${d.load||''}" onchange="setField('${ex.id}','load',this.value)" style="border-color:rgba(212,100,122,0.35)"></div>
           <div class="field-box"><span class="field-lbl" style="color:var(--amber)">${intensityType} ejercicio</span>
-            <input class="field-inp" type="number" min="${isRIR?0:1}" max="10" placeholder="—" value="${d.rpe||''}" onchange="setField('${ex.id}','rpe',this.value);this.style.borderColor=getIntensityColor(+this.value,'${intensityType}')" style="border-color:${d.rpe?getIntensityColor(+d.rpe,intensityType):'rgba(198,124,15,0.4)'}"></div>
+            ${rpeSelectHtml(d.rpe, isRIR, `setField('${ex.id}','rpe',this.value);this.style.borderColor=this.value?getIntensityColor(+this.value,'${intensityType}'):''`, `border-color:${d.rpe?getIntensityColor(+String(d.rpe).replace(',','.'),intensityType):'rgba(198,124,15,0.4)'}`)}</div>
           ${vbtF}
         ` : `
           <div class="field-box"><span class="field-lbl">Series</span>
@@ -3774,6 +3790,17 @@ function updateBlockCheckmark(rowEl) {
 }
 window.updateBlockCheckmark = updateBlockCheckmark;
 
+// RPE/RIR del atleta como lista: de a medio punto (8,5) y lo más duro arriba.
+const RPE_OPTS = [10,9.5,9,8.5,8,7.5,7,6.5,6,5.5,5,4,3,2,1], RIR_OPTS = [0,1,2,3,4,5,6];
+function rpeSelectHtml(val, isRIR, onchange, style) {
+  const raw = val==null ? '' : String(val).trim(), n = parseFloat(raw.replace(',','.'));
+  const opts = isRIR ? RIR_OPTS : RPE_OPTS;
+  const known = raw==='' || opts.includes(n);
+  return `<select class="field-inp rpe-sel" onchange="${onchange}" style="${style||''}"><option value="">—</option>`
+    + (known ? '' : `<option value="${attrEsc(raw)}" selected>${attrEsc(raw)}</option>`)
+    + opts.map(o=>`<option value="${o}"${known && raw!=='' && n===o?' selected':''}>${String(o).replace('.',',')}</option>`).join('') + '</select>';
+}
+window.rpeSelectHtml = rpeSelectHtml;
 function setField(exId,field,val) {
   const d=getED(getRoutineWeek(),S.currentSession,exId);
   stampExerciseName(d, exId);
@@ -6129,11 +6156,12 @@ function renderInjuryStudies(zid, inj, ownerUid) {
 }
 window.renderInjuryStudies = renderInjuryStudies;
 
+// 1-3 verde, 4-6 azul, 7-8 naranja, 9-10 rojo (los medios puntos van con el de abajo: 8,5 naranja).
 function getRPEColor(v) {
-  if(v<=3) return '#34c97a';
-  if(v<=6) return '#f0a030';
-  if(v<=8) return '#e05030';
-  return '#3b7dd8';
+  if(v<4) return '#34c97a';
+  if(v<7) return '#3b7dd8';
+  if(v<9) return '#f0a030';
+  return '#e05030';
 }
 window.getRPEColor=getRPEColor;
 
@@ -6143,12 +6171,7 @@ window.getRPEColor=getRPEColor;
 // RIR pintaría un 1 (casi al fallo) de verde, como si fuera fácil — al revés
 // de lo que es.
 function getIntensityColor(v, type) {
-  if (type === 'RIR') {
-    if (v<=1) return '#e05030';
-    if (v<=3) return '#f0a030';
-    return '#34c97a';
-  }
-  return getRPEColor(v);
+  return getRPEColor(type === 'RIR' ? 10 - v : v);
 }
 window.getIntensityColor = getIntensityColor;
 

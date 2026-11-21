@@ -278,7 +278,16 @@
     ok(rpePct(13,9)===null&&rpePct(3,4)===null&&rpePct(3,9.2)===0.892,'1RM por RPE: fuera de tabla no inventa; RPE se redondea al medio punto');
     ok(roundPlate(83)===82.5&&roundPlate(83.8)===85&&fmtKg(82.5)==='82,5','redondeo al disco de 2,5 kg'); }
   // ── el RM se actualiza SOLO con lo último que registró, usando las reps prescriptas ──
-  { ok(prescribedRepsForRM('6').reps===6&&prescribedRepsForRM('6–8').reps===6&&prescribedRepsForRM('8-6').reps===6&&prescribedRepsForRM('5/3/1').reps===5&&prescribedRepsForRM('8/8/6').reps===8&&prescribedRepsForRM('AMRAP')===null&&prescribedRepsForRM('')===null,'reps prescriptas: número, rango (toma el menor) y formatos que no cuentan');
+  { ok(prescribedRepsForRM('6').reps===6&&prescribedRepsForRM('6–8').reps===6&&prescribedRepsForRM('8-6').reps===6&&prescribedRepsForRM('5/3/1').reps===1&&prescribedRepsForRM('8/6/4').reps===4&&prescribedRepsForRM('AMRAP')===null&&prescribedRepsForRM('')===null,'reps prescriptas: número, rango (toma el menor), por serie (toma la última) y formatos que no cuentan');
+    { const L=t=>JSON.stringify(parseLoadSets(t));
+      ok(L('70/80/85')==='[{"kg":70,"reps":null},{"kg":80,"reps":null},{"kg":85,"reps":null}]'&&L('6x70')==='[{"kg":70,"reps":6}]'&&L('70 x 6')==='[{"kg":70,"reps":6}]'&&L('70/80/6x85')==='[{"kg":70,"reps":null},{"kg":80,"reps":null},{"kg":85,"reps":6}]'&&L('72,5/80 kg')==='[{"kg":72.5,"reps":null},{"kg":80,"reps":null}]'&&L('70, 80, 85').length>20&&parseLoadSets('70, 80, 85').length===3&&parseLoadSets('').length===0,'carga anotada: varias cargas, reps a mano (6x70 o 70x6) y coma decimal ('+L('70/80/6x85')+')');
+      const rt={id:'trm', sessions:{'Día 1':[{id:'b',categories:[{exercises:[{id:'p1',name:'Press plano',rmLift:'press_plano',series:'3',reps:'8/6/4',rpe:'8'}]}]}]}};
+      const est=load=>latestRMEstimates({'w1-Día 1':{date:'2099-01-01',exercises:{p1:{load,rpe:'8'}}}}, rt, {}, {}).press_plano;
+      const a=est('70/80/85'), b=est('70/80/6x85'), c=est('85'), d=est('70/80/85x4');
+      ok(a&&a.kg===85&&a.reps===4&&a.rm===105&&a.last,'RM: 8/6/4 con 70/80/85 a RPE 8 → última carga × últimas reps (85 × 4 = 105), no 85 × 8 ('+(a&&a.rm)+')');
+      ok(b&&b.kg===85&&b.reps===6&&b.manual&&b.rm===111.5,'RM: si anotó 6x85 usa sus 6 reps (85 × 6 @8 = 111,5) ('+(b&&b.rm)+')');
+      ok(c&&c.reps===4&&d&&d.reps===4&&d.manual,'RM: una sola carga también va con las últimas reps prescriptas');
+      ok(/se toma la última/.test(rmAutoNote(a))&&/reps que anotó/.test(rmAutoNote(b)),'ficha: explica de dónde salió ('+rmAutoNote(b)+')'); }
     S.atletaView=null; switchView('atletas'); await wait(1200);
     const a0=S.adminAthletes.find(x=>x.uid==='u0'); await ensureGroupPersonalData(['u0']);
     { const dbx=JSON.parse(localStorage.getItem('__db')); const keep=dbx.personal.u0.history._sessionLogs; dbx.personal.u0.history={_sessionLogs:keep}; delete dbx.personal.u0.oneRMAuto; localStorage.setItem('__db',JSON.stringify(dbx)); a0._personal.history={_sessionLogs:keep}; delete a0._personal.oneRMAuto; }
@@ -480,11 +489,11 @@
     x2.progression=[{series:'4',reps:'8'},{series:'4',reps:'8'},{series:'4',reps:'8/6/4'},{series:'4',reps:'AMRAP'}]; const dbx=JSON.parse(localStorage.getItem('__db')); Object.values(dbx.routines.r1.sessions).flat().flatMap(b=>b.categories[0].exercises).find(e=>e.id==='x2').progression=x2.progression; localStorage.setItem('__db',JSON.stringify(dbx));
     put('w3-'+sess,{date:'2099-02-01', exercises:{x2:{load:100, rpe:8, checked:true}}});
     goBackFromAthleteDetail(); await wait(400); openAtleta('u2'); await wait(1800);
-    ok(P().oneRM.press_plano===Math.round(100/rpePct(8,8)*2)/2,'reps "8/6/4": se usa la primera (100 × 8 @8 → '+P().oneRM.press_plano+')');
+    ok(P().oneRM.press_plano===Math.round(100/rpePct(4,8)*2)/2,'reps "8/6/4": se usa la última (100 × 4 @8 → '+P().oneRM.press_plano+')');
     put('w4-'+sess,{date:'2099-03-01', exercises:{x2:{load:110, rpe:9, checked:true}}});
     goBackFromAthleteDetail(); await wait(400); openAtleta('u2'); await wait(1800); setAtletaSubview('perfil'); await wait(500);
     const sk=document.querySelector('.rm-skip'); ok(!!sk&&/semana 4/.test(sk.textContent)&&/AMRAP/.test(sk.textContent),'ficha: avisa el registro que no se pudo usar y por qué ('+(sk?sk.textContent:'nada')+')');
-    ok(/se toma la primera/.test(document.getElementById('main').innerText),'ficha: aclara que se tomó la primera cantidad');
+    ok(/se toma la última/.test(document.getElementById('main').innerText),'ficha: aclara que se tomó la última cantidad');
     txtBad('ficha con aviso de RM'); goBackFromAthleteDetail(); await wait(400); }
   // ── evolución de un test sin ningún registro: no se rompe ──
   { let okE=true; try { const a0={_personal:{evals:{}}}; const d=athleteEvolData(a0,[a0,a0],'cmj'); okE = d && d.rankTo===null && d.gain===null; } catch(e){ okE=false; } ok(okE,'evolución de un test sin registros: no tira error'); }
@@ -811,7 +820,7 @@
     // crear ejercicio: el formulario se desplaza y el botón no desaparece
     openLib(null,null); showLibNewExerciseForm(); await wait(100);
     ok(getComputedStyle(document.getElementById('lib-new-wrap')).overflowY==='auto'&&getComputedStyle(document.querySelector('.lib-new-btn')).position==='sticky','crear ejercicio: "+ Agregar" queda siempre a la vista');
-    selectMainCategoryChip('lib-new-tags-picker','_newExTags','Movilidad'); await wait(400);
+    selectMainCategoryChip('lib-new-tags-picker','_newExTags','Movilidad'); for(let i=0;i<30&&document.querySelector('.lib-new-btn').getBoundingClientRect().bottom>innerHeight;i++) await wait(100);
     { const r=document.querySelector('.lib-new-btn').getBoundingClientRect();
       ok(r.bottom<=innerHeight&&r.top>=0&&getComputedStyle(document.getElementById('lib-list')).display==='none','crear ejercicio: con Movilidad (muchas opciones) "+ Agregar" sigue en pantalla ('+Math.round(r.bottom)+'/'+innerHeight+')'); }
     hideLibNewExerciseForm(); ok(getComputedStyle(document.getElementById('lib-list')).display!=='none','crear ejercicio: al ocultar el formulario vuelve la lista');
