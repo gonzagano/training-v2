@@ -1980,9 +1980,12 @@ html{-webkit-tap-highlight-color:transparent}
 .gm-word-sm{font-size:17px}
 .gm-tag{font-family:'Chakra Petch',sans-serif;font-weight:500;font-size:11px;letter-spacing:.42em;color:var(--text2);margin-top:8px;padding-top:7px;border-top:1px solid var(--border2);white-space:nowrap}
 .gm-lockup{display:flex;align-items:center;justify-content:center;gap:14px;margin:0 auto 24px}
-/* Ícono de la app: esquinas proporcionales al tamaño (como los íconos del celular) */
-.gm-lockup img,.app-logo img,.gm-loading-ic{border-radius:23%;flex-shrink:0}
-.gm-loading-ic{width:96px;height:96px}
+/* Logo sin recuadro (#gm-mark en index.html): G azul marino sobre fondo claro, blancas sobre fondo oscuro.
+   La barra de arriba del celular es siempre oscura; en la compu toma el fondo del tema. */
+.lm{--lm-g:#243B6B;--lm-o:#fff;--lm-c:#2F4A85;flex-shrink:0;display:block}
+[data-theme="dark"] .lm,#topbar .lm{--lm-g:#fff;--lm-o:#243B6B;--lm-c:#8FA8EA}
+@media(min-width:900px){:root:not([data-theme="dark"]) #topbar .lm{--lm-g:#243B6B;--lm-o:#fff;--lm-c:#2F4A85}}
+.gm-loading-ic{width:150px;height:150px}
 /* Barra de arriba en celular: siempre oscura (fondo o navy), así que el nombre va en blanco y la G en celeste */
 #topbar .gm-word{color:#fff}
 #topbar .gm-g{color:#8FA8EA}

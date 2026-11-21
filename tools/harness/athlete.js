@@ -182,7 +182,9 @@
       ok(!!document.querySelector('.home-hi .home-hi-n img.home-me'),'inicio: su foto aparece a la derecha del "Hola"');
       ok(document.documentElement.scrollWidth<=innerWidth+1,'inicio con foto: sin scroll horizontal'); S.userData.photoUrl=keepP; S.branding=keepB; renderMain(); }
     // Logo nuevo (mancuerna con el gráfico que sube): encabezado e íconos de la app
-    { ok(document.querySelector('#topbar .gm-word')?.textContent.trim()==='G-METRICS'&&!!document.querySelector('#topbar .app-logo img[src="logo-icon.svg"]'),'logo: encabezado con el ícono y "G-METRICS"');
+    { ok(document.querySelector('#topbar .gm-word')?.textContent.trim()==='G-METRICS'&&!!document.querySelector('#topbar .app-logo svg.lm use[href="#gm-mark"]'),'logo: encabezado con el logo (sin recuadro) y "G-METRICS"');
+      { const m=document.querySelector('#topbar .app-logo svg.lm'), r=m.getBoundingClientRect(), g=getComputedStyle(m).getPropertyValue('--lm-g').trim().toLowerCase();
+        ok(r.width>=28&&r.height>=28&&g===(innerWidth<900||document.documentElement.dataset.theme==='dark'?'#fff':'#243b6b'),'logo: se ve y las G contrastan con el fondo de la barra ('+g+')'); }
       const man=await (await fetch('manifest.json')).json(); const mk=man.icons.find(i=>i.purpose==='maskable');
       const rs=await Promise.all(man.icons.map(i=>fetch(i.src)));
       ok(mk&&mk.src==='icons/icon-512-maskable.png'&&rs.every(r=>r.ok),'logo: los íconos de la app (incluido el adaptable de Android) existen'); }
