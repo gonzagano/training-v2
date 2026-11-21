@@ -2393,7 +2393,7 @@ function renderOnboardingStep1(d) {
         <div><label class="eval-lbl">Peso (kg)</label><input class="auth-inp" style="margin:0" type="number" min="1" value="${d.weight}" oninput="setOnboardingField('weight',this.value)" placeholder="kg"></div>
       </div>
     </div>
-    <div style="padding:0 16px 16px">
+    <div class="ob-nav">
       <button class="wellness-submit" onclick="onboardingNext()">Continuar</button>
     </div>
   </div>`;
@@ -2402,15 +2402,13 @@ function renderOnboardingStep1(d) {
 function renderOnboardingStep2(d) {
   let html = `<div class="wellness-card">
     <div class="wellness-title">¿Qué tipo de atleta sos?</div>
-        <div style="padding:16px;display:flex;gap:10px">
-      <div onclick="selectAthleteType('individual')" style="flex:1;cursor:pointer;border:2px solid ${d.athleteType==='individual'?'var(--accent)':'var(--border2)'};border-radius:var(--r);padding:16px;text-align:center;background:${d.athleteType==='individual'?'var(--bg3)':'transparent'}">
-        <div style="font-size:15px;font-weight:700">Atleta individual</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">No pertenezco a ningún equipo</div>
-      </div>
-      <div onclick="selectAthleteType('team')" style="flex:1;cursor:pointer;border:2px solid ${d.athleteType==='team'?'var(--accent)':'var(--border2)'};border-radius:var(--r);padding:16px;text-align:center;background:${d.athleteType==='team'?'var(--bg3)':'transparent'}">
-        <div style="font-size:15px;font-weight:700">Atleta de equipo</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Formo parte de un equipo</div>
-      </div>
+        <div class="ob-choices" role="radiogroup" aria-label="Tipo de atleta">
+      <button type="button" role="radio" aria-checked="${d.athleteType==='individual'}" class="ob-choice ${d.athleteType==='individual'?'on':''}" onclick="selectAthleteType('individual')">
+        <b>Atleta individual</b><small>No pertenezco a ningún equipo</small>
+      </button>
+      <button type="button" role="radio" aria-checked="${d.athleteType==='team'}" class="ob-choice ${d.athleteType==='team'?'on':''}" onclick="selectAthleteType('team')">
+        <b>Atleta de equipo</b><small>Formo parte de un equipo</small>
+      </button>
     </div>`;
 
   if (d.athleteType === 'individual') {
@@ -2456,9 +2454,9 @@ function renderOnboardingStep2(d) {
 
   const teamCategoryOk = d.category && (d.category!=='__nueva__' || !!(d.categoryCustom||'').trim());
   const canContinue = d.athleteType==='individual' ? !!(d.sport && d.position) : d.athleteType==='team' ? !!(d.institution && teamCategoryOk && d.position) : false;
-  html += `<div style="padding:0 16px 16px;display:flex;gap:10px">
-    <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
-    <button class="wellness-submit" style="flex:2;${canContinue?'':'opacity:.4;pointer-events:none'}" onclick="onboardingNext()">Continuar</button>
+  html += `<div class="ob-nav">
+    <button class="abtn ob-back" onclick="onboardingPrev()">Atrás</button>
+    <button class="wellness-submit" ${canContinue?'':'disabled'} onclick="onboardingNext()">Continuar</button>
   </div></div>`;
   return html;
 }
@@ -2473,27 +2471,29 @@ function renderOnboardingStep3(d) {
     ${S.selectedZone ? renderZoneDetail() : ''}
     ${renderInjuryList()}
   </div>
-  <div style="padding:16px 0;display:flex;gap:10px">
-    <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
-    <button class="wellness-submit" style="flex:2" onclick="onboardingNext()">Continuar</button>
+  <div class="ob-nav ob-nav-out">
+    <button class="abtn ob-back" onclick="onboardingPrev()">Atrás</button>
+    <button class="wellness-submit" onclick="onboardingNext()">Continuar</button>
   </div>`;
 }
 
 function renderOnboardingStep4(d) {
-  const typeLabel = d.athleteType==='individual' ? `Individual · ${d.sport} · ${d.position}` : `${d.institution} · ${d.category}`;
+  const typeLabel = (d.athleteType==='individual' ? ['Individual', d.sport, d.position] : [d.institution, d.category==='__nueva__' ? d.categoryCustom : d.category]).filter(Boolean).join(' · ') || '—';
   const injCount = Object.keys(S.injuries).length;
   return `<div class="wellness-card">
     <div class="wellness-title">Confirmá tus datos</div>
-    <div style="padding:16px;display:flex;flex-direction:column;gap:10px;font-size:13px">
-      <div><b>Nombre:</b> ${(d.lastName&&d.firstName) ? capitalizeName(d.lastName)+' '+capitalizeName(d.firstName) : '—'}</div>
-      <div><b>Edad:</b> ${d.age||'—'} · <b>Altura:</b> ${d.height||'—'} cm · <b>Peso:</b> ${d.weight||'—'} kg</div>
-      <div><b>Perfil:</b> ${typeLabel}</div>
-      <div><b>Lesiones registradas:</b> ${injCount ? injCount : 'Ninguna'}</div>
-    </div>
+    <dl class="ob-sum">
+      <div><dt>Nombre</dt><dd>${(d.lastName&&d.firstName) ? escHtml(capitalizeName(d.lastName)+' '+capitalizeName(d.firstName)) : '—'}</dd></div>
+      <div><dt>Edad</dt><dd>${d.age ? escHtml(d.age)+' años' : '—'}</dd></div>
+      <div><dt>Altura</dt><dd>${d.height ? escHtml(d.height)+' cm' : '—'}</dd></div>
+      <div><dt>Peso</dt><dd>${d.weight ? escHtml(d.weight)+' kg' : '—'}</dd></div>
+      <div><dt>Perfil</dt><dd>${escHtml(typeLabel)}</dd></div>
+      <div><dt>Molestias</dt><dd>${injCount ? injCount : 'Ninguna'}</dd></div>
+    </dl>
     <div id="onboarding-err" style="color:var(--red);font-size:13px;padding:0 16px 8px;text-align:center"></div>
-    <div style="padding:0 16px 16px;display:flex;gap:10px">
-      <button class="abtn abtn-d" style="flex:1" onclick="onboardingPrev()">← Atrás</button>
-      <button class="wellness-submit" style="flex:2" id="onboarding-finish-btn" onclick="finishOnboarding()">Finalizar y entrar</button>
+    <div class="ob-nav">
+      <button class="abtn ob-back" onclick="onboardingPrev()">Atrás</button>
+      <button class="wellness-submit" id="onboarding-finish-btn" onclick="finishOnboarding()">Finalizar y entrar</button>
     </div>
   </div>`;
 }

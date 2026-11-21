@@ -149,6 +149,18 @@
   // ── revisión: con rutina propia y equipo, el Calendario muestra el equipo ──
   { switchView('calendar'); await wait(500);
     ok(!/no estás vinculado/.test(document.getElementById('main').innerText)&&/Handball/.test(document.querySelector('.page-subtitle')?.innerText||''),'calendario: el atleta con rutina propia ve el calendario de su equipo');
+    // Primer uso (onboarding): "Atrás" no es rojo, botones parejos, Continuar bloqueado hasta elegir, resumen en filas
+    { const keepOC=S.userData.onboardingComplete, keepD=JSON.parse(JSON.stringify(S.onboardingData||{})), keepStep=S.onboardingStep;
+      S.userData.onboardingComplete=false; S.onboardingData={lastName:'Meier',firstName:'Matias',age:'16',height:'176',weight:'71'}; S.currentView='onboarding';
+      S.onboardingStep=2; renderAll(); await wait(300);
+      ok(!document.querySelector('#main .abtn-d')&&!!document.querySelector('#main .ob-back'),'primer uso: "Atrás" es un botón secundario, no rojo');
+      const next=[...document.querySelectorAll('#main .ob-nav .wellness-submit')].pop(); ok(!!next&&next.disabled,'primer uso: Continuar bloqueado hasta elegir el tipo de atleta');
+      const ch=document.querySelector('#main .ob-choice'); ok(ch&&ch.tagName==='BUTTON'&&ch.getAttribute('role')==='radio','primer uso: el tipo de atleta se elige con botones reales');
+      S.onboardingData.athleteType='individual'; S.onboardingStep=4; renderAll(); await wait(300);
+      ok(document.querySelectorAll('#main .ob-sum > div').length===6&&/16 años/.test(document.querySelector('#main .ob-sum').innerText),'primer uso: resumen final en 6 filas');
+      const b=document.querySelector('#main .ob-back'), f=document.getElementById('onboarding-finish-btn'); ok(b&&f&&Math.abs(b.getBoundingClientRect().height-f.getBoundingClientRect().height)<2,'primer uso: Atrás y Finalizar con la misma altura');
+      txtBad('primer uso');
+      S.userData.onboardingComplete=keepOC; S.onboardingData=keepD; S.onboardingStep=keepStep; switchView('dashboard'); await wait(300); }
     // Logo nuevo (mancuerna con el gráfico que sube): encabezado e íconos de la app
     { ok(document.querySelector('#topbar .gm-word')?.textContent.trim()==='G-METRICS'&&!!document.querySelector('#topbar .app-logo img[src="logo-icon.svg"]'),'logo: encabezado con el ícono y "G-METRICS"');
       const man=await (await fetch('manifest.json')).json(); const mk=man.icons.find(i=>i.purpose==='maskable');

@@ -1985,6 +1985,22 @@ html{-webkit-tap-highlight-color:transparent}
 #topbar .gm-word{color:#fff}
 #topbar .gm-g{color:#8FA8EA}
 @media(min-width:900px){#topbar .gm-word{color:var(--text)}#topbar .gm-g{color:var(--accent-text)}}
+/* Primer uso del atleta (onboarding): botones parejos, elección del tipo de atleta y resumen final */
+.ob-nav{display:flex;gap:12px;padding:0 16px 16px}
+.ob-nav-out{padding:16px 0}
+.ob-nav .wellness-submit{width:auto;margin:0;flex:1;min-height:48px}
+.ob-nav .wellness-submit:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.ob-back{min-height:48px;padding:0 20px;flex:0 0 auto}
+.ob-choices{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}
+.ob-choice{font:inherit;color:var(--text);background:var(--bg3);border:2px solid transparent;border-radius:16px;padding:16px 12px;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:4px;align-items:center}
+.ob-choice b{font-size:15px}
+.ob-choice small{font-size:13px;color:var(--text2)}
+.ob-choice.on{border-color:var(--accent-text);background:var(--accent-dim)}
+.ob-sum{margin:0;padding:4px 16px 12px}
+.ob-sum div{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--border)}
+.ob-sum div:last-child{border-bottom:0}
+.ob-sum dt{color:var(--text2);font-size:15px}
+.ob-sum dd{margin:0;font-weight:700;font-size:15px;text-align:right;min-width:0;overflow-wrap:anywhere}
 /* Esqueleto de carga (skelHtml): la forma de lo que viene, con un brillo que pasa */
 .sk-wrap{display:grid;gap:12px}
 .sk{display:block;background:var(--bg3);border-radius:10px;position:relative;overflow:hidden}
