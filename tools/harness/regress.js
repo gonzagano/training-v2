@@ -950,14 +950,27 @@
     const m=ex?loadSeriesMax(ex,ctx).max:null; ok(m>=100,'récord (profe): toma la carga anterior del atleta ('+m+')');
     await adminSetExerciseField('u1',W,'Día 1','x1','load',String(m-10),true); await wait(1200);
     ok(!document.getElementById('record-card'),'récord (profe): una carga menor no muestra la tarjeta');
-    await adminSetExerciseField('u1',W,'Día 1','x1','load',String(m+5),true); let rc=null; for(let i=0;i<40&&!(rc=document.getElementById('record-card'));i++) await wait(100);
+    await adminSetExerciseField('u1',W,'Día 1','x1','load',String(m+5),true); await wait(800);
+    ok(!document.getElementById('record-card')&&/Récord/.test(document.getElementById('rec-pill')?.textContent||''),'récord (profe): no interrumpe la carga, queda la pastilla');
+    document.getElementById('rec-pill')?.click(); let rc=null; for(let i=0;i<40&&!(rc=document.getElementById('record-card'));i++) await wait(100);
     const DBp=()=>JSON.parse(localStorage.getItem('__db')).personal;
-    ok(!!rc&&new RegExp(String(m+5).replace('.',',')+' kg').test(rc.querySelector('img.rc-img')?.alt||''),'récord (profe): al cargar una máxima nueva desde la ficha aparece la tarjeta');
+    ok(!!rc&&new RegExp(String(m+5).replace('.',',')+' kg').test(rc.querySelector('img.rc-img')?.alt||''),'récord (profe): al tocar la pastilla aparece la tarjeta');
     ok(DBp().u1.history[sk].exercises.x1.load===m+5&&!DBp().admin1?.history?.[sk],'récord (profe): la carga queda en el atleta, no en el profe');
     closeRecordCard();
     // deja al atleta exactamente como estaba (en la base falsa y en memoria)
     { const dbx=JSON.parse(localStorage.getItem('__db')); dbx.personal.u1=JSON.parse(keepDb); localStorage.setItem('__db',JSON.stringify(dbx));
       const mem=JSON.parse(keepMem); ['history','oneRM','oneRMAuto'].forEach(k=>{ if(mem[k]===undefined) delete a._personal[k]; else a._personal[k]=mem[k]; }); } }
+  // ── semana de récords ⭐: el profe la marca en el editor de la rutina y se guarda con la rutina ──
+  { switchView('admin'); adminGoRoutines(); await wait(400); editRoutine('r1'); await wait(400); S._routineCompare=false; renderMain(); await wait(300);
+    const W=editorWeek(), tog=()=>document.querySelector('#main .pr-tog');
+    ok(!!tog()&&tog().getAttribute('aria-pressed')==='false','semana de récords: está el botón en el editor (apagado)');
+    tog().click(); await wait(300);
+    ok((S.editingRoutine.prWeeks||[]).includes(W)&&tog().getAttribute('aria-pressed')==='true','semana de récords: al tocarlo queda marcada la semana '+W);
+    await saveRoutineToFirestore(); await wait(400);
+    ok((JSON.parse(localStorage.getItem('__db')).routines.r1.prWeeks||[]).includes(W),'semana de récords: se guarda con la rutina');
+    tog().click(); await wait(200); ok(!(S.editingRoutine.prWeeks||[]).includes(W),'semana de récords: se desmarca');
+    await saveRoutineToFirestore(); await wait(300); txtBad('editor con semana de récords');
+    S.editingRoutine=null; S.adminView='main'; switchView('admin'); }
   // ── diálogo propio en vez de prompt(): crear equipo (dos escenarios: cancelar y crear) ──
   { const n0=S.teams.length; switchView('teams'); await wait(500);
     ok(/Equipos/.test(document.querySelector('.pg-head-t')?.textContent||''),'equipos: título de pantalla con el mismo estilo que el resto');

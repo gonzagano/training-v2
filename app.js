@@ -2033,11 +2033,24 @@ function editorWeeksCount(r) {
 window.editorWeeksCount = editorWeeksCount;
 function setEditorWeek(w) { if(!S.editingRoutine) return; getCmpState(S.editingRoutine).week = w; renderMain(); }
 window.setEditorWeek = setEditorWeek;
+const PR_STAR = '<svg class="pr-star" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></svg>';
 function editorWeekBar(r) {
-  const weeks = editorWeeksCount(r); if(weeks<2) return '';
-  const st = getCmpState(r);
-  return `<div class="cmp-bar edw-bar"><span class="edw-l">Semana</span><span class="cmp-wk">${Array.from({length:weeks},(_,i)=>`<button class="chip-btn ${st.week===i+1?'on':''} ${st.cur===i+1?'edw-cur':''}" onclick="setEditorWeek(${i+1})">S${i+1}${st.cur===i+1?' · actual':''}</button>`).join('')}</span></div>`;
+  const weeks = editorWeeksCount(r), st = getCmpState(r), W = editorWeek(), on = isPrWeek(r, W);
+  // Semana de récords: esa semana cualquier ejercicio de fuerza puede dar tarjeta de récord (no solo los 5 del RM).
+  const prBtn = `<button class="chip-btn pr-tog ${on?'on':''}" aria-pressed="${on}" onclick="togglePrWeek()">${PR_STAR}${weeks>1?'Semana '+W+' de récords':'Semana de récords'}</button>`;
+  const prRow = `<div class="pr-row">${prBtn}</div>`;
+  if(weeks<2) return prRow;
+  return `<div class="cmp-bar edw-bar"><span class="edw-l">Semana</span><span class="cmp-wk">${Array.from({length:weeks},(_,i)=>`<button class="chip-btn ${st.week===i+1?'on':''} ${st.cur===i+1?'edw-cur':''}" onclick="setEditorWeek(${i+1})">${isPrWeek(r,i+1)?PR_STAR:''}S${i+1}${st.cur===i+1?' · actual':''}</button>`).join('')}</span></div>${prRow}`;
 }
+// Se guarda con el resto de la rutina (botón Guardar del editor).
+function togglePrWeek() {
+  const r = S.editingRoutine; if(!r) return;
+  const W = editorWeek(), set = new Set(r.prWeeks||[]);
+  if(set.has(W)) set.delete(W); else set.add(W);
+  r.prWeeks = [...set].sort((a,b)=>a-b);
+  renderMain();
+}
+window.togglePrWeek = togglePrWeek;
 
 function getVisibleRoutineBlocks(routine, sessionName, teamId, position, personalExtras, relWeek) {
   renumberBlockLabels(routine?.sessions?.[sessionName]);
@@ -3563,6 +3576,7 @@ function renderSession() {
   const header = `<div class="page-header">
     <div class="page-title">${sessionLabel}</div>
     <div class="page-subtitle">${isBrowsingWeek ? 'Repasando semana '+getRoutineWeek() : getWeekHeaderLabel(true)+' · '+new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>
+    ${!S.isAdmin && isPrWeek(S.assignedRoutine, toRoutineRelativeWeek(getRoutineWeek(), S.userData))?`<span class="pr-chip">${PR_STAR}Semana de récords</span>`:''}
   </div>`;
   // Repasar otras semanas — solo el atleta individual, nunca de equipo ni
   // admin (ver comentario en getRoutineWeek). No mueve nada real: solo
@@ -3915,6 +3929,7 @@ window.openSessionFeedback=openSessionFeedback;
 function closeSessionFeedback() {
   const modal = document.getElementById('session-feedback-modal');
   if(modal) modal.classList.remove('open');
+  if(Object.keys(S._recs||{}).length) openRecordCards(); // terminó la sesión: ahora sí, sus récords para compartir
 }
 window.closeSessionFeedback=closeSessionFeedback;
 
@@ -5568,21 +5583,50 @@ function adminRecCtx(a, wKey, sName) {
     sName, week:wKey, name:a.name||'', photoUrl:a.photoUrl||null};
 }
 window.adminRecCtx = adminRecCtx;
+// La máxima ANTES de esta carga: sin contar lo que ya había anotado en esta misma sesión
+// (si corrige 100 → 102, el récord se compara con las semanas anteriores, no con su propio 100).
 function loadSeriesMax(ex, ctx = athleteRecCtx()) {
-  try { const pts = buildLoadSeries(ctx.userData, ctx.history, ctx.routine, ctx.currentWeek, ex); return {pts, max: pts.length ? Math.max(...pts.map(p=>p.kg)) : null}; }
+  const own = ctx.history?.[sessionKey(ctx.week, ctx.sName)]?.exercises?.[ex.id], keep = own ? own.load : undefined;
+  try { if(own) own.load = null; const pts = buildLoadSeries(ctx.userData, ctx.history, ctx.routine, ctx.currentWeek, ex); return {pts, max: pts.length ? Math.max(...pts.map(p=>p.kg)) : null}; }
   catch(e) { return {pts:[], max:null}; }
+  finally { if(own) own.load = keep; }
 }
 window.loadSeriesMax = loadSeriesMax;
+// Qué cuenta como récord (pedido de Gonzalo, 2026-11-26: si salta siempre pierde valor y molesta):
+//  - siempre: los 5 levantamientos del RM (los mismos que mueven el RM automático);
+//  - cualquier ejercicio de fuerza: solo en una "semana de récords" que el profe marca con ⭐
+//    en el editor de la rutina (routine.prWeeks = semanas de la rutina, 1, 2, 3…).
+function isRecordLift(name) { return RM_LIFTS.some(l => exerciseUpdatesRM(name||'', l.id)); }
+window.isRecordLift = isRecordLift;
+function isPrWeek(routine, relWeek) { return !!(routine?.prWeeks||[]).includes(relWeek); }
+window.isPrWeek = isPrWeek;
+// No interrumpe la carga: el récord queda anotado (S._recs), aparece una pastilla chica abajo,
+// y la tarjeta para compartir sale al terminar la sesión (o al tocar la pastilla).
 function checkLoadRecord(ex, before, val, ctx = athleteRecCtx()) {
-  const kg = parseLoadKg(val);
-  if(!(kg>0) || !(before?.max>0) || kg<=before.max) return false; // sin carga anterior no hay con qué comparar
-  if(getChartEligibility(ex, before.pts).s==='no') return false;   // solo ejercicios de fuerza
+  const key = (ctx.userData?.uid||'yo')+'|'+ctx.week+'|'+ctx.sName+'|'+ex.id;
+  if(!S._recs) S._recs = {};
+  const rel = toRoutineRelativeWeek(ctx.week, ctx.userData);
   const ov = ctx.routine?.id ? getExerciseOverride(ctx.overrides, ctx.routine.id, ctx.sName, ex.id) : null;
-  const exName = getExDisplayForWeek(ex, ctx.week, toRoutineRelativeWeek(ctx.week, ctx.userData), ov)?.name || ex.name;
-  openRecordCard({exName, kg, prev: before.max, name: ctx.name, photoUrl: ctx.photoUrl});
-  return true;
+  const exName = getExDisplayForWeek(ex, ctx.week, rel, ov)?.name || ex.name;
+  const kg = parseLoadKg(val);
+  const is = kg>0 && before?.max>0 && kg>before.max                // sin carga anterior no hay con qué comparar
+    && getChartEligibility(ex, before.pts).s!=='no'                  // solo ejercicios de fuerza
+    && (isRecordLift(exName) || isRecordLift(ex.name) || isPrWeek(ctx.routine, rel));
+  if(is) S._recs[key] = {exName, kg, prev: before.max, name: ctx.name, photoUrl: ctx.photoUrl};
+  else delete S._recs[key];                                          // si lo corrigió para abajo, deja de ser récord
+  updateRecordPill();
+  return !!is;
 }
 window.checkLoadRecord = checkLoadRecord;
+function updateRecordPill() {
+  const recs = Object.values(S._recs||{});
+  let p = document.getElementById('rec-pill');
+  if(!recs.length) { p?.remove(); return; }
+  if(!p) { p = document.createElement('button'); p.id = 'rec-pill'; p.className = 'rec-pill'; p.onclick = () => openRecordCards(); document.body.appendChild(p); }
+  const star = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></svg>';
+  p.innerHTML = star + (recs.length===1 ? `Récord · ${escHtml(recs[0].exName)} ${fmtKg(recs[0].kg)} kg` : `${recs.length} récords`);
+}
+window.updateRecordPill = updateRecordPill;
 const loadImg = src => new Promise(res => { if(!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
 async function drawRecordCard({exName, kg, prev, name, photoUrl}) {
   const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -5623,28 +5667,38 @@ async function drawRecordCard({exName, kg, prev, name, photoUrl}) {
   return new Promise(res => c.toBlob(res, 'image/png'));
 }
 window.drawRecordCard = drawRecordCard;
-async function openRecordCard(info) {
-  closeRecordCard();
-  const blob = await drawRecordCard(info); if(!blob) return;
-  const url = URL.createObjectURL(blob), file = new File([blob], 'record-'+(info.exName||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.png', {type:'image/png'});
-  const canShare = !!(navigator.canShare && navigator.canShare({files:[file]}));
-  S._recordCard = {url, file};
+// Todas las tarjetas pendientes juntas (una por récord, se deslizan de costado); "Compartir" manda todas.
+async function openRecordCards() {
+  const list = Object.values(S._recs||{}); if(!list.length) return;
+  closeRecordCard(true);
+  const cards = (await Promise.all(list.map(async info => {
+    const blob = await drawRecordCard(info); if(!blob) return null;
+    return {info, url: URL.createObjectURL(blob), file: new File([blob], 'record-'+(info.exName||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.png', {type:'image/png'})};
+  }))).filter(Boolean);
+  if(!cards.length) return;
+  const files = cards.map(c=>c.file), canShare = !!(navigator.canShare && navigator.canShare({files}));
+  S._recordCard = {urls: cards.map(c=>c.url), files};
   const ov = document.createElement('div'); ov.id = 'record-card'; ov.className = 'video-modal open rc-ov';
-  ov.innerHTML = `<div class="rc-box" role="dialog" aria-modal="true" aria-label="Nuevo récord"><img class="rc-img" src="${url}" alt="Nuevo récord: ${attrEsc(info.exName)} ${String(info.kg).replace('.',',')} kg">
-    <div class="video-modal-btns rc-btns"><button class="abtn" onclick="closeRecordCard()">Cerrar</button><button class="abtn abtn-p" onclick="shareRecordCard()">${canShare?'Compartir':'Descargar imagen'}</button></div></div>`;
+  ov.innerHTML = `<div class="rc-box" role="dialog" aria-modal="true" aria-label="${cards.length>1?cards.length+' récords nuevos':'Nuevo récord'}"><div class="rc-strip${cards.length>1?' multi':''}">${cards.map(c=>`<img class="rc-img" src="${c.url}" alt="Nuevo récord: ${attrEsc(c.info.exName)} ${fmtKg(c.info.kg)} kg">`).join('')}</div>
+    <div class="video-modal-btns rc-btns"><button class="abtn" onclick="closeRecordCard()">Cerrar</button><button class="abtn abtn-p" onclick="shareRecordCard()">${canShare?'Compartir':cards.length>1?'Descargar imágenes':'Descargar imagen'}</button></div></div>`;
   ov.addEventListener('click', e => { if(e.target===ov) closeRecordCard(); });
   document.body.appendChild(ov);
 }
-window.openRecordCard = openRecordCard;
-function closeRecordCard() { document.getElementById('record-card')?.remove(); if(S._recordCard) { URL.revokeObjectURL(S._recordCard.url); S._recordCard = null; } }
+window.openRecordCards = openRecordCards;
+// Al cerrar las tarjetas, los récords ya se vieron: se limpia la pastilla.
+function closeRecordCard(keepRecs) {
+  document.getElementById('record-card')?.remove();
+  if(S._recordCard) { S._recordCard.urls.forEach(u=>URL.revokeObjectURL(u)); S._recordCard = null; }
+  if(keepRecs!==true) { S._recs = {}; updateRecordPill(); }
+}
 window.closeRecordCard = closeRecordCard;
 async function shareRecordCard() {
   const rc = S._recordCard; if(!rc) return;
-  if(navigator.canShare && navigator.canShare({files:[rc.file]})) {
-    try { await navigator.share({files:[rc.file]}); } catch(e) {} // si cancela el menú del celular, no pasa nada
+  if(navigator.canShare && navigator.canShare({files:rc.files})) {
+    try { await navigator.share({files:rc.files}); } catch(e) {} // si cancela el menú del celular, no pasa nada
     return;
   }
-  const a = document.createElement('a'); a.href = rc.url; a.download = rc.file.name; document.body.appendChild(a); a.click(); a.remove();
+  rc.files.forEach((f,i) => { const a = document.createElement('a'); a.href = rc.urls[i]; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); });
 }
 window.shareRecordCard = shareRecordCard;
 

@@ -95,16 +95,37 @@
       { const C=(v,t)=>getIntensityColor(v,t||'RPE'), az='#3b7dd8', na='#f0a030', ro='#e05030';
         ok(C(4)===az&&C(6)===az&&C(6.5)===az&&C(7)===na&&C(8.5)===na&&C(9)===ro&&C(10)===ro&&C(0,'RIR')===ro&&C(2,'RIR')===na&&C(5,'RIR')===az,'RPE: 4-6 azul, 7-8 naranja, 9-10 rojo (y el RIR al revés)'); }
       renderMain(); await wait(300); const rp3=document.getElementById('exrow-x1')?.querySelector('select.rpe-sel'); ok(rp3&&rp3.value==='8.5','sesión: al volver a dibujar, la lista muestra el 8,5 elegido');
-      // ── tarjeta de récord: solo cuando supera su carga máxima de ese ejercicio ──
+      // ── tarjeta de récord: solo cuando supera su carga máxima; no interrumpe la carga (pastilla) y sale al terminar ──
+      // una sentadilla de la semana anterior, para tener con qué comparar (la de esta sesión no cuenta)
+      const pk='w'+(getRoutineWeek()-1)+'-'+S.currentSession, keepPk=S.history[pk];
+      S.history[pk]={...(keepPk||{}), date:todayLocal(), exercises:{...(keepPk?.exercises||{}), x1:{...(keepPk?.exercises?.x1||{}), load:100}}};
       { const m=loadSeriesMax(findExInAssignedRoutine('x1')).max; ok(m>0,'récord: hay cargas anteriores de la sentadilla para comparar ('+m+')');
         const ld=()=>document.getElementById('exrow-x1').querySelector('input.field-inp.load'), put=v=>{ const i=ld(); i.value=String(v); i.dispatchEvent(new Event('change',{bubbles:true})); };
-        put(m-10); await wait(1500); ok(!document.getElementById('record-card'),'récord: una carga menor a la máxima no muestra la tarjeta');
-        put(m+5); let rc=null; for(let i=0;i<40&&!(rc=document.getElementById('record-card'));i++) await wait(100);
+        const pill=()=>document.getElementById('rec-pill');
+        put(m-10); await wait(1500); ok(!pill()&&!document.getElementById('record-card'),'récord: una carga menor a la máxima no marca récord');
+        put(m+5); await wait(1500);
+        ok(!document.getElementById('record-card'),'récord: no interrumpe la carga (la tarjeta no salta en el medio)');
+        ok(/Récord · Sentadilla con barra/.test(pill()?.textContent||''),'récord: aparece la pastilla chica con el récord');
+        put(m+7); await wait(1500); const r0=Object.values(S._recs||{})[0];
+        ok(Object.keys(S._recs||{}).length===1&&r0?.kg===m+7&&r0?.prev===m,'récord: si corrige el peso, sigue siendo uno y se compara con las semanas anteriores ('+(r0&&r0.prev)+')');
+        // otro ejercicio de fuerza que NO es de los 5 del RM: solo cuenta en la semana de récords que marca el profe
+        { const x4=findExInAssignedRoutine('x4'), rel=toRoutineRelativeWeek(getRoutineWeek(),S.userData), fake={max:50,pts:[{w:1,kg:50},{w:2,kg:50},{w:3,kg:50},{w:4,kg:50}]};
+          ok(checkLoadRecord(x4,fake,'60')===false,'récord: el remo con barra (no es de los 5) no da récord en una semana común');
+          const keepPr=S.assignedRoutine.prWeeks; S.assignedRoutine.prWeeks=[rel];
+          ok(checkLoadRecord(x4,fake,'60')===true,'récord: en la semana de récords ⭐ el remo con barra sí da récord');
+          renderMain(); await wait(300); ok(/Semana de récords/.test(document.querySelector('#main .pr-chip')?.textContent||''),'récord: el atleta ve que es semana de récords');
+          ok(/2 récords/.test(pill()?.textContent||''),'récord: la pastilla junta los récords de la sesión');
+          checkLoadRecord(x4,fake,'40'); if(keepPr===undefined) delete S.assignedRoutine.prWeeks; else S.assignedRoutine.prWeeks=keepPr; renderMain(); await wait(300); }
+        // al terminar la sesión (después de la encuesta, aunque la omita) salen las tarjetas
+        openSessionFeedback(); await wait(200); document.querySelector('#session-feedback-modal button[onclick="closeSessionFeedback()"]').click();
+        let rc=null; for(let i=0;i<40&&!(rc=document.getElementById('record-card'));i++) await wait(100);
         const im=rc?.querySelector('img.rc-img'); if(im&&!im.complete) await new Promise(r=>{ im.onload=r; setTimeout(r,2000); });
-        ok(!!im&&/^blob:/.test(im.src)&&im.naturalWidth===1080&&im.naturalHeight===1920,'récord: carga máxima nueva → tarjeta de historia (1080×1920)');
+        ok(!!im&&/^blob:/.test(im.src)&&im.naturalWidth===1080&&im.naturalHeight===1920,'récord: al terminar la sesión → tarjeta de historia (1080×1920)');
         ok(!!rc&&[...rc.querySelectorAll('button')].some(b=>/^(Compartir|Descargar imagen)$/.test(b.textContent.trim())),'récord: tiene el botón para compartir');
-        closeRecordCard(); ok(!document.getElementById('record-card'),'récord: se cierra');
-        put(100); await wait(1500); ok(!document.getElementById('record-card'),'récord: volver a una carga menor no la muestra'); } } }
+        closeRecordCard(); ok(!document.getElementById('record-card')&&!pill(),'récord: se cierra y se va la pastilla');
+        put(m+9); await wait(1500); put(m); await wait(1500); ok(!pill()&&!document.getElementById('record-card'),'récord: si lo baja a su máxima anterior, deja de ser récord');
+        put(100); await wait(1500); closeRecordCard(); }
+      if(keepPk===undefined) delete S.history[pk]; else S.history[pk]=keepPk; } }
   // ── el atleta también ve por qué está así su ACWR ──
   { switchView('dashboard'); await wait(600); const tap=document.querySelector('#main .ax-tap'); ok(!!tap,'inicio: el ACWR se puede tocar');
     if(tap){ tap.click(); await wait(300); const t=document.querySelector('#acwr-overlay')?.innerText||''; ok(/Tu carga, explicada/.test(t)&&/Carga por semana/i.test(t)&&!/undefined|NaN/.test(t),'atleta: ve la explicación de su ACWR'); closeAcwrExplain(); } }

@@ -2031,6 +2031,18 @@ html{-webkit-tap-highlight-color:transparent}
 /* Tarjeta de récord (imagen para compartir) */
 .rc-box{display:flex;flex-direction:column;align-items:center;gap:14px;max-width:100%}
 .rc-img{display:block;width:auto;height:auto;max-height:min(calc(100vh - 150px),760px);max-width:100%;border-radius:16px;box-shadow:var(--sh-float)}
+.rc-strip{display:flex;gap:12px;max-width:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.rc-strip .rc-img{flex-shrink:0;scroll-snap-align:center}
+.rc-strip.multi .rc-img{max-width:82%}
+.pr-row{margin:-4px 0 12px}
+/* Récord anotado: pastilla chica que no tapa la carga; la tarjeta sale al terminar la sesión */
+.rec-pill{position:fixed;left:16px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:450;display:inline-flex;align-items:center;gap:6px;max-width:calc(100vw - 96px);padding:10px 14px;border-radius:999px;border:1.5px solid var(--amber);background:var(--bg2);color:var(--text);font-family:inherit;font-size:13px;font-weight:700;box-shadow:var(--sh-float);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:recIn .25s ease}
+.rec-pill svg,.pr-star{color:var(--amber);flex-shrink:0}
+@keyframes recIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.pr-tog{display:inline-flex;align-items:center;gap:6px}
+.pr-tog.on{border-color:var(--amber);background:var(--amber-dim);color:var(--amber)}
+.cmp-wk .pr-star{margin-right:4px;vertical-align:-1px}
+.pr-chip{margin-top:8px;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--amber-dim);color:var(--amber);font-size:13px;font-weight:700}
 .home-hi-n{display:inline-flex;align-items:center;gap:12px;min-width:0}
 .home-me{width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--border2)}
 /* Solo la foto se mete sobre la portada; el texto arranca debajo de ella */
