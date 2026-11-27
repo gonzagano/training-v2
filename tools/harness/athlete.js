@@ -259,6 +259,10 @@
     const act=[...document.querySelectorAll('#main div')].find(d=>/Actividad — últimos 7 días/.test(d.textContent)&&d.children.length>=2);
     ok(!act||act.querySelectorAll('div[style*="var(--accent)"]').length>0||!(S.history?._sessionLogs||[]).length,'estadísticas: los días entrenados (prácticas y partidos) cuentan como activos');
     switchView('wellness'); await wait(400); ok(!/\d{4}-\d{2}-\d{2}/.test(document.querySelector('.page-header')?.innerText||''),'wellness: sin la fecha cruda AAAA-MM-DD arriba'); }
+  // ── el atleta ve la carga por semana de lunes a domingo, sin selector ──
+  { try{ localStorage.setItem('gm-load-week','roll'); }catch(e){} ok(loadWeekMode()==='cal','atleta: siempre lunes a domingo');
+    openAcwrExplain('self'); await wait(300); const ov=document.getElementById('acwr-overlay');
+    ok(!!ov&&!ov.querySelector('.lw-tg')&&/Esta semana/.test(ov.innerText),'atleta: sin el selector del profe'); closeAcwrExplain(); try{ localStorage.removeItem('gm-load-week'); }catch(e){} }
   R.fails=fails; R.errs=errs; R.view=innerWidth+'x'+innerHeight;
   window.__athlete=R;
 })();

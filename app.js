@@ -11249,7 +11249,7 @@ function renderAthleteStatsTab(a) {
   }
   // Carga y wellness, cada uno con su gráfico
   html += `<div class="ast-two">
-    <section class="ts-card"><div class="ts-h"><div><div class="ts-k">Carga semanal</div><div class="ts-ks">UA · últimas 8 semanas</div></div></div><div class="ast-mini"><canvas id="ast-ua-chart"></canvas></div></section>
+    <section class="ts-card"><div class="ts-h"><div><div class="ts-k">Carga semanal</div><div class="ts-ks">UA · últimas 8 semanas</div></div>${loadWeekToggleHtml()}</div><div class="ast-mini"><canvas id="ast-ua-chart"></canvas></div></section>
     <section class="ts-card"><div class="ts-h"><div><div class="ts-k">Wellness</div><div class="ts-ks">% · promedio semanal</div></div></div><div class="ast-mini"><canvas id="ast-well-chart"></canvas></div></section>
   </div>`;
   return html;
@@ -11286,11 +11286,7 @@ window.athleteEvolData = athleteEvolData;
 function athleteWeeklyData(a, mates) {
   const today = new Date(todayLocal()+'T12:00:00');
   const weeks = [];
-  for(let w=7; w>=0; w--) {
-    const days = [];
-    for(let d=6; d>=0; d--) { const x = new Date(today); x.setDate(x.getDate()-w*7-d); days.push(toLocalDateStr(x)); }
-    weeks.push({label:evalShortDate(days[0]), days});
-  }
+  for(let w=7; w>=0; w--) { const days = loadWeekDays(w); weeks.push({label:evalShortDate(days[0]), days}); }
   const ua = (x, wk) => { const logs = (x._personal?.history?._sessionLogs)||[]; const s = logs.filter(l=>wk.days.includes(l.date)).reduce((t,l)=>t+(l.ua||0),0); return s>0 ? s : null; };
   const well = (x, wk) => { const v = wk.days.map(d=>getWellnessScore(x._personal?.wellness?.[d])).filter(z=>z.allFilled).map(z=>z.pct); return v.length ? Math.round(v.reduce((s,z)=>s+z,0)/v.length) : null; };
   const avgOf = (fn, wk) => { const v = mates.map(x=>fn(x, wk)).filter(v=>v!=null); return v.length>=2 ? v.reduce((s,x)=>s+x,0)/v.length : null; };
@@ -17582,6 +17578,26 @@ window.calcLoadMetrics=calcLoadMetrics;
 // en el momento): la cuenta (esta semana vs. lo habitual), qué actividades la
 // movieron, las sesiones más pesadas, y si el número sube porque la semana fue
 // pesada o porque viene de semanas flojas (base baja).
+// Vistas de carga por semana: 'cal' = lunes a domingo (todos); 'roll' = tramos de 7 días
+// hasta hoy, solo para el profe. El ACWR en sí siempre usa 7 días corridos.
+function loadWeekMode() { if(!S.isAdmin) return 'cal'; try { return localStorage.getItem('gm-load-week')==='roll' ? 'roll' : 'cal'; } catch(e) { return 'cal'; } }
+function setLoadWeekMode(m) {
+  try { localStorage.setItem('gm-load-week', m==='roll' ? 'roll' : 'cal'); } catch(e) {}
+  renderMain(); if(S._axUid && document.getElementById('acwr-overlay')) openAcwrExplain(S._axUid);
+}
+// Fechas de la semana i hacia atrás (0 = la actual).
+function loadWeekDays(i, mode) {
+  const end = new Date(todayLocal()+'T12:00:00');
+  end.setDate(end.getDate() - 7*i + ((mode||loadWeekMode())==='cal' ? 6 - mondayIndex(end) : 0));
+  return Array.from({length:7}, (_,d)=>{ const x = new Date(end); x.setDate(end.getDate()-6+d); return toLocalDateStr(x); });
+}
+function loadWeekToggleHtml() {
+  if(!S.isAdmin) return '';
+  const m = loadWeekMode();
+  return `<div class="lw-tg"><button class="chip-btn ${m==='cal'?'on':''}" onclick="setLoadWeekMode('cal')">Lun a dom</button><button class="chip-btn ${m==='roll'?'on':''}" onclick="setLoadWeekMode('roll')">Últimos 7 días</button></div>`;
+}
+window.loadWeekMode = loadWeekMode; window.setLoadWeekMode = setLoadWeekMode; window.loadWeekDays = loadWeekDays;
+
 function acwrBreakdown(logs) {
   const m = calcLoadMetrics(logs||[]); if(!m) return null;
   const now = new Date();
@@ -17607,7 +17623,9 @@ function acwrBreakdown(logs) {
   const byAct = Object.values(acts).map(x=>({...x, avg:x.total/4, diff:x.acute - x.total/4})).sort((a,b)=>b.diff-a.diff);
   const top = acuteLogs.slice().sort((a,b)=>(+b.ua||0)-(+a.ua||0)).slice(0,3);
   const baseLow = longAvg!=null && prevAvg < 0.75*longAvg && m.acuteUA <= 1.2*longAvg;
-  return {m, acute:m.acuteUA, chronicAvg, prevAvg, weeks, longAvg, byAct, top, baseLow, ratio: chronicAvg>0 ? m.acuteUA/chronicAvg : null};
+  // lo que se muestra en "Carga por semana" (según cómo se agrupa)
+  const shown = [0,1,2,3].map(i=>{ const days = loadWeekDays(i); return {days, ua:(logs||[]).filter(l=>days.includes(l.date)).reduce((t,l)=>t+(+l.ua||0),0)}; });
+  return {m, acute:m.acuteUA, chronicAvg, prevAvg, weeks, shown, longAvg, byAct, top, baseLow, ratio: chronicAvg>0 ? m.acuteUA/chronicAvg : null};
 }
 function acwrActLabel(key, fallback, sport) {
   const act = LOAD_ACTIVITIES.find(x=>x.key===key);
@@ -17629,19 +17647,22 @@ function acwrExplainHtml(logs, sport, name) {
     why = `Esta semana ${self?'sumaste':'sumó'} <b>${pct}% más</b> que ${self?'tu':'su'} semana promedio de las últimas 4.${d?` Lo que más la subió: <b>${esc(acwrActLabel(d.key, d.label, sport))}</b> (${R(d.acute)} UA, cuando lo habitual es ${R(d.avg)}).`:''}`;
   } else if(pct!=null) why = `Esta semana ${self?'sumaste':'sumó'} ${Math.abs(pct)}% menos que ${self?'tu':'su'} semana promedio de las últimas 4.`;
   else why = '';
-  const maxW = Math.max(1, ...b.weeks);
-  const wkLbl = ['Esta semana','Semana pasada','Hace 2 semanas','Hace 3 semanas'];
-  const weeksHtml = b.weeks.map((v,i)=>`<div class="ax-w"><span>${wkLbl[i]}</span><i><u style="width:${Math.round(v/maxW*100)}%${i===0?';background:'+st.color:''}"></u></i><b>${R(v)}</b></div>`).join('');
+  const maxW = Math.max(1, ...b.shown.map(w=>w.ua));
+  const cal = loadWeekMode()==='cal';
+  const wkLbl = cal ? ['Esta semana','Semana pasada','Hace 2 semanas','Hace 3 semanas'] : ['Últimos 7 días','7 a 13 días','14 a 20 días','21 a 27 días'];
+  const rng = days=>{ const f=d=>new Date(d+'T00:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'short'}); return f(days[0])+' – '+f(days[6]); };
+  const weeksHtml = b.shown.map((w,i)=>`<div class="ax-w"><span>${wkLbl[i]}<small>${rng(w.days)}</small></span><i><u style="width:${Math.round(w.ua/maxW*100)}%${i===0?';background:'+st.color:''}"></u></i><b>${R(w.ua)}</b></div>`).join('');
   const actsHtml = b.byAct.filter(x=>x.acute>0 || x.avg>0).map(x=>{ const up = x.acute > x.avg*1.15, down = x.acute < x.avg*0.85; return `<div class="ax-a"><span>${esc(acwrActLabel(x.key, x.label, sport))}</span><b>${R(x.acute)}</b><small>habitual ${R(x.avg)}</small><em class="${up?'up':down?'down':''}">${up?'▲':down?'▼':'='}</em></div>`; }).join('');
   const topHtml = b.top.map(l=>{ const d=new Date(l.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric'}); return `<div class="ax-s"><span>${esc(d)} · ${esc(acwrActLabel(l.activity, l.session, sport))}</span><small>${l.mins||'?'} min · RPE ${l.rpe||'?'}</small><b>${R(+l.ua||0)} UA</b></div>`; }).join('');
   return `<div class="ax-head"><div class="ax-val" style="color:${st.color}">${b.m.acwr!=null?b.m.acwr.toFixed(2):'—'}</div><div class="ax-lbl" style="color:${st.color}">${esc(st.label.replace(/\s*[✓⚠]\s*$/,''))}</div></div>
-    <div class="ax-calc">${R(b.acute)} UA esta semana ÷ ${R(b.chronicAvg)} UA de promedio semanal (últimas 4)</div>
+    <div class="ax-calc">${R(b.acute)} UA de los últimos 7 días ÷ ${R(b.chronicAvg)} UA de promedio semanal (últimas 4)</div>
     ${why?`<p class="ax-why">${why}</p>`:''}
-    <div class="ax-t">Carga por semana</div><div class="ax-weeks">${weeksHtml}</div>
+    <div class="ax-t ax-t-tg">Carga por semana${loadWeekToggleHtml()}</div><div class="ax-weeks">${weeksHtml}</div>
     ${actsHtml?`<div class="ax-t">Esta semana, por actividad</div><div class="ax-acts">${actsHtml}</div>`:''}
     ${topHtml?`<div class="ax-t">Las sesiones más pesadas de la semana</div><div class="ax-top">${topHtml}</div>`:''}`;
 }
 function openAcwrExplain(uid) {
+  S._axUid = uid;
   let logs, sport, name, title;
   if(uid==='self') { logs = S.history?._sessionLogs||[]; sport = mySport(); name = null; title = 'Tu carga, explicada'; }
   else {

@@ -883,6 +883,16 @@
     const next=getTodaysRoutineSession(names,null,days); ok(getTodaysRoutineSession(names,null,days,()=>true)===next,'si ya hizo todas: la del próximo día de gimnasio');
     const withToday=[td,...days.slice(0,3)]; const mapped=getWeekdayScheduleMap(names,withToday)[td];
     ok(getTodaysRoutineSession(names,null,withToday,n=>n!=='Día 4')===mapped,'hoy es día de gimnasio: la de hoy, aunque falte otra'); }
+  // ── carga por semana: lunes a domingo, y el profe puede ver los últimos 7 días ──
+  { try{ localStorage.removeItem('gm-load-week'); }catch(e){}
+    const wk=loadWeekDays(0); ok(new Date(wk[0]+'T00:00:00').getDay()===1&&wk.includes(todayLocal()),'lun a dom: la semana actual arranca el lunes e incluye hoy');
+    ok(new Date(loadWeekDays(1)[6]+'T00:00:00').getDay()===0,'lun a dom: la semana pasada termina el domingo');
+    const a=S.adminAthletes.find(x=>x.uid==='u1'); await ensureGroupPersonalData(['u1']); openAcwrExplain('u1'); await wait(300);
+    const ov=()=>document.getElementById('acwr-overlay'); ok(/Esta semana/.test(ov()?.innerText||'')&&!!ov()?.querySelector('.lw-tg'),'explicación del ACWR: semanas de lunes a domingo y el selector del profe');
+    [...ov().querySelectorAll('.lw-tg button')].find(b=>/7 días/.test(b.textContent)).click(); await wait(300);
+    ok(loadWeekMode()==='roll'&&/Últimos 7 días/.test(ov()?.innerText||'')&&loadWeekDays(0)[6]===todayLocal(),'el profe elige "Últimos 7 días": termina hoy');
+    ok(/de los últimos 7 días ÷/.test(ov()?.innerText||''),'el ACWR sigue diciendo que usa los últimos 7 días');
+    setLoadWeekMode('cal'); closeAcwrExplain(); txtBad('carga por semana'); }
   // ── menús y modales ──
   switchView('settings'); await wait(600); txtBad('ajustes');
   // ── deslizar en la ficha: pasa de pestaña sin salir del atleta ──

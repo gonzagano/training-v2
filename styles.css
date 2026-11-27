@@ -2083,3 +2083,9 @@ html{-webkit-tap-highlight-color:transparent}
 .gm-empty svg{width:40px;height:40px;color:var(--accent-text);margin-bottom:12px}
 .gm-empty b{display:block;font-size:17px;color:var(--text);margin-bottom:6px}
 .gm-empty p{font-size:15px;color:var(--text2);margin:0 auto;max-width:30ch;line-height:1.45}
+
+/* Carga por semana: lunes a domingo o últimos 7 días (selector solo del profe) */
+.lw-tg{display:inline-flex;gap:4px;flex-wrap:wrap}
+.lw-tg .chip-btn{font-size:11px;padding:3px 9px}
+.ax-t-tg{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.ax-w span small{display:block;font-size:11px;color:var(--text3);font-weight:400}
