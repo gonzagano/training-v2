@@ -6759,6 +6759,7 @@ function archiveInjury(zid) {
     zoneId: zid,
     zoneLabel: zone?zone.label:zid,
     type: inj.type||'',
+    isInjury: isRealInjury(inj), severity: inj.severity||'leve',
     startDate: hist.length?hist[0].date:todayLocal(),
     resolvedDate: todayLocal(),
     peakPain: hist.length?Math.max(...hist.map(h=>h.pain),inj.pain):inj.pain,
@@ -7106,7 +7107,7 @@ function renderTeams() {
 function renderTeamDetail(team) {
   if(S.teamDayEdit) return renderTeamDayEditor(team, S.teamDayEdit);
   const sub = S.teamSubview || 'rutina';
-  let html=`<div class="team-detail-header">
+  let html=`<div class="team-detail-header no-print">
     <button class="back-btn" data-back="team-list">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:10px">
       ${teamCrestHtml(team, 44)}
@@ -7116,7 +7117,7 @@ function renderTeamDetail(team) {
     <button class="abtn tdh-cmp" onclick="adminGoCompare('${team.id}')">Comparar atletas</button>
     <button class="abtn tdh-set" onclick="toggleTeamSettings()" aria-label="Ajustes del equipo" title="Ajustes del equipo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
   </div>
-  <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+  <div class="no-print" style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
     <button class="snav-tab ${sub==='rutina'?'active':''}" onclick="setTeamSubview('rutina')">Plantel</button>
     <button class="snav-tab ${sub==='evals'?'active':''}" onclick="setTeamSubview('evals')">Evaluaciones</button>
     <button class="snav-tab ${sub==='wellness'?'active':''}" onclick="setTeamSubview('wellness')">Wellness</button>
@@ -7809,6 +7810,40 @@ function athleteAvailability(a) {
   return {key, worst, motivo: worst ? bodyZoneLabel(worst.zid)+(worst.inj.severity==='grave'?' (grave)':'') : '—'};
 }
 window.athleteAvailability = athleteAvailability;
+// Estado del atleta para el staff (una sola regla para Resumen, Staff y Partido): lo peor
+// entre molestia/lesión moderada o grave, pico de carga (ACWR > 1,5) y wellness 15 pts o más
+// debajo de su propio promedio de 4 semanas. Cada alerta lleva su regla escrita.
+const WELL_WORD = Object.fromEntries(WELLNESS_ITEMS.map(it=>[it.key, Object.fromEntries(it.options.map(o=>[o.v, o.label]))]));
+function wellnessBaseline(a, before, days=28) {
+  const d = new Date(before+'T12:00:00'); d.setDate(d.getDate()-days); const from = toLocalDateStr(d);
+  const v = Object.entries(a._personal?.wellness||{}).filter(([k])=>k>=from && k<before).map(([,w])=>getWellnessScore(w)).filter(s=>s.allFilled).map(s=>s.pct);
+  return v.length>=5 ? Math.round(v.reduce((s,x)=>s+x,0)/v.length) : null;
+}
+function athleteStaffStatus(a) {
+  const today = todayLocal();
+  const av = athleteAvailability(a);
+  const alerts = [];
+  if(av.key!=='ok') {
+    const inj = av.worst.inj, since = injurySinceDate(inj), d = since ? daysAgoLocal(since) : null, sev = inj.severity==='grave'?'grave':'moderada';
+    alerts.push({lvl:av.key, short:`${bodyZoneLabel(av.worst.zid)} (${sev}, dolor ${inj.pain}/10)`,
+      txt:`${bodyZoneLabel(av.worst.zid)}, dolor ${inj.pain}/10${d==null?'':d===0?' desde hoy':` hace ${d} día${d===1?'':'s'}`}`,
+      rule:`${isRealInjury(inj)?'lesión':'molestia'} ${sev} activa`, act:av.key==='no'?'No entrena':'Evaluar'});
+  }
+  const m = calcLoadMetrics((a._personal?.history?._sessionLogs)||[]);
+  if(m?.acwr!=null && m.acwr>1.5) alerts.push({lvl:'duda', short:`carga alta (ACWR ${cmpFmt(m.acwr,2)})`,
+    txt:`Carga de la semana ${Math.round(m.acuteUA).toLocaleString('es-AR')} UA, un ${Math.round((m.acwr-1)*100)} % más que su promedio semanal del mes (ACWR ${cmpFmt(m.acwr,2)})`,
+    rule:'ACWR mayor a 1,5', act:'Bajar volumen'});
+  const w = a._personal?.wellness||{};
+  const lastDate = Object.keys(w).filter(d=>d<=today && getWellnessScore(w[d]).allFilled).sort().pop() || null;
+  const last = lastDate ? {...w[lastDate], pct:getWellnessScore(w[lastDate]).pct} : null;
+  const base = lastDate ? wellnessBaseline(a, lastDate) : null;
+  if(last && base!=null && daysAgoLocal(lastDate)<=2 && base-last.pct>=15) alerts.push({lvl:'duda', short:`wellness bajo (${last.pct} %, lo normal es ${base} %)`,
+    txt:`Wellness ${last.pct} %${lastDate===today?' hoy':''}, ${base-last.pct} pts debajo de lo normal para este atleta (${base} %)`,
+    rule:'15 pts o más debajo de su propio promedio de 4 semanas', act:'Charlar'});
+  const key = alerts.some(x=>x.lvl==='no') ? 'no' : alerts.length ? 'duda' : 'ok';
+  return {key, alerts, m, last, lastDate, base};
+}
+window.athleteStaffStatus = athleteStaffStatus;
 function rpChartOpts(yOpts, tipLabel) {
   return { responsive:true, maintainAspectRatio:false, animation:false,
     interaction:{mode:'index', intersect:false},
@@ -7843,16 +7878,21 @@ function renderTeamReportResumen(team, members) {
   const acwrSt = getACWRStatus(avgAcwr);
   const inj = getTeamInjurySummary(members);
   const hurt = new Set(inj.details.map(d=>d.uid)).size;
-  const cmjUpTo = (a, date) => { const r=(a._personal?.evals?.cmj||[]).filter(x=>x && x.height!=null && (!date || String(x.date)<=date)); return r.length?Math.max(...r.map(x=>+x.height)):null; };
-  const cmjNowV = members.map(a=>cmjUpTo(a)).filter(v=>v!=null), cmjPrevV = members.map(a=>cmjUpTo(a,start)).filter(v=>v!=null);
+  // Último test de cada atleta (no la mejor marca de siempre: esa nunca baja y escondería un empeoramiento).
+  const cmjLast = (a, date) => { const r=(a._personal?.evals?.cmj||[]).filter(x=>x && x.height!=null && (!date || String(x.date)<=date)).sort((x,y)=>String(x.date).localeCompare(String(y.date))); return r.length ? +r[r.length-1].height : null; };
   const avg = v => v.length ? v.reduce((s,x)=>s+x,0)/v.length : null;
-  const cmjNow = avg(cmjNowV), cmjPrev = avg(cmjPrevV);
-  const vsPrev = (now, prev, dec, unit) => (now==null||prev==null) ? '' : (Math.abs(now-prev)<(dec?0.05:0.5) ? '= que el mes anterior' : (now>prev?'↑ +':'↓ −')+cmpFmt(Math.abs(now-prev),dec)+(unit||'')+' vs. mes anterior');
-  // Puntos clave: solo lo que cambia una decisión.
+  const cmjNow = avg(members.map(a=>cmjLast(a)).filter(v=>v!=null));
+  // vs. mes anterior: solo los atletas que tienen las dos mediciones (si no, se comparan grupos distintos).
+  const cmjDiff = avg(members.map(a=>[cmjLast(a), cmjLast(a,start)]).filter(([n,p])=>n!=null && p!=null).map(([n,p])=>n-p));
+  const vsDiff = (d, dec, unit) => d==null ? '' : (Math.abs(d)<(dec?0.05:0.5) ? '= que el mes anterior' : (d>0?'↑ +':'↓ −')+cmpFmt(Math.abs(d),dec)+(unit||'')+' vs. mes anterior');
+  const vsPrev = (now, prev, dec, unit) => (now==null||prev==null) ? '' : vsDiff(now-prev, dec, unit);
+  // Puntos clave: solo lo que cambia una decisión (mismas reglas que la hoja de Staff).
   const pts = [];
-  inj.details.filter(d=>d.sev==='grave').forEach(d=>pts.push(`${rpEsc(d.athlete)}: ${rpEsc(bodyZoneLabel(d.zoneId)).toLowerCase()} grave (dolor ${d.pain}/10).`));
-  const peaks = summaries.filter(s=>s.acwr!=null && s.acwr>1.5).length;
-  if(peaks) pts.push(`${peaks} atleta${peaks===1?'':'s'} con pico de carga (ACWR mayor a 1,5).`);
+  const flagged = members.map(a=>({a, st:athleteStaffStatus(a)})).filter(x=>x.st.alerts.length).sort((p,q)=>(p.st.key==='no'?0:1)-(q.st.key==='no'?0:1));
+  flagged.slice(0,6).forEach(({a,st})=>pts.push(`<b>${rpEsc(a.name||a.email)}</b>: ${st.alerts.map(x=>rpEsc(x.short)).join(' · ')}.`));
+  if(flagged.length>6) pts.push(`${flagged.length-6} atleta${flagged.length-6===1?'':'s'} más con alertas (ver Staff).`);
+  const sinWell = members.filter(a=>!Object.keys(a._personal?.wellness||{}).some(d=>daysAgoLocal(d)>=0 && daysAgoLocal(d)<=2)).length;
+  if(sinWell) pts.push(`${sinWell} atleta${sinWell===1?'':'s'} sin cargar wellness en los últimos 3 días.`);
   if(wNow!=null && wPrev!=null && Math.abs(wNow-wPrev)>2) pts.push(`El wellness del plantel viene ${wNow>wPrev?'subiendo':'bajando'}: ${wPrev} % → ${wNow} % respecto de los 30 días anteriores.`);
   if(!pts.length) pts.push('Sin alertas: el plantel está estable en wellness, carga y molestias.');
   const rank = {grave:3, moderada:2, leve:1};
@@ -7866,7 +7906,7 @@ function renderTeamReportResumen(team, members) {
       ${rpKpi('Wellness', wNow!=null?wNow:'—', wNow!=null?'%':'', vsPrev(wNow,wPrev,0,' pts'))}
       ${rpKpi('ACWR promedio', avgAcwr!=null?cmpFmt(avgAcwr,2):'—', '', avgAcwr!=null?acwrSt.label.replace(/\s*[✓⚠]\s*$/,''):'sin datos', avgAcwr!=null?acwrSt.color:'')}
       ${rpKpi('Sin molestias', members.length-hurt, '/'+members.length, inj.total?`${inj.grave} grave${inj.grave!==1?'s':''} · ${inj.moderada} moderada${inj.moderada!==1?'s':''}`:'plantel completo', inj.grave?RP_C.red:'')}
-      ${rpKpi('CMJ promedio', cmjNow!=null?cmpFmt(cmjNow,1):'—', cmjNow!=null?' cm':'', vsPrev(cmjNow,cmjPrev,1,' cm'))}
+      ${rpKpi('CMJ promedio', cmjNow!=null?cmpFmt(cmjNow,1):'—', cmjNow!=null?' cm':'', vsDiff(cmjDiff,1,' cm'))}
     </div>
     <div class="rp-key"><div class="rp-k">Puntos clave</div>${pts.map(p=>`<div>• ${p}</div>`).join('')}</div>
     <div class="rp-two">
@@ -7882,41 +7922,87 @@ function renderTeamReportResumen(team, members) {
 window.renderTeamReportResumen=renderTeamReportResumen;
 
 // ── REUNIÓN DE STAFF ─────────────────────────────────────────
+const STAFF_PERIODS = [{id:'7',label:'Últimos 7 días'},{id:'30',label:'Últimos 30 días'},{id:'season',label:'Temporada'},{id:'custom',label:'Elegir fechas'}];
+// Temporada = desde el 1 de enero. Elegir fechas = las dos fechas que puso el profe (en cualquier orden).
+function staffRange() {
+  const today = todayLocal(), p = S.staffPeriod || '7';
+  const ago = n => { const d=new Date(); d.setDate(d.getDate()-n); return toLocalDateStr(d); };
+  if(p==='30') return {from:ago(29), to:today};
+  if(p==='season') return {from:today.slice(0,4)+'-01-01', to:today};
+  if(p==='custom' && S.staffFrom && S.staffTo) return S.staffFrom<=S.staffTo ? {from:S.staffFrom, to:S.staffTo} : {from:S.staffTo, to:S.staffFrom};
+  return {from:ago(6), to:today};
+}
+function setStaffPeriod(p) {
+  S.staffPeriod = p;
+  if(p==='custom' && !S.staffFrom) { const d=new Date(); d.setDate(d.getDate()-6); S.staffFrom = toLocalDateStr(d); S.staffTo = todayLocal(); }
+  renderMain();
+}
+window.setStaffPeriod = setStaffPeriod;
+function setStaffDate(which, v) { if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return; S[which==='from'?'staffFrom':'staffTo'] = v; renderMain(); }
+window.setStaffDate = setStaffDate;
+// Notas y decisiones del staff: un texto por equipo, se edita en la app y sale impreso en el PDF.
+async function saveTeamReportNote(teamId, text) {
+  const v = String(text||'').trim();
+  try {
+    await updateDocSafe(doc(db,'teams',teamId), {'reportNotes.staff': v || deleteField()});
+    [S.teamView, ...(S.teams||[])].filter(t=>t && t.id===teamId).forEach(t=>{ t.reportNotes = {...(t.reportNotes||{})}; if(v) t.reportNotes.staff = v; else delete t.reportNotes.staff; });
+    showToast('✓ Guardado'); renderMain();
+  } catch(e) { showToast('Error al guardar: '+e.message); }
+}
+window.saveTeamReportNote = saveTeamReportNote;
+
 function renderStaffMeetingReport(team, members) {
-  const today = todayLocal();
-  const days7 = []; for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); days7.push(toLocalDateStr(d)); }
-  const injSum = getTeamInjurySummary(members);
-  const realActive = members.filter(a=>Object.values(a._personal?.injuries||{}).some(inj=>inj.pain>0 && isRealInjury(inj)));
-  const molestias = members.filter(a=>!realActive.includes(a) && Object.values(a._personal?.injuries||{}).some(inj=>inj.pain>0));
-  const noHoy = members.filter(a=>!a._personal?.wellness?.[today]);
-  const diasProm = members.length ? members.reduce((s,a)=>s+days7.filter(d=>a._personal?.wellness?.[d]).length,0)/members.length : 0;
+  const today = todayLocal(), {from, to} = staffRange(), per = S.staffPeriod || '7';
+  const nDays = Math.round((new Date(to+'T12:00:00')-new Date(from+'T12:00:00'))/86400000)+1;
+  const inR = d => d>=from && d<=to;
   const order = {no:0, duda:1, ok:2};
   const rows = members.map(a=>{
-    const w = a._personal?.wellness||{};
-    const scores = days7.map(d=>{ const s=getWellnessScore(w[d]); return s.allFilled?s.pct:null; });
-    const lastDate = Object.keys(w).sort().pop();
-    const last = lastDate ? w[lastDate] : null;
-    const m = calcLoadMetrics((a._personal?.history?._sessionLogs)||[]);
-    const ua = ((a._personal?.history?._sessionLogs)||[]).filter(l=>days7.includes(l.date)).reduce((s,l)=>s+(l.ua||0),0);
-    return {a, scores, last:[...scores].reverse().find(v=>v!=null), fatiga:last?.fatiga, dolor:last?.dolor_muscular, acwr:m?.acwr, ua, av:athleteAvailability(a)};
-  }).sort((p,q)=>order[p.av.key]-order[q.av.key] || (p.last??101)-(q.last??101));
-  const bars = sc => `<span class="rp-wb">${sc.map(v=>`<i style="height:${v==null?3:5+v/100*13}px;background:${v==null?RP_C.line:v>=75?RP_C.green:v>=50?RP_C.amber:RP_C.red}"></i>`).join('')}</span>`;
-  const tRows = rows.map(r=>[rpEsc(r.a.name||r.a.email), bars(r.scores)+(r.last!=null?`<b>${r.last}%</b>`:'—'), r.fatiga??'—', r.dolor??'—', r.acwr!=null?cmpFmt(r.acwr,2):'—', r.ua?Math.round(r.ua).toLocaleString('es-AR'):'—', rpPill(RP_AVAIL[r.av.key])]);
-  const matchRows = members.map(a=>({a, ...getMatchMinutesSummary((a._personal?.history?._sessionLogs)||[])})).filter(r=>r.partidosJugados>0).sort((x,y)=>y.minutosTotales-x.minutosTotales)
+    const logs = ((a._personal?.history?._sessionLogs)||[]).filter(l=>inR(l.date));
+    return {a, st:athleteStaffStatus(a), logs, ua:logs.reduce((s,l)=>s+(l.ua||0),0), ses:new Set(logs.map(l=>l.date)).size,
+      wDays:Object.keys(a._personal?.wellness||{}).filter(inR).length};
+  }).sort((p,q)=>order[p.st.key]-order[q.st.key] || (p.a.name||'').localeCompare(q.a.name||''));
+  const n = k => rows.filter(r=>r.st.key===k).length;
+  const pct = members.length ? Math.round(n('ok')/members.length*100) : 0;
+  const wLoaded = members.length ? Math.round(rows.reduce((s,r)=>s+Math.min(r.wDays,nDays),0)/(members.length*nDays)*100) : 0;
+  const noHoy = members.filter(a=>!a._personal?.wellness?.[today]);
+  const c = (txt, cls) => `<span class="rp-c ${cls||''}">${txt}</span>`;
+  // Escala 1–5 de la app: 1 = lo peor (mucho dolor, muy cansado), 5 = lo mejor. Se muestra la palabra, no el número.
+  const word = (k, v) => v==null ? '—' : c(WELL_WORD[k]?.[v] || v, v<=1?'rp-cr':v===2?'rp-ca':v>=4?'rp-cg':'');
+  const wCell = st => {
+    if(!st.last) return '—';
+    const d = st.base!=null ? st.base-st.last.pct : null;
+    const cls = d!=null ? (d>=15?'rp-cr':d>=8?'rp-ca':'rp-cg') : (st.last.pct>=75?'rp-cg':st.last.pct>=50?'rp-ca':'rp-cr');
+    return c(st.last.pct+' %', cls)+(st.lastDate!==today?`<small>${+st.lastDate.slice(8)}/${+st.lastDate.slice(5,7)}</small>`:'');
+  };
+  const acwrCls = v => v>1.5?'rp-cr':(v>1.3||v<0.8)?'rp-ca':'rp-cg';
+  const tRows = rows.map(r=>{ const L = r.st.last||{};
+    return [rpEsc(r.a.name||r.a.email), rpPill(RP_AVAIL[r.st.key]), wCell(r.st), word('sueño_calidad',L.sueño_calidad), word('fatiga',L.fatiga), word('dolor_muscular',L.dolor_muscular),
+      r.ua?Math.round(r.ua).toLocaleString('es-AR'):'—', r.st.m?.acwr!=null?c(cmpFmt(r.st.m.acwr,2),acwrCls(r.st.m.acwr)):'—', r.ses||'—']; });
+  // Una tarjeta por atleta; si tiene varias alertas, una línea por cada una con su regla.
+  const flagged = rows.filter(r=>r.st.alerts.length);
+  const alHtml = flagged.length ? `<div class="rp-alerts">${flagged.map(r=>`<div class="rp-al rp-al-${r.st.key}"><div><b>${rpEsc(r.a.name||r.a.email)}</b>${r.st.alerts.map(x=>`<p>${rpEsc(x.txt)}<span>Regla: ${x.rule}</span></p>`).join('')}</div><em>${[...new Set(r.st.alerts.map(x=>x.act))].join(' · ')}</em></div>`).join('')}</div>`
+    : '<div class="rp-empty">Nadie necesita una decisión hoy.</div>';
+  const matchRows = rows.map(r=>({a:r.a, ...getMatchMinutesSummary(r.logs)})).filter(r=>r.partidosJugados>0).sort((x,y)=>y.minutosTotales-x.minutosTotales)
     .map(r=>[rpEsc(r.a.name||r.a.email), r.partidosJugados, r.minutosTotales, r.promedioPorPartido+"'"]);
-  const names = arr => arr.slice(0,2).map(a=>rpEsc((a.name||a.email||'').split(/\s+/)[0])).join(', ')+(arr.length>2?'…':'');
-  const body = `<div class="rp-kpis">
-      ${rpKpi('Plantel', members.length, '', 'atletas')}
-      ${rpKpi('Lesionados', realActive.length, '', realActive.length?names(realActive):'ninguno', realActive.length?RP_C.red:'')}
-      ${rpKpi('Con molestias', molestias.length, '', molestias.length?names(molestias):'ninguno', molestias.length?RP_C.amber:'')}
-      ${rpKpi('Wellness cargado', cmpFmt(diasProm,1), '/7', noHoy.length?`${noHoy.length} no cargaron hoy`:'todos cargaron hoy')}
-    </div>
+  const lg = k => `<i class="rp-ab-${k}"></i>`;
+  const note = team.reportNotes?.staff || '';
+  const perLbl = from.slice(0,4)===to.slice(0,4) ? `${rpDate(from).replace(/ \d{4}$/,'')} al ${rpDate(to)}` : `${rpDate(from)} al ${rpDate(to)}`;
+  const body = `<div class="no-print rp-per">${STAFF_PERIODS.map(p=>`<button class="chip-btn ${per===p.id?'on':''}" onclick="setStaffPeriod('${p.id}')">${p.label}</button>`).join('')}
+      ${per==='custom'?`<span class="rp-dates"><input type="date" class="rp-date" aria-label="Desde" value="${from}" max="${today}" onchange="setStaffDate('from',this.value)"><span>al</span><input type="date" class="rp-date" aria-label="Hasta" value="${to}" max="${today}" onchange="setStaffDate('to',this.value)"></span>`:''}</div>
+    <div class="rp-avail"><div><div class="rp-k">Disponibilidad hoy</div><div class="rp-v rp-v-big">${pct}<i>%</i></div></div>
+      <div><div class="rp-abar">${['ok','duda','no'].filter(n).map(k=>`<i class="rp-ab-${k}" style="width:${n(k)/members.length*100}%"></i>`).join('')}</div>
+        <div class="rp-aleg"><span>${lg('ok')}<b>${n('ok')}</b> disponible${n('ok')===1?'':'s'}</span><span>${lg('duda')}<b>${n('duda')}</b> en duda</span><span>${lg('no')}<b>${n('no')}</b> no disponible${n('no')===1?'':'s'}</span><span class="rp-aw">Wellness cargado: <b>${wLoaded} %</b> de los días</span></div></div></div>
     ${noHoy.length?`<div class="rp-note"><b>No cargaron wellness hoy:</b> ${noHoy.map(a=>rpEsc(a.name||a.email)).join(', ')}</div>`:''}
-    ${rpH('Atleta por atleta','últimos 7 días · ordenado por estado')}
-    ${rpTable(['Atleta','Wellness 7 días','Fatiga 1–5','Dolor 1–5','ACWR','Carga sem. (UA)','Estado'], tRows, 'rp-tc')}
-    ${rpH('Partidos','minutos jugados')}
-    ${matchRows.length?rpTable(['Atleta','Partidos','Minutos','Promedio'], matchRows, 'rp-tc'):'<div class="rp-empty">Sin partidos cargados.</div>'}`;
-  return rpSheet(team, members, 'Reunión de staff', 'Estado del plantel', `Semana del ${rpDate(days7[0]).replace(/ \d{4}$/,'')} al ${rpDate(today).replace(/ \d{4}$/,'')}`, body);
+    ${rpH('Para decidir hoy', flagged.length?`${flagged.length} atleta${flagged.length===1?'':'s'}`:'')}
+    ${alHtml}
+    ${rpH('Atleta por atleta','wellness: último registro · carga, sesiones y partidos: del período')}
+    ${rpTable(['Atleta','Estado','Wellness','Sueño','Cansancio','Dolor muscular','Carga (UA)','ACWR','Sesiones'], tRows, 'rp-tc')}
+    ${rpH('Partidos','minutos jugados en el período')}
+    ${matchRows.length?rpTable(['Atleta','Partidos','Minutos','Promedio'], matchRows, 'rp-tc'):'<div class="rp-empty">Sin partidos en el período.</div>'}
+    <div class="${note?'':'no-print'}">${rpH('Notas y decisiones del staff')}
+      <textarea class="no-print rp-notes-in" rows="3" placeholder="Qué se decidió en la reunión…" onchange="saveTeamReportNote('${team.id}', this.value)">${rpEsc(note)}</textarea>
+      <div class="rp-notes-pr">${rpEsc(note).replace(/\n/g,'<br>')}</div></div>`;
+  return rpSheet(team, members, 'Reunión de staff', 'Estado del plantel', perLbl, body);
 }
 window.renderStaffMeetingReport = renderStaffMeetingReport;
 
@@ -7929,49 +8015,52 @@ function computeMedicalReportStats(members) {
   const periodStart = new Date(); periodStart.setDate(periodStart.getDate()-periodDays);
   const periodStartStr = toLocalDateStr(periodStart);
 
-  let activeToday=0, grave=0, moderada=0, leve=0, totalHistoric=0;
+  // Incidencia = lesiones NUEVAS del período / horas de exposición del MISMO período × 1000
+  // (antes dividía las activas de hoy por todas las horas de la historia).
+  let activeToday=0, grave=0, moderada=0, leve=0, newInj=0, newMol=0, periodHours=0;
   const zoneCounts = {};
   const monthCounts = {};
-  const posStats = {}; // {posLabel: {active, exposureHours}}
+  const posStats = {}; // {posLabel: {active, newInj, hours}}
+  const addNew = (date, real, pos) => {
+    if(!date || date<periodStartStr) return;
+    if(real) { newInj++; pos.newInj++; } else newMol++;
+    monthCounts[date.slice(0,7)] = (monthCounts[date.slice(0,7)]||0)+1;
+  };
 
   members.forEach(a=>{
     const posLabel = a.position || 'Sin puesto';
-    if(!posStats[posLabel]) posStats[posLabel] = {active:0, exposureHours:0};
-    posStats[posLabel].exposureHours += getExposureHours(a._personal?.history?._sessionLogs||[]);
-    const injuries = a._personal?.injuries||{};
-    Object.entries(injuries).forEach(([zoneId,inj])=>{
-      if(!inj.pain||inj.pain<=0||!isRealInjury(inj)) return;
+    if(!posStats[posLabel]) posStats[posLabel] = {active:0, newInj:0, hours:0};
+    const pos = posStats[posLabel];
+    const h = getExposureHours((a._personal?.history?._sessionLogs||[]).filter(l=>l.date>=periodStartStr));
+    pos.hours += h; periodHours += h;
+    Object.entries(a._personal?.injuries||{}).forEach(([zoneId,inj])=>{
+      if(!inj || !inj.pain || inj.pain<=0) return;
+      const real = isRealInjury(inj);
+      addNew(injurySinceDate(inj) || inj.history?.[0]?.date, real, pos);
+      if(!real) return;
       activeToday++;
-      posStats[posLabel].active++;
+      pos.active++;
       const sev = inj.severity||'leve';
       if(sev==='grave') grave++; else if(sev==='moderada') moderada++; else leve++;
       zoneCounts[zoneId] = (zoneCounts[zoneId]||0)+1;
-      const start = inj.history?.length ? inj.history[0].date : null;
-      if(start && start>=periodStartStr) monthCounts[start.slice(0,7)] = (monthCounts[start.slice(0,7)]||0)+1;
     });
-    const archive = a._personal?.injuryArchive||[];
-    archive.forEach(r=>{
-      totalHistoric++;
-      if(r.startDate>=periodStartStr) monthCounts[r.startDate.slice(0,7)] = (monthCounts[r.startDate.slice(0,7)]||0)+1;
-    });
+    // Archivadas: las viejas no guardaban si eran lesión o molestia → cuentan como molestia.
+    (a._personal?.injuryArchive||[]).forEach(r=>addNew(r.startDate, r.isInjury===true, pos));
   });
-  totalHistoric += activeToday;
 
   const prevalencia = members.length ? Math.round((activeToday/members.length)*100) : 0;
-  const lesionesPorJugador = members.length ? (totalHistoric/members.length).toFixed(2) : '0.00';
-  const totalExposureHours = members.reduce((s,a)=>s+getExposureHours(a._personal?.history?._sessionLogs||[]),0);
-  const incidencia = totalExposureHours>0 ? +((activeToday/totalExposureHours)*1000).toFixed(1) : null;
+  const incidencia = periodHours>0 ? +((newInj/periodHours)*1000).toFixed(1) : null;
 
   const allBodyZones = [...BODY_ZONES.front, ...BODY_ZONES.back];
   const zoneRows = Object.entries(zoneCounts).map(([zid,count])=>({label:allBodyZones.find(z=>z.id===zid)?.label||zid, count})).sort((a,b)=>b.count-a.count);
   const monthKeys = Object.keys(monthCounts).sort();
 
   const positionRows = Object.entries(posStats)
-    .filter(([,s])=>s.active>0)
-    .map(([label,s])=>({label, active:s.active, incidencia: s.exposureHours>0 ? +((s.active/s.exposureHours)*1000).toFixed(1) : null}))
-    .sort((a,b)=>b.active-a.active);
+    .filter(([,s])=>s.active>0 || s.newInj>0)
+    .map(([label,s])=>({label, active:s.active, newInj:s.newInj, incidencia: s.hours>0 ? +((s.newInj/s.hours)*1000).toFixed(1) : null}))
+    .sort((a,b)=>b.active-a.active || b.newInj-a.newInj);
 
-  return {periodDays, activeToday, grave, moderada, leve, prevalencia, lesionesPorJugador, incidencia, zoneRows, monthKeys, monthCounts, positionRows};
+  return {periodDays, activeToday, grave, moderada, leve, prevalencia, newInj, newMol, incidencia, zoneRows, monthKeys, monthCounts, positionRows};
 }
 window.computeMedicalReportStats = computeMedicalReportStats;
 
@@ -7991,22 +8080,22 @@ function renderMedicalReport(team, members) {
   });
   const prev = members.length ? Math.round(new Set(active.map(x=>x.a.uid)).size/members.length*100) : 0;
   const body = `<div class="rp-kpis">
-      ${rpKpi('Prevalencia hoy', prev, '%', `${new Set(active.map(x=>x.a.uid)).size} de ${members.length} atletas`, prev?RP_C.amber:'')}
+      ${rpKpi('Prevalencia hoy', prev, '%', `${new Set(active.map(x=>x.a.uid)).size} de ${members.length} con lesión o molestia`, prev?RP_C.amber:'')}
       ${rpKpi('Lesiones activas', st.activeToday, '', `+ ${molestias} molestia${molestias!==1?'s':''}`)}
-      ${rpKpi('Lesiones por atleta', st.lesionesPorJugador.replace('.',','), '', 'en total')}
-      ${rpKpi('Incidencia', st.incidencia!=null?String(st.incidencia).replace('.',','):'—', '', 'cada 1000 h de exposición')}
+      ${rpKpi('Nuevas', st.newInj+st.newMol, '', `${st.newInj} lesi${st.newInj===1?'ón':'ones'} · ${st.newMol} molestia${st.newMol===1?'':'s'}`)}
+      ${rpKpi('Incidencia', st.incidencia!=null?String(st.incidencia).replace('.',','):'—', '', 'lesiones nuevas cada 1000 h')}
     </div>
     <div class="rp-med">
       <div>${rpH('Dónde','activas hoy')}<div class="rp-bm">${map('front')}${map('back')}</div>
         <div class="rp-leg"><span><i style="background:${RP_C.red}"></i>grave</span><span><i style="background:${RP_C.amber}"></i>moderada</span><span><i style="background:${RP_C.green}"></i>leve</span></div></div>
       <div>${rpH('Zonas con lesión','activas hoy')}
         ${st.zoneRows.length?st.zoneRows.slice(0,6).map(z=>`<div class="rp-zb"><span>${rpEsc(z.label)}</span><span class="rp-zt"><i style="width:${z.count/maxZ*100}%"></i></span><b>${z.count}</b></div>`).join(''):'<div class="rp-empty">Sin lesiones activas.</div>'}
-        ${rpH('Lesiones nuevas por mes', `últimos ${st.periodDays} días`)}
-        ${st.monthKeys.length?'<div class="rp-ch rp-ch-s"><canvas id="medreport-trend-chart"></canvas></div>':'<div class="rp-empty">Sin lesiones nuevas en el período.</div>'}</div>
+        ${rpH('Lesiones y molestias nuevas', `por mes · últimos ${st.periodDays} días`)}
+        ${st.monthKeys.length?'<div class="rp-ch rp-ch-s"><canvas id="medreport-trend-chart"></canvas></div>':'<div class="rp-empty">Sin lesiones ni molestias nuevas en el período.</div>'}</div>
     </div>
     ${rpH('Activas hoy','')}
     ${actRows.length?rpTable(['Atleta','Zona','Tipo','Desde','Dolor','Gravedad'], actRows):'<div class="rp-empty">Sin molestias ni lesiones activas.</div>'}
-    ${st.positionRows.length?rpH('Por puesto','')+rpTable(['Puesto','Activas','Incidencia /1000 h'], st.positionRows.map(p=>[rpEsc(p.label), p.active, p.incidencia!=null?String(p.incidencia).replace('.',','):'—']), 'rp-tc'):''}`;
+    ${st.positionRows.length?rpH('Por puesto',`últimos ${st.periodDays} días`)+rpTable(['Puesto','Lesiones activas','Lesiones nuevas','Incidencia /1000 h'], st.positionRows.map(p=>[rpEsc(p.label), p.active, p.newInj, p.incidencia!=null?String(p.incidencia).replace('.',','):'—']), 'rp-tc'):''}`;
   return rpSheet(team, members, 'Informe médico', 'Lesiones y molestias', `Período: últimos ${st.periodDays} días`, body);
 }
 window.renderMedicalReport = renderMedicalReport;
@@ -8020,7 +8109,7 @@ function drawMedicalReportCharts(members) {
   S._medreportTrendChart = new Chart(cv, {
     type:'bar',
     data:{ labels:st.monthKeys.map(k=>EVAL_MONTHS[+k.slice(5)-1].slice(0,3).toLowerCase()), datasets:[{ data:st.monthKeys.map(k=>st.monthCounts[k]), backgroundColor:RP_C.accent, borderRadius:4, maxBarThickness:36 }] },
-    options: rpChartOpts({beginAtZero:true, ticks:{color:RP_C.text3, stepSize:1, precision:0}}, ctx=>' '+ctx.parsed.y+' lesión'+(ctx.parsed.y===1?'':'es'))
+    options: rpChartOpts({beginAtZero:true, ticks:{color:RP_C.text3, stepSize:1, precision:0}}, ctx=>' '+ctx.parsed.y+' nueva'+(ctx.parsed.y===1?'':'s'))
   });
 }
 window.drawMedicalReportCharts = drawMedicalReportCharts;
@@ -8052,9 +8141,9 @@ function renderMatchReadinessReport(team, members) {
     const w = a._personal?.wellness||{};
     const rec = days7.map(d=>w[d]).filter(Boolean);
     if(!rec.length) noWell++;
-    const m = calcLoadMetrics((a._personal?.history?._sessionLogs)||[]);
-    return {a, av:athleteAvailability(a), fatiga:avg(rec.map(x=>x.fatiga).filter(v=>v!=null)), dolor:avg(rec.map(x=>x.dolor_muscular).filter(v=>v!=null)),
-      acwr:m?.acwr, dsp:getMatchMinutesSummary((a._personal?.history?._sessionLogs)||[]).daysSinceLastMatch};
+    const st = athleteStaffStatus(a);
+    return {a, av:{key:st.key, motivo:st.alerts.map(x=>x.short).join(' · ').replace(/^./,ch=>ch.toUpperCase())||'—'}, fatiga:avg(rec.map(x=>x.fatiga).filter(v=>v!=null)), dolor:avg(rec.map(x=>x.dolor_muscular).filter(v=>v!=null)),
+      acwr:st.m?.acwr, dsp:getMatchMinutesSummary((a._personal?.history?._sessionLogs)||[]).daysSinceLastMatch};
   }).sort((p,q)=>order[p.av.key]-order[q.av.key] || (p.a.name||'').localeCompare(q.a.name||''));
   const n = k => rows.filter(r=>r.av.key===k).length;
   let match = '<div class="rp-empty">No hay ningún partido cargado en el Calendario para este equipo.</div>';
@@ -8065,8 +8154,9 @@ function renderMatchReadinessReport(team, members) {
       <div class="rp-match-w"><b>${next.opponent?'vs. '+rpEsc(next.opponent):'Partido'}</b><span>${next.homeAway==='visitante'?'Visitante':'Local'} · ${wd}${next.time?' · '+rpEsc(next.time):''}</span></div>
       <div class="rp-match-d"><b>${dd}</b><span>día${dd===1?'':'s'}</span></div></div>`;
   }
-  const f1 = v => v==null ? '—' : cmpFmt(v,1);
-  const tRows = rows.map(r=>[rpEsc(r.a.name||r.a.email), rpPill(RP_AVAIL[r.av.key]), rpEsc(r.av.motivo), f1(r.fatiga), f1(r.dolor), r.acwr!=null?cmpFmt(r.acwr,2):'—', r.dsp??'—']);
+  // Promedio 1–5 de la semana → la palabra de la escala de la app (5 = sin dolor / muy fresco).
+  const w1 = (k, v) => v==null ? '—' : rpEsc(WELL_WORD[k]?.[Math.round(v)] || cmpFmt(v,1));
+  const tRows = rows.map(r=>[rpEsc(r.a.name||r.a.email), rpPill(RP_AVAIL[r.av.key]), rpEsc(r.av.motivo), w1('fatiga',r.fatiga), w1('dolor_muscular',r.dolor), r.acwr!=null?cmpFmt(r.acwr,2):'—', r.dsp??'—']);
   // Carga de los últimos 7 días: UA promedio del plantel por día.
   const ua = days7.map(d=>{ const v = members.map(a=>((a._personal?.history?._sessionLogs)||[]).filter(l=>l.date===d).reduce((s,l)=>s+(l.ua||0),0)); const withLoad = v.filter(x=>x>0); return withLoad.length ? Math.round(withLoad.reduce((s,x)=>s+x,0)/withLoad.length) : 0; });
   const maxUa = Math.max(1, ...ua);
@@ -8074,7 +8164,7 @@ function renderMatchReadinessReport(team, members) {
   const body = `${match}
     <div class="rp-big3"><div class="rp-ok"><b>${n('ok')}</b><span>Disponible${n('ok')!==1?'s':''}</span></div><div class="rp-warn"><b>${n('duda')}</b><span>En duda</span></div><div class="rp-bad"><b>${n('no')}</b><span>No disponible${n('no')!==1?'s':''}</span></div></div>
     ${rpH('Plantel','ordenado por disponibilidad · promedios de los últimos 7 días')}
-    ${rpTable(['Atleta','Disponibilidad','Motivo','Fatiga','Dolor','ACWR','Días s/ partido'], tRows, 'rp-tc')}
+    ${rpTable(['Atleta','Disponibilidad','Motivo','Cansancio','Dolor muscular','ACWR','Días s/ partido'], tRows, 'rp-tc')}
     ${noWell?`<div class="rp-note">${noWell} atleta${noWell===1?'':'s'} sin wellness en los últimos 7 días: su estado puede no estar al día.</div>`:''}
     ${rpH('Carga de la semana previa','UA por día · promedio del plantel')}
     <div class="rp-days">${days7.map((d,i)=>`<div><b>${ua[i]||''}</b><i style="height:${ua[i]?Math.max(4,ua[i]/maxUa*70):3}px;${ua[i]?'':'background:'+RP_C.line}"></i><span>${dayLbl(d)}</span></div>`).join('')}</div>`;
@@ -10627,7 +10717,7 @@ async function abmSave(remove) {
       // Igual que cuando la quita el atleta: pasa al historial de resueltas, no se pierde.
       const hist = zone.history;
       const zl = [...BODY_ZONES.front, ...BODY_ZONES.back].find(z=>z.id===zid);
-      dot.injuryArchive = [...(p.injuryArchive||[]), {zoneId:zid, zoneLabel:zl?zl.label:zid, type:zone.type||'', startDate:hist.length?hist[0].date:today, resolvedDate:today, peakPain:Math.max(0, ...hist.map(h=>+h.pain||0), +(server?.pain)||0), history:hist}];
+      dot.injuryArchive = [...(p.injuryArchive||[]), {zoneId:zid, zoneLabel:zl?zl.label:zid, type:zone.type||'', isInjury:isRealInjury(zone), severity:zone.severity||'leve', startDate:hist.length?hist[0].date:today, resolvedDate:today, peakPain:Math.max(0, ...hist.map(h=>+h.pain||0), +(server?.pain)||0), history:hist}];
       dot['injuries.'+zid] = deleteField();
     }
     await updateDocSafe(ref, dot);

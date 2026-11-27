@@ -471,6 +471,38 @@
     setTeamReportSubview('medico'); await wait(900); ok(!!document.querySelector('.rp-bm svg')&&!document.getElementById('medreport-severity-chart'),'informe médico: mapa del cuerpo (sin el cuadro vacío)');
     setTeamReportSubview('partido'); await wait(700); ok(document.querySelectorAll('.rp-big3>div').length===3,'informe partido: disponibles, en duda y no disponibles');
     S.teamReportSubview='resumen'; }
+  // ── Informe: arreglos + hoja de Staff nueva (alertas con su regla, palabras en vez de 1–5, período, notas, PDF) ──
+  { const team=S.teamView; const d=n=>{const t=new Date();t.setDate(t.getDate()-n);return toLocalDateStr(t);};
+    const fake=over=>({uid:'zz'+Math.random(), name:'Prueba Uno', _personal:Object.assign({wellness:{},injuries:{},history:{_sessionLogs:[]},injuryArchive:[]},over)});
+    const wFull=v=>({fatiga:v,sueño_calidad:v,estres:v,dolor_muscular:v,humor:v,sueño_horas:8});
+    const ok5=fake({wellness:{[todayLocal()]:wFull(5)}});
+    let h=renderStaffMeetingReport(team,[ok5]); ok(/Sin dolor/.test(h)&&/Muy fresco/.test(h),'staff: dolor y cansancio en palabras (5 = sin dolor)');
+    const ww={}; for(let i=1;i<=10;i++) ww[d(i)]=wFull(5); ww[todayLocal()]=wFull(2);
+    const low=fake({wellness:ww}); const stl=athleteStaffStatus(low);
+    ok(stl.key==='duda'&&stl.alerts.some(x=>/propio promedio/.test(x.rule)),'staff: wellness muy debajo de lo normal para él → en duda, con la regla');
+    h=renderStaffMeetingReport(team,[low]); ok(/Para decidir hoy/.test(h)&&/Regla:/.test(h)&&/rp-al /.test(h),'staff: la alerta sale en "Para decidir hoy" con su regla');
+    const inj=fake({injuries:{rodilla_der:{pain:4,severity:'moderada',isInjury:false,history:[{date:d(2),pain:4}]}}});
+    ok(athleteStaffStatus(inj).key==='duda','staff: molestia moderada → en duda');
+    const box=document.createElement('div'); box.innerHTML=renderTeamReportResumen(team,[inj,ok5]); const key=box.querySelector('.rp-key')?.textContent||'';
+    ok(/Prueba Uno/.test(key)&&!/Sin alertas/.test(key),'resumen: puntos clave nombra al atleta con molestia moderada');
+    box.innerHTML=renderTeamReportResumen(team,[fake({evals:{cmj:[{date:d(60),height:45},{date:d(3),height:40}]}})]);
+    ok(/↓/.test([...box.querySelectorAll('.rp-kpi')].find(k=>/CMJ/.test(k.textContent))?.textContent||''),'resumen: el CMJ muestra la baja si el último test es peor');
+    const ms=computeMedicalReportStats([fake({injuries:{tobillo_izq:{pain:5,severity:'moderada',isInjury:true,history:[{date:d(5),pain:5}]}}, history:{_sessionLogs:[{date:d(10),mins:600,ua:3000},{date:d(200),mins:6000,ua:1}]}})]);
+    ok(ms.newInj===1&&ms.incidencia===100,'médico: incidencia = 1 lesión nueva / 10 h del período × 1000 ('+ms.incidencia+')');
+    const ld=fake({history:{_sessionLogs:[{date:d(20),mins:60,ua:777}]}});
+    S.staffPeriod='7'; ok(!/777/.test(renderStaffMeetingReport(team,[ld])),'staff 7 días: no suma la carga de hace 20 días');
+    S.staffPeriod='30'; ok(/777/.test(renderStaffMeetingReport(team,[ld])),'staff 30 días: sí la suma');
+    S.staffPeriod='custom'; S.staffFrom=d(15); S.staffTo=d(25); ok(/777/.test(renderStaffMeetingReport(team,[ld])),'staff fechas elegidas (al revés): la incluye');
+    S.staffPeriod=null; S.staffFrom=S.staffTo=null;
+    await saveTeamReportNote(team.id,'Rossi reevaluar jueves'); await wait(300);
+    ok(JSON.parse(localStorage.getItem('__db')).teams[team.id].reportNotes?.staff==='Rossi reevaluar jueves','staff: la nota queda guardada en el equipo');
+    setTeamReportSubview('staff'); await wait(700);
+    ok(/Rossi reevaluar jueves/.test(document.querySelector('.rp-notes-pr')?.textContent||''),'staff: la nota sale en la versión para imprimir');
+    ok(!!document.querySelector('.rp-avail')&&document.querySelectorAll('.rp-per .chip-btn').length===4,'staff: disponibilidad y selector de período');
+    txtBad('informe staff nuevo');
+    await saveTeamReportNote(team.id,''); await wait(300); ok(!JSON.parse(localStorage.getItem('__db')).teams[team.id].reportNotes?.staff,'staff: borrar la nota la quita');
+    ok(document.querySelector('.team-detail-header')?.classList.contains('no-print')&&!!document.querySelector('.snav-tab')?.closest('.no-print'),'PDF: no imprime el encabezado ni las pestañas de la app');
+    S.teamReportSubview='resumen'; }
   // ── el RM se recalcula al abrir la ficha por CUALQUIER camino, con los datos frescos (no la copia en memoria) ──
   { const P=()=>JSON.parse(localStorage.getItem('__db')).personal.u2; const put=(k,rec)=>{ const dbx=JSON.parse(localStorage.getItem('__db')); dbx.personal.u2.history[k]=rec; localStorage.setItem('__db',JSON.stringify(dbx)); };
     // u2 (Rossi) tiene la rutina r1; x2 = Press banca, se vincula al RM de press plano
