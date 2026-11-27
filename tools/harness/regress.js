@@ -970,6 +970,13 @@
     ok((JSON.parse(localStorage.getItem('__db')).routines.r1.prWeeks||[]).includes(W),'semana de récords: se guarda con la rutina');
     tog().click(); await wait(200); ok(!(S.editingRoutine.prWeeks||[]).includes(W),'semana de récords: se desmarca');
     await saveRoutineToFirestore(); await wait(300); txtBad('editor con semana de récords');
+    // menú ⋯ del bloque: subir/bajar a la vista, el resto adentro; no despliega el bloque y tocar afuera lo cierra
+    { const b=document.querySelector('#main .card.block'), dots=b?.querySelector('.blk-dots'), menu=b?.querySelector('.blk-menu'), wasOpen=b?.classList.contains('open');
+      ok(!!dots&&b.querySelectorAll('.block-header > .ex-icon-btn').length===2&&!b.querySelector('.block-header > .block-del'),'bloque: en la línea quedan subir, bajar y ⋯');
+      dots.click(); await wait(200);
+      ok(menu.style.display==='block'&&b.classList.contains('menu-open')&&b.classList.contains('open')===wasOpen,'bloque: ⋯ abre el menú sin desplegar el bloque');
+      ok(['Cambiar nombre','Copiar bloque','Pasar a otro día','Semanas en las que está','Eliminar bloque'].every(t=>[...menu.querySelectorAll('button')].some(x=>x.textContent.trim()===t)),'bloque: el menú tiene las 5 opciones');
+      document.body.click(); await wait(200); ok(menu.style.display==='none'&&!b.classList.contains('menu-open'),'bloque: tocar afuera cierra el menú'); }
     S.editingRoutine=null; S.adminView='main'; switchView('admin'); }
   // ── diálogo propio en vez de prompt(): crear equipo (dos escenarios: cancelar y crear) ──
   { const n0=S.teams.length; switchView('teams'); await wait(500);

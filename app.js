@@ -15107,6 +15107,21 @@ function renderRoutineEditor() {
   `;
 }
 
+// Menú ⋯ del bloque en el editor: subir/bajar quedan a la vista, el resto va acá (pedido de
+// Gonzalo: encabezado finito en una línea). La tarjeta recorta lo que sobresale → menu-open lo deja salir.
+function closeBlockMenus() {
+  document.querySelectorAll('.blk-menu').forEach(m => { m.style.display = 'none'; m.closest('.card')?.classList.remove('menu-open'); });
+}
+window.closeBlockMenus = closeBlockMenus;
+function toggleBlockMenu(e, id) {
+  e.stopPropagation();
+  const m = document.getElementById('rbm-'+id), open = !!m && m.style.display === 'none';
+  closeBlockMenus();
+  if(open) { m.style.display = 'block'; m.closest('.card')?.classList.add('menu-open'); }
+}
+window.toggleBlockMenu = toggleBlockMenu;
+document.addEventListener('click', closeBlockMenus); // tocar afuera lo cierra
+
 function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
   const cc=b.colorKey||'bx';
   const open=b._open===true;
@@ -15142,13 +15157,18 @@ function renderRoutineBlock(b, sessionName, bIdx, totalBlocks) {
         <input class="block-title-inp" id="rbtinp-${b.id}" onblur="saveRBlockTitle('${b.id}','${sessionName}',this)" onkeydown="if(event.key==='Enter')this.blur()">
       </div>
       <span class="block-time">${b.time||''}</span>
-      <span class="ex-icon-btn" onclick="event.stopPropagation();renameBlockPicker('routine','${b.id}','${sessionName}')" title="Cambiar el nombre del bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>
       <span class="ex-icon-btn" style="${bIdx===0?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',-1)" title="Mover arriba"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></span>
       <span class="ex-icon-btn" style="${bIdx===totalBlocks-1?'opacity:.3;pointer-events:none':''}" onclick="event.stopPropagation();moveRoutineBlock('${b.id}','${sessionName}',1)" title="Mover abajo"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
-      <span class="ex-icon-btn" onclick="event.stopPropagation();copyBlockToClipboard(getRBlock('${b.id}','${sessionName}'))" title="Copiar bloque"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
-      <span class="ex-icon-btn" onclick="event.stopPropagation();openMoveBlockPicker('editor','','${b.id}','${sessionName}')" title="Mover a otro día">${CMP_IC.move.replace('<svg ','<svg width="11" height="11" ')}</span>
-      <span class="ex-icon-btn" onclick="event.stopPropagation();openWeekRangeModal('editor','','${sessionName}','${b.id}')" title="Semanas en las que está">${CMP_IC.weeks.replace('<svg ','<svg width="11" height="11" ')}</span>
-      <span class="block-del" onclick="deleteRBlock(event,'${b.id}','${sessionName}')">×</span>
+      <div class="menu3" onclick="event.stopPropagation()">
+        <span class="ex-icon-btn blk-dots" role="button" aria-label="Más opciones del bloque" onclick="toggleBlockMenu(event,'${b.id}')">⋯</span>
+        <div class="menu3-list blk-menu" id="rbm-${b.id}" style="display:none">
+          <button onclick="closeBlockMenus();renameBlockPicker('routine','${b.id}','${sessionName}')">Cambiar nombre</button>
+          <button onclick="closeBlockMenus();copyBlockToClipboard(getRBlock('${b.id}','${sessionName}'))">Copiar bloque</button>
+          <button onclick="closeBlockMenus();openMoveBlockPicker('editor','','${b.id}','${sessionName}')">Pasar a otro día</button>
+          <button onclick="closeBlockMenus();openWeekRangeModal('editor','','${sessionName}','${b.id}')">Semanas en las que está</button>
+          <button class="danger" onclick="closeBlockMenus();deleteRBlock(event,'${b.id}','${sessionName}')">Eliminar bloque</button>
+        </div>
+      </div>
       <span class="block-chevron">›</span>
     </div>
     <div class="block-body">${inner}</div>

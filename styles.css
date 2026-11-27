@@ -2035,6 +2035,12 @@ html{-webkit-tap-highlight-color:transparent}
 .rc-strip .rc-img{flex-shrink:0;scroll-snap-align:center}
 .rc-strip.multi .rc-img{max-width:82%}
 .pr-row{margin:-4px 0 12px}
+/* Editor de rutinas: encabezado del bloque en una línea (subir, bajar y ⋯ con el resto).
+   El nombre se ve entero: en celular, si es largo, baja a un segundo renglón en vez de pisar los botones. */
+.card.menu-open{overflow:visible;position:relative;z-index:5}
+.blk-dots{font-size:17px;font-weight:700;line-height:1}
+.block-header:has(.blk-menu) .block-title{display:block}
+@media (max-width:599px){ .block-header:has(.blk-menu) .block-title{white-space:normal} }
 /* Récord anotado: pastilla chica que no tapa la carga; la tarjeta sale al terminar la sesión */
 .rec-pill{position:fixed;left:16px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:450;display:inline-flex;align-items:center;gap:6px;max-width:calc(100vw - 96px);padding:10px 14px;border-radius:999px;border:1.5px solid var(--amber);background:var(--bg2);color:var(--text);font-family:inherit;font-size:13px;font-weight:700;box-shadow:var(--sh-float);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:recIn .25s ease}
 .rec-pill svg,.pr-star{color:var(--amber);flex-shrink:0}
