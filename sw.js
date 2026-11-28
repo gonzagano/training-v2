@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gmetrics-20261128-cb75a92';
+const CACHE_NAME = 'gmetrics-20261128-d5284a7';
 // app.js y styles.css NO van acá: se guardan solos la primera vez que se piden, con su
 // ?v= de la versión (bajarlos también sin ?v= era 1,1 MB de más que nunca se usaba).
 const APP_SHELL = [

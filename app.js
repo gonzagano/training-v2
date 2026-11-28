@@ -1287,6 +1287,15 @@ onAuthStateChanged(auth, async (user) => {
     S.userData = { name: user.email.split('@')[0], email: user.email, role: 'athlete' };
     await setDoc(uRef, { ...S.userData, createdAt: serverTimestamp() });
   }
+  // Rol en el espacio (multi-entrenador, paso 2): dueño o staff de un espacio = profe. El mail
+  // fijo queda de respaldo hasta que las reglas miren el rol (paso 5).
+  if (S.isAdmin && !S.userData.spaceRole) await setupFounderSpace().catch(e => console.warn('espacio', e));
+  if (!S.isAdmin && ['owner','staff'].includes(S.userData.spaceRole)) {
+    S.isAdmin = true;
+    P.routines = pre(getDocs(collection(db, 'routines')));
+    P.pending = pre(getDocs(collection(db, 'pendingAthletes')));
+  }
+  S.spaceRole = S.userData.spaceRole || (S.isAdmin ? 'owner' : 'athlete');
   // Acceso pausado (el profe archivó su equipo): no se carga nada más; las reglas de
   // Firestore igual le niegan sus datos, esto solo le explica qué pasa.
   if (!S.isAdmin && S.userData.accessPaused === true) { showAccessPaused(); hideLoading(); return; }
@@ -9123,7 +9132,16 @@ window.hasPlayedTwoGamesThisWeek=hasPlayedTwoGamesThisWeek;
 // Todo lo de un entrenador (equipos, atletas, rutinas, jugadores sin cuenta) lleva spaceId = su
 // espacio. Por ahora hay uno solo (el del profe) y nada se filtra todavía: es la base para que
 // cada entrenador vea solo lo suyo (pasos 2 a 5 del plan).
-function mySpaceId() { return S.isAdmin && S.user ? 'sp-' + S.user.uid : (S.userData?.spaceId || null); }
+function mySpaceId() { return S.userData?.spaceId || (S.isAdmin && S.user ? 'sp-' + S.user.uid : null); }
+// Paso 2: la primera vez que entra el profe fundador se crea su espacio (spaces/sp-<uid>) y su
+// perfil queda como dueño. Un profe nuevo (paso 6) va a nacer así desde el registro.
+async function setupFounderSpace() {
+  const sp = 'sp-' + S.user.uid;
+  await setDoc(doc(db, 'spaces', sp), {name: S.userData.name || 'Mi espacio', ownerUid: S.user.uid, members: {[S.user.uid]: 'owner'}, createdAt: new Date().toISOString()}, {merge: true});
+  await setDoc(doc(db, 'users', S.user.uid), {spaceId: sp, spaceRole: 'owner'}, {merge: true});
+  S.userData.spaceId = sp; S.userData.spaceRole = 'owner';
+}
+window.setupFounderSpace = setupFounderSpace;
 function withSpace(o) { const sp = mySpaceId(); return sp && !o.spaceId ? {...o, spaceId: sp} : o; }
 // Al entrar el profe: marca con su espacio lo que todavía no lo tenga (una vez; después no hay nada que marcar).
 async function ensureSpaceStamps() {
@@ -9146,7 +9164,8 @@ window.mySpaceId = mySpaceId; window.withSpace = withSpace; window.ensureSpaceSt
 // Al archivar un equipo, sus jugadores quedan con users/{uid}.accessPaused (no pueden entrar;
 // lo hacen cumplir las reglas de Firestore) y no aparecen en ningún listado del profe.
 // Se guardan aparte (S.pausedAthletes / S.archivedTeams) para mostrarlos solo en "Archivados".
-function splitPaused(list) { S.pausedAthletes = list.filter(u=>u.accessPaused===true); return list.filter(u=>u.accessPaused!==true); }
+// También deja afuera a los profes (dueño o staff de un espacio): no son atletas.
+function splitPaused(list) { list = list.filter(u=>!['owner','staff'].includes(u.spaceRole)); S.pausedAthletes = list.filter(u=>u.accessPaused===true); return list.filter(u=>u.accessPaused!==true); }
 function splitArchived(list) { S.archivedTeams = list.filter(t=>t.archived===true); return list.filter(t=>t.archived!==true); }
 window.splitPaused = splitPaused; window.splitArchived = splitArchived;
 

@@ -1088,8 +1088,11 @@
     ok(n>=3&&D2.teams.t1.spaceId===sp&&D2.users.u1.spaceId===sp&&D2.routines.r1.spaceId===sp,'espacio: marca equipos, atletas y rutinas que no lo tenían ('+n+')');
     ok(Object.values(D2.teams).every(t=>t.spaceId===sp)&&Object.entries(D2.users).filter(([u,x])=>u!==S.user.uid&&x.email).every(([,x])=>x.spaceId===sp),'espacio: no queda ningún equipo ni atleta sin marcar');
     ok(await ensureSpaceStamps()===0,'espacio: la segunda vez no hay nada que marcar (no reescribe todo en cada entrada)');
-    ok(!D2.users[S.user.uid]?.spaceId,'espacio: no toca el perfil del profe');
-    ok(withSpace({a:1}).spaceId===sp&&withSpace({spaceId:'otro'}).spaceId==='otro','espacio: lo nuevo nace con el espacio y no pisa uno existente'); }
+    ok(withSpace({a:1}).spaceId===sp&&withSpace({spaceId:'otro'}).spaceId==='otro','espacio: lo nuevo nace con el espacio y no pisa uno existente');
+    // paso 2: el profe fundador queda como dueño de su espacio; un profe (dueño o staff) nunca aparece como atleta
+    ok(D2.users[S.user.uid]?.spaceRole==='owner'&&D2.users[S.user.uid]?.spaceId===sp&&D2.spaces?.[sp]?.members?.[S.user.uid]==='owner'&&S.spaceRole==='owner','roles: el profe es dueño de su espacio (perfil + espacio creados al entrar)');
+    ok(splitPaused([{uid:'a'},{uid:'b',spaceRole:'staff'},{uid:'c',spaceRole:'owner'},{uid:'d',accessPaused:true}]).map(x=>x.uid).join()==='a'&&S.pausedAthletes.map(x=>x.uid).join()==='d','roles: staff y dueños no figuran como atletas');
+    S.pausedAthletes=[]; }
   // ── el logo tapa la espera: no se va mientras quede algo "cargando" (esqueleto gris) ──
   { const L=document.getElementById('loading');
     ok(L.style.display==='none','logo de carga: ya cargado, no queda tapando la app');
