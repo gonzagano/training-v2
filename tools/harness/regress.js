@@ -1092,7 +1092,12 @@
     // paso 2: el profe fundador queda como dueño de su espacio; un profe (dueño o staff) nunca aparece como atleta
     ok(D2.users[S.user.uid]?.spaceRole==='owner'&&D2.users[S.user.uid]?.spaceId===sp&&D2.spaces?.[sp]?.members?.[S.user.uid]==='owner'&&S.spaceRole==='owner','roles: el profe es dueño de su espacio (perfil + espacio creados al entrar)');
     ok(splitPaused([{uid:'a'},{uid:'b',spaceRole:'staff'},{uid:'c',spaceRole:'owner'},{uid:'d',accessPaused:true}]).map(x=>x.uid).join()==='a'&&S.pausedAthletes.map(x=>x.uid).join()==='d','roles: staff y dueños no figuran como atletas');
-    S.pausedAthletes=[]; }
+    // paso 3: lo de otro entrenador no se ve; lo viejo sin espacio sí (no desaparece nada antes de marcarse)
+    const arch0=S.archivedTeams;
+    const tv=splitArchived([{id:'a',spaceId:sp},{id:'b',spaceId:'sp-otro'},{id:'c'}]).map(t=>t.id).join();
+    const uv=splitPaused([{uid:'a',spaceId:sp},{uid:'b',spaceId:'sp-otro'},{uid:'c'}]).map(u=>u.uid).join();
+    ok(tv==='a,c'&&uv==='a,c'&&inMySpace({spaceId:sp})&&!inMySpace({spaceId:'sp-otro'}),'espacios: no se ven equipos ni atletas de otro entrenador ('+tv+' / '+uv+')');
+    S.archivedTeams=arch0; S.pausedAthletes=[]; }
   // ── el logo tapa la espera: no se va mientras quede algo "cargando" (esqueleto gris) ──
   { const L=document.getElementById('loading');
     ok(L.style.display==='none','logo de carga: ya cargado, no queda tapando la app');

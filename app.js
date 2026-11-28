@@ -1424,12 +1424,12 @@ onAuthStateChanged(auth, async (user) => {
   if (S.isAdmin) {
     // Load all routines
     const rSnap = await P.routines;
-    S.routines = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    S.routines = rSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(inMySpace);
     // Jugadores cargados de antemano que todavía no se registraron con una
     // cuenta real — pueden tener tests/evaluaciones ya cargados.
     try {
       const pSnap2 = await P.pending;
-      S.pendingAthletes = pSnap2.docs.map(d => ({ id: d.id, ...d.data() }));
+      S.pendingAthletes = pSnap2.docs.map(d => ({ id: d.id, ...d.data() })).filter(inMySpace);
     } catch(e) { S.pendingAthletes = []; }
     setTimeout(() => ensureSpaceStamps().catch(e => console.warn('espacio', e)), 1500); // sin demorar la entrada
   } else {
@@ -2649,7 +2649,7 @@ window.onboardingPrev = onboardingPrev;
 // la primera vez que alguien se registra en esa combinación.
 async function findOrCreateTeam(institution, category, sport) {
   const tSnap = await getDocs(collection(db, 'teams'));
-  const allTeams = tSnap.docs.map(dd => ({ id: dd.id, ...dd.data() }));
+  const allTeams = tSnap.docs.map(dd => ({ id: dd.id, ...dd.data() })).filter(inMySpace); // nunca reusar el equipo de otro entrenador
   // Normalizado (sin mayúsculas, sin espacios de más, sin tildes) para no
   // duplicar un equipo por una diferencia de forma ("Liga De Honor " vs
   // "Liga de Honor") — antes era comparación exacta, y una sola letra
@@ -9164,9 +9164,13 @@ window.mySpaceId = mySpaceId; window.withSpace = withSpace; window.ensureSpaceSt
 // Al archivar un equipo, sus jugadores quedan con users/{uid}.accessPaused (no pueden entrar;
 // lo hacen cumplir las reglas de Firestore) y no aparecen en ningún listado del profe.
 // Se guardan aparte (S.pausedAthletes / S.archivedTeams) para mostrarlos solo en "Archivados".
+// Paso 3: cada uno ve solo lo de su espacio. Lo que todavía no tiene espacio (de antes del paso 1)
+// se sigue viendo, así nada desaparece hasta que el profe entre y se marque.
+function inMySpace(x) { const sp = mySpaceId(); return !sp || !x.spaceId || x.spaceId === sp; }
 // También deja afuera a los profes (dueño o staff de un espacio): no son atletas.
-function splitPaused(list) { list = list.filter(u=>!['owner','staff'].includes(u.spaceRole)); S.pausedAthletes = list.filter(u=>u.accessPaused===true); return list.filter(u=>u.accessPaused!==true); }
-function splitArchived(list) { S.archivedTeams = list.filter(t=>t.archived===true); return list.filter(t=>t.archived!==true); }
+function splitPaused(list) { list = list.filter(u=>!['owner','staff'].includes(u.spaceRole) && inMySpace(u)); S.pausedAthletes = list.filter(u=>u.accessPaused===true); return list.filter(u=>u.accessPaused!==true); }
+function splitArchived(list) { list = list.filter(inMySpace); S.archivedTeams = list.filter(t=>t.archived===true); return list.filter(t=>t.archived!==true); }
+window.inMySpace = inMySpace;
 window.splitPaused = splitPaused; window.splitArchived = splitArchived;
 
 // ── DATOS AGRUPADOS (Wellness/Estadísticas dentro de Equipos y Atletas) ──
