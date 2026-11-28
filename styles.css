@@ -1761,6 +1761,26 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .tp-settings .tp-k{min-width:104px}
 .tp-inp{flex:1;min-width:0;font-family:inherit;font-size:15px;padding:9px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--bg3);color:var(--text)}
 .team-sport-ic{display:inline-flex;color:var(--text3)}
+.tp-acts{display:flex;gap:8px;flex-wrap:wrap}
+.tp-acts .tp-del{margin:0}
+/* Equipos archivados (al final de la lista de Equipos) */
+.tm-arch{margin-top:var(--sp-5,24px);border-top:1px solid var(--border2);padding-top:12px}
+.tm-arch>summary{cursor:pointer;font-size:15px;font-weight:700;color:var(--text2);padding:6px 0}
+.tm-arch-t{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:12px 14px;margin-top:10px}
+.tm-arch-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tm-arch-h .tm-crest,.tm-arch-h .tm-dot{filter:grayscale(1);opacity:.7}
+.tm-arch-n{flex:1;min-width:160px;display:flex;flex-direction:column}
+.tm-arch-n b{font-size:15px}
+.tm-arch-n small{font-size:13px;color:var(--text3)}
+.tm-arch-pl{margin-top:10px;border-top:1px solid var(--border);padding-top:6px}
+.tm-arch-p{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;font-size:15px}
+.tm-arch-p .abtn{font-size:13px;padding:6px 10px}
+/* Jugador con acceso pausado */
+#paused-screen{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)}
+.ps-box{max-width:340px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px}
+.ps-box .lm{width:76px;height:76px}
+.ps-box b{font-size:22px}
+.ps-box p{margin:0;font-size:15px;color:var(--text2);line-height:1.5}
 /* Escudo más grande en compu y tablet */
 @media(min-width:768px){
   .team-card .tm-crest{width:64px;height:64px}

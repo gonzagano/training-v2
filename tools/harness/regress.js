@@ -1061,6 +1061,25 @@
     const ni2=document.getElementById('tp-name'); ni2.value='Prueba Club 2'; ni2.dispatchEvent(new Event('input')); document.getElementById('tp-save').click(); await wait(700);
     const dbt2=JSON.parse(localStorage.getItem('__db')).teams[nt.id]; ok(dbt2.name==='Prueba Club 2'&&dbt2.institution==='Prueba Club 2'&&dbt2.category==='Cadetes','ajustes del equipo: se puede cambiar el nombre del club');
     S.teamView=null; switchView('teams'); await wait(300); }
+  // ── archivar un equipo: desaparece con sus jugadores, que pierden el acceso; reactivar y "pasar a independiente" ──
+  { const before=localStorage.getItem('__db'); await ensureAdminAthletes();
+    const t2=S.teams.find(t=>t.id==='t2'), mem=[...(t2.memberUids||[])];
+    openTeam('t2'); await wait(1200); toggleTeamSettings(); await wait(300);
+    ok(!!document.getElementById('tp-arch'),'ajustes del equipo: botón "Archivar equipo"');
+    document.getElementById('tp-arch').click(); await wait(300); ok(/no van a poder entrar/.test(document.getElementById('confirm-modal-body')?.textContent||''),'archivar: avisa que los jugadores pierden el acceso');
+    confirmModalConfirm(); await wait(1200);
+    let D=JSON.parse(localStorage.getItem('__db'));
+    ok(D.teams.t2.archived===true&&mem.every(u=>D.users[u].accessPaused===true&&D.users[u].pausedByTeam==='t2'),'archivar: equipo archivado y jugadores con el acceso pausado');
+    ok(!S.teams.some(t=>t.id==='t2')&&!S.adminAthletes.some(a=>mem.includes(a.uid))&&!D.personal[mem[0]]?.accessPaused,'archivar: no aparecen ni el equipo ni sus jugadores (y no se borró nada)');
+    switchView('teams'); await wait(500); const arch=document.querySelector('.tm-arch');
+    ok(!!arch&&/Archivados \(1\)/.test(arch.querySelector('summary').textContent)&&arch.querySelectorAll('.tm-arch-p').length===mem.length,'equipos: sección "Archivados" con el equipo y sus jugadores');
+    reactivateAsIndependent(mem[0]); await wait(200); confirmModalConfirm(); await wait(1000); D=JSON.parse(localStorage.getItem('__db'));
+    ok(!D.users[mem[0]].accessPaused&&D.users[mem[0]].athleteType==='individual'&&!D.users[mem[0]].teamId&&!(D.teams.t2.memberUids||[]).includes(mem[0])&&S.adminAthletes.some(a=>a.uid===mem[0]),'pasar a independiente: vuelve a tener acceso, sin equipo, con su historial');
+    await reactivateTeam('t2'); await wait(600); D=JSON.parse(localStorage.getItem('__db'));
+    ok(!D.teams.t2.archived&&mem.slice(1).every(u=>!D.users[u].accessPaused)&&S.teams.some(t=>t.id==='t2')&&mem.slice(1).every(u=>S.adminAthletes.some(a=>a.uid===u)),'reactivar equipo: vuelve con sus jugadores y su acceso');
+    // dejar todo como estaba para las pruebas que siguen
+    localStorage.setItem('__db',before); const D0=JSON.parse(before); S.teams=splitArchived(Object.entries(D0.teams).map(([id,t])=>({id,...t})));
+    S.adminAthletes=null; S.dashAthletes=null; S.adminAthletesLoaded=false; S.teamView=null; await ensureAdminAthletes(); }
   // ── el logo tapa la espera: no se va mientras quede algo "cargando" (esqueleto gris) ──
   { const L=document.getElementById('loading');
     ok(L.style.display==='none','logo de carga: ya cargado, no queda tapando la app');

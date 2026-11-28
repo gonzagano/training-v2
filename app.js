@@ -1238,9 +1238,21 @@ function hideLoadingWhenReady(then) {
 }
 window.showLoading = showLoading; window.hideLoadingWhenReady = hideLoadingWhenReady; // las usa el testing
 
+// Pantalla del jugador con el acceso pausado (equipo archivado): solo puede salir.
+function showAccessPaused() {
+  document.getElementById('app').style.display = 'none';
+  let el = document.getElementById('paused-screen');
+  if (!el) { el = document.createElement('div'); el.id = 'paused-screen'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="ps-box" role="alert"><svg class="lm" aria-hidden="true"><use href="#gm-mark"/></svg>
+    <b>Tu acceso está pausado</b><p>Si querés seguir usando G-Metrics, hablá con tu entrenador.</p>
+    <button class="abtn" onclick="signOut()">Cerrar sesión</button></div>`;
+}
+window.showAccessPaused = showAccessPaused;
+
 // ── AUTH STATE ────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
   if (user) showLoading(); else hideLoading();
+  document.getElementById('paused-screen')?.remove();
   if (!user) {
     document.getElementById('auth-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
@@ -1275,6 +1287,9 @@ onAuthStateChanged(auth, async (user) => {
     S.userData = { name: user.email.split('@')[0], email: user.email, role: 'athlete' };
     await setDoc(uRef, { ...S.userData, createdAt: serverTimestamp() });
   }
+  // Acceso pausado (el profe archivó su equipo): no se carga nada más; las reglas de
+  // Firestore igual le niegan sus datos, esto solo le explica qué pasa.
+  if (!S.isAdmin && S.userData.accessPaused === true) { showAccessPaused(); hideLoading(); return; }
   // Lo del atleta que depende de su perfil (rutina asignada, su equipo), también en paralelo
   if (!S.isAdmin) {
     if (S.userData.assignedRoutine) P.routine = pre(getDoc(doc(db, 'routines', S.userData.assignedRoutine)));
@@ -1394,7 +1409,7 @@ onAuthStateChanged(auth, async (user) => {
   // permiten que cualquier usuario logueado los lea.
   try {
     const tSnap = await P.teams;
-    S.teams = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    S.teams = splitArchived(tSnap.docs.map(d => ({ id: d.id, ...d.data() })));
   } catch(e) { console.error('Error cargando equipos', e); }
 
   if (S.isAdmin) {
@@ -2584,7 +2599,7 @@ async function selectAthleteType(type) {
     // por si el admin acaba de crear o editar un equipo hace instantes.
     try {
       const tSnap = await getDocs(collection(db,'teams'));
-      S.teams = tSnap.docs.map(d=>({id:d.id, ...d.data()}));
+      S.teams = splitArchived(tSnap.docs.map(d=>({id:d.id, ...d.data()})));
       renderMain();
     } catch(e) {}
   }
@@ -7100,6 +7115,7 @@ function renderTeams() {
       </div>
       <div class="team-meta">${(t.players||[]).length} jugadores · ${Object.keys(t.calendar||{}).length} días con actividad en el calendario</div>
     </div>`).join('');
+  html += archivedTeamsHtml();
   if(S._teamSet?.isNew) html += renderTeamSettings({});
   return html;
 }
@@ -8512,7 +8528,7 @@ function renderTeamSettings(team) {
     <label class="tp-set-row"><span class="tp-k">Categoría</span><input class="tp-inp" id="tp-cat" value="${escHtml(v.category||'')}" placeholder="Ej: Cadetes" maxlength="40" oninput="teamSetText('category',this.value)"></label>
     <div class="tp-set-row"><span class="tp-k">Escudo</span><div class="tp-crest">${teamCrestHtml(v, 56)}<label class="abtn" id="crest-upload-btn">${v.crestUrl?'Cambiar':'Subir escudo'}<input type="file" accept="image/*" hidden id="crest-file" onchange="uploadTeamCrest(this)"></label>${v.crestUrl?`<button class="abtn" onclick="teamSetDraft('crestUrl','')">Quitar</button>`:''}</div></div>
     <div class="tp-set-row"><span class="tp-k">Color</span><div class="tp-colors">${TEAM_COLORS.map(c=>`<button class="tp-color${v.color===c?' on':''}" style="background:${c}" onclick="teamSetDraft('color','${c}')" aria-label="Color"></button>`).join('')}</div></div>
-    ${isNew?'':`<button class="abtn abtn-d tp-del" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>`}
+    ${isNew?'':`<div class="tp-acts"><button class="abtn" id="tp-arch" onclick="archiveTeam('${team.id}')">Archivar equipo</button><button class="abtn abtn-d tp-del" onclick="deleteTeam('${team.id}')">Eliminar equipo</button></div>`}
     <div class="video-modal-btns"><button class="abtn" onclick="toggleTeamSettings()">Cancelar</button><button class="abtn abtn-p" id="tp-save" onclick="saveTeamSettings()">${isNew?'Crear equipo':'Guardar'}</button></div>
   </div></div>`;
 }
@@ -8772,6 +8788,91 @@ function runCountUps(containerId) {
 }
 window.runCountUps=runCountUps;
 
+// Archivar: el equipo y sus jugadores dejan de aparecer y los jugadores pierden el acceso
+// (users/{uid}.accessPaused + pausedByTeam). No se borra nada. Quien también está en otro
+// equipo activo no se pausa.
+async function archiveTeam(teamId) {
+  const t = (S.teams||[]).find(x=>x.id===teamId); if(!t) return;
+  await ensureAdminAthletes();
+  const inOther = new Set((S.teams||[]).filter(x=>x.id!==teamId).flatMap(x=>x.memberUids||[]));
+  // solo cuentas que existen (un uid sin perfil no se toca: si no, quedaría un perfil vacío)
+  const uids = (t.memberUids||[]).filter(u=>!inOther.has(u) && (S.adminAthletes||[]).some(a=>a.uid===u));
+  showConfirmModal({message:`¿Archivar ${teamLabel(t)}? El equipo y sus ${uids.length} jugador${uids.length===1?'':'es'} con cuenta dejan de aparecer, y esos jugadores no van a poder entrar a la app. No se borra nada: lo podés reactivar desde "Archivados".`,
+    confirmLabel:'Archivar', danger:true, onConfirm: async () => {
+      showToast('Archivando…');
+      try {
+        // Primero se pausan los jugadores (si algo falla, el equipo sigue activo y se puede reintentar)
+        for(const uid of uids) await updateDocSafe(doc(db,'users',uid), {accessPaused:true, pausedByTeam:teamId});
+        await updateDocSafe(doc(db,'teams',teamId), {archived:true, archivedAt:todayLocal()});
+        t.archived = true; t.archivedAt = todayLocal();
+        S.teams = S.teams.filter(x=>x.id!==teamId); S.archivedTeams = [...(S.archivedTeams||[]), t];
+        const moved = (S.adminAthletes||[]).filter(a=>uids.includes(a.uid));
+        moved.forEach(a=>{ a.accessPaused = true; a.pausedByTeam = teamId; });
+        S.adminAthletes = (S.adminAthletes||[]).filter(a=>!uids.includes(a.uid));
+        if(S.dashAthletes) S.dashAthletes = S.dashAthletes.filter(a=>!uids.includes(a.uid));
+        S.pausedAthletes = [...(S.pausedAthletes||[]).filter(a=>!uids.includes(a.uid)), ...moved];
+        S._teamSet = null; S.teamView = null;
+        renderMain(); showToast('✓ Equipo archivado');
+      } catch(e) { showToast('No se pudo archivar: '+(e.message||e)); }
+    }});
+}
+window.archiveTeam = archiveTeam;
+// Reactivar: vuelve el equipo y les devuelve el acceso a los jugadores que pausó ESTE equipo.
+async function reactivateTeam(teamId) {
+  const t = (S.archivedTeams||[]).find(x=>x.id===teamId); if(!t) return;
+  showToast('Reactivando…');
+  try {
+    await ensureAdminAthletes();
+    const back = (S.pausedAthletes||[]).filter(a=>a.pausedByTeam===teamId);
+    for(const a of back) await updateDocSafe(doc(db,'users',a.uid), {accessPaused:deleteField(), pausedByTeam:deleteField()});
+    await updateDocSafe(doc(db,'teams',teamId), {archived:deleteField(), archivedAt:deleteField()});
+    delete t.archived; delete t.archivedAt;
+    S.archivedTeams = S.archivedTeams.filter(x=>x.id!==teamId); S.teams = [...(S.teams||[]), t];
+    back.forEach(a=>{ delete a.accessPaused; delete a.pausedByTeam; });
+    S.pausedAthletes = S.pausedAthletes.filter(a=>!back.includes(a));
+    S.adminAthletes = [...(S.adminAthletes||[]), ...back]; S.dashAthletes = null;
+    renderMain(); showToast('✓ Equipo reactivado');
+  } catch(e) { showToast('No se pudo reactivar: '+(e.message||e)); }
+}
+window.reactivateTeam = reactivateTeam;
+// Un jugador de un equipo archivado que sigue con vos por su cuenta: vuelve a tener acceso,
+// con todo su historial, como atleta independiente (y sale del plantel archivado).
+function reactivateAsIndependent(uid) {
+  const a = (S.pausedAthletes||[]).find(x=>x.uid===uid); if(!a) return;
+  const t = (S.archivedTeams||[]).find(x=>x.id===a.pausedByTeam);
+  showConfirmModal({message:`¿Reactivar a ${a.name||a.email} como atleta independiente? Vuelve a poder entrar a la app con todo su historial${t?` y deja de estar en ${teamLabel(t)}`:''}.`, confirmLabel:'Reactivar', onConfirm: async () => {
+    showToast('Guardando…');
+    try {
+      if(t) {
+        const memberUids = (t.memberUids||[]).filter(id=>id!==uid), players = (t.players||[]).filter(p=>!namesLikelyMatch(p, a.name));
+        await updateDoc(doc(db,'teams',t.id), {memberUids, players});
+        t.memberUids = memberUids; t.players = players;
+      }
+      const update = {accessPaused:deleteField(), pausedByTeam:deleteField(), athleteType:'individual', teamId:null, institution:null, category:null};
+      await updateDocSafe(doc(db,'users',uid), update);
+      delete a.accessPaused; delete a.pausedByTeam; Object.assign(a, {athleteType:'individual', teamId:null, institution:null, category:null});
+      S.pausedAthletes = S.pausedAthletes.filter(x=>x.uid!==uid);
+      S.adminAthletes = [...(S.adminAthletes||[]), a]; S.dashAthletes = null;
+      renderMain(); showToast('✓ '+(a.name||'Atleta')+' ahora es independiente');
+    } catch(e) { showToast('No se pudo reactivar: '+(e.message||e)); }
+  }});
+}
+window.reactivateAsIndependent = reactivateAsIndependent;
+// "Archivados" al final de la lista de Equipos: cada equipo con sus jugadores pausados.
+function archivedTeamsHtml() {
+  const arch = S.archivedTeams||[]; if(!arch.length) return '';
+  if(!S.adminAthletesLoaded) ensureAdminAthletes().then(renderMain);
+  return `<details class="tm-arch"${S._archOpen?' open':''} ontoggle="S._archOpen=this.open"><summary>Archivados (${arch.length})</summary>
+    ${arch.map(t=>{ const pl = (S.pausedAthletes||[]).filter(a=>a.pausedByTeam===t.id).sort((x,y)=>(x.name||'').localeCompare(y.name||''));
+      return `<div class="tm-arch-t">
+        <div class="tm-arch-h">${teamCrestHtml(t, 36)}<div class="tm-arch-n"><b>${escHtml(teamLabel(t))}</b><small>${t.archivedAt?'Archivado el '+rpDate(t.archivedAt)+' · ':''}${pl.length} jugador${pl.length===1?'':'es'} sin acceso</small></div>
+          <button class="abtn" onclick="reactivateTeam('${t.id}')">Reactivar equipo</button></div>
+        ${pl.length?`<div class="tm-arch-pl">${pl.map(a=>`<div class="tm-arch-p"><span>${escHtml(a.name||a.email)}</span><button class="abtn" onclick="reactivateAsIndependent('${a.uid}')">Pasar a independiente</button></div>`).join('')}</div>`:''}
+      </div>`; }).join('')}
+  </details>`;
+}
+window.archivedTeamsHtml = archivedTeamsHtml;
+
 // Nuevo equipo: la misma ventana de Ajustes (club, deporte, categoría, escudo, color); se guarda con "Crear equipo".
 function createTeam() {
   S._teamSet = {isNew:true, id:genId(), name:'', sport:'', category:'', color:'', crestUrl:''};
@@ -8964,7 +9065,7 @@ async function saveReassignAthleteTeam(uid) {
     const teamId = await findOrCreateTeam(inst, cat, sport);
     if(!S.teams.find(t=>t.id===teamId)) {
       const tSnap = await getDocs(collection(db,'teams'));
-      S.teams = tSnap.docs.map(d=>({id:d.id, ...d.data()}));
+      S.teams = splitArchived(tSnap.docs.map(d=>({id:d.id, ...d.data()})));
     }
     await reassignAthleteTeam(uid, teamId);
   } catch(e) { showToast('Error al guardar'); }
@@ -9015,13 +9116,21 @@ function hasPlayedTwoGamesThisWeek(personal) {
 }
 window.hasPlayedTwoGamesThisWeek=hasPlayedTwoGamesThisWeek;
 
+// ── EQUIPOS ARCHIVADOS / ACCESO PAUSADO ──
+// Al archivar un equipo, sus jugadores quedan con users/{uid}.accessPaused (no pueden entrar;
+// lo hacen cumplir las reglas de Firestore) y no aparecen en ningún listado del profe.
+// Se guardan aparte (S.pausedAthletes / S.archivedTeams) para mostrarlos solo en "Archivados".
+function splitPaused(list) { S.pausedAthletes = list.filter(u=>u.accessPaused===true); return list.filter(u=>u.accessPaused!==true); }
+function splitArchived(list) { S.archivedTeams = list.filter(t=>t.archived===true); return list.filter(t=>t.archived!==true); }
+window.splitPaused = splitPaused; window.splitArchived = splitArchived;
+
 // ── DATOS AGRUPADOS (Wellness/Estadísticas dentro de Equipos y Atletas) ──
 // Carga la lista de atletas si todavía no está en memoria.
 async function ensureAdminAthletes() {
   if (S.adminAthletes && S.adminAthletes.length) { S.adminAthletesLoaded = true; return; }
   try {
     const snap = await getDocs(collection(db, 'users'));
-    S.adminAthletes = snap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(u => u.email !== ADMIN_EMAIL);
+    S.adminAthletes = splitPaused(snap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(u => u.email !== ADMIN_EMAIL));
   } catch (e) { S.adminAthletes = S.adminAthletes || []; }
   S.adminAthletesLoaded = true;
 }
@@ -13544,8 +13653,8 @@ async function adminGoAthletes() {
   document.getElementById('main').innerHTML=skelHtml('list');
   try {
     const snap = await getDocs(collection(db,'users'));
-    S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
-      .filter(u=>u.email !== ADMIN_EMAIL);
+    S.adminAthletes = splitPaused(snap.docs.map(d=>({uid:d.id,...d.data()}))
+      .filter(u=>u.email !== ADMIN_EMAIL));
   } catch(e) { S.adminAthletes=[]; }
   renderBottomBar();
   renderMain();
@@ -15984,7 +16093,7 @@ function renderEvals() {
   if(S.isAdmin && !S.adminAthletes.length && !S._evalAthletesLoading) {
     S._evalAthletesLoading = true;
     getDocs(collection(db,'users')).then(snap=>{
-      S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.email!==ADMIN_EMAIL);
+      S.adminAthletes = splitPaused(snap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.email!==ADMIN_EMAIL));
       S._evalAthletesLoading = false;
       renderMain();
       setTimeout(drawEvalCharts,80);
@@ -17499,7 +17608,7 @@ async function loadEvalAthletes() {
   if(!S.isAdmin) return;
   try {
     const snap = await getDocs(collection(db,'users'));
-    S.adminAthletes = snap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.email!==ADMIN_EMAIL);
+    S.adminAthletes = splitPaused(snap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.email!==ADMIN_EMAIL));
     renderMain();
     setTimeout(drawEvalCharts, 80);
   } catch(e) { showToast('Error cargando atletas'); }
@@ -17925,8 +18034,8 @@ async function loadDashboard() {
   if(!S.isAdmin) return;
   try {
     const snap = await getDocs(collection(db,'users'));
-    S.dashAthletes = snap.docs.map(d=>({uid:d.id,...d.data()}))
-      .filter(u=>u.email!==ADMIN_EMAIL);
+    S.dashAthletes = splitPaused(snap.docs.map(d=>({uid:d.id,...d.data()}))
+      .filter(u=>u.email!==ADMIN_EMAIL));
     
     // Load personal data for each athlete (parallel)
     const personalData = await Promise.all(
