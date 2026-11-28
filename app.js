@@ -1422,6 +1422,7 @@ onAuthStateChanged(auth, async (user) => {
       const pSnap2 = await P.pending;
       S.pendingAthletes = pSnap2.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch(e) { S.pendingAthletes = []; }
+    setTimeout(() => ensureSpaceStamps().catch(e => console.warn('espacio', e)), 1500); // sin demorar la entrada
   } else {
     // Athlete: la rutina PERSONAL (assignedRoutine) tiene prioridad.
     // Si no tiene una personal y pertenece a un equipo, hereda los "días de
@@ -2658,11 +2659,11 @@ async function findOrCreateTeam(institution, category, sport) {
     return existing.id;
   }
   const id = genId();
-  const team = {
+  const team = withSpace({
     id, name: institution, sport: sport||'', category, institution,
     players: [], memberUids: [], trainingDays: [], calendar: {}, color: '',
     createdAt: new Date().toISOString()
-  };
+  });
   await setDoc(doc(db, 'teams', id), team);
   return id;
 }
@@ -2698,6 +2699,8 @@ async function finishOnboarding() {
       update.position = d.position || null;
       const teamId = await findOrCreateTeam(d.institution, finalCategory, sport);
       update.teamId = teamId;
+      const joined = (S.teams||[]).find(t=>t.id===teamId);
+      if(joined?.spaceId) update.spaceId = joined.spaceId; // el jugador queda en el espacio del entrenador de su equipo
       // Vincular esta cuenta real (uid) al roster del equipo, sin romper
       // el campo `players` (nombres) que ya usa el editor de días de equipo.
       // memberUids se agrega con arrayUnion (atómico en el servidor) — antes
@@ -8552,7 +8555,7 @@ async function saveTeamSettings() {
   if(d.isNew) {
     // institution = mismo valor que el nombre: es lo que el onboarding de un atleta
     // de equipo usa para encontrar este equipo y no crear uno duplicado.
-    const team = {id:d.id, name, institution:name, sport:canonicalSport(d.sport||'')||'', category, players:[], memberUids:[], trainingDays:[], calendar:{}, color:d.color||'', createdAt:new Date().toISOString()};
+    const team = withSpace({id:d.id, name, institution:name, sport:canonicalSport(d.sport||'')||'', category, players:[], memberUids:[], trainingDays:[], calendar:{}, color:d.color||'', createdAt:new Date().toISOString()});
     if(d.crestUrl) team.crestUrl = d.crestUrl;
     try { await setDoc(doc(db,'teams',team.id), team); }
     catch(e) { showToast('No se pudo crear el equipo'); return; }
@@ -9115,6 +9118,29 @@ function hasPlayedTwoGamesThisWeek(personal) {
   return gameLogs.length>=2 || gameDates.size>=2;
 }
 window.hasPlayedTwoGamesThisWeek=hasPlayedTwoGamesThisWeek;
+
+// ── ESPACIO DEL ENTRENADOR (multi-entrenador, paso 1) ──
+// Todo lo de un entrenador (equipos, atletas, rutinas, jugadores sin cuenta) lleva spaceId = su
+// espacio. Por ahora hay uno solo (el del profe) y nada se filtra todavía: es la base para que
+// cada entrenador vea solo lo suyo (pasos 2 a 5 del plan).
+function mySpaceId() { return S.isAdmin && S.user ? 'sp-' + S.user.uid : (S.userData?.spaceId || null); }
+function withSpace(o) { const sp = mySpaceId(); return sp && !o.spaceId ? {...o, spaceId: sp} : o; }
+// Al entrar el profe: marca con su espacio lo que todavía no lo tenga (una vez; después no hay nada que marcar).
+async function ensureSpaceStamps() {
+  const sp = mySpaceId(); if(!S.isAdmin || !sp) return 0;
+  await ensureAdminAthletes();
+  const jobs = [];
+  const mark = (col, list) => (list||[]).forEach(x => { const id = col==='users' ? x.uid : x.id; if(id && !x.spaceId) { x.spaceId = sp; jobs.push(updateDocSafe(doc(db,col,id), {spaceId: sp})); } });
+  mark('teams', [...(S.teams||[]), ...(S.archivedTeams||[])]);
+  mark('users', [...(S.adminAthletes||[]), ...(S.pausedAthletes||[])]);
+  mark('routines', S.routines);
+  mark('pendingAthletes', S.pendingAthletes);
+  const res = await Promise.allSettled(jobs);
+  const bad = res.filter(r => r.status==='rejected').length;
+  if(bad) console.warn('espacio: no se pudieron marcar', bad, 'de', jobs.length);
+  return jobs.length - bad;
+}
+window.mySpaceId = mySpaceId; window.withSpace = withSpace; window.ensureSpaceStamps = ensureSpaceStamps;
 
 // ── EQUIPOS ARCHIVADOS / ACCESO PAUSADO ──
 // Al archivar un equipo, sus jugadores quedan con users/{uid}.accessPaused (no pueden entrar;
@@ -10467,7 +10493,7 @@ async function addPlayer(teamId) {
   // sus datos se migran solos a la cuenta real (ver finishOnboarding).
   try {
     const pendId = genId();
-    await setDoc(doc(db,'pendingAthletes',pendId), {name, teamId, evals:{}, createdAt:new Date().toISOString()});
+    await setDoc(doc(db,'pendingAthletes',pendId), withSpace({name, teamId, evals:{}, createdAt:new Date().toISOString()}));
     if(!S.pendingAthletes) S.pendingAthletes=[];
     S.pendingAthletes.push({id:pendId, name, teamId, evals:{}});
   } catch(e) { /* no bloqueamos el flujo si esto falla */ }
@@ -10680,8 +10706,8 @@ async function saveNewAthlete() {
     // se registra solo) — así no depende de permisos especiales del profe.
     // mustChangePassword: la contraseña inicial es el DNI (fácil de adivinar), así que
     // la primera vez que entra la app le pide elegir una propia (requirePasswordChange).
-    try { await setDoc(doc(getFirestore(secApp),'users',uid), {...data, mustChangePassword:true, createdAt:serverTimestamp()}); }
-    catch(e1) { await setDoc(doc(db,'users',uid), {...data, mustChangePassword:true, createdAt:serverTimestamp()}); }
+    try { await setDoc(doc(getFirestore(secApp),'users',uid), {...withSpace(data), mustChangePassword:true, createdAt:serverTimestamp()}); }
+    catch(e1) { await setDoc(doc(db,'users',uid), {...withSpace(data), mustChangePassword:true, createdAt:serverTimestamp()}); }
     try { await fbSignOut(secAuth); } catch(e) {}
   } catch(e) {
     console.error('Crear atleta', e);
@@ -14957,7 +14983,7 @@ async function createRoutine() {
   const sessions = {};
   sessionNames.forEach(s=>{ sessions[s]=[]; });
   const id = genId();
-  const routine = { id, name, sessions, createdAt: new Date().toISOString() };
+  const routine = withSpace({ id, name, sessions, createdAt: new Date().toISOString() });
   try {
     await setDoc(doc(db,'routines',id), routine);
     S.routines.push(routine);
@@ -15924,6 +15950,7 @@ async function saveRoutineToFirestore() {
     };
     clean(toSave);
     delete toSave._renames;
+    Object.assign(toSave, withSpace(toSave)); // guardar la rutina entera no le borra el espacio
     await setDoc(doc(db,'routines',r.id), toSave);
     // Update local list
     const idx=S.routines.findIndex(x=>x.id===r.id);

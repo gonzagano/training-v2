@@ -1080,6 +1080,16 @@
     // dejar todo como estaba para las pruebas que siguen
     localStorage.setItem('__db',before); const D0=JSON.parse(before); S.teams=splitArchived(Object.entries(D0.teams).map(([id,t])=>({id,...t})));
     S.adminAthletes=null; S.dashAthletes=null; S.adminAthletesLoaded=false; S.teamView=null; await ensureAdminAthletes(); }
+  // ── multi-entrenador, paso 1: todo lo del profe queda marcado con su espacio (y lo nuevo nace marcado) ──
+  { const sp=mySpaceId(); ok(sp==='sp-'+S.user.uid,'espacio: el del profe es sp-<su uid>');
+    const D=JSON.parse(localStorage.getItem('__db')); delete D.teams.t1.spaceId; delete D.users.u1.spaceId; delete D.routines.r1.spaceId; localStorage.setItem('__db',JSON.stringify(D));
+    [S.teams.find(t=>t.id==='t1'), S.adminAthletes.find(a=>a.uid==='u1'), S.routines.find(r=>r.id==='r1')].forEach(o=>{ if(o) delete o.spaceId; });
+    const n=await ensureSpaceStamps(); const D2=JSON.parse(localStorage.getItem('__db'));
+    ok(n>=3&&D2.teams.t1.spaceId===sp&&D2.users.u1.spaceId===sp&&D2.routines.r1.spaceId===sp,'espacio: marca equipos, atletas y rutinas que no lo tenían ('+n+')');
+    ok(Object.values(D2.teams).every(t=>t.spaceId===sp)&&Object.entries(D2.users).filter(([u,x])=>u!==S.user.uid&&x.email).every(([,x])=>x.spaceId===sp),'espacio: no queda ningún equipo ni atleta sin marcar');
+    ok(await ensureSpaceStamps()===0,'espacio: la segunda vez no hay nada que marcar (no reescribe todo en cada entrada)');
+    ok(!D2.users[S.user.uid]?.spaceId,'espacio: no toca el perfil del profe');
+    ok(withSpace({a:1}).spaceId===sp&&withSpace({spaceId:'otro'}).spaceId==='otro','espacio: lo nuevo nace con el espacio y no pisa uno existente'); }
   // ── el logo tapa la espera: no se va mientras quede algo "cargando" (esqueleto gris) ──
   { const L=document.getElementById('loading');
     ok(L.style.display==='none','logo de carga: ya cargado, no queda tapando la app');
