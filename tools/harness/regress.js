@@ -38,7 +38,7 @@
     S.evalRange='all'; switchEvalView('history'); await wait(700); txtBad('evaluaciones historial');
     const cmj=document.getElementById('eval-card-cmj'), tile=document.querySelector('.ev-tiles .ev-tile');
     ok(document.querySelectorAll('.ev-tiles .ev-tile').length===4&&/42,3/.test(tile.textContent)&&!!tile.querySelector('.ev-gold .ev-medal')&&/Faltan 2,7 cm/.test(tile.textContent)&&!!tile.querySelector('.ev-lvl-b i'),'evaluaciones: mejor CMJ con medalla y barra al próximo nivel');
-    ok(!!cmj&&/42,3/.test(cmj.querySelector('.ev-big').textContent)&&/\+1,3 cm vs\. anterior · (Mejora real|Posible mejora|Sin cambio)/.test(cmj.textContent)&&/\+4,1 cm desde \w+ \(\+10,7 %\)/.test(cmj.textContent)&&!!cmj.querySelector('.ev-headr .ev-gold'),'evaluaciones: CMJ con cambio vs. anterior, progreso acumulado y récord ('+cmj?.querySelector('.ev-headl')?.textContent.replace(/\s+/g,' ')+')');
+    ok(!!cmj&&/42,3/.test(cmj.querySelector('.ev-big').textContent)&&/\+1,3 cm vs\. anterior · (Mejora real|Posible mejora|Sin cambio)/.test(cmj.textContent)&&/\+4,1 cm desde \w+ \(\+10,7 %\)/.test(cmj.textContent)&&!!cmj.querySelector('.ev-name .ev-gold'),'evaluaciones: CMJ con cambio vs. anterior, progreso acumulado y récord al lado del nombre ('+cmj?.querySelector('.ev-headl')?.textContent.replace(/\s+/g,' ')+')');
     ok(/24 \/ 22,6/.test(document.getElementById('eval-card-asym').textContent)&&/5,8 % de diferencia/.test(document.getElementById('eval-card-asym').textContent),'evaluaciones: asimetría con las dos piernas y el % de diferencia');
     if(typeof Chart!=='undefined'){ const c=S.evalChartInstances['chart-hist-cmj'], as=S.evalChartInstances['chart-hist-asym'];
       ok(!!c&&c.config.type==='line'&&c.data.labels.length===5&&/^\d+ [a-z]{3}$/.test(c.data.labels[0]),'evaluaciones: gráfico de línea con fechas cortas ('+c?.data.labels[0]+')');
@@ -473,7 +473,7 @@
     S.teamReportSubview='resumen'; }
   // ── Informe: arreglos + hoja de Staff nueva (alertas con su regla, palabras en vez de 1–5, período, notas, PDF) ──
   { const team=S.teamView; const d=n=>{const t=new Date();t.setDate(t.getDate()-n);return toLocalDateStr(t);};
-    const fake=over=>({uid:'zz'+Math.random(), name:'Prueba Uno', _personal:Object.assign({wellness:{},injuries:{},history:{_sessionLogs:[]},injuryArchive:[]},over)});
+    let nFake=0; const fake=over=>({uid:'zzfake'+(++nFake), name:'Prueba Uno', _personal:Object.assign({wellness:{},injuries:{},history:{_sessionLogs:[]},injuryArchive:[]},over)});
     const wFull=v=>({fatiga:v,sueño_calidad:v,estres:v,dolor_muscular:v,humor:v,sueño_horas:8});
     const ok5=fake({wellness:{[todayLocal()]:wFull(5)}});
     let h=renderStaffMeetingReport(team,[ok5]); ok(/Sin dolor/.test(h)&&/Muy fresco/.test(h),'staff: dolor y cansancio en palabras (5 = sin dolor)');
@@ -495,13 +495,33 @@
     S.staffPeriod='custom'; S.staffFrom=d(15); S.staffTo=d(25); ok(/777/.test(renderStaffMeetingReport(team,[ld])),'staff fechas elegidas (al revés): la incluye');
     S.staffPeriod=null; S.staffFrom=S.staffTo=null;
     await saveTeamReportNote(team.id,'Rossi reevaluar jueves'); await wait(300);
-    ok(JSON.parse(localStorage.getItem('__db')).teams[team.id].reportNotes?.staff==='Rossi reevaluar jueves','staff: la nota queda guardada en el equipo');
+    { const D=JSON.parse(localStorage.getItem('__db')); ok(D.personal[S.user.uid]?.reportNotes?.[team.id]?.staff==='Rossi reevaluar jueves'&&!D.teams[team.id].reportNotes?.staff,'staff: la nota queda en el documento privado del profe, no en el del equipo'); }
     setTeamReportSubview('staff'); await wait(700);
     ok(/Rossi reevaluar jueves/.test(document.querySelector('.rp-notes-pr')?.textContent||''),'staff: la nota sale en la versión para imprimir');
     ok(!!document.querySelector('.rp-avail')&&document.querySelectorAll('.rp-per .chip-btn').length===4,'staff: disponibilidad y selector de período');
     txtBad('informe staff nuevo');
-    await saveTeamReportNote(team.id,''); await wait(300); ok(!JSON.parse(localStorage.getItem('__db')).teams[team.id].reportNotes?.staff,'staff: borrar la nota la quita');
+    await saveTeamReportNote(team.id,''); await wait(300); ok(!JSON.parse(localStorage.getItem('__db')).personal[S.user.uid]?.reportNotes?.[team.id]?.staff,'staff: borrar la nota la quita');
+    // una nota vieja guardada en el equipo (versión anterior) se sigue viendo, y al editarla pasa al documento privado
+    { const D=JSON.parse(localStorage.getItem('__db')); D.teams[team.id].reportNotes={staff:'nota vieja'}; localStorage.setItem('__db',JSON.stringify(D)); team.reportNotes={staff:'nota vieja'}; (S.teams.find(t=>t.id===team.id)||{}).reportNotes={staff:'nota vieja'};
+      ok(reportNote(team.id)==='nota vieja','staff: la nota vieja del equipo se sigue leyendo');
+      await saveTeamReportNote(team.id,'nota nueva'); await wait(300); const D2=JSON.parse(localStorage.getItem('__db'));
+      ok(D2.personal[S.user.uid].reportNotes[team.id].staff==='nota nueva'&&!D2.teams[team.id].reportNotes?.staff,'staff: al editarla se mueve al documento privado y se borra del equipo');
+      await saveTeamReportNote(team.id,''); await wait(300); }
     ok(document.querySelector('.team-detail-header')?.classList.contains('no-print')&&!!document.querySelector('.snav-tab')?.closest('.no-print'),'PDF: no imprime el encabezado ni las pestañas de la app');
+    // Ficha individual: se abre tocando el nombre en Staff, hoja con datos legibles, nota por jugador, ‹ vuelve a Staff
+    setTeamReportSubview('staff'); await wait(700);
+    const lnk=document.querySelector('.rp-t .rp-lnk'); const fuid=(lnk?.getAttribute('onclick')||'').match(/'([^']+)'/)?.[1];
+    if(lnk){ lnk.click(); await wait(1500); }
+    const fs=document.querySelector('.rp-sheet'); const ftxt=fs?.innerText||'';
+    ok(S.currentView==='weekly_report'&&S.reportAthleteUid===fuid&&/Ficha individual/.test(fs?.querySelector('.rp-kind')?.textContent||''),'ficha individual: se abre tocando el nombre en Staff');
+    ok(document.querySelectorAll('.rp-sheet .rp-kpi').length===4&&!!fs.querySelector('.rp-wk, .rp-two .rp-empty')&&!/\b\d{4}-\d{2}-\d{2}\b/.test(ftxt)&&!/_(der|izq)\b/.test(ftxt),'ficha individual: KPIs, carga semanal y fechas/zonas legibles');
+    txtBad('ficha individual');
+    await saveTeamReportNote(team.id,'Buen bloque de fuerza',fuid); await wait(400);
+    { const D=JSON.parse(localStorage.getItem('__db'));
+      ok(D.personal[S.user.uid]?.reportNotes?.[team.id]?.players?.[fuid]==='Buen bloque de fuerza'&&!D.personal[fuid]?.reportNotes&&!D.teams[team.id].reportNotes?.players?.[fuid],'ficha individual: la nota queda privada del profe (ni en el atleta ni en el equipo)'); }
+    ok(/Buen bloque de fuerza/.test(document.querySelector('.rp-notes-pr')?.textContent||''),'ficha individual: la nota sale en el PDF');
+    await saveTeamReportNote(team.id,'',fuid); await wait(300);
+    closeWeeklyReport(); await wait(700); ok(S.currentView==='teams'&&!!document.querySelector('.rp-avail'),'ficha individual: ‹ vuelve a la hoja de Staff');
     S.teamReportSubview='resumen'; }
   // ── el RM se recalcula al abrir la ficha por CUALQUIER camino, con los datos frescos (no la copia en memoria) ──
   { const P=()=>JSON.parse(localStorage.getItem('__db')).personal.u2; const put=(k,rec)=>{ const dbx=JSON.parse(localStorage.getItem('__db')); dbx.personal.u2.history[k]=rec; localStorage.setItem('__db',JSON.stringify(dbx)); };
@@ -1023,12 +1043,24 @@
   // ── diálogo propio en vez de prompt(): crear equipo (dos escenarios: cancelar y crear) ──
   { const n0=S.teams.length; switchView('teams'); await wait(500);
     ok(/Equipos/.test(document.querySelector('.pg-head-t')?.textContent||''),'equipos: título de pantalla con el mismo estilo que el resto');
-    createTeam(); await wait(300); ok(!!document.getElementById('ask-f0'),'nuevo equipo: abre el diálogo propio');
-    document.getElementById('ask-cancel')?.click(); await wait(400); ok(S.teams.length===n0,'nuevo equipo: cancelar no crea nada');
     createTeam(); await wait(300);
-    const f0=document.getElementById('ask-f0'), f1=document.getElementById('ask-f1'), f2=document.getElementById('ask-f2');
-    if(f0){ f0.value='Prueba Dialogo'; f1.value='Handball'; f2.value='Cadetes'; document.getElementById('ask-ok').click(); } await wait(900);
-    const nt=S.teams.find(t=>t.name==='Prueba Dialogo'); ok(nt&&nt.sport==='Handball'&&nt.category==='Cadetes','nuevo equipo: se crea con nombre, deporte y categoría del diálogo'); }
+    ok(/Nuevo equipo/.test(document.getElementById('tp-set-title')?.textContent||'')&&!!document.getElementById('tp-name')&&!!document.getElementById('tp-cat')&&!!document.getElementById('crest-file')&&!document.querySelector('.tp-del'),'nuevo equipo: ventana con club, categoría y escudo (sin "Eliminar")');
+    document.querySelector('#team-set-ov .video-modal-btns .abtn:not(.abtn-p)')?.click(); await wait(400); ok(S.teams.length===n0&&!document.getElementById('team-set-ov'),'nuevo equipo: cancelar no crea nada');
+    createTeam(); await wait(300); document.getElementById('tp-save').click(); await wait(400); ok(S.teams.length===n0&&!!document.getElementById('team-set-ov'),'nuevo equipo: sin nombre del club no se crea');
+    const ni=document.getElementById('tp-name'), ci=document.getElementById('tp-cat');
+    ni.value='Prueba Club'; ni.dispatchEvent(new Event('input')); ci.value='Cadetes'; ci.dispatchEvent(new Event('input'));
+    teamSetDraft('sport','Handball'); await wait(200);
+    ok(document.getElementById('tp-name')?.value==='Prueba Club','nuevo equipo: elegir el deporte no borra lo escrito');
+    const cv=document.createElement('canvas'); cv.width=cv.height=40; const g=cv.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,40,40); g.fillStyle='#c33a2c'; g.fillRect(10,10,20,20);
+    const cf=new File([await (await fetch(cv.toDataURL('image/png'))).blob()],'e.png',{type:'image/png'}); await uploadTeamCrest({files:[cf],value:''}); await wait(300);
+    document.getElementById('tp-save').click(); await wait(900);
+    const nt=S.teams.find(t=>t.name==='Prueba Club'), dbt=nt&&JSON.parse(localStorage.getItem('__db')).teams[nt.id];
+    ok(nt&&dbt&&dbt.sport==='Handball'&&dbt.category==='Cadetes'&&dbt.institution==='Prueba Club'&&/^data:image/.test(dbt.crestUrl||''),'nuevo equipo: se crea con club, deporte, categoría y escudo');
+    ok([...document.querySelectorAll('.team-name')].some(e=>e.textContent==='Prueba Club · Handball · Cadetes'),'equipos: el nombre se ve como "Club · Deporte · Categoría"');
+    openTeam(nt.id); await wait(1200); toggleTeamSettings(); await wait(300);
+    const ni2=document.getElementById('tp-name'); ni2.value='Prueba Club 2'; ni2.dispatchEvent(new Event('input')); document.getElementById('tp-save').click(); await wait(700);
+    const dbt2=JSON.parse(localStorage.getItem('__db')).teams[nt.id]; ok(dbt2.name==='Prueba Club 2'&&dbt2.institution==='Prueba Club 2'&&dbt2.category==='Cadetes','ajustes del equipo: se puede cambiar el nombre del club');
+    S.teamView=null; switchView('teams'); await wait(300); }
   // ── el logo tapa la espera: no se va mientras quede algo "cargando" (esqueleto gris) ──
   { const L=document.getElementById('loading');
     ok(L.style.display==='none','logo de carga: ya cargado, no queda tapando la app');

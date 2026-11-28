@@ -1303,6 +1303,7 @@ onAuthStateChanged(auth, async (user) => {
     if (d.personalExtras) S.personalExtras = d.personalExtras;
     if (d.routineOverrides) S.routineOverrides = d.routineOverrides;
     if (d.coachNotes) S.coachNotes = d.coachNotes;
+    if (d.reportNotes) S.reportNotes = d.reportNotes; // notas privadas del profe para los informes
     if (d.goals) S.goals = d.goals;
     if (d.notifications) S.notifications = d.notifications;
     if (d.currentWeek) S.currentWeek = d.currentWeek;
@@ -7093,12 +7094,13 @@ function renderTeams() {
       <div class="team-card-header">
         <div style="display:flex;align-items:center;gap:10px">
           ${teamCrestHtml(t, 48)}
-          <div class="team-name">${t.name}${t.category?` / ${t.category}`:''}</div>
+          <div class="team-name">${escHtml(teamLabel(t))}</div>
         </div>
-        <span class="team-sport-badge">${sportIconHtml(t.sport,13)}${canonicalSport(t.sport)||'Sin deporte'}</span>
+        ${t.sport?`<span class="team-sport-ic">${sportIconHtml(t.sport,18)}</span>`:''}
       </div>
       <div class="team-meta">${(t.players||[]).length} jugadores · ${Object.keys(t.calendar||{}).length} días con actividad en el calendario</div>
     </div>`).join('');
+  if(S._teamSet?.isNew) html += renderTeamSettings({});
   return html;
 }
 
@@ -7111,9 +7113,8 @@ function renderTeamDetail(team) {
     <button class="back-btn" data-back="team-list">‹</button>
     <div class="team-detail-title" style="display:flex;align-items:center;gap:10px">
       ${teamCrestHtml(team, 44)}
-      ${team.name}${team.category?` / ${team.category}`:''}
+      ${escHtml(teamLabel(team))}
     </div>
-    ${team.sport?`<span class="team-sport-badge">${sportIconHtml(team.sport,13)}${canonicalSport(team.sport)}</span>`:''}
     <button class="abtn tdh-cmp" onclick="adminGoCompare('${team.id}')">Comparar atletas</button>
     <button class="abtn tdh-set" onclick="toggleTeamSettings()" aria-label="Ajustes del equipo" title="Ajustes del equipo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
   </div>
@@ -7293,7 +7294,7 @@ window.renderTeamCalendar=renderTeamCalendar;
 function renderPlayerCalendar() {
   const header = `<div class="page-header">
     <div class="page-title">Calendario</div>
-    <div class="page-subtitle">${S.myTeam?S.myTeam.name+(S.myTeam.category?' · '+S.myTeam.category:''):'Tu equipo'}</div>
+    <div class="page-subtitle">${S.myTeam?escHtml(teamLabel(S.myTeam)):'Tu equipo'}</div>
   </div>`;
   if(!S.myTeam) {
     return header + `<div class="empty-state">Todavía no estás vinculado a ningún equipo.</div>`;
@@ -7787,7 +7788,7 @@ function rpSheet(team, members, kind, title, period, body) {
     <button class="abtn abtn-p no-print rp-pdf" onclick="window.print()" title="Imprimir o guardar en PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg>PDF</button>
     <div class="rp-head">
       <div class="rp-head-l">${team.crestUrl?`<img class="rp-team-crest" src="${team.crestUrl}" alt="">`:''}<div><div class="rp-kind">${kind}</div><div class="rp-title">${title}</div>
-        <div class="rp-sub">${rpEsc(team.name)}${team.category?' · '+rpEsc(team.category):''} · ${members.length} atleta${members.length!==1?'s':''}</div></div></div>
+        <div class="rp-sub">${rpEsc(teamLabel(team))} · ${members.length} atleta${members.length!==1?'s':''}</div></div></div>
       <div class="rp-meta"><div class="rp-brand">G-Metrics</div><div>${period}</div><div class="rp-gen">Generado el ${rpDate(todayLocal())}</div></div>
     </div>
     ${body}
@@ -7940,12 +7941,27 @@ function setStaffPeriod(p) {
 window.setStaffPeriod = setStaffPeriod;
 function setStaffDate(which, v) { if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return; S[which==='from'?'staffFrom':'staffTo'] = v; renderMain(); }
 window.setStaffDate = setStaffDate;
-// Notas y decisiones del staff: un texto por equipo, se edita en la app y sale impreso en el PDF.
-async function saveTeamReportNote(teamId, text) {
-  const v = String(text||'').trim();
+// Notas del staff: una por equipo (hoja de Staff) y una por jugador (ficha individual). Van en el
+// documento personal del profe (solo él lo puede leer), NO en el del equipo, que cualquier
+// usuario con sesión puede leer, ni en el del atleta. Salen impresas en el PDF.
+// Las que quedaron guardadas en el equipo (versión anterior) se leen igual y se borran al editarlas.
+function reportNote(teamId, uid) {
+  const mine = S.reportNotes?.[teamId], t = [S.teamView, ...(S.teams||[])].find(x=>x && x.id===teamId);
+  return (uid ? (mine?.players?.[uid] ?? t?.reportNotes?.players?.[uid]) : (mine?.staff ?? t?.reportNotes?.staff)) || '';
+}
+window.reportNote = reportNote;
+async function saveTeamReportNote(teamId, text, uid) {
+  const v = String(text||'').trim(), sub = uid ? 'players.'+uid : 'staff';
   try {
-    await updateDocSafe(doc(db,'teams',teamId), {'reportNotes.staff': v || deleteField()});
-    [S.teamView, ...(S.teams||[])].filter(t=>t && t.id===teamId).forEach(t=>{ t.reportNotes = {...(t.reportNotes||{})}; if(v) t.reportNotes.staff = v; else delete t.reportNotes.staff; });
+    await updateDocSafe(doc(db,'personal',S.user.uid), {[`reportNotes.${teamId}.${sub}`]: v || deleteField()});
+    const teams = [S.teamView, ...(S.teams||[])].filter(t=>t && t.id===teamId);
+    if(teams.some(t=>uid ? t.reportNotes?.players?.[uid]!=null : t.reportNotes?.staff!=null)) {
+      await updateDocSafe(doc(db,'teams',teamId), {['reportNotes.'+sub]: deleteField()});
+      teams.forEach(t=>{ if(uid) delete t.reportNotes?.players?.[uid]; else delete t.reportNotes?.staff; });
+    }
+    const rn = S.reportNotes = S.reportNotes || {}, tn = rn[teamId] = rn[teamId] || {};
+    const box = uid ? (tn.players = tn.players || {}) : tn, k = uid || 'staff';
+    if(v) box[k] = v; else delete box[k];
     showToast('✓ Guardado'); renderMain();
   } catch(e) { showToast('Error al guardar: '+e.message); }
 }
@@ -7976,7 +7992,7 @@ function renderStaffMeetingReport(team, members) {
   };
   const acwrCls = v => v>1.5?'rp-cr':(v>1.3||v<0.8)?'rp-ca':'rp-cg';
   const tRows = rows.map(r=>{ const L = r.st.last||{};
-    return [rpEsc(r.a.name||r.a.email), rpPill(RP_AVAIL[r.st.key]), wCell(r.st), word('sueño_calidad',L.sueño_calidad), word('fatiga',L.fatiga), word('dolor_muscular',L.dolor_muscular),
+    return [`<button class="rp-lnk" onclick="openWeeklyReport('${r.a.uid}')">${rpEsc(r.a.name||r.a.email)}</button>`, rpPill(RP_AVAIL[r.st.key]), wCell(r.st), word('sueño_calidad',L.sueño_calidad), word('fatiga',L.fatiga), word('dolor_muscular',L.dolor_muscular),
       r.ua?Math.round(r.ua).toLocaleString('es-AR'):'—', r.st.m?.acwr!=null?c(cmpFmt(r.st.m.acwr,2),acwrCls(r.st.m.acwr)):'—', r.ses||'—']; });
   // Una tarjeta por atleta; si tiene varias alertas, una línea por cada una con su regla.
   const flagged = rows.filter(r=>r.st.alerts.length);
@@ -7985,7 +8001,7 @@ function renderStaffMeetingReport(team, members) {
   const matchRows = rows.map(r=>({a:r.a, ...getMatchMinutesSummary(r.logs)})).filter(r=>r.partidosJugados>0).sort((x,y)=>y.minutosTotales-x.minutosTotales)
     .map(r=>[rpEsc(r.a.name||r.a.email), r.partidosJugados, r.minutosTotales, r.promedioPorPartido+"'"]);
   const lg = k => `<i class="rp-ab-${k}"></i>`;
-  const note = team.reportNotes?.staff || '';
+  const note = reportNote(team.id);
   const perLbl = from.slice(0,4)===to.slice(0,4) ? `${rpDate(from).replace(/ \d{4}$/,'')} al ${rpDate(to)}` : `${rpDate(from)} al ${rpDate(to)}`;
   const body = `<div class="no-print rp-per">${STAFF_PERIODS.map(p=>`<button class="chip-btn ${per===p.id?'on':''}" onclick="setStaffPeriod('${p.id}')">${p.label}</button>`).join('')}
       ${per==='custom'?`<span class="rp-dates"><input type="date" class="rp-date" aria-label="Desde" value="${from}" max="${today}" onchange="setStaffDate('from',this.value)"><span>al</span><input type="date" class="rp-date" aria-label="Hasta" value="${to}" max="${today}" onchange="setStaffDate('to',this.value)"></span>`:''}</div>
@@ -8485,31 +8501,52 @@ function removeTeamPlayer(teamId, pi) {
 window.removeTeamPlayer = removeTeamPlayer;
 // Ajustes del equipo en una ventana aparte (ruedita): los cambios quedan en borrador
 // (S._teamSet) hasta tocar Guardar; Cancelar o tocar afuera los descarta.
+// La misma ventana sirve para crear un equipo nuevo (S._teamSet.isNew).
 function renderTeamSettings(team) {
-  const v = {...team, ...S._teamSet};
+  const v = {...team, ...S._teamSet}, isNew = !!S._teamSet?.isNew;
   return `<div class="video-modal open" id="team-set-ov" onclick="if(event.target===this)toggleTeamSettings()">
   <div class="video-modal-box tp-settings" role="dialog" aria-modal="true" aria-labelledby="tp-set-title">
-    <div class="video-modal-title" id="tp-set-title">Ajustes del equipo</div>
+    <div class="video-modal-title" id="tp-set-title">${isNew?'Nuevo equipo':'Ajustes del equipo'}</div>
+    <label class="tp-set-row"><span class="tp-k">Nombre del club</span><input class="tp-inp" id="tp-name" value="${escHtml(v.name||'')}" placeholder="Ej: EDLP o Estudiantes de La Plata" maxlength="60" oninput="teamSetText('name',this.value)"></label>
     <div class="tp-set-row"><span class="tp-k">Deporte</span><select class="abtn" onchange="teamSetDraft('sport',onSportSelect(this))">${sportOptionsHtml(v.sport)}</select></div>
-    <div class="tp-set-row"><span class="tp-k">Escudo</span><div class="tp-crest">${teamCrestHtml(v, 44)}<label class="abtn" id="crest-upload-btn">${v.crestUrl?'Cambiar':'Subir escudo'}<input type="file" accept="image/*" hidden id="crest-file" onchange="uploadTeamCrest(this)"></label>${v.crestUrl?`<button class="abtn" onclick="teamSetDraft('crestUrl','')">Quitar</button>`:''}</div></div>
+    <label class="tp-set-row"><span class="tp-k">Categoría</span><input class="tp-inp" id="tp-cat" value="${escHtml(v.category||'')}" placeholder="Ej: Cadetes" maxlength="40" oninput="teamSetText('category',this.value)"></label>
+    <div class="tp-set-row"><span class="tp-k">Escudo</span><div class="tp-crest">${teamCrestHtml(v, 56)}<label class="abtn" id="crest-upload-btn">${v.crestUrl?'Cambiar':'Subir escudo'}<input type="file" accept="image/*" hidden id="crest-file" onchange="uploadTeamCrest(this)"></label>${v.crestUrl?`<button class="abtn" onclick="teamSetDraft('crestUrl','')">Quitar</button>`:''}</div></div>
     <div class="tp-set-row"><span class="tp-k">Color</span><div class="tp-colors">${TEAM_COLORS.map(c=>`<button class="tp-color${v.color===c?' on':''}" style="background:${c}" onclick="teamSetDraft('color','${c}')" aria-label="Color"></button>`).join('')}</div></div>
-    <button class="abtn abtn-d tp-del" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>
-    <div class="video-modal-btns"><button class="abtn" onclick="toggleTeamSettings()">Cancelar</button><button class="abtn abtn-p" id="tp-save" onclick="saveTeamSettings()">Guardar</button></div>
+    ${isNew?'':`<button class="abtn abtn-d tp-del" onclick="deleteTeam('${team.id}')">Eliminar equipo</button>`}
+    <div class="video-modal-btns"><button class="abtn" onclick="toggleTeamSettings()">Cancelar</button><button class="abtn abtn-p" id="tp-save" onclick="saveTeamSettings()">${isNew?'Crear equipo':'Guardar'}</button></div>
   </div></div>`;
 }
 window.renderTeamSettings = renderTeamSettings;
 function toggleTeamSettings() {
+  if(S._teamSet?.isNew) { S._teamSet = null; renderMain(); return; }
   const t = S.teamView; if(!t) return;
-  S._teamSet = S._teamSet?.id===t.id ? null : {id:t.id, sport:t.sport||'', color:t.color||'', crestUrl:t.crestUrl||''};
+  S._teamSet = S._teamSet?.id===t.id ? null : {id:t.id, name:t.name||'', category:t.category||'', sport:t.sport||'', color:t.color||'', crestUrl:t.crestUrl||''};
   renderMain();
 }
 window.toggleTeamSettings = toggleTeamSettings;
 function teamSetDraft(k, v) { if(!S._teamSet) return; S._teamSet[k] = v; renderMain(); }
 window.teamSetDraft = teamSetDraft;
+// Texto que se va escribiendo: se guarda en el borrador sin redibujar (no pierde el cursor).
+function teamSetText(k, v) { if(S._teamSet) S._teamSet[k] = v; }
+window.teamSetText = teamSetText;
 async function saveTeamSettings() {
-  const d = S._teamSet, t = (S.teams||[]).find(x=>x.id===d?.id); if(!t) return;
+  const d = S._teamSet; if(!d) return;
+  const name = String(d.name||'').trim(), category = String(d.category||'').trim();
+  if(!name) { showToast('Poné el nombre del club'); document.getElementById('tp-name')?.focus(); return; }
+  if(d.isNew) {
+    // institution = mismo valor que el nombre: es lo que el onboarding de un atleta
+    // de equipo usa para encontrar este equipo y no crear uno duplicado.
+    const team = {id:d.id, name, institution:name, sport:canonicalSport(d.sport||'')||'', category, players:[], memberUids:[], trainingDays:[], calendar:{}, color:d.color||'', createdAt:new Date().toISOString()};
+    if(d.crestUrl) team.crestUrl = d.crestUrl;
+    try { await setDoc(doc(db,'teams',team.id), team); }
+    catch(e) { showToast('No se pudo crear el equipo'); return; }
+    S.teams.push(team); S._teamSet = null; renderMain(); showToast('✓ Equipo creado');
+    return;
+  }
+  const t = (S.teams||[]).find(x=>x.id===d.id); if(!t) return;
+  const want = {...d, name, category, institution:name};
   const patch = {}, changed = {};
-  ['sport','color','crestUrl'].forEach(k => { if((t[k]||'') !== d[k]) { patch[k] = d[k] || deleteField(); changed[k] = d[k]; } });
+  ['name','institution','category','sport','color','crestUrl'].forEach(k => { if((t[k]||'') !== (want[k]||'')) { patch[k] = want[k] || deleteField(); changed[k] = want[k]; } });
   if(Object.keys(patch).length) {
     try { await setDoc(doc(db,'teams',t.id), patch, {merge:true}); }
     catch(e) { showToast('No se pudo guardar'); return; }
@@ -8735,19 +8772,11 @@ function runCountUps(containerId) {
 }
 window.runCountUps=runCountUps;
 
-async function createTeam() {
-  const v = await askText({title:'Nuevo equipo', confirmLabel:'Crear equipo', fields:[
-    {label:'Nombre', placeholder:'Ej: Handball-EDLP'},
-    {label:'Deporte', options:['', ...SPORTS], value:''},
-    {label:'Categoría', placeholder:'Ej: Liga de Honor'}]});
-  if(!v) return;
-  const name = v[0].trim(), sport = canonicalSport(v[1]||''), category = v[2].trim();
-  // institution = mismo valor que el nombre — es lo que el onboarding de un
-  // atleta de equipo usa para encontrar este equipo y no crear uno duplicado.
-  const team={id:genId(),name,institution:name,sport:sport||'',category:category||'',players:[],memberUids:[],trainingDays:[],calendar:{},color:'',createdAt:new Date().toISOString()};
-  S.teams.push(team);
-  await setDoc(doc(db,'teams',team.id),team);
-  renderMain(); showToast('✓ Equipo creado');
+// Nuevo equipo: la misma ventana de Ajustes (club, deporte, categoría, escudo, color); se guarda con "Crear equipo".
+function createTeam() {
+  S._teamSet = {isNew:true, id:genId(), name:'', sport:'', category:'', color:'', crestUrl:''};
+  renderMain();
+  setTimeout(()=>document.getElementById('tp-name')?.focus(), 50);
 }
 window.createTeam=createTeam;
 async function setAthleteColor(uid, color) {
@@ -10494,7 +10523,7 @@ function renderNewAthleteForm() {
     <div class="na-grid2">
       ${f('Equipo', `<select class="auth-inp" style="margin:0" id="na-teamId" onchange="naSet('teamId',this.value,true)">
         <option value="">Sin equipo (individual)</option>
-        ${(S.teams||[]).map(t=>`<option value="${t.id}" ${st.teamId===t.id?'selected':''}>${esc(t.name)}${t.category?' / '+esc(t.category):''}</option>`).join('')}
+        ${(S.teams||[]).map(t=>`<option value="${t.id}" ${st.teamId===t.id?'selected':''}>${esc(teamLabel(t))}</option>`).join('')}
       </select>`)}
       ${f('Deporte', team
         ? `<input class="auth-inp" style="margin:0" id="na-sport" value="${esc(sport||'—')}" disabled>`
@@ -11171,7 +11200,7 @@ window.saveProxyForm = saveProxyForm;
 // Datos del atleta en una línea, cada uno con su nombre (los que no están cargados no se muestran).
 function athleteFactsLine(a, myTeam, sportLabel) {
   const items = [
-    ['Equipo', myTeam ? myTeam.name+(myTeam.category?' · '+myTeam.category:'') : 'Individual'+(sportLabel?' · '+sportLabel:'')],
+    ['Equipo', myTeam ? teamLabel(myTeam) : 'Individual'+(sportLabel?' · '+sportLabel:'')],
     ['Puesto', a.position],
     ['Edad', a.age ? a.age+' años' : ''],
     ['Talla', a.height ? a.height+' cm' : ''],
@@ -11189,7 +11218,7 @@ function renderAtletaDetail(a) {
   // si sabemos de qué lista se entró (ver computeAthleteSiblingUids).
   const sibs = S._athleteSiblingUids;
   const sibIdx = sibs ? sibs.indexOf(a.uid) : -1;
-  const sibNav = (sibs && sibs.length>1 && sibIdx>=0) ? athleteNavBar(sibs, a.uid, 'goToAthleteKeepingTab', myTeam ? myTeam.name+(myTeam.category?' · '+myTeam.category:'') : 'Individuales') : '';
+  const sibNav = (sibs && sibs.length>1 && sibIdx>=0) ? athleteNavBar(sibs, a.uid, 'goToAthleteKeepingTab', myTeam ? teamLabel(myTeam) : 'Individuales') : '';
   const isOpenTab = getOpenTabs().some(t=>t.uid===a.uid);
   const pinBtn = `<button class="abtn ot-pin${isOpenTab?' on':''}" onclick="toggleOpenAthlete('${a.uid}')" title="${isOpenTab?'Quitar de los atletas abiertos':'Dejarlo abierto arriba, para volver rápido a la pestaña donde estabas'}"><svg width="14" height="14" viewBox="0 0 24 24" fill="${isOpenTab?'currentColor':'none'}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 3h6l-1 7 3 3v2H7v-2l3-3z"/></svg><span class="hs"> ${isOpenTab?'Abierto':'Dejar abierto'}</span></button>`;
   let html = `<div class="team-detail-header">
@@ -11641,7 +11670,7 @@ function renderPerfilTab(a) {
       ${!myTeam ? `<label class="pf-f pf-wide"><span>Comparar con equipo</span>
         <select class="pf-inp" onchange="setAthleteCompareTeam('${uid}',this.value)">
           <option value="">— Ninguno —</option>
-          ${S.teams.map(t=>`<option value="${t.id}" ${a.compareTeamId===t.id?'selected':''}>${t.name}${t.category?' · '+t.category:''}</option>`).join('')}
+          ${S.teams.map(t=>`<option value="${t.id}" ${a.compareTeamId===t.id?'selected':''}>${escHtml(teamLabel(t))}</option>`).join('')}
         </select>
       </label>`:''}
     </div>
@@ -12954,6 +12983,9 @@ function clearEdgeBackground(ctx, w, h) {
   ctx.putImageData(im, 0, 0);
 }
 
+// Nombre del equipo para mostrar: "EDLP · Handball · Cadetes" (club, deporte y categoría, los que estén).
+function teamLabel(t) { return t ? [t.name, canonicalSport(t.sport||''), t.category].filter(Boolean).join(' · ') : ''; }
+window.teamLabel = teamLabel;
 // ── Escudo del equipo (teams/{id}.crestUrl) ──
 // Sin escudo cargado se ve el punto de color de siempre.
 function teamCrestHtml(team, size) {
@@ -13586,7 +13618,7 @@ function renderAthletesListBody() {
         ${avatarHtml(a.name||a.email, a.color, 32, a.photoUrl)}
         <div style="flex:1;min-width:0">
           <div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.name||a.email)}</div>
-          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?myTeam.name+(myTeam.category?' · '+myTeam.category:''):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myTeam?escHtml(teamLabel(myTeam)):'Individual'}${a.position?' · '+a.position:''}${hasPlayedTwoGamesThisWeek(a._personal)?' · <span style="color:var(--amber);font-weight:700">2x esta semana</span>':''}</div>
         </div>
         <span style="font-size:11px;color:${status.color};flex-shrink:0;white-space:nowrap">${status.label}</span>
         <span style="color:var(--text3);font-size:17px;flex-shrink:0">›</span>
@@ -13860,7 +13892,7 @@ function renderCompareAthletes() {
       <select class="ca-scope" onchange="setCompareScope(this.value)">
         <option value="all" ${sc==='all'?'selected':''}>Todos los atletas</option>
         <option value="ind" ${sc==='ind'?'selected':''}>Individuales</option>
-        ${teams.map(t=>`<option value="${t.id}" ${sc===t.id?'selected':''}>${esc(t.name)}${t.category?' / '+esc(t.category):''}</option>`).join('')}
+        ${teams.map(t=>`<option value="${t.id}" ${sc===t.id?'selected':''}>${esc(teamLabel(t))}</option>`).join('')}
       </select>
       ${positions.map(p=>{ const n = scopeAthletes.filter(a=>a.position===p).length; return `<button class="chip-btn" onclick="setCompareGroup('${p.replace(/'/g,"\\'")}')">${esc(p)} (${n})</button>`; }).join('')}
       ${athletes.length?`<button class="chip-btn" onclick="clearCompareAthletes()">Limpiar</button>`:''}
@@ -14067,13 +14099,15 @@ function goBackFromAthleteDetail() {
 }
 window.goBackFromAthleteDetail = goBackFromAthleteDetail;
 
-// ── REPORTE SEMANAL EXPORTABLE ──────────────────────────────
-// Usa la función nativa de impresión del navegador (sin librerías nuevas):
-// "Imprimir" en el diálogo del navegador permite guardar como PDF directamente.
+// ── FICHA INDIVIDUAL (una hoja por atleta, para la reunión de staff) ──
+// Se abre con 📄 en la ficha del atleta o tocando su nombre en la hoja de Staff.
+// Imprime / guarda en PDF con la impresión del navegador. Compara contra su
+// equipo (o el equipo con el que se compara si es individual).
 async function openWeeklyReport(uid) {
   const seq = S._navSeq;
   const from = S.currentView;
-  await ensureGroupPersonalData([uid]);
+  const a0 = (S.adminAthletes||[]).find(x=>x.uid===uid);
+  await ensureGroupPersonalData(a0 ? athleteStatsPool(a0).uids : [uid]);
   if(seq !== S._navSeq) return; // tocaste otra sección mientras cargaba
   S.reportAthleteUid = uid;
   S._reportReturnView = from;
@@ -14085,91 +14119,92 @@ function closeWeeklyReport() { S.currentView = S._reportReturnView || 'admin'; r
 window.closeWeeklyReport = closeWeeklyReport;
 
 function renderWeeklyReport() {
-  const uid = S.reportAthleteUid;
-  const a = (S.adminAthletes||[]).find(x=>x.uid===uid);
+  const a = (S.adminAthletes||[]).find(x=>x.uid===S.reportAthleteUid);
   if(!a) return `<div class="empty-state">Atleta no encontrado.</div>`;
+  const today = todayLocal();
+  const pool = athleteStatsPool(a), team = pool.team;
+  const mates = (S.adminAthletes||[]).filter(x=>pool.uids.includes(x.uid) && x.uid!==a.uid && x._personal);
+  const st = athleteStaffStatus(a);
+  const mean = v => v.length ? v.reduce((s,x)=>s+x,0)/v.length : null;
+  const logsOf = x => (x._personal?.history?._sessionLogs)||[];
+  const wellAvg = (x, days) => mean(days.map(d=>getWellnessScore(x._personal?.wellness?.[d])).filter(s=>s.allFilled).map(s=>s.pct));
+  // 8 semanas de lunes a domingo, de la más vieja a la actual
+  const weeks = Array.from({length:8}, (_,i)=>loadWeekDays(7-i,'cal').filter(d=>d<=today));
+  const from = weeks[0][0], allDays = weeks.flat();
+  const myW = wellAvg(a, allDays), teamW = mean(mates.map(x=>wellAvg(x, allDays)).filter(v=>v!=null));
+  const ses = new Set(logsOf(a).filter(l=>l.date>=from && l.date<=today).map(l=>l.date)).size;
+  const weekUA = weeks.map(w=>logsOf(a).filter(l=>w.includes(l.date)).reduce((s,l)=>s+(+l.ua||0),0));
+  const weekW = weeks.map(w=>wellAvg(a, w));
+  const teamWeekW = weeks.map(w=>mean(mates.map(x=>wellAvg(x, w)).filter(v=>v!=null)));
+  const wkLbl = w => w.length ? `${+w[0].slice(8)}/${+w[0].slice(5,7)}` : '';
+  const rmPick = ['sentadilla_barra','press_plano','peso_muerto','cargada_potencia','arranque_potencia'].map(id=>({l:RM_LIFTS.find(x=>x.id===id), v:parseFloat(a._personal?.oneRM?.[id])})).find(x=>x.l && x.v>0);
+  const acwrSt = getACWRStatus(st.m?.acwr??null, st.m?.daysOfHistory);
 
-  const personal = a._personal||{};
-  const wellness = personal.wellness||{};
-  const logs = personal.history?._sessionLogs || personal.sessionLogs || [];
-  const injuries = Object.entries(personal.injuries||{}).filter(([,v])=>v.pain>0);
-  const myTeam = a.teamId ? S.teams?.find(t=>t.id===a.teamId) : null;
+  // Carga semanal: barras; la línea es su promedio de las 8 semanas
+  const maxUA = Math.max(1, ...weekUA), avgUA = mean(weekUA.filter(v=>v>0));
+  const loadHtml = weekUA.some(v=>v>0) ? `<div class="rp-wk">${avgUA?`<span class="rp-wk-avg" style="bottom:${(avgUA/maxUA*90+18).toFixed(0)}px"></span>`:''}${weekUA.map((v,i)=>`<div><b>${v?Math.round(v).toLocaleString('es-AR'):''}</b><i style="height:${v?Math.max(3,v/maxUA*90).toFixed(0):2}px${v?'':';background:#E3E6EC'}"></i><span>${wkLbl(weeks[i])}</span></div>`).join('')}</div>` : '<div class="rp-empty">Sin carga registrada en estas semanas.</div>';
+  // Wellness semanal: su línea contra la del plantel (punteada)
+  const pts = arr => arr.map((v,i)=>v==null?null:`${(i*100/7).toFixed(1)},${(100-v).toFixed(1)}`).filter(Boolean).join(' ');
+  const wellHtml = weekW.some(v=>v!=null) ? `<svg class="rp-wl" viewBox="-2 -2 104 104" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="0" y1="25" x2="100" y2="25"/><line x1="0" y1="50" x2="100" y2="50"/><line x1="0" y1="75" x2="100" y2="75"/>
+      ${teamWeekW.some(v=>v!=null)?`<polyline class="rp-wl-t" points="${pts(teamWeekW)}"/>`:''}<polyline class="rp-wl-m" points="${pts(weekW)}"/></svg>
+    <div class="rp-wl-x">${weeks.map(w=>`<span>${wkLbl(w)}</span>`).join('')}</div>` : '<div class="rp-empty">Sin wellness en estas semanas.</div>';
 
-  const today = new Date();
-  const days = [];
-  for(let i=6;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i); days.push(toLocalDateStr(d)); }
-  const rangeLabel = days[0]+' — '+days[6];
+  // Evaluaciones: último test vs. el anterior. "Cambio real" = más que 0,2 × la dispersión
+  // del plantel en ese test (referencia de deportes de equipo); con menos de 4 valores no se juzga.
+  const testRows = [...EVAL_TESTS, ...STRENGTH_TESTS].map(t=>{
+    const recs = sortEvalRecsByDate((a._personal?.evals?.[t.id]||[]).filter(r=>r && r.height!=null && !isNaN(r.height)));
+    if(!recs.length) return null;
+    const dec = t.unit==='kg' ? 0 : 1, last = recs[recs.length-1], prev = recs.length>1 ? recs[recs.length-2] : null;
+    const vals = [a, ...mates].map(x=>compareTestValue(x, t.id, 'last')).filter(Boolean).map(r=>r.v);
+    const m = mean(vals), swc = vals.length>=4 ? 0.2*Math.sqrt(vals.reduce((s,v)=>s+(v-m)**2,0)/(vals.length-1)) : null;
+    const diff = prev ? last.height-prev.height : null;
+    const real = (diff==null || swc==null) ? '—' : Math.abs(diff)<=swc ? rpPill(['Dentro del margen','rp-mut']) : rpPill(diff>0?['Mejoró','rp-ok']:['Bajó','rp-bad']);
+    const rank = vals.length>1 ? `${[...vals].sort((p,q)=>q-p).indexOf(+last.height)+1}.º de ${vals.length}` : '—';
+    return [rpEsc(t.label), `${cmpFmt(last.height,dec)} ${t.unit}<small>${evalShortDate(last.date)}</small>`, prev?`${cmpFmt(prev.height,dec)} ${t.unit}`:'—',
+      diff==null?'—':`<b class="${diff>0?'rp-up':diff<0?'rp-dn':''}">${diff>0?'+':diff<0?'−':''}${cmpFmt(Math.abs(diff),dec)} ${t.unit}</b>`, real, rank];
+  }).filter(Boolean);
 
-  const m = calcLoadMetrics(logs);
-  const acwrSt = getACWRStatus(m?.acwr??null, m?.daysOfHistory);
-  const monSt = getMonotonyStatus(m?.monotony??null);
+  // Molestias y lesiones de la temporada (desde el 1 de enero): activas + resueltas
+  const yr = today.slice(0,4)+'-01-01', dd = d => rpDate(d).replace(/ \d{4}$/,'');
+  const injs = [
+    ...Object.entries(a._personal?.injuries||{}).filter(([,i])=>i && i.pain>0).map(([z,i])=>({z, sev:i.severity||'leve', real:isRealInjury(i), from:injurySinceDate(i)||i.history?.[0]?.date, to:null})),
+    ...(a._personal?.injuryArchive||[]).filter(r=>(r.resolvedDate||r.startDate||'')>=yr).map(r=>({z:r.zoneId, sev:r.severity, real:r.isInjury===true, from:r.startDate, to:r.resolvedDate})),
+  ].sort((p,q)=>String(q.from||'').localeCompare(String(p.from||'')));
+  const nDays = (f,t) => Math.max(1, Math.round((new Date(t+'T12:00:00')-new Date(f+'T12:00:00'))/86400000));
+  const injHtml = injs.length ? `<div class="rp-list">${injs.map(x=>`<div><b>${rpEsc(bodyZoneLabel(x.z))}</b> · ${x.real?'lesión':'molestia'}${x.sev?' '+x.sev:''} · ${!x.from?'—':x.to?`${dd(x.from)} al ${dd(x.to)} (${nDays(x.from,x.to)} día${nDays(x.from,x.to)===1?'':'s'})`:`desde ${dd(x.from)} · <span class="rp-dn">activa</span>`}</div>`).join('')}</div>` : '<div class="rp-empty">Sin molestias en la temporada.</div>';
 
-  const wellnessRows = days.map(d=>{
-    const w = wellness[d];
-    const {pct,allFilled} = getWellnessScore(w);
-    const dayLogs = logs.filter(l=>l.date===d);
-    const ua = dayLogs.reduce((s,l)=>s+(l.ua||0),0);
-    const acts = dayLogs.map(l=>l.activity).join(', ');
-    return `<tr>
-      <td style="padding:6px 10px;border-bottom:1px solid #ddd">${d}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #ddd;text-align:center">${allFilled?pct+'%':'—'}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #ddd;text-align:center">${ua||'—'}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #ddd">${acts||'—'}</td>
-    </tr>`;
-  }).join('');
-
-  return `<div class="no-print" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
-    <button class="back-btn" onclick="closeWeeklyReport()">‹</button>
-    <div style="font-size:15px;font-weight:700;flex:1">Reporte semanal</div>
-    <button class="abtn abtn-p" onclick="window.print()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Imprimir / Guardar PDF</button>
-  </div>
-
-  <div class="print-report" style="background:#fff;color:#111;border-radius:10px;padding:28px;max-width:720px;margin:0 auto;font-family:inherit">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px">
-      <div>
-        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${escHtml(a.name||a.email)}</div>
-        <div style="font-size:13px;color:#555;margin-top:2px">${myTeam?myTeam.name+' · ':''}${a.position||''}</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:11px;color:#555;">G-Metrics Performance Lab</div>
-        <div style="font-size:13px;color:#555;margin-top:2px">${rangeLabel}</div>
-      </div>
+  const note = team ? reportNote(team.id, a.uid) : '';
+  const facts = [a.position, a.age?a.age+' años':'', a.height?a.height+' cm':'', a.weight?String(a.weight).replace('.',',')+' kg':'', team?team.name:''].filter(Boolean).map(rpEsc).join(' · ');
+  const body = `${st.alerts.length?`<div class="rp-alerts"><div class="rp-al rp-al-${st.key}"><div>${st.alerts.map(x=>`<p>${rpEsc(x.txt)}<span>Regla: ${x.rule}</span></p>`).join('')}</div><em>${[...new Set(st.alerts.map(x=>x.act))].join(' · ')}</em></div></div>`:''}
+    <div class="rp-kpis">
+      ${rpKpi(rmPick?rmPick.l.label+' RM':'RM', rmPick?cmpFmt(rmPick.v,0):'—', rmPick?' kg':'', rmPick?'del perfil':'sin RM cargado')}
+      ${rpKpi('ACWR', st.m?.acwr!=null?cmpFmt(st.m.acwr,2):'—', '', st.m?.acwr!=null?acwrSt.label.replace(/\s*[✓⚠]\s*$/,''):'sin datos suficientes', st.m?.acwr!=null?acwrSt.color:'')}
+      ${rpKpi('Wellness promedio', myW!=null?Math.round(myW):'—', myW!=null?'%':'', teamW!=null?`plantel: ${Math.round(teamW)} %`:'')}
+      ${rpKpi('Sesiones', ses, '', 'días con carga en 8 semanas')}
     </div>
-
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#ddd;border:1px solid #ddd;margin-bottom:20px">
-      <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acwr!=null?m.acwr.toFixed(2):'—'}</div>
-        <div style="font-size:11px;color:#555;margin-top:2px">ACWR</div>
-        <div style="font-size:11px;color:#555">${acwrSt.label}</div>
-      </div>
-      <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.monotony!=null?m.monotony.toFixed(1):'—'}</div>
-        <div style="font-size:11px;color:#555;margin-top:2px">Monotonía</div>
-        <div style="font-size:11px;color:#555">${monSt.label}</div>
-      </div>
-      <div style="background:#fff;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;font-family:'Barlow Condensed',sans-serif">${m?.acuteUA??'—'}</div>
-        <div style="font-size:11px;color:#555;margin-top:2px">Carga semana (UA)</div>
-      </div>
+    <div class="rp-two">
+      <div>${rpH('Carga semanal','UA · línea = su promedio')}${loadHtml}</div>
+      <div>${rpH('Wellness','% por semana · punteada = plantel')}${wellHtml}</div>
     </div>
-
-    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Wellness y carga diaria</div>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
-      <thead><tr style="background:#f2f2f2">
-        <th style="padding:6px 10px;text-align:left">Fecha</th>
-        <th style="padding:6px 10px;text-align:center">Wellness</th>
-        <th style="padding:6px 10px;text-align:center">UA del día</th>
-        <th style="padding:6px 10px;text-align:left">Actividades</th>
-      </tr></thead>
-      <tbody>${wellnessRows}</tbody>
-    </table>
-
-    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Molestias activas</div>
-    ${injuries.length
-      ? `<ul style="font-size:13px;margin:0 0 10px;padding-left:18px">${injuries.map(([id,inj])=>`<li>${id} — ${severityInfo(inj.severity)?.label||'Leve'} · dolor de hoy ${inj.pain}/10${inj.note?' · '+inj.note:''}</li>`).join('')}</ul>`
-      : `<div style="font-size:13px;color:#777;margin-bottom:10px">Sin molestias registradas.</div>`}
-
-    <div style="font-size:11px;color:#999;text-align:right;margin-top:24px">Generado el ${todayLocal()}</div>
+    ${rpH('Evaluaciones','último test contra el anterior')}
+    ${testRows.length?rpTable(['Test','Último','Anterior','Cambio','¿Cambio real?','Puesto en el plantel'], testRows, 'rp-tc'):'<div class="rp-empty">Sin tests cargados.</div>'}
+    <div class="rp-two">
+      <div>${rpH('Molestias','temporada')}${injHtml}</div>
+      ${team?`<div class="${note?'':'no-print'}">${rpH('Nota del preparador')}
+        <textarea class="no-print rp-notes-in" rows="3" placeholder="Objetivos, cómo viene…" onchange="saveTeamReportNote('${team.id}', this.value, '${a.uid}')">${rpEsc(note)}</textarea>
+        <div class="rp-notes-pr">${rpEsc(note).replace(/\n/g,'<br>')}</div></div>`:''}
+    </div>`;
+  return `<div class="no-print rp-bar"><button class="back-btn" onclick="closeWeeklyReport()" aria-label="Volver">‹</button><b class="rp-bar-t">Ficha individual</b></div>
+  <div class="rp-sheet">
+    <button class="abtn abtn-p no-print rp-pdf" onclick="window.print()" title="Imprimir o guardar en PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg>PDF</button>
+    <div class="rp-head">
+      <div class="rp-head-l">${avatarHtml(a.name||a.email, a.color, 64, a.photoUrl)}<div><div class="rp-kind">Ficha individual</div><div class="rp-title">${rpEsc(a.name||a.email)}</div>
+        <div class="rp-sub">${facts}</div></div></div>
+      <div class="rp-meta"><div class="rp-brand">G-Metrics</div><div>${dd(from)} al ${rpDate(today)}</div><div>${rpPill(RP_AVAIL[st.key])}</div></div>
+    </div>
+    ${body}
+    <div class="rp-foot"><span>G-Metrics · Ficha individual</span><span>${rpEsc(a.name||a.email)}</span></div>
   </div>`;
 }
 window.renderWeeklyReport = renderWeeklyReport;
@@ -16315,7 +16350,8 @@ function renderEvalIndexTiles(edata) {
       <div class="ev-row" style="justify-content:flex-start"><b class="ev-big" style="${asym!=null?'color:'+evalAsymColor(asym):''}">${asym!=null?evalNum(asym):'--'}<i> %</i></b>${asym!=null?`<span class="ev-sub" style="color:${evalAsymColor(asym)};font-weight:700">${asym>10?'Alta':asym>5?'A seguir':'Pareja'}</span>`:''}</div>
       ${asym==null ? '<div class="ev-sub">Sin datos</div>' : `<div class="ev-zone"><div class="ev-zone-b"><span style="background:var(--green)"></span><span style="background:var(--amber)"></span><span style="background:var(--red)"></span></div><u style="left:${(Math.min(15,asym)/15*100).toFixed(1)}%"></u><div class="ev-zone-l"><span>0</span><span>5 %</span><span>10 %</span><span>15</span></div></div>`}
     </div>`;
-  return `<div class="ev-tiles">${bestTile}${indexTile('Índice elástico','ice',ice,iceS)}${indexTile('Coord. de brazos','coord',coord,coordS)}${asymTile}</div>`;
+  // Los índices sin datos no se muestran (antes quedaban tarjetas "-- % Sin datos").
+  return `<div class="ev-tiles">${bestTile}${ice!=null?indexTile('Índice elástico','ice',ice,iceS):''}${coord!=null?indexTile('Coord. de brazos','coord',coord,coordS):''}${asym!=null?asymTile:''}</div>`;
 }
 
 // ── ¿EL CAMBIO ES REAL? (error típico y cambio mínimo que importa) ──
@@ -16409,6 +16445,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
   let html = `<div class="ev-range" role="group" aria-label="Período">${EVAL_RANGES.map(r=>`<button class="chip-btn ${rangeId===r.id?'on':''}" onclick="setEvalRange('${r.id}')">${r.label}</button>`).join('')}</div>`;
   if(includeAsym) html += renderEvalIndexTiles(edata);
   html += '<div class="ev-grid">';
+  const noRecs = []; // tests sin ningún registro: van juntos en una línea al final, no una tarjeta vacía cada uno
 
   histTests.forEach(t=>{
     const isHidden = S.evalHidden.has(t.id);
@@ -16416,6 +16453,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
     // recsFwd = TODOS los registros (la lista de intentos y el botón de borrar
     // usan su posición); inRange = los del período elegido (gráfico y resumen).
     const recsFwd = isAsym ? evalAsymSeries(edata) : sortEvalRecsByDate([...(edata[t.id]||[])]);
+    if(!recsFwd.length) { noRecs.push(t.label); return; }
     const recs = recsFwd.slice().reverse();
     const inRange = evalRangeFilter(recsFwd);
     const last = inRange[inRange.length-1]||null, prev = inRange[inRange.length-2]||null, first = inRange[0]||null;
@@ -16431,20 +16469,20 @@ function renderEvalHistory(edata, isDesktop, testList) {
     } else {
       const d = prev ? last.height-prev.height : null;
       const since = first && first!==last ? last.height-first.height : null;
-      summary = `<div class="ev-val"><b class="ev-big">${evalNum(last.height)}<i> ${t.unit}</i></b>
-        ${d!=null ? evalChangeTag(t.id, last, prev, edata, t.unit) : ''}${evalReactiveTags(last, prev)}
-        ${since!=null ? `<span class="ev-pill ev-blue">${evalSigned(since)} ${t.unit} desde ${evalMonthName(first.date)}${first.height>0?` (${evalSigned(since/first.height*100)} %)`:''}</span>` : ''}
-        ${jumpLevelTagHtml(t.id,last.height)}</div>`;
+      // Valor + nivel en una línea; el cambio (pastilla) y "desde julio" (texto) en la siguiente.
+      const chg = (d!=null ? evalChangeTag(t.id, last, prev, edata, t.unit) : '') + evalReactiveTags(last, prev)
+        + (since!=null ? `<span class="ev-since">${evalSigned(since)} ${t.unit} desde ${evalMonthName(first.date)}${first.height>0?` (${evalSigned(since/first.height*100)} %)`:''}</span>` : '');
+      summary = `<div class="ev-val"><b class="ev-big">${evalNum(last.height)}<i> ${t.unit}</i></b>${jumpLevelTagHtml(t.id,last.height)}</div>
+        ${chg?`<div class="ev-chg">${chg}</div>`:''}`;
     }
     const isRecord = !isAsym && last && recsFwd.length>1 && last.height===maxHeight;
 
     html += `<div class="ev-card" id="eval-card-${t.id}">
       <div class="ev-head">
-        <div class="ev-headl"><div class="ev-name">${t.label}</div>${summary}</div>
+        <div class="ev-headl"><div class="ev-name">${t.label}${isRecord?`<span class="ev-pill ev-gold">${EVAL_MEDAL_SVG}Récord personal</span>`:''}</div>${summary}</div>
         <div class="ev-headr">
-          ${isRecord?`<span class="ev-pill ev-gold">${EVAL_MEDAL_SVG}Récord personal</span>`:''}
           ${isAsym && last ? '<span class="ev-legend"><i class="d"></i>Derecha<i class="z"></i>Izquierda</span>' : ''}
-          <button class="eval-toggle-btn ev-btn" onclick="toggleEvalChart('${t.id}')">${isHidden?'▼ Ver':'▲ Ocultar'}</button>
+          <button class="eval-toggle-btn ev-btn ev-tog" onclick="toggleEvalChart('${t.id}')" aria-label="${isHidden?'Ver gráfico':'Ocultar gráfico'}">${evalToggleLbl(isHidden)}</button>
         </div>
       </div>`;
 
@@ -16459,7 +16497,7 @@ function renderEvalHistory(edata, isDesktop, testList) {
       // historia; la lista queda como un desplegable para cuando de verdad
       // hace falta el detalle número a número.
       const recordsShown = S.evalRecordsShown instanceof Set && S.evalRecordsShown.has(t.id);
-      html += '<button class="eval-toggle-btn ev-btn" onclick="toggleEvalRecords(\''+t.id+'\')" id="eval-records-btn-'+t.id+'" style="margin-bottom:8px">'
+      html += '<button class="ev-more" onclick="toggleEvalRecords(\''+t.id+'\')" id="eval-records-btn-'+t.id+'">'
         + (recordsShown?'▲ Ocultar intentos':'▼ Ver intentos ('+Math.min(5,recs.length)+')') + '</button>';
       html += '<div id="eval-records-list-'+t.id+'" style="display:'+(recordsShown?'block':'none')+'">';
       recs.slice(0,5).forEach((r,i)=>{
@@ -16477,15 +16515,16 @@ function renderEvalHistory(edata, isDesktop, testList) {
         html += '</div>';
       });
       html += '</div>';
-    } else {
-      html += '<div class="eval-no-data">Sin registros aún</div>';
     }
     html += '</div></div>';
   });
 
   html += '</div>';
+  if(noRecs.length) html += `<div class="ev-none">Sin registros: ${noRecs.join(' · ')}</div>`;
   return html;
 }
+// Botón de mostrar/ocultar el gráfico de un test: en el celular, solo la flecha.
+const evalToggleLbl = hidden => hidden ? '▼<span class="ev-tl"> Ver</span>' : '▲<span class="ev-tl"> Ocultar</span>';
 
 // Antes esto era UN gráfico de barras por test (CMJ, SJ, Abalakov...),
 // cambiando de a uno con pestañas — con un plantel de 12-16 jugadores el
@@ -17073,8 +17112,9 @@ function drawEvalCharts() {
     const fBody = 'Manrope, sans-serif', fNum = "'Barlow Condensed', sans-serif";
     const withAlpha = (hex, a) => { const m = /^#([0-9a-f]{6})$/i.exec(String(hex).trim()); if(!m) return 'rgba(143,168,234,'+a+')'; const n = parseInt(m[1],16); return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`; };
     const axisTicks = {color:cText3, font:{family:fBody, size:11, weight:'600'}};
+    const narrow = window.innerWidth < 520; // celular: gráfico más alto y menos números encima
     const baseOptions = (yMin, yMax) => ({
-      responsive:true, maintainAspectRatio:true, aspectRatio:2.6,
+      responsive:true, maintainAspectRatio:true, aspectRatio: narrow ? 1.9 : 2.6,
       devicePixelRatio: window.devicePixelRatio || 1,
       layout:{padding:{top:24, right:16}},
       plugins:{legend:{display:false}, tooltip:{displayColors:false}},
@@ -17095,7 +17135,7 @@ function drawEvalCharts() {
           const v = chart.data.datasets[0].data[i];
           if(v==null) return;
           const isLast = i===n-1;
-          if(n>8 && !isLast && (n-1-i)%2) return;
+          if((narrow || n>8) && !isLast && (n-1-i)%2) return;
           ctx.save();
           ctx.font = `700 ${isLast?16:13}px ${fNum}`;
           ctx.fillStyle = isLast ? cText : cText2;
@@ -17425,7 +17465,7 @@ function toggleEvalChart(testId) {
     const body = card.querySelector('.eval-hist-body');
     const btn = card.querySelector('.eval-toggle-btn');
     if(body) body.style.display = S.evalHidden.has(testId) ? 'none' : 'block';
-    if(btn) btn.textContent = S.evalHidden.has(testId) ? '▼ Ver' : '▲ Ocultar';
+    if(btn) btn.innerHTML = evalToggleLbl(S.evalHidden.has(testId));
     if(!S.evalHidden.has(testId)) setTimeout(drawEvalCharts, 80);
     return;
   }
@@ -18146,7 +18186,7 @@ function athleteRowHtml(a, o) {
   const d = getAthleteRowData(a);
   const team = a.teamId ? (S.teams||[]).find(t=>t.id===a.teamId) : null;
   const esc = t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  const subParts = o.sub!=null ? [o.sub] : [team ? team.name+(team.category?' · '+team.category:'') : (athleteSportOf(a)||'Individual'), a.position||''];
+  const subParts = o.sub!=null ? [o.sub] : [team ? teamLabel(team) : (athleteSportOf(a)||'Individual'), a.position||''];
   const sub = subParts.filter(Boolean).join(' · ');
   const bars = d.scores.map((v,i)=>{
     const h = v==null ? 3 : Math.round(8+v/100*20);
@@ -18276,7 +18316,7 @@ function renderDashboardContent() {
   // ── Filtro único: equipos reales con su cantidad ──
   const groups = [];
   const teamIds = [...new Set(everyone.filter(a=>a.teamId).map(a=>a.teamId))];
-  teamIds.forEach(tid=>{ const t=(S.teams||[]).find(x=>x.id===tid); if(t) groups.push({id:tid, label:t.name+(t.category?' · '+t.category:''), n:everyone.filter(a=>a.teamId===tid).length}); });
+  teamIds.forEach(tid=>{ const t=(S.teams||[]).find(x=>x.id===tid); if(t) groups.push({id:tid, label:teamLabel(t), n:everyone.filter(a=>a.teamId===tid).length}); });
   const nInd = everyone.filter(a=>!a.teamId).length;
   if(nInd) groups.push({id:'individual', label:'Individuales', n:nInd});
   const filterHtml = groups.length>1 ? `<div id="dash-team-filters" class="dash-filters">${renderDashTeamFilters(everyone)}</div>` : '<div id="dash-team-filters"></div>';
@@ -18430,7 +18470,7 @@ function renderDashTeamFilters(athletes) {
   const nInd = athletes.filter(a=>!a.teamId).length;
   const f = S.dashTeamFilter||null;
   return `<button class="chip-btn ${!f?'on':''}" onclick="setDashTeamFilter(null)">Todos (${athletes.length})</button>
-    ${teams.map(t=>`<button class="chip-btn ${f===t.id?'on':''}" onclick="setDashTeamFilter('${t.id}')">${t.name}${t.category?' · '+t.category:''} (${athletes.filter(a=>a.teamId===t.id).length})</button>`).join('')}
+    ${teams.map(t=>`<button class="chip-btn ${f===t.id?'on':''}" onclick="setDashTeamFilter('${t.id}')">${escHtml(teamLabel(t))} (${athletes.filter(a=>a.teamId===t.id).length})</button>`).join('')}
     ${nInd?`<button class="chip-btn ${f==='individual'?'on':''}" onclick="setDashTeamFilter('individual')">Individuales (${nInd})</button>`:''}`;
 }
 window.renderDashTeamFilters = renderDashTeamFilters;

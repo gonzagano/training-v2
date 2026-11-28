@@ -1214,7 +1214,13 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 .ev-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 16px 12px}
 .ev-headl{min-width:0;display:flex;flex-direction:column;gap:6px}
 .ev-headr{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.ev-name{font-size:15px;font-weight:700}
+.ev-name{font-size:15px;font-weight:700;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.ev-name .ev-pill{font-size:11px;padding:3px 9px 3px 5px}
+.ev-chg{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.ev-since{font-size:13px;font-weight:700;color:var(--accent-text)}
+.ev-more{background:none;border:0;padding:2px 0;font-family:inherit;font-size:13px;font-weight:700;color:var(--accent-text);cursor:pointer}
+.ev-none{margin-top:var(--sp-4);font-size:13px;color:var(--text3);line-height:1.6}
+@media(max-width:519px){.ev-tl{display:none}.ev-tog{padding:6px 10px}.ev-head{padding:14px 14px 10px}.ev-card .eval-hist-body{padding:0 14px 12px}}
 .ev-val{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .ev-btn{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rxs);padding:6px 12px;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap}
 .ev-legend{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--text2);white-space:nowrap}
@@ -1578,6 +1584,25 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .rp-notes-in{display:block;width:100%;font-family:inherit;font-size:13px;line-height:1.5;padding:10px 12px;border:1px dashed #D3D9E6;border-radius:10px;background:#fff;color:var(--text);resize:vertical}
 .rp-notes-pr{display:none;border:1px dashed #D3D9E6;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.55}
 @media print{.rp-notes-pr{display:block}.rp-t tr{break-inside:avoid}}
+/* Ficha individual */
+.rp-lnk{font:inherit;font-weight:700;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:#D3D9E6;text-underline-offset:3px}
+.rp-bar-t{font-size:15px}
+.rp-alerts+.rp-kpis{margin-top:10px}
+.rp-tc td{white-space:nowrap}
+.rp-up{color:#1F7A4D}.rp-dn{color:#C33A2C}.rp-mut{color:var(--text3)}
+.rp-list{font-size:13px;line-height:1.6;color:var(--text2)}
+.rp-list b{color:var(--text)}
+.rp-wk{position:relative;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;align-items:end;height:130px}
+.rp-wk>div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
+.rp-wk b{font-size:11px;white-space:nowrap}
+.rp-wk i{width:80%;max-width:34px;border-radius:4px 4px 0 0;background:#3E5FC4}
+.rp-wk span{font-size:11px;color:var(--text3)}
+.rp-wk-avg{position:absolute;left:0;right:0;border-top:2px dashed #1F7A4D;opacity:.6}
+.rp-wl{display:block;width:100%;height:112px;overflow:visible}
+.rp-wl line{stroke:#E3E6EC;stroke-width:1;vector-effect:non-scaling-stroke}
+.rp-wl polyline{fill:none;stroke-width:2.5;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.rp-wl-m{stroke:#3E5FC4}.rp-wl-t{stroke:#B7B9C6;stroke-dasharray:4 4}
+.rp-wl-x{display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:4px}
 @media (max-width:700px){
   .rp-avail{grid-template-columns:minmax(0,1fr)}
   .rp-aw{margin-left:0}
@@ -1733,6 +1758,15 @@ input[data-inh="1"]::placeholder{color:var(--text2);opacity:.75;font-weight:600}
 .tp-settings .tp-del{align-self:flex-start;margin:0}
 .tp-settings .tp-colors{gap:4px}
 .tp-set-row{display:flex;align-items:center;gap:10px}
+.tp-settings .tp-k{min-width:104px}
+.tp-inp{flex:1;min-width:0;font-family:inherit;font-size:15px;padding:9px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--bg3);color:var(--text)}
+.team-sport-ic{display:inline-flex;color:var(--text3)}
+/* Escudo más grande en compu y tablet */
+@media(min-width:768px){
+  .team-card .tm-crest{width:64px;height:64px}
+  .team-detail-title .tm-crest{width:76px;height:76px}
+  .team-detail-title{font-size:22px}
+}
 .tp-colors{display:flex;gap:6px;flex-wrap:wrap}
 .tp-color{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
 .tp-color.on{border-color:var(--text);box-shadow:inset 0 0 0 2px var(--bg2)}
